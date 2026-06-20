@@ -1,0 +1,109 @@
+# react-native-tgfx
+
+A **declarative, Skia-style GPU 2D canvas** for React Native, backed by Tencent's
+[**tgfx**](https://github.com/Tencent/tgfx) and built with
+[**Nitro Modules**](https://nitro.margelo.com).
+
+Render shapes, strokes, paths, gradients, images and text through a React
+component tree that compiles to a single native draw-program and runs on the GPU
+(Metal on iOS, OpenGL on Android).
+
+```tsx
+import { Canvas, Rect, Circle, Path, Image, Text, LinearGradient, useImage } from 'react-native-tgfx'
+
+function Hello() {
+  const img = useImage(require('./cat.png'))
+  return (
+    <Canvas style={{ flex: 1 }}>
+      <Rect x={0} y={0} width={120} height={80} color="lightblue" />
+
+      <Circle cx={160} cy={120} r={40} color="red" style="stroke" strokeWidth={6} strokeCap="round" />
+
+      <Path path="M0 200 q40 -60 80 0 t80 0" color="#5856D6" style="stroke" strokeWidth={5} />
+
+      <Rect x={0} y={260} width={160} height={70}>
+        <LinearGradient start={{ x: 0, y: 260 }} end={{ x: 160, y: 330 }} colors={['#FF6CAB', '#7366FF']} />
+      </Rect>
+
+      {img && <Image x={180} y={260} width={96} height={96} image={img} fit="cover" />}
+
+      <Text x={0} y={380} text="Hello tgfx" fontSize={24} color="#111" />
+    </Canvas>
+  )
+}
+```
+
+## How it works
+
+```
+<Canvas> children
+   │  (custom react-reconciler, persistence mode)
+   ▼
+immutable node tree ──► JSON draw-program (compiler) ──► `scene` prop
+   │
+   ▼  Nitro HybridView (TgfxView)
+Swift / Kotlin view shell (CAMetalLayer / TextureView)
+   │
+   ▼  shared C++ engine (nlohmann::json → tgfx::Canvas)
+tgfx ──► Metal (iOS) / OpenGL (Android) ──► GPU
+```
+
+- A dedicated **react-reconciler** turns the component tree into an immutable
+  scene and compiles it to a compact JSON program on every change.
+- A single Nitro **`TgfxView`** receives that program via its `scene` string prop.
+  The Swift/Kotlin shell only hosts the GPU surface; all drawing is shared C++.
+- Drawing happens on the platform's display-link / choreographer thread.
+
+## Components
+
+| Component | Key props |
+|---|---|
+| `Canvas` | `style`, `children` |
+| `Group` | `transform`, `origin`, `opacity` + inherited paint |
+| `Rect` / `Oval` | `x`, `y`, `width`, `height` |
+| `RoundedRect` | `x`, `y`, `width`, `height`, `r` (or `rx`/`ry`) |
+| `Circle` | `cx`, `cy`, `r` |
+| `Line` | `x1`, `y1`, `x2`, `y2` |
+| `Path` | `path` (SVG path data) |
+| `Image` | `x`, `y`, `width`, `height`, `image` (base64), `fit` |
+| `Text` | `x`, `y`, `text`, `fontSize`, `fontFamily` |
+| `Paint` | paint as a child of a shape/group |
+| `LinearGradient` / `RadialGradient` | shader as a child of a shape/`Paint` |
+
+**Paint props** (on any drawing component, `Group`, or `Paint`): `color`,
+`style` (`'fill'` \| `'stroke'`), `strokeWidth`, `strokeCap`, `strokeJoin`,
+`opacity`, `antiAlias`.
+
+Colors accept hex (`'#rrggbb'`, `'#rgba'`), `rgb()/rgba()`, common names, or a
+packed `0xAARRGGBB` number.
+
+## Hooks
+
+- `useImage(source)` — loads a `require()` asset, URL, `data:` URI, or base64
+  string into the base64 bytes `Image` expects.
+
+## Requirements
+
+- React Native **0.78+** with the **New Architecture** (Nitro Views are Fabric-only)
+- iOS: Xcode 16.4+, Metal; Android: NDK 27+, `compileSdk` 34+, OpenGL
+
+## Install (monorepo / local)
+
+tgfx is a git submodule built from source.
+
+```bash
+git submodule update --init --recursive
+# fetch tgfx's third_party (depsync) — see scripts/
+cd packages/react-native-tgfx/cpp/third_party/tgfx && depsync
+```
+
+Android builds tgfx automatically via CMake. For iOS, build the tgfx static lib
+once before `pod install`:
+
+```bash
+bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh   # SIMULATORARM64 by default
+```
+
+## License
+
+MIT — wraps tgfx (BSD-3-Clause) and Nitro (MIT).

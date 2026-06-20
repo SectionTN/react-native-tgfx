@@ -1,0 +1,12 @@
+{
+  "uiViewClassName": "TgfxView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "scene": true,
+    "valuesBuffer": true,
+    "valueCount": true,
+    "hybridRef": true
+  }
+}

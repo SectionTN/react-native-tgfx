@@ -1,0 +1,16 @@
+{
+  "name": "tgfx-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "specs": "bun --cwd packages/react-native-tgfx run specs",
+    "typecheck": "bun --cwd packages/react-native-tgfx run typecheck",
+    "example": "bun --cwd apps/example"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
