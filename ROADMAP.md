@@ -4,7 +4,23 @@ Status: both platforms render and animate (iOS Metal + Android OpenGL), verified
 on a physical Android device and the iOS Simulator. This document tracks known
 issues and planned improvements.
 
-Legend: 🔴 high priority · 🟠 medium · 🟡 nice-to-have
+Legend: 🔴 high priority · 🟠 medium · 🟡 nice-to-have · ✅ done
+
+---
+
+## ✅ Done — performance + stability pass (commit `c7a9662`)
+
+- ✅ **Dirty-driven redraw** — `draw()` is a no-op when nothing changed.
+- ✅ **Compile-once command list** — scene JSON is parsed/compiled once per change
+  (not every frame); images, SVG paths, typefaces and static shaders resolved up
+  front. Per-frame work is now only value-slot resolution + draw.
+- ✅ **Idle loop suspension** — Choreographer / CADisplayLink pause when idle and
+  resume on change.
+- ✅ **Stable Reanimated subscription** — re-subscribe only when the SharedValue
+  set changes; Canvas dedupes scene/value state.
+- ✅ **Thread-safety** — immutable shared_ptr program under a mutex; documented model.
+- ✅ **Per-frame allocations** — one reused Paint; no std::function in the hot path.
+- ✅ **Bounded image cache** + error logging for parse/decode/font failures.
 
 ---
 
