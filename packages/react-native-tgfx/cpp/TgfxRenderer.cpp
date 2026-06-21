@@ -14,47 +14,67 @@ TgfxRenderer::~TgfxRenderer() {
 }
 
 void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  window_ = std::move(window);
-  surface_ = nullptr;
-  surfaceDirty_ = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    window_ = std::move(window);
+    surface_ = nullptr;
+    surfaceDirty_ = false;
+  }
+  dirty_ = true;
 }
 
 void TgfxRenderer::setScene(const std::string& sceneJson) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  sceneJson_ = sceneJson;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (sceneJson == lastScene_) {
+      return;
+    }
+    lastScene_ = sceneJson;
+  }
+  // Compile the scene into the native command list once, off the render path.
+  scene_.setScene(sceneJson);
+  dirty_ = true;
 }
 
 void TgfxRenderer::setValues(const std::vector<double>& values) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  values_ = values;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    values_ = values;
+  }
+  dirty_ = true;
 }
 
 void TgfxRenderer::onResize() {
   surfaceDirty_ = true;
+  dirty_ = true;
 }
 
-void TgfxRenderer::draw() {
+bool TgfxRenderer::draw() {
+  // Fast path: nothing changed since the last frame — skip all GPU work.
+  if (!dirty_.load()) {
+    return false;
+  }
   std::shared_ptr<tgfx::Window> window;
-  std::string sceneJson;
   std::vector<double> values;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
-    sceneJson = sceneJson_;
     values = values_;
   }
   if (window == nullptr) {
-    return;
+    return false;
   }
   auto device = window->getDevice();
   if (device == nullptr) {
-    return;
+    return false;
   }
   auto* context = device->lockContext();
   if (context == nullptr) {
-    return;
+    return false;
   }
+  // Committed to drawing this frame — clear the dirty flag (single render
+  // thread, so this can't drop a concurrent update).
+  dirty_.store(false);
 
   if (surfaceDirty_.exchange(false)) {
     surface_ = nullptr;
@@ -62,16 +82,19 @@ void TgfxRenderer::draw() {
   if (surface_ == nullptr) {
     surface_ = tgfx::Surface::MakeFrom(context, window);
   }
+  bool rendered = false;
   if (surface_ != nullptr) {
     auto* canvas = surface_->getCanvas();
     canvas->clear(tgfx::Color::Transparent());
-    scene_.render(canvas, sceneJson, values);
+    scene_.render(canvas, values);
     auto recording = context->flush();
     if (recording != nullptr) {
       context->submit(std::move(recording));
     }
+    rendered = true;
   }
   device->unlock();
+  return rendered;
 }
 
 void TgfxRenderer::releaseWindow() {

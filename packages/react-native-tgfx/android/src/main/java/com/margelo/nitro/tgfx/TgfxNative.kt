@@ -17,6 +17,6 @@ internal object TgfxNative {
   external fun surfaceDestroyed(ptr: Long)
   external fun setScene(ptr: Long, scene: String)
   external fun setValues(ptr: Long, values: DoubleArray)
-  external fun draw(ptr: Long)
+  external fun draw(ptr: Long): Boolean
   external fun destroy(ptr: Long)
 }

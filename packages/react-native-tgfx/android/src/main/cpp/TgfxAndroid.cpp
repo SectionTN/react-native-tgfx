@@ -107,12 +107,13 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
   view->renderer.setValues(values);
 }
 
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_draw(JNIEnv*, jobject, jlong ptr) {
   auto* view = asView(ptr);
   if (view != nullptr) {
-    view->renderer.draw();
+    return view->renderer.draw() ? JNI_TRUE : JNI_FALSE;
   }
+  return JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL

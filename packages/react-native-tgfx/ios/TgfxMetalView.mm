@@ -13,6 +13,7 @@
   std::unique_ptr<tgfxrn::TgfxRenderer> _renderer;
   CADisplayLink* _displayLink;
   BOOL _windowBound;
+  int _idleFrames;
 }
 
 + (Class)layerClass {
@@ -63,6 +64,7 @@
   if (_renderer != nullptr) {
     _renderer->onResize();
   }
+  [self wakeUp];
 }
 
 - (void)bindWindowIfNeeded {
@@ -82,8 +84,22 @@
 
 - (void)render {
   [self bindWindowIfNeeded];
-  if (_renderer != nullptr) {
-    _renderer->draw();
+  bool didDraw = (_renderer != nullptr) && _renderer->draw();
+  if (didDraw) {
+    _idleFrames = 0;
+  } else {
+    _idleFrames++;
+  }
+  // Pause the display link after a few idle frames; -wakeUp resumes it.
+  if (_idleFrames > 3) {
+    _displayLink.paused = YES;
+  }
+}
+
+- (void)wakeUp {
+  _idleFrames = 0;
+  if (_displayLink != nil) {
+    _displayLink.paused = NO;
   }
 }
 
@@ -91,6 +107,7 @@
   if (_renderer != nullptr && json != nil) {
     _renderer->setScene(std::string(json.UTF8String));
   }
+  [self wakeUp];
 }
 
 - (void)setValues:(NSArray<NSNumber*>*)values {
@@ -103,10 +120,11 @@
     v.push_back(n.doubleValue);
   }
   _renderer->setValues(v);
+  [self wakeUp];
 }
 
 - (void)requestRender {
-  [self render];
+  [self wakeUp];
 }
 
 - (void)releaseRenderer {

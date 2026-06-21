@@ -3,9 +3,14 @@
 // the Surface, and on each frame locks the context, replays the current scene
 // via SceneRenderer, then flushes + submits (which presents the window).
 //
-// All GPU calls happen on whatever thread drives draw() — the platform's
-// display-link / choreographer thread — which is the single owner of the
-// tgfx::Context per the library's threading contract.
+// Threading model: setScene / setValues / onResize / draw all run on the same
+// UI thread (the native prop setters, the Reanimated UI-runtime worklet, and the
+// display-link/choreographer callback all live there), and that thread is the
+// single owner of the tgfx::Context. `window_`, `surface_`, `values_` and
+// `lastScene_` are still guarded by `mutex_`, `dirty_`/`surfaceDirty_` are atomic,
+// and SceneRenderer's compiled program is published as an immutable shared_ptr,
+// so the design stays correct even if a future change moves rendering to a
+// dedicated render thread.
 #pragma once
 
 #include <atomic>
@@ -43,8 +48,10 @@ class TgfxRenderer {
   /// Invalidate the cached surface so it is recreated at the new drawable size.
   void onResize();
 
-  /// Render one frame (no-op if there is no bound window/context).
-  void draw();
+  /// Render one frame. Returns true if it actually rendered, false if it was a
+  /// no-op (nothing changed, or no bound window) — the platform loop uses this
+  /// to pause itself when idle and resume on the next change.
+  bool draw();
 
   /// Release the surface, window, and cached resources.
   void releaseWindow();
@@ -52,11 +59,14 @@ class TgfxRenderer {
  private:
   std::shared_ptr<tgfx::Window> window_;
   std::shared_ptr<tgfx::Surface> surface_;
-  std::string sceneJson_ = R"({"v":1,"root":{"t":"g","ch":[]}})";
+  std::string lastScene_;
   std::vector<double> values_;
   SceneRenderer scene_;
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};
+  // Starts true so the first frame draws once the window is bound; set whenever
+  // the scene, values, window, or size change. draw() is a no-op when false.
+  std::atomic<bool> dirty_{true};
 };
 
 }  // namespace tgfxrn

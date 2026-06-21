@@ -20,6 +20,22 @@ try {
   AnimationDriver = null
 }
 
+/** True when two SharedValue lists reference the same set in the same order. */
+function sameValueSet(
+  a: MaybeSharedValue<unknown>[],
+  b: MaybeSharedValue<unknown>[]
+): boolean {
+  if (a.length !== b.length) {
+    return false
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false
+    }
+  }
+  return true
+}
+
 /**
  * The declarative tgfx canvas. Children (`<Rect>`, `<Circle>`, `<Path>`,
  * `<Image>`, `<Text>`, `<Group>`, ...) are reconciled into an immutable node
@@ -33,11 +49,21 @@ export function Canvas({ children, style }: CanvasProps): React.ReactElement {
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
   const hybridRef = useRef(callback((ref: TgfxViewRef) => setView(ref)))
+  const prevScene = useRef<string>(EMPTY_SCENE)
+  const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
 
   if (rootRef.current == null) {
+    // Only push to state when the value actually changes, so the native view
+    // and the Reanimated mapper aren't re-driven on every reconciler commit.
     rootRef.current = new TgfxRoot((json, vals) => {
-      setScene(json)
-      setValues(vals)
+      if (json !== prevScene.current) {
+        prevScene.current = json
+        setScene(json)
+      }
+      if (!sameValueSet(prevValues.current, vals)) {
+        prevValues.current = vals
+        setValues(vals)
+      }
     })
   }
 

@@ -7,10 +7,10 @@ import android.view.Surface
 import android.view.TextureView
 
 /**
- * A [TextureView] that hosts a tgfx GPU surface. The native renderer binds to
- * the view's `SurfaceTexture` (via an `ANativeWindow`) and a vsync-aligned
- * [Choreographer] loop drives one frame per refresh, sampling the latest scene
- * (and, later, the animated values buffer) with no per-frame JS work.
+ * A [TextureView] that hosts a tgfx GPU surface. A vsync-aligned [Choreographer]
+ * loop drives frames, but it **pauses itself when idle** (the native renderer
+ * reports it drew nothing) and resumes on any scene/value change — so a static
+ * canvas costs no per-frame work and no wakeups.
  */
 internal class TgfxTextureView(context: Context) :
   TextureView(context),
@@ -20,6 +20,7 @@ internal class TgfxTextureView(context: Context) :
   private var nativePtr: Long = 0
   private var surface: Surface? = null
   private var running = false
+  private var idleFrames = 0
   private var scene: String = """{"v":1,"root":{"t":"g","ch":[]}}"""
 
   init {
@@ -32,18 +33,18 @@ internal class TgfxTextureView(context: Context) :
     if (nativePtr != 0L) {
       TgfxNative.setScene(nativePtr, json)
     }
+    ensureRunning()
   }
 
   fun setValues(values: DoubleArray) {
     if (nativePtr != 0L) {
       TgfxNative.setValues(nativePtr, values)
     }
+    ensureRunning()
   }
 
   fun requestRender() {
-    if (nativePtr != 0L) {
-      TgfxNative.draw(nativePtr)
-    }
+    ensureRunning()
   }
 
   /** Release the native renderer; called when the Nitro view is dropped. */
@@ -67,13 +68,14 @@ internal class TgfxTextureView(context: Context) :
     TgfxNative.surfaceCreated(nativePtr, s)
     TgfxNative.surfaceChanged(nativePtr, width, height)
     TgfxNative.setScene(nativePtr, scene)
-    startLoop()
+    ensureRunning()
   }
 
   override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {
     if (nativePtr != 0L) {
       TgfxNative.surfaceChanged(nativePtr, width, height)
     }
+    ensureRunning()
   }
 
   override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
@@ -88,8 +90,9 @@ internal class TgfxTextureView(context: Context) :
 
   override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
 
-  private fun startLoop() {
-    if (!running) {
+  private fun ensureRunning() {
+    idleFrames = 0
+    if (!running && surface != null) {
       running = true
       Choreographer.getInstance().postFrameCallback(this)
     }
@@ -104,9 +107,21 @@ internal class TgfxTextureView(context: Context) :
     if (!running) {
       return
     }
-    if (nativePtr != 0L) {
-      TgfxNative.draw(nativePtr)
+    val didDraw = nativePtr != 0L && TgfxNative.draw(nativePtr)
+    if (didDraw) {
+      idleFrames = 0
+    } else {
+      idleFrames++
+    }
+    // Pause after a few idle frames; ensureRunning() resumes on the next change.
+    if (idleFrames > IDLE_FRAMES_BEFORE_PAUSE) {
+      running = false
+      return
     }
     Choreographer.getInstance().postFrameCallback(this)
+  }
+
+  private companion object {
+    const val IDLE_FRAMES_BEFORE_PAUSE = 3
   }
 }

@@ -1,45 +1,113 @@
-// SceneRenderer parses the JSON draw-program produced by the JS reconciler and
-// replays it onto a tgfx::Canvas. It is fully platform-agnostic — the same code
-// runs on Metal (iOS) and OpenGL (Android). Image and typeface caches live here
-// so repeated frames of the same scene avoid re-decoding.
+// SceneRenderer compiles the JSON draw-program produced by the JS reconciler
+// into a native command list ONCE per scene change (setScene), resolving images,
+// paths, typefaces and static shaders up front. Each frame, render() executes
+// that immutable command list, resolving only the animated value slots — no
+// per-frame JSON parsing, base64 decoding, SVG path parsing, or font lookups.
 //
-// Animated props appear in the JSON as `{ "__s": index }` slot placeholders;
-// the live `values` array (updated each frame from a Reanimated worklet via the
-// boxed Nitro view) is resolved during rendering, so animation needs no scene
-// recompile and no JS-thread work per frame.
+// The compiled program is swapped under a mutex and read as an immutable
+// shared_ptr, so the render thread never sees a half-built program.
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "tgfx/core/Image.h"
-#include "tgfx/core/Typeface.h"
+#include "tgfx/core/Matrix.h"
+#include "tgfx/core/Path.h"
 
 namespace tgfx {
 class Canvas;
-}
+class Image;
+class Shader;
+class Typeface;
+class Paint;
+}  // namespace tgfx
 
 namespace tgfxrn {
 
+/// A float that is either a literal or an animated slot (slot < 0 => literal).
+struct AnimF {
+  float literal = 0;
+  int slot = -1;
+
+  float resolve(const std::vector<double>& values) const {
+    if (slot >= 0 && static_cast<size_t>(slot) < values.size()) {
+      return static_cast<float>(values[slot]);
+    }
+    return literal;
+  }
+};
+
+struct PaintCmd {
+  uint32_t color = 0xff000000;
+  bool stroke = false;
+  AnimF strokeWidth{1, -1};
+  int cap = 0;
+  int join = 0;
+  bool antiAlias = true;
+  AnimF alpha{1, -1};
+  std::shared_ptr<tgfx::Shader> shader;  // built once for static gradients
+};
+
+/// type: 0 translate(a=x,b=y), 1 scale(a=x,b=y), 2 rotate(a), 3 skewX(a), 4 skewY(a)
+struct TransformOpCmd {
+  int type = 0;
+  AnimF a;
+  AnimF b;
+};
+
+struct DrawCmd {
+  enum Kind { Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text };
+  Kind kind = Group;
+
+  AnimF x, y, w, h, rx, ry, cx, cy, r, x1, y1, x2, y2, fontSize;
+  PaintCmd paint;
+
+  // Group
+  bool hasMatrix = false;
+  tgfx::Matrix matrix = tgfx::Matrix::I();
+  std::vector<TransformOpCmd> ops;
+  std::vector<DrawCmd> children;
+
+  // Path (parsed once)
+  tgfx::Path path;
+  // Image (created once)
+  std::shared_ptr<tgfx::Image> image;
+  int fit = 1;
+  // Text
+  std::string text;
+  std::shared_ptr<tgfx::Typeface> typeface;
+};
+
+using Program = std::vector<DrawCmd>;
+
 class SceneRenderer {
  public:
-  /// Replay a serialized scene into the canvas, resolving slot placeholders
-  /// against `values`.
-  void render(tgfx::Canvas* canvas, const std::string& sceneJson,
-              const std::vector<double>& values);
+  /// Compile the serialized scene into the command program (once per change).
+  void setScene(const std::string& sceneJson);
 
-  /// Drop cached GPU/CPU resources (call when the surface is torn down).
+  /// Execute the compiled program, resolving slot placeholders against `values`.
+  void render(tgfx::Canvas* canvas, const std::vector<double>& values);
+
+  /// Drop the program and cached GPU/CPU resources.
   void clearCaches();
 
  private:
+  std::shared_ptr<const Program> program_;
+  std::mutex programMutex_;
+
+  // Compile-time resource caches (accessed only on the scene-change thread).
   std::unordered_map<size_t, std::shared_ptr<tgfx::Image>> imageCache_;
-  std::unordered_map<std::string, std::shared_ptr<tgfx::Typeface>>
-      typefaceCache_;
+  std::unordered_map<std::string, std::shared_ptr<tgfx::Typeface>> typefaceCache_;
 
   std::shared_ptr<tgfx::Image> getImage(const std::string& base64);
   std::shared_ptr<tgfx::Typeface> getTypeface(const std::string& family);
+
+  void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
+               const std::vector<double>& values, tgfx::Paint& paint) const;
 };
 
 }  // namespace tgfxrn
