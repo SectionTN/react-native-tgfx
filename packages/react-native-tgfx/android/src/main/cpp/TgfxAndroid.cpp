@@ -79,6 +79,15 @@ Java_com_margelo_nitro_tgfx_TgfxNative_surfaceDestroyed(JNIEnv*, jobject,
 }
 
 JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_setPixelRatio(JNIEnv*, jobject, jlong ptr,
+                                                     jfloat ratio) {
+  auto* view = asView(ptr);
+  if (view != nullptr) {
+    view->renderer.setPixelRatio(static_cast<float>(ratio));
+  }
+}
+
+JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
                                                 jstring scene) {
   auto* view = asView(ptr);

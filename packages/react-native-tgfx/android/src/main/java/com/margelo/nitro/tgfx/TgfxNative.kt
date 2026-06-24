@@ -15,6 +15,7 @@ internal object TgfxNative {
   external fun surfaceCreated(ptr: Long, surface: Surface)
   external fun surfaceChanged(ptr: Long, width: Int, height: Int)
   external fun surfaceDestroyed(ptr: Long)
+  external fun setPixelRatio(ptr: Long, ratio: Float)
   external fun setScene(ptr: Long, scene: String)
   external fun setValues(ptr: Long, values: DoubleArray)
   external fun draw(ptr: Long): Boolean

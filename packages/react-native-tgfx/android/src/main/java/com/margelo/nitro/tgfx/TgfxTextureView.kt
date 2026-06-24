@@ -67,6 +67,7 @@ internal class TgfxTextureView(context: Context) :
     surface = s
     TgfxNative.surfaceCreated(nativePtr, s)
     TgfxNative.surfaceChanged(nativePtr, width, height)
+    TgfxNative.setPixelRatio(nativePtr, resources.displayMetrics.density)
     TgfxNative.setScene(nativePtr, scene)
     ensureRunning()
   }

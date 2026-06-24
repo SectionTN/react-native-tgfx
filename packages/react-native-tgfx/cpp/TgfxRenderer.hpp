@@ -48,6 +48,11 @@ class TgfxRenderer {
   /// Invalidate the cached surface so it is recreated at the new drawable size.
   void onResize();
 
+  /// Set the device pixel ratio so scene coordinates (logical px / dp) are
+  /// scaled to physical pixels before rendering. Call once after the surface
+  /// is created. Defaults to 1.0 (no scaling).
+  void setPixelRatio(float ratio);
+
   /// Render one frame. Returns true if it actually rendered, false if it was a
   /// no-op (nothing changed, or no bound window) — the platform loop uses this
   /// to pause itself when idle and resume on the next change.
@@ -64,6 +69,7 @@ class TgfxRenderer {
   SceneRenderer scene_;
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};
+  float pixelRatio_{1.0f};
   // Starts true so the first frame draws once the window is bound; set whenever
   // the scene, values, window, or size change. draw() is a no-op when false.
   std::atomic<bool> dirty_{true};

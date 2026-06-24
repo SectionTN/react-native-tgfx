@@ -2,6 +2,7 @@
 
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
+#include "tgfx/core/Matrix.h"
 #include "tgfx/core/Surface.h"
 #include "tgfx/gpu/Context.h"
 #include "tgfx/gpu/Device.h"
@@ -49,6 +50,11 @@ void TgfxRenderer::onResize() {
   dirty_ = true;
 }
 
+void TgfxRenderer::setPixelRatio(float ratio) {
+  pixelRatio_ = (ratio > 0.0f) ? ratio : 1.0f;
+  dirty_ = true;
+}
+
 bool TgfxRenderer::draw() {
   // Fast path: nothing changed since the last frame — skip all GPU work.
   if (!dirty_.load()) {
@@ -86,7 +92,16 @@ bool TgfxRenderer::draw() {
   if (surface_ != nullptr) {
     auto* canvas = surface_->getCanvas();
     canvas->clear(tgfx::Color::Transparent());
+    // Scene coordinates are in logical pixels (dp); the tgfx surface is in
+    // physical pixels. Scale by the device pixel ratio so they align.
+    if (pixelRatio_ != 1.0f) {
+      canvas->save();
+      canvas->concat(tgfx::Matrix::MakeScale(pixelRatio_, pixelRatio_));
+    }
     scene_.render(canvas, values);
+    if (pixelRatio_ != 1.0f) {
+      canvas->restore();
+    }
     auto recording = context->flush();
     if (recording != nullptr) {
       context->submit(std::move(recording));
