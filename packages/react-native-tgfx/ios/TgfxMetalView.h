@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setSceneJSON:(NSString*)json;
 
 /// Update the live animation value slots (called per frame from a worklet).
-- (void)setValues:(NSArray<NSNumber*>*)values;
+- (void)setValues:(const double*)values count:(int32_t)count;
 
 /// Force an immediate repaint (normally the display link drives frames).
 - (void)requestRender;

@@ -16,12 +16,9 @@ namespace margelo::nitro::tgfx {
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridGetter("scene", &HybridTgfxViewSpec::getScene);
       prototype.registerHybridSetter("scene", &HybridTgfxViewSpec::setScene);
-      prototype.registerHybridGetter("valuesBuffer", &HybridTgfxViewSpec::getValuesBuffer);
-      prototype.registerHybridSetter("valuesBuffer", &HybridTgfxViewSpec::setValuesBuffer);
-      prototype.registerHybridGetter("valueCount", &HybridTgfxViewSpec::getValueCount);
-      prototype.registerHybridSetter("valueCount", &HybridTgfxViewSpec::setValueCount);
       prototype.registerHybridMethod("invalidate", &HybridTgfxViewSpec::invalidate);
       prototype.registerHybridMethod("setValues", &HybridTgfxViewSpec::setValues);
+      prototype.registerHybridMethod("drawCameraFrame", &HybridTgfxViewSpec::drawCameraFrame);
     });
   }
 

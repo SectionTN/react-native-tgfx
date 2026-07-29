@@ -84,16 +84,6 @@ using namespace margelo::nitro::tgfx::views;
     swiftPart.setScene(newViewProps.scene.value);
     newViewProps.scene.isDirty = false;
   }
-  // valuesBuffer: optional
-  if (newViewProps.valuesBuffer.isDirty) {
-    swiftPart.setValuesBuffer(newViewProps.valuesBuffer.value);
-    newViewProps.valuesBuffer.isDirty = false;
-  }
-  // valueCount: optional
-  if (newViewProps.valueCount.isDirty) {
-    swiftPart.setValueCount(newViewProps.valueCount.value);
-    newViewProps.valueCount.isDirty = false;
-  }
 
   swiftPart.afterUpdate();
 

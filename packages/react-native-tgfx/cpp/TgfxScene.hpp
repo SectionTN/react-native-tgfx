@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -33,9 +34,9 @@ struct AnimF {
   float literal = 0;
   int slot = -1;
 
-  float resolve(const std::vector<double>& values) const {
+  float resolve(std::span<const double> values) const {
     if (slot >= 0 && static_cast<size_t>(slot) < values.size()) {
-      return static_cast<float>(values[slot]);
+      return static_cast<float>(values[static_cast<size_t>(slot)]);
     }
     return literal;
   }
@@ -90,7 +91,7 @@ class SceneRenderer {
   void setScene(const std::string& sceneJson);
 
   /// Execute the compiled program, resolving slot placeholders against `values`.
-  void render(tgfx::Canvas* canvas, const std::vector<double>& values);
+  void render(tgfx::Canvas* canvas, std::span<const double> values);
 
   /// Drop the program and cached GPU/CPU resources.
   void clearCaches();
@@ -106,8 +107,8 @@ class SceneRenderer {
   std::shared_ptr<tgfx::Image> getImage(const std::string& base64);
   std::shared_ptr<tgfx::Typeface> getTypeface(const std::string& family);
 
-  void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
-               const std::vector<double>& values, tgfx::Paint& paint) const;
+  void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
+               tgfx::Paint& paint) const;
 };
 
 }  // namespace tgfxrn

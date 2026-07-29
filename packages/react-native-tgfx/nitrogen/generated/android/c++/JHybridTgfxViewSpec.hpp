@@ -52,15 +52,12 @@ namespace margelo::nitro::tgfx {
     // Properties
     std::string getScene() override;
     void setScene(const std::string& scene) override;
-    std::optional<std::shared_ptr<ArrayBuffer>> getValuesBuffer() override;
-    void setValuesBuffer(const std::optional<std::shared_ptr<ArrayBuffer>>& valuesBuffer) override;
-    std::optional<double> getValueCount() override;
-    void setValueCount(std::optional<double> valueCount) override;
 
   public:
     // Methods
     void invalidate() override;
     void setValues(const std::vector<double>& values) override;
+    void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) override;
 
   private:
     jni::global_ref<JHybridTgfxViewSpec::JavaPart> _javaPart;

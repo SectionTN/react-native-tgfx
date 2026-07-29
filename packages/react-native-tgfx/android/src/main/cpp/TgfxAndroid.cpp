@@ -116,6 +116,27 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
   view->renderer.setValues(values);
 }
 
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_drawCameraFrame(JNIEnv* env, jobject, jlong ptr,
+                                                      jlong buffer, jfloat frameWidth,
+                                                      jfloat frameHeight, jfloatArray contours,
+                                                      jfloat blurRadius) {
+  auto* view = asView(ptr);
+  if (view == nullptr || buffer == 0) {
+    return;
+  }
+  std::vector<float> points;
+  if (contours != nullptr) {
+    jsize len = env->GetArrayLength(contours);
+    points.resize(static_cast<size_t>(len));
+    if (len > 0) {
+      env->GetFloatArrayRegion(contours, 0, len, points.data());
+    }
+  }
+  view->renderer.drawCameraFrame(reinterpret_cast<void*>(buffer), frameWidth, frameHeight, points,
+                                 blurRadius);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_draw(JNIEnv*, jobject, jlong ptr) {
   auto* view = asView(ptr);

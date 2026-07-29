@@ -10,9 +10,6 @@
 
 
 #include <string>
-#include <NitroModules/ArrayBuffer.hpp>
-#include <optional>
-#include <NitroModules/JArrayBuffer.hpp>
 #include <vector>
 
 namespace margelo::nitro::tgfx {
@@ -54,24 +51,6 @@ namespace margelo::nitro::tgfx {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* scene */)>("setScene");
     method(_javaPart, jni::make_jstring(scene));
   }
-  std::optional<std::shared_ptr<ArrayBuffer>> JHybridTgfxViewSpec::getValuesBuffer() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JArrayBuffer::javaobject>()>("getValuesBuffer");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->cthis()->getArrayBuffer()) : std::nullopt;
-  }
-  void JHybridTgfxViewSpec::setValuesBuffer(const std::optional<std::shared_ptr<ArrayBuffer>>& valuesBuffer) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JArrayBuffer::javaobject> /* valuesBuffer */)>("setValuesBuffer");
-    method(_javaPart, valuesBuffer.has_value() ? JArrayBuffer::wrap(valuesBuffer.value()) : nullptr);
-  }
-  std::optional<double> JHybridTgfxViewSpec::getValueCount() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JDouble>()>("getValueCount");
-    auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->value()) : std::nullopt;
-  }
-  void JHybridTgfxViewSpec::setValueCount(std::optional<double> valueCount) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JDouble> /* valueCount */)>("setValueCount");
-    method(_javaPart, valueCount.has_value() ? jni::JDouble::valueOf(valueCount.value()) : nullptr);
-  }
 
   // Methods
   void JHybridTgfxViewSpec::invalidate() {
@@ -86,6 +65,15 @@ namespace margelo::nitro::tgfx {
       __array->setRegion(0, __size, values.data());
       return __array;
     }());
+  }
+  void JHybridTgfxViewSpec::drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jlong /* buffer */, double /* frameWidth */, double /* frameHeight */, jni::alias_ref<jni::JArrayDouble> /* contours */, double /* blurRadius */)>("drawCameraFrame_cxx");
+    method(_javaPart, buffer, frameWidth, frameHeight, [&]() {
+      size_t __size = contours.size();
+      jni::local_ref<jni::JArrayDouble> __array = jni::JArrayDouble::newArray(__size);
+      __array->setRegion(0, __size, contours.data());
+      return __array;
+    }(), blurRadius);
   }
 
 } // namespace margelo::nitro::tgfx

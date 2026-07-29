@@ -110,16 +110,10 @@
   [self wakeUp];
 }
 
-- (void)setValues:(NSArray<NSNumber*>*)values {
-  if (_renderer == nullptr || values == nil) {
-    return;
+- (void)setValues:(const double*)values count:(int32_t)count {
+  if (_renderer != nullptr && values != nullptr) {
+    _renderer->setValues(std::vector<double>(values, values + count));
   }
-  std::vector<double> v;
-  v.reserve(values.count);
-  for (NSNumber* n in values) {
-    v.push_back(n.doubleValue);
-  }
-  _renderer->setValues(v);
   [self wakeUp];
 }
 

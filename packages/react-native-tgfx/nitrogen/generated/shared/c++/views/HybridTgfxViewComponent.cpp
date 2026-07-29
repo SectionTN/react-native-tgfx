@@ -36,26 +36,6 @@ namespace margelo::nitro::tgfx::views {
         throw std::runtime_error(std::string("TgfxView.scene: ") + exc.what());
       }
     }()),
-    valuesBuffer([&]() -> CachedProp<std::optional<std::shared_ptr<ArrayBuffer>>> {
-      try {
-        const react::RawValue* rawValue = rawProps.at("valuesBuffer", nullptr, nullptr);
-        if (rawValue == nullptr) return sourceProps.valuesBuffer;
-        const auto& [runtime, value] = (std::pair<jsi::Runtime*, jsi::Value>)*rawValue;
-        return CachedProp<std::optional<std::shared_ptr<ArrayBuffer>>>::fromRawValue(*runtime, value, sourceProps.valuesBuffer);
-      } catch (const std::exception& exc) {
-        throw std::runtime_error(std::string("TgfxView.valuesBuffer: ") + exc.what());
-      }
-    }()),
-    valueCount([&]() -> CachedProp<std::optional<double>> {
-      try {
-        const react::RawValue* rawValue = rawProps.at("valueCount", nullptr, nullptr);
-        if (rawValue == nullptr) return sourceProps.valueCount;
-        const auto& [runtime, value] = (std::pair<jsi::Runtime*, jsi::Value>)*rawValue;
-        return CachedProp<std::optional<double>>::fromRawValue(*runtime, value, sourceProps.valueCount);
-      } catch (const std::exception& exc) {
-        throw std::runtime_error(std::string("TgfxView.valueCount: ") + exc.what());
-      }
-    }()),
     hybridRef([&]() -> CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> {
       try {
         const react::RawValue* rawValue = rawProps.at("hybridRef", nullptr, nullptr);
@@ -70,8 +50,6 @@ namespace margelo::nitro::tgfx::views {
   bool HybridTgfxViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
       case hashString("scene"): return true;
-      case hashString("valuesBuffer"): return true;
-      case hashString("valueCount"): return true;
       case hashString("hybridRef"): return true;
       default: return false;
     }

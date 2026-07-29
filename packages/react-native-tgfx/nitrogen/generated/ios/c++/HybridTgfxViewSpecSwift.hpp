@@ -12,13 +12,9 @@
 // Forward declaration of `HybridTgfxViewSpec_cxx` to properly resolve imports.
 namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 
-// Forward declaration of `ArrayBufferHolder` to properly resolve imports.
-namespace NitroModules { class ArrayBufferHolder; }
+
 
 #include <string>
-#include <NitroModules/ArrayBuffer.hpp>
-#include <optional>
-#include <NitroModules/ArrayBufferHolder.hpp>
 #include <vector>
 
 #include "NitroTgfx-Swift-Cxx-Umbrella.hpp"
@@ -74,20 +70,6 @@ namespace margelo::nitro::tgfx {
     inline void setScene(const std::string& scene) noexcept override {
       _swiftPart.setScene(scene);
     }
-    inline std::optional<std::shared_ptr<ArrayBuffer>> getValuesBuffer() noexcept override {
-      auto __result = _swiftPart.getValuesBuffer();
-      return __result;
-    }
-    inline void setValuesBuffer(const std::optional<std::shared_ptr<ArrayBuffer>>& valuesBuffer) noexcept override {
-      _swiftPart.setValuesBuffer(valuesBuffer);
-    }
-    inline std::optional<double> getValueCount() noexcept override {
-      auto __result = _swiftPart.getValueCount();
-      return __result;
-    }
-    inline void setValueCount(std::optional<double> valueCount) noexcept override {
-      _swiftPart.setValueCount(valueCount);
-    }
 
   public:
     // Methods
@@ -99,6 +81,12 @@ namespace margelo::nitro::tgfx {
     }
     inline void setValues(const std::vector<double>& values) override {
       auto __result = _swiftPart.setValues(values);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) override {
+      auto __result = _swiftPart.drawCameraFrame(std::forward<decltype(buffer)>(buffer), std::forward<decltype(frameWidth)>(frameWidth), std::forward<decltype(frameHeight)>(frameHeight), contours, std::forward<decltype(blurRadius)>(blurRadius));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

@@ -7,13 +7,7 @@ import {
   type GradientInput,
   type PaintInput,
 } from './paint'
-import {
-  resolveTransform,
-  toRadians,
-  type Transform,
-  type TransformOp,
-  type Vector,
-} from './transform'
+import { toRadians, type Transform, type Vector } from './transform'
 import {
   isSharedValue,
   num,
@@ -63,13 +57,41 @@ function extractGradient(node: Node): GradientInput | undefined {
       positions: p.positions as number[] | undefined,
     }
   }
-  if (node.type === NodeType.RadialGradient) {
+  if (node.type === NodeType.RadialGradient || node.type === NodeType.DiamondGradient) {
     return {
-      kind: 'radial',
+      kind: node.type === NodeType.RadialGradient ? 'radial' : 'diamond',
       center: vec(p.center) ?? vec({ x: p.cx, y: p.cy }),
       radius: resolveNumber(p.r),
       colors: (p.colors as Color[]) ?? [],
       positions: p.positions as number[] | undefined,
+    }
+  }
+  if (node.type === NodeType.SweepGradient) {
+    return {
+      kind: 'sweep',
+      center: vec(p.c) ?? vec(p.center) ?? vec({ x: p.cx, y: p.cy }),
+      startAngle: resolveNumber(p.start, 0),
+      endAngle: resolveNumber(p.end, 360),
+      colors: (p.colors as Color[]) ?? [],
+      positions: p.positions as number[] | undefined,
+    }
+  }
+  if (node.type === NodeType.Shader) {
+    return {
+      kind: 'runtime',
+      colors: [],
+      source: String(resolveValue(p.source) ?? ''),
+      uniforms: (p.uniforms as Record<string, number | number[]>) ?? {},
+    }
+  }
+  if (node.type === NodeType.FractalNoise || node.type === NodeType.Turbulence) {
+    return {
+      kind: node.type === NodeType.FractalNoise ? 'fractalNoise' : 'turbulence',
+      colors: [],
+      freqX: resolveNumber(p.freqX, 0.05),
+      freqY: resolveNumber(p.freqY, 0.05),
+      octaves: resolveNumber(p.octaves, 1),
+      seed: resolveNumber(p.seed, 0),
     }
   }
   return undefined
@@ -182,15 +204,6 @@ function compileDrawing(
   }
 }
 
-function isAnimatedTransform(transform: unknown): boolean {
-  if (!Array.isArray(transform)) {
-    return false
-  }
-  return transform.some((op: Record<string, unknown>) =>
-    Object.values(op).some((v) => isSharedValue(v))
-  )
-}
-
 /** Build a list of transform ops with animated values resolved to slots. */
 function buildOps(
   transform: Transform,
@@ -250,23 +263,9 @@ function compileGroup(
   const transform = node.props.transform
   const origin = vec(node.props.origin)
   const out: CompiledNode = { t: 'g', ch: compileNodes(drawingChildren, childCtx, alloc) }
-
-  if (isAnimatedTransform(transform)) {
-    out.ops = buildOps(transform as Transform, origin, alloc)
-  } else {
-    const staticOps = Array.isArray(transform)
-      ? (transform.map((op: Record<string, unknown>) => {
-          const key = Object.keys(op)[0]
-          if (key == null) {
-            return {} as TransformOp
-          }
-          return { [key]: resolveValue(op[key]) } as TransformOp
-        }) as Transform)
-      : undefined
-    const m = resolveTransform(staticOps, origin)
-    if (m != null) {
-      out.m = m
-    }
+  const ops = buildOps((transform as Transform) ?? [], origin, alloc)
+  if (ops.length > 0) {
+    out.ops = ops
   }
   return out
 }
@@ -283,7 +282,12 @@ function compileNodes(
     } else if (
       node.type === NodeType.Paint ||
       node.type === NodeType.LinearGradient ||
-      node.type === NodeType.RadialGradient
+      node.type === NodeType.RadialGradient ||
+      node.type === NodeType.SweepGradient ||
+      node.type === NodeType.DiamondGradient ||
+      node.type === NodeType.FractalNoise ||
+      node.type === NodeType.Turbulence ||
+      node.type === NodeType.Shader
     ) {
       continue
     } else {

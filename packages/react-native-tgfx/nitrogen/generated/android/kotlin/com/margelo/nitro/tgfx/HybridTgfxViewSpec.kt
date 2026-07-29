@@ -10,7 +10,6 @@ package com.margelo.nitro.tgfx
 import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
-import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.core.HybridObject
 import com.margelo.nitro.views.HybridView
 
@@ -32,18 +31,6 @@ abstract class HybridTgfxViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var scene: String
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var valuesBuffer: ArrayBuffer?
-  
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var valueCount: Double?
 
   // Methods
   @DoNotStrip
@@ -53,6 +40,15 @@ abstract class HybridTgfxViewSpec: HybridView() {
   @DoNotStrip
   @Keep
   abstract fun setValues(values: DoubleArray): Unit
+  
+  abstract fun drawCameraFrame(buffer: ULong, frameWidth: Double, frameHeight: Double, contours: DoubleArray, blurRadius: Double): Unit
+  
+  @DoNotStrip
+  @Keep
+  private fun drawCameraFrame_cxx(buffer: Long, frameWidth: Double, frameHeight: Double, contours: DoubleArray, blurRadius: Double): Unit {
+    val __result = drawCameraFrame(buffer.toULong(), frameWidth, frameHeight, contours, blurRadius)
+    return __result
+  }
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

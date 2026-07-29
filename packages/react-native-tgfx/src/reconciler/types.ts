@@ -17,6 +17,11 @@ export const NodeType = {
   Paint: 'tgfx_paint',
   LinearGradient: 'tgfx_lineargradient',
   RadialGradient: 'tgfx_radialgradient',
+  SweepGradient: 'tgfx_sweepgradient',
+  DiamondGradient: 'tgfx_diamondgradient',
+  FractalNoise: 'tgfx_fractalnoise',
+  Turbulence: 'tgfx_turbulence',
+  Shader: 'tgfx_shader',
 } as const
 
 export type NodeTypeName = (typeof NodeType)[keyof typeof NodeType]

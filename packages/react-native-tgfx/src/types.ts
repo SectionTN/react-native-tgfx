@@ -111,4 +111,26 @@ export interface RadialGradientProps extends GradientStops {
   r: number
 }
 
+export interface SweepGradientProps extends GradientStops {
+  /** Center of the sweep. `center` is accepted as an alias. */
+  c?: Vector
+  center?: Vector
+  /** Angular range in degrees; defaults to a full 0-360 turn (as in Skia). */
+  start?: number
+  end?: number
+}
+
+export interface ShaderProps {
+  /** SkSL source with a `vec4 main(vec2 pos)` entry point. */
+  source: string
+  uniforms?: Record<string, number | number[]>
+}
+
+export interface NoiseProps {
+  freqX?: number
+  freqY?: number
+  octaves?: number
+  seed?: number
+}
+
 export interface PaintComponentProps extends PaintProps {}

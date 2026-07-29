@@ -1,10 +1,11 @@
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { BenchmarkRunner } from './src/BenchmarkRunner';
+import { Bench } from './src/Bench';
+import { Parity } from './src/Parity';
 
-export default function App() {
+export default function App({ mode, plan }: { mode?: string; plan?: string }) {
   return (
     <SafeAreaProvider>
-      <BenchmarkRunner />
+      {mode === 'parity' ? <Parity /> : <Bench plan={plan} />}
     </SafeAreaProvider>
   );
 }
