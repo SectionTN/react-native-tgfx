@@ -1,3 +1,3 @@
 [submodule "packages/react-native-tgfx/cpp/third_party/tgfx"]
 	path = packages/react-native-tgfx/cpp/third_party/tgfx
-	url = https://github.com/Tencent/tgfx
+	url = https://github.com/riteshshukla04/tgfx
