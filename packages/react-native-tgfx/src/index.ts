@@ -13,7 +13,16 @@ export {
   RoundedRect,
   Text,
 } from './components/drawings'
-export { LinearGradient, Paint, RadialGradient } from './components/Paint'
+export {
+  DiamondGradient,
+  FractalNoise,
+  LinearGradient,
+  Paint,
+  RadialGradient,
+  Shader,
+  SweepGradient,
+  Turbulence,
+} from './components/Paint'
 
 export { useImage } from './hooks/useImage'
 
@@ -29,6 +38,7 @@ export type {
   ImageProps,
   LinearGradientProps,
   LineProps,
+  NoiseProps,
   OvalProps,
   PaintComponentProps,
   PaintProps,
@@ -36,6 +46,8 @@ export type {
   RadialGradientProps,
   RectProps,
   RoundedRectProps,
+  ShaderProps,
+  SweepGradientProps,
   SharedValueLike,
   TextProps,
   Transform,

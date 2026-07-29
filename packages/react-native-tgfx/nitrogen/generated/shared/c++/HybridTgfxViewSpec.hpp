@@ -16,8 +16,6 @@
 
 
 #include <string>
-#include <NitroModules/ArrayBuffer.hpp>
-#include <optional>
 #include <vector>
 
 namespace margelo::nitro::tgfx {
@@ -49,15 +47,12 @@ namespace margelo::nitro::tgfx {
       // Properties
       virtual std::string getScene() = 0;
       virtual void setScene(const std::string& scene) = 0;
-      virtual std::optional<std::shared_ptr<ArrayBuffer>> getValuesBuffer() = 0;
-      virtual void setValuesBuffer(const std::optional<std::shared_ptr<ArrayBuffer>>& valuesBuffer) = 0;
-      virtual std::optional<double> getValueCount() = 0;
-      virtual void setValueCount(std::optional<double> valueCount) = 0;
 
     public:
       // Methods
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
+      virtual void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) = 0;
 
     protected:
       // Hybrid Setup

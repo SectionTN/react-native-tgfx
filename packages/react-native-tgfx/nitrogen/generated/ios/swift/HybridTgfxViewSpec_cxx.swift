@@ -131,54 +131,6 @@ open class HybridTgfxViewSpec_cxx {
       self.__implementation.scene = String(newValue)
     }
   }
-  
-  public final var valuesBuffer: bridge.std__optional_std__shared_ptr_ArrayBuffer__ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_std__shared_ptr_ArrayBuffer__ in
-        if let __unwrappedValue = self.__implementation.valuesBuffer {
-          return bridge.create_std__optional_std__shared_ptr_ArrayBuffer__(__unwrappedValue.getArrayBuffer())
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.valuesBuffer = { () -> ArrayBuffer? in
-        if bridge.has_value_std__optional_std__shared_ptr_ArrayBuffer__(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__shared_ptr_ArrayBuffer__(newValue)
-          return ArrayBuffer(__unwrapped)
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
-  
-  public final var valueCount: bridge.std__optional_double_ {
-    @inline(__always)
-    get {
-      return { () -> bridge.std__optional_double_ in
-        if let __unwrappedValue = self.__implementation.valueCount {
-          return bridge.create_std__optional_double_(__unwrappedValue)
-        } else {
-          return .init()
-        }
-      }()
-    }
-    @inline(__always)
-    set {
-      self.__implementation.valueCount = { () -> Double? in
-        if bridge.has_value_std__optional_double_(newValue) {
-          let __unwrapped = bridge.get_std__optional_double_(newValue)
-          return __unwrapped
-        } else {
-          return nil
-        }
-      }()
-    }
-  }
 
   // Methods
   @inline(__always)
@@ -196,6 +148,17 @@ open class HybridTgfxViewSpec_cxx {
   public final func setValues(values: bridge.std__vector_double_) -> bridge.Result_void_ {
     do {
       try self.__implementation.setValues(values: values.map({ __item in __item }))
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func drawCameraFrame(buffer: UInt64, frameWidth: Double, frameHeight: Double, contours: bridge.std__vector_double_, blurRadius: Double) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.drawCameraFrame(buffer: buffer, frameWidth: frameWidth, frameHeight: frameHeight, contours: contours.map({ __item in __item }), blurRadius: blurRadius)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

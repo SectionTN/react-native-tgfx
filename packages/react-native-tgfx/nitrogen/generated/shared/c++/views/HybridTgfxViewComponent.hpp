@@ -17,11 +17,10 @@
 #include <react/renderer/components/view/ViewProps.h>
 
 #include <string>
-#include <NitroModules/ArrayBuffer.hpp>
-#include <optional>
 #include <memory>
 #include "HybridTgfxViewSpec.hpp"
 #include <functional>
+#include <optional>
 
 namespace margelo::nitro::tgfx::views {
 
@@ -44,8 +43,6 @@ namespace margelo::nitro::tgfx::views {
 
   public:
     CachedProp<std::string> scene;
-    CachedProp<std::optional<std::shared_ptr<ArrayBuffer>>> valuesBuffer;
-    CachedProp<std::optional<double>> valueCount;
     CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> hybridRef;
 
   private:

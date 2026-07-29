@@ -3,14 +3,8 @@
 // the Surface, and on each frame locks the context, replays the current scene
 // via SceneRenderer, then flushes + submits (which presents the window).
 //
-// Threading model: setScene / setValues / onResize / draw all run on the same
-// UI thread (the native prop setters, the Reanimated UI-runtime worklet, and the
-// display-link/choreographer callback all live there), and that thread is the
-// single owner of the tgfx::Context. `window_`, `surface_`, `values_` and
-// `lastScene_` are still guarded by `mutex_`, `dirty_`/`surfaceDirty_` are atomic,
-// and SceneRenderer's compiled program is published as an immutable shared_ptr,
-// so the design stays correct even if a future change moves rendering to a
-// dedicated render thread.
+// The render thread owns every member except `values_`, which the animation
+// driver writes from the UI thread under `mutex_`.
 #pragma once
 
 #include <atomic>
@@ -48,10 +42,19 @@ class TgfxRenderer {
   /// Invalidate the cached surface so it is recreated at the new drawable size.
   void onResize();
 
-  /// Render one frame. Returns true if it actually rendered, false if it was a
-  /// no-op (nothing changed, or no bound window) — the platform loop uses this
-  /// to pause itself when idle and resume on the next change.
+  /// Set the device pixel ratio so scene coordinates (logical px / dp) are
+  /// scaled to physical pixels before rendering. Call once after the surface
+  /// is created. Defaults to 1.0 (no scaling).
+  void setPixelRatio(float ratio);
+
+  /// Render one frame. Returns false when nothing changed or no window is bound.
   bool draw();
+
+  /// Draw a camera frame, blurring the interior of each contour. `contours` is a
+  /// flat polygon list: point count, then that many x,y pairs, per shape.
+  /// The image and the contours share one transform so they cannot drift apart.
+  void drawCameraFrame(void* hardwareBuffer, float frameWidth, float frameHeight,
+                       const std::vector<float>& contours, float blurRadius);
 
   /// Release the surface, window, and cached resources.
   void releaseWindow();
@@ -64,9 +67,9 @@ class TgfxRenderer {
   SceneRenderer scene_;
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};
-  // Starts true so the first frame draws once the window is bound; set whenever
-  // the scene, values, window, or size change. draw() is a no-op when false.
-  std::atomic<bool> dirty_{true};
+  float pixelRatio_{1.0f};
+  std::atomic<uint64_t> version_{1};
+  uint64_t drawnVersion_{0};
 };
 
 }  // namespace tgfxrn

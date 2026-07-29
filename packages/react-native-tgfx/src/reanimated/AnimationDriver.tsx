@@ -1,18 +1,16 @@
-import { useAnimatedReaction } from 'react-native-reanimated'
+import { useEffect } from 'react'
+import { startMapper, stopMapper } from 'react-native-reanimated'
 import type { MaybeSharedValue } from '../compiler/values'
 import type { TgfxViewRef } from '../views/TgfxNativeView'
 
 /**
- * The first-class Reanimated UI-thread driver.
+ * The Reanimated UI-thread driver. A mapper worklet reads every SharedValue
+ * backing the scene's `{ __s }` slots into a buffer allocated once and hands it
+ * to the native renderer, so animation costs no JS-thread work per frame.
  *
- * Each frame, a worklet reads the current value of every SharedValue backing the
- * scene's `{ __s }` slots and calls `view.setValues(...)` — a Nitro method.
- * Because nitro auto-installs worklets support (boxing/unboxing HybridObjects
- * across runtimes), this executes the native update directly on the UI thread
- * with **zero JS-thread work per frame**; the native render loop then redraws.
- *
- * Rendered (returning `null`) only when reanimated is installed and the scene has
- * at least one animated value — so reanimated stays an optional peer dependency.
+ * `startMapper` rather than `useAnimatedReaction`: the latter writes its result
+ * into a SharedValue every frame, which for an N-element array is a blocking
+ * clone of N values per frame.
  */
 export function AnimationDriver({
   view,
@@ -21,16 +19,16 @@ export function AnimationDriver({
   view: TgfxViewRef
   values: MaybeSharedValue<unknown>[]
 }): null {
-  useAnimatedReaction(
-    () => {
+  useEffect(() => {
+    const slots = new Array<number>(values.length)
+    const mapperId = startMapper(() => {
       'worklet'
-      return values.map((v) => Number(v.value))
-    },
-    (current) => {
-      'worklet'
-      view.setValues(current)
-    },
-    [view, values]
-  )
+      for (let i = 0; i < values.length; i++) {
+        slots[i] = Number(values[i]!.value)
+      }
+      view.setValues(slots)
+    }, values)
+    return () => stopMapper(mapperId)
+  }, [view, values])
   return null
 }

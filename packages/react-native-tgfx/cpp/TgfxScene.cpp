@@ -73,6 +73,41 @@ tgfx::Color colorFromPacked(uint32_t c) {
 }
 
 std::shared_ptr<tgfx::Shader> buildShader(const json& g) {
+  int kind = getInt(g, "k", 0);
+  if (kind == 6) {
+    std::string body;
+    if (auto it = g.find("src"); it != g.end() && it->is_string()) {
+      body = it->get<std::string>();
+    }
+    std::vector<tgfx::RuntimeShaderUniform> uniforms;
+    if (auto it = g.find("un"); it != g.end() && it->is_array()) {
+      for (const auto& u : *it) {
+        tgfx::RuntimeShaderUniform uniform;
+        if (auto n = u.find("n"); n != u.end() && n->is_string()) {
+          uniform.name = n->get<std::string>();
+        }
+        if (auto v = u.find("v"); v != u.end() && v->is_array()) {
+          for (const auto& value : *v) {
+            uniform.values.push_back(value.get<float>());
+          }
+        }
+        if (!uniform.name.empty() && !uniform.values.empty()) {
+          uniforms.push_back(std::move(uniform));
+        }
+      }
+    }
+    return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms));
+  }
+  // Perlin noise shaders are parameter-only — they have no colour stops.
+  if (kind == 4 || kind == 5) {
+    float fx = getAnimF(g, "fx", 0.05f).literal;
+    float fy = getAnimF(g, "fy", 0.05f).literal;
+    int octaves = getInt(g, "oc", 1);
+    float seed = getAnimF(g, "sd", 0).literal;
+    return kind == 4 ? tgfx::Shader::MakeFractalNoise(fx, fy, octaves, seed)
+                     : tgfx::Shader::MakeTurbulence(fx, fy, octaves, seed);
+  }
+
   std::vector<tgfx::Color> colors;
   if (auto it = g.find("cs"); it != g.end() && it->is_array()) {
     for (const auto& c : *it) {
@@ -88,12 +123,21 @@ std::shared_ptr<tgfx::Shader> buildShader(const json& g) {
       positions.push_back(p.get<float>());
     }
   }
-  int kind = getInt(g, "k", 0);
-  if (kind == 1) {
-    return tgfx::Shader::MakeRadialGradient(
-        tgfx::Point::Make(getAnimF(g, "cx", 0).literal,
-                          getAnimF(g, "cy", 0).literal),
-        getAnimF(g, "r", 0).literal, colors, positions);
+  auto center = tgfx::Point::Make(getAnimF(g, "cx", 0).literal,
+                                  getAnimF(g, "cy", 0).literal);
+  switch (kind) {
+    case 1:
+      return tgfx::Shader::MakeRadialGradient(center, getAnimF(g, "r", 0).literal,
+                                              colors, positions);
+    case 2:
+      return tgfx::Shader::MakeConicGradient(center, getAnimF(g, "sa", 0).literal,
+                                             getAnimF(g, "ea", 360).literal, colors,
+                                             positions);
+    case 3:
+      return tgfx::Shader::MakeDiamondGradient(center, getAnimF(g, "r", 0).literal,
+                                               colors, positions);
+    default:
+      break;
   }
   return tgfx::Shader::MakeLinearGradient(
       tgfx::Point::Make(getAnimF(g, "sx", 0).literal,
@@ -105,7 +149,7 @@ std::shared_ptr<tgfx::Shader> buildShader(const json& g) {
 
 // ---------------- per-frame helpers (render thread) ----------------
 
-tgfx::Rect rectOf(const DrawCmd& c, const std::vector<double>& v) {
+tgfx::Rect rectOf(const DrawCmd& c, std::span<const double> v) {
   return tgfx::Rect::MakeXYWH(c.x.resolve(v), c.y.resolve(v), c.w.resolve(v),
                               c.h.resolve(v));
 }
@@ -121,7 +165,7 @@ Affine multiply(const Affine& m1, const Affine& m2) {
 }
 
 tgfx::Matrix matrixFromOps(const std::vector<TransformOpCmd>& ops,
-                           const std::vector<double>& values) {
+                           std::span<const double> values) {
   Affine m;
   for (const auto& op : ops) {
     float a = op.a.resolve(values);
@@ -144,7 +188,7 @@ tgfx::Matrix matrixFromOps(const std::vector<TransformOpCmd>& ops,
   return tgfx::Matrix::MakeAll(m.a, m.c, m.e, m.b, m.d, m.f);
 }
 
-void applyPaint(const PaintCmd& pc, const std::vector<double>& v,
+void applyPaint(const PaintCmd& pc, std::span<const double> v,
                 tgfx::Paint& paint) {
   paint.reset();
   tgfx::Color color = colorFromPacked(pc.color);
@@ -400,7 +444,7 @@ void SceneRenderer::setScene(const std::string& sceneJson) {
 }
 
 void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
-                            const std::vector<double>& v,
+                            std::span<const double> v,
                             tgfx::Paint& paint) const {
   if (cmd.kind == DrawCmd::Group) {
     canvas->save();
@@ -491,7 +535,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
 }
 
 void SceneRenderer::render(tgfx::Canvas* canvas,
-                           const std::vector<double>& values) {
+                           std::span<const double> values) {
   std::shared_ptr<const Program> program;
   {
     std::lock_guard<std::mutex> lock(programMutex_);

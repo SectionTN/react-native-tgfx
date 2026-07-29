@@ -41,14 +41,6 @@ void JHybridTgfxViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass> /*
     hybridView->setScene(props->scene.value);
     props->scene.isDirty = false;
   }
-  if (props->valuesBuffer.isDirty) {
-    hybridView->setValuesBuffer(props->valuesBuffer.value);
-    props->valuesBuffer.isDirty = false;
-  }
-  if (props->valueCount.isDirty) {
-    hybridView->setValueCount(props->valueCount.value);
-    props->valueCount.isDirty = false;
-  }
 
   // Update hybridRef if it changed
   if (props->hybridRef.isDirty) {

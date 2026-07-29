@@ -5,8 +5,6 @@
   "directEventTypes": {},
   "validAttributes": {
     "scene": true,
-    "valuesBuffer": true,
-    "valueCount": true,
     "hybridRef": true
   }
 }

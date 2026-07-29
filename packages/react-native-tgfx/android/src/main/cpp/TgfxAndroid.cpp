@@ -79,6 +79,15 @@ Java_com_margelo_nitro_tgfx_TgfxNative_surfaceDestroyed(JNIEnv*, jobject,
 }
 
 JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_setPixelRatio(JNIEnv*, jobject, jlong ptr,
+                                                     jfloat ratio) {
+  auto* view = asView(ptr);
+  if (view != nullptr) {
+    view->renderer.setPixelRatio(static_cast<float>(ratio));
+  }
+}
+
+JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
                                                 jstring scene) {
   auto* view = asView(ptr);
@@ -105,6 +114,27 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
     env->GetDoubleArrayRegion(arr, 0, len, values.data());
   }
   view->renderer.setValues(values);
+}
+
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_drawCameraFrame(JNIEnv* env, jobject, jlong ptr,
+                                                      jlong buffer, jfloat frameWidth,
+                                                      jfloat frameHeight, jfloatArray contours,
+                                                      jfloat blurRadius) {
+  auto* view = asView(ptr);
+  if (view == nullptr || buffer == 0) {
+    return;
+  }
+  std::vector<float> points;
+  if (contours != nullptr) {
+    jsize len = env->GetArrayLength(contours);
+    points.resize(static_cast<size_t>(len));
+    if (len > 0) {
+      env->GetFloatArrayRegion(contours, 0, len, points.data());
+    }
+  }
+  view->renderer.drawCameraFrame(reinterpret_cast<void*>(buffer), frameWidth, frameHeight, points,
+                                 blurRadius);
 }
 
 JNIEXPORT jboolean JNICALL

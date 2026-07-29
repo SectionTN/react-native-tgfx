@@ -11,12 +11,11 @@ import NitroModules
 public protocol HybridTgfxViewSpec_protocol: HybridObject, HybridView {
   // Properties
   var scene: String { get set }
-  var valuesBuffer: ArrayBuffer? { get set }
-  var valueCount: Double? { get set }
 
   // Methods
   func invalidate() throws -> Void
   func setValues(values: [Double]) throws -> Void
+  func drawCameraFrame(buffer: UInt64, frameWidth: Double, frameHeight: Double, contours: [Double], blurRadius: Double) throws -> Void
 }
 
 public extension HybridTgfxViewSpec_protocol {

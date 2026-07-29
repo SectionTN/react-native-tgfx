@@ -1,51 +1,43 @@
 package com.margelo.nitro.tgfx
 
-import android.view.View
+import android.content.Context
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.uimanager.ThemedReactContext
-import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.views.RecyclableView
 
-/**
- * Android implementation of the Nitro `TgfxView`. The host view is a
- * [FrameLayout] (so React-Native style props like `backgroundColor` apply
- * normally — a bare `TextureView` cannot host a background drawable); the
- * GPU-backed [TgfxTextureView] fills it. The compiled `scene` prop (and the
- * future animated values buffer) is forwarded to the native renderer, which is
- * released when the Fabric view is recycled or dropped.
- */
+// A FrameLayout wrapper so React-Native style props such as backgroundColor
+// apply: a bare TextureView cannot host a background drawable. Fabric sets this
+// view's bounds without a measure pass, so the GPU child is measured here.
+private class HostLayout(context: Context, child: TgfxTextureView) : FrameLayout(context) {
+  init {
+    addView(child, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+  }
+
+  override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+    getChildAt(0)?.measure(
+      MeasureSpec.makeMeasureSpec(r - l, MeasureSpec.EXACTLY),
+      MeasureSpec.makeMeasureSpec(b - t, MeasureSpec.EXACTLY)
+    )
+    super.onLayout(changed, l, t, r, b)
+  }
+}
+
 @Keep
 @DoNotStrip
 class HybridTgfxView(context: ThemedReactContext) :
   HybridTgfxViewSpec(), RecyclableView {
 
   private val tgfxView = TgfxTextureView(context)
-  override val view: FrameLayout = FrameLayout(context).apply {
-    addView(
-      tgfxView,
-      FrameLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-      )
-    )
-  }
+  override val view: FrameLayout = HostLayout(context, tgfxView)
 
-  override var scene: String = """{"v":1,"root":{"t":"g","ch":[]}}"""
+  override var scene: String = EMPTY_SCENE
     set(value) {
       field = value
       tgfxView.setScene(value)
     }
-
-  override var valuesBuffer: ArrayBuffer? = null
-    set(value) {
-      field = value
-      // Wired by the Reanimated driver (task #8).
-    }
-
-  override var valueCount: Double? = null
 
   override fun invalidate() {
     tgfxView.requestRender()
@@ -55,8 +47,24 @@ class HybridTgfxView(context: ThemedReactContext) :
     tgfxView.setValues(values)
   }
 
+  override fun drawCameraFrame(
+    buffer: ULong,
+    frameWidth: Double,
+    frameHeight: Double,
+    contours: DoubleArray,
+    blurRadius: Double
+  ) {
+    tgfxView.drawCameraFrame(
+      buffer.toLong(),
+      frameWidth.toFloat(),
+      frameHeight.toFloat(),
+      FloatArray(contours.size) { contours[it].toFloat() },
+      blurRadius.toFloat()
+    )
+  }
+
   override fun prepareForRecycle() {
-    scene = """{"v":1,"root":{"t":"g","ch":[]}}"""
+    scene = EMPTY_SCENE
   }
 
   override fun onDropView() {

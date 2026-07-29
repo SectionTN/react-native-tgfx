@@ -1,0 +1,215 @@
+[
+  {
+    "runIndex": 1,
+    "cycle": 1,
+    "position": 1,
+    "startedAt": "2026-07-29T10:01:34.856Z",
+    "completedAt": "2026-07-29T10:01:56.627Z",
+    "thermalBefore": {
+      "status": 0,
+      "skinC": 35.5,
+      "apC": 32.5,
+      "batteryC": 32.3
+    },
+    "thermalAfter": {
+      "status": 0,
+      "skinC": 37.3,
+      "apC": 42.9,
+      "batteryC": 32.4
+    },
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "skia-graphite",
+        "objectCount": 400,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "graphite",
+        "graphiteEnabled": true,
+        "nativeDeviceAvailable": true
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 22.812779096982062,
+        "frameCount": 344,
+        "missedFrames": 590,
+        "p50Ms": 45.993114948272705,
+        "p90Ms": 51.388423919677734,
+        "p95Ms": 53.41730809211731,
+        "p99Ms": 56.274577021598816,
+        "maxMs": 64.5081160068512
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 0,
+          "thermalStatusStart": 0,
+          "batteryTemperatureEndC": 32.9,
+          "batteryTemperatureStartC": 32.9,
+          "refreshRateHz": 60
+        },
+        "memory": {
+          "endJavaHeapKb": 6173,
+          "startJavaHeapKb": 5149,
+          "peakNativeHeapKb": 93754,
+          "endNativeHeapKb": 88350,
+          "peakJavaHeapKb": 9725,
+          "peakPssKb": 211453,
+          "endPssKb": 211125,
+          "startNativeHeapKb": 64286,
+          "startPssKb": 188953
+        },
+        "processCpuTimeMs": 20358,
+        "mainThread": {
+          "p99Ms": 16.671363,
+          "p95Ms": 16.645029,
+          "missedFrames": 4,
+          "p90Ms": 16.63416,
+          "maxMs": 33.230998,
+          "p50Ms": 16.609385,
+          "frameCount": 904,
+          "fps": 60.00384540351599
+        },
+        "wallTimeMs": 15065.701105,
+        "processCpuPercent": 135.12812884123656
+      },
+      "startedAtEpochMs": 1785319300766,
+      "completedAtEpochMs": 1785319315885
+    },
+    "gfxInfo": {
+      "totalFrames": 446,
+      "jankyFrames": 60,
+      "jankyPercent": 13.45,
+      "p50Ms": 10,
+      "p90Ms": 17,
+      "p95Ms": 19,
+      "p99Ms": 26,
+      "missedVsync": 1,
+      "highInputLatency": 0,
+      "slowUiThread": 5,
+      "slowBitmapUploads": 0,
+      "slowDraw": 53
+    },
+    "backendLogLines": [
+      "07-29 15:31:35.646 11074 11106 W Dawn    : Warning: maxDynamicUniformBuffersPerPipelineLayout artificially reduced from 32 to 16 to fit dynamic offset allocation limit.",
+      "07-29 15:31:35.646 11074 11106 W Dawn    : Warning: maxDynamicStorageBuffersPerPipelineLayout artificially reduced from 32 to 16 to fit dynamic offset allocation limit.",
+      "07-29 15:31:35.646 11074 11106 I RNSkia  : Selected Dawn adapter - Backend: Vulkan, Device: Mali-G68, Description: Mali-G68: v1.r38p1-01eac0-mbs2v41_0.539cd8979cd8886a7402fd4324508287 38.1.0",
+      "07-29 15:31:55.886 11074 11107 I RendererBenchmark: {\"schemaVersion\":1,\"config\":{\"renderer\":\"skia-graphite\",\"objectCount\":400,\"warmupSeconds\":5,\"durationSeconds\":15,\"seed\":20260729},\"backendProof\":{\"requestedBackend\":\"graphite\",\"graphiteEnabled\":true,\"nativeDeviceAvailable\":true},\"viewport\":{\"width\":384,\"height\":856},\"js\":{\"fps\":22.812779096982062,\"frameCount\":344,\"missedFrames\":590,\"p50Ms\":45.993114948272705,\"p90Ms\":51.388423919677734,\"p95Ms\":53.41730809211731,\"p99Ms\":56.274577021598816,\"maxMs\":64.5081160068512},\"native\":{\"device\":{\"thermalStatusEnd\":0,\"thermalStatusStart\":0,\"batteryTemperatureEndC\":32.9,\"batteryTemperatureStartC\":32.9,\"refreshRateHz\":60},\"memory\":{\"endJavaHeapKb\":6173,\"startJavaHeapKb\":5149,\"peakNativeHeapKb\":93754,\"endNativeHeapKb\":88350,\"peakJavaHeapKb\":9725,\"peakPssKb\":211453,\"endPssKb\":211125,\"startNativeHeapKb\":64286,\"startPssKb\":188953},\"processCpuTimeMs\":20358,\"mainThread\":{\"p99Ms\":16.671363,\"p95Ms\":16.645029,\"missedFrames\":4,\"p90Ms\":16.63416,\"maxMs\":33.230998,\"p50Ms\":16.609385,\"frameCount\":904,\"fps\":60.00384540351599},\"wallTimeMs\":15065.701105,\"processCpuPercent\":135.12812884123656},\"startedAtEpochMs\":1785319300766,\"completedAtEpochMs\":1785319315885}"
+    ]
+  },
+  {
+    "runIndex": 2,
+    "cycle": 1,
+    "position": 2,
+    "startedAt": "2026-07-29T10:02:04.944Z",
+    "completedAt": "2026-07-29T10:02:25.986Z",
+    "thermalBefore": {
+      "status": 0,
+      "skinC": 37.3,
+      "apC": 42.9,
+      "batteryC": 32.4
+    },
+    "thermalAfter": {
+      "status": 0,
+      "skinC": 37.1,
+      "apC": 38.8,
+      "batteryC": 32.3
+    },
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "thor-cpu",
+        "objectCount": 400,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "cpu",
+        "engine": "ThorVG SwCanvas"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 60.13442849417969,
+        "frameCount": 902,
+        "missedFrames": 1,
+        "p50Ms": 16.62930703163147,
+        "p90Ms": 17.308462023735046,
+        "p95Ms": 17.907038927078247,
+        "p99Ms": 21.95946204662323,
+        "maxMs": 31.32169198989868
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 0,
+          "thermalStatusStart": 0,
+          "batteryTemperatureEndC": 32.9,
+          "batteryTemperatureStartC": 32.9,
+          "refreshRateHz": 60
+        },
+        "memory": {
+          "endJavaHeapKb": 7325,
+          "startJavaHeapKb": 7465,
+          "peakNativeHeapKb": 44089,
+          "endNativeHeapKb": 43310,
+          "peakJavaHeapKb": 9929,
+          "peakPssKb": 182763,
+          "endPssKb": 160953,
+          "startNativeHeapKb": 43442,
+          "startPssKb": 175462
+        },
+        "processCpuTimeMs": 15296,
+        "mainThread": {
+          "p99Ms": 16.658926,
+          "p95Ms": 16.633733,
+          "missedFrames": 1,
+          "p90Ms": 16.625653,
+          "maxMs": 33.267856,
+          "p50Ms": 16.610713,
+          "frameCount": 904,
+          "fps": 60.21205082820998
+        },
+        "wallTimeMs": 15013.605874,
+        "processCpuPercent": 101.88092140136061
+      },
+      "startedAtEpochMs": 1785319330742,
+      "completedAtEpochMs": 1785319345768
+    },
+    "gfxInfo": {
+      "totalFrames": 1200,
+      "jankyFrames": 8,
+      "jankyPercent": 0.67,
+      "p50Ms": 20,
+      "p90Ms": 26,
+      "p95Ms": 27,
+      "p99Ms": 29,
+      "missedVsync": 0,
+      "highInputLatency": 2282,
+      "slowUiThread": 6,
+      "slowBitmapUploads": 1,
+      "slowDraw": 6
+    },
+    "backendLogLines": [
+      "07-29 15:32:05.740 11366 11366 I ThorCPU : frame 0 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:07.759 11366 11366 I ThorCPU : frame 120 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:09.752 11366 11366 I ThorCPU : frame 240 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:11.762 11366 11366 I ThorCPU : frame 360 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:13.755 11366 11366 I ThorCPU : frame 480 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:15.749 11366 11366 I ThorCPU : frame 600 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:17.743 11366 11366 I ThorCPU : frame 720 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:19.736 11366 11366 I ThorCPU : frame 840 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:21.729 11366 11366 I ThorCPU : frame 960 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:23.723 11366 11366 I ThorCPU : frame 1080 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:25.733 11366 11366 I ThorCPU : frame 1200 rasterized by ThorVG SwCanvas on 'main' (no GL)",
+      "07-29 15:32:25.770 11366 11396 I RendererBenchmark: {\"schemaVersion\":1,\"config\":{\"renderer\":\"thor-cpu\",\"objectCount\":400,\"warmupSeconds\":5,\"durationSeconds\":15,\"seed\":20260729},\"backendProof\":{\"requestedBackend\":\"cpu\",\"engine\":\"ThorVG SwCanvas\"},\"viewport\":{\"width\":384,\"height\":856},\"js\":{\"fps\":60.13442849417969,\"frameCount\":902,\"missedFrames\":1,\"p50Ms\":16.62930703163147,\"p90Ms\":17.308462023735046,\"p95Ms\":17.907038927078247,\"p99Ms\":21.95946204662323,\"maxMs\":31.32169198989868},\"native\":{\"device\":{\"thermalStatusEnd\":0,\"thermalStatusStart\":0,\"batteryTemperatureEndC\":32.9,\"batteryTemperatureStartC\":32.9,\"refreshRateHz\":60},\"memory\":{\"endJavaHeapKb\":7325,\"startJavaHeapKb\":7465,\"peakNativeHeapKb\":44089,\"endNativeHeapKb\":43310,\"peakJavaHeapKb\":9929,\"peakPssKb\":182763,\"endPssKb\":160953,\"startNativeHeapKb\":43442,\"startPssKb\":175462},\"processCpuTimeMs\":15296,\"mainThread\":{\"p99Ms\":16.658926,\"p95Ms\":16.633733,\"missedFrames\":1,\"p90Ms\":16.625653,\"maxMs\":33.267856,\"p50Ms\":16.610713,\"frameCount\":904,\"fps\":60.21205082820998},\"wallTimeMs\":15013.605874,\"processCpuPercent\":101.88092140136061},\"startedAtEpochMs\":1785319330742,\"completedAtEpochMs\":1785319345768}"
+    ]
+  }
+]

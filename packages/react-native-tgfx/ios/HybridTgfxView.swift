@@ -4,8 +4,7 @@ import UIKit
 /**
  * iOS implementation of the Nitro `TgfxView`. A thin Swift shell over the
  * Objective-C++ `TgfxMetalView` (which owns the `CAMetalLayer`, the display
- * link, and the shared C++ tgfx renderer). The `scene` prop is forwarded to the
- * native renderer; GPU resources are released when the view is dropped.
+ * link, and the shared C++ tgfx renderer).
  */
 final class HybridTgfxView: HybridTgfxViewSpec {
   private let metalView = TgfxMetalView()
@@ -18,16 +17,14 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     }
   }
 
-  var valuesBuffer: ArrayBuffer? = nil
-
-  var valueCount: Double? = nil
-
   func invalidate() throws {
     metalView.requestRender()
   }
 
   func setValues(values: [Double]) throws {
-    metalView.setValues(values.map { NSNumber(value: $0) })
+    values.withUnsafeBufferPointer { buffer in
+      metalView.setValues(buffer.baseAddress, count: Int32(buffer.count))
+    }
   }
 
   func onDropView() {
