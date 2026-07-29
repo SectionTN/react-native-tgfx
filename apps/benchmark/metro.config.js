@@ -11,8 +11,15 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
  *
  * @type {import('@react-native/metro-config').MetroConfig}
  */
+// react-native-nitro-thor is a file: dependency in a sibling repo, so Metro has
+// to watch that path too or it refuses to resolve through the symlink.
+const thorRoot = path.resolve(
+  workspaceRoot,
+  '../skia-replacement/packages/react-native-thor'
+);
+
 const config = {
-  watchFolders: [workspaceRoot],
+  watchFolders: [workspaceRoot, thorRoot],
   resolver: {
     nodeModulesPaths: [
       path.resolve(projectRoot, 'node_modules'),

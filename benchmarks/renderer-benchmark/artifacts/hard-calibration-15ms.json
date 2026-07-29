@@ -1,0 +1,303 @@
+[
+  {
+    "renderer": "skia-graphite",
+    "thermalBefore": {
+      "status": 0,
+      "skinC": 37.1
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.2
+    },
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "skia-graphite",
+        "objectCount": 3200,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "graphite",
+        "graphiteEnabled": true,
+        "nativeDeviceAvailable": true
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 3.873347635646464,
+        "frameCount": 60,
+        "missedFrames": 850,
+        "p50Ms": 313.11315298080444,
+        "p90Ms": 456.4123070240021,
+        "p95Ms": 462.6441149711609,
+        "p99Ms": 498.3827689886093,
+        "maxMs": 498.3827689886093
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 0,
+          "thermalStatusStart": 0,
+          "batteryTemperatureEndC": 31.8,
+          "batteryTemperatureStartC": 31.8,
+          "refreshRateHz": 60
+        },
+        "memory": {
+          "endJavaHeapKb": 4477,
+          "startJavaHeapKb": 6337,
+          "peakNativeHeapKb": 179869,
+          "endNativeHeapKb": 86386,
+          "peakJavaHeapKb": 6913,
+          "peakPssKb": 330533,
+          "endPssKb": 272573,
+          "startNativeHeapKb": 100446,
+          "startPssKb": 273150
+        },
+        "processCpuTimeMs": 32551,
+        "mainThread": {
+          "p99Ms": 83.06258,
+          "p95Ms": 33.224974,
+          "missedFrames": 81,
+          "p90Ms": 16.615091,
+          "maxMs": 99.691274,
+          "p50Ms": 16.612736,
+          "frameCount": 853,
+          "fps": 54.705378130328434
+        },
+        "wallTimeMs": 15592.616835,
+        "processCpuPercent": 208.759057857013
+      },
+      "startedAtEpochMs": 1785327298302,
+      "completedAtEpochMs": 1785327314145
+    }
+  },
+  {
+    "renderer": "thor-cpu",
+    "thermalBefore": {
+      "status": 0,
+      "skinC": 35.9
+    },
+    "thermalAfter": {
+      "status": 0,
+      "skinC": 37.5
+    },
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "thor-cpu",
+        "objectCount": 3200,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "cpu",
+        "engine": "ThorVG SwCanvas"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 38.924141184106986,
+        "frameCount": 584,
+        "missedFrames": 264,
+        "p50Ms": 23.856693029403687,
+        "p90Ms": 34.26423001289368,
+        "p95Ms": 37.65150010585785,
+        "p99Ms": 66.68165409564972,
+        "maxMs": 90.24088394641876
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 0,
+          "thermalStatusStart": 0,
+          "batteryTemperatureEndC": 31.8,
+          "batteryTemperatureStartC": 31.8,
+          "refreshRateHz": 60
+        },
+        "memory": {
+          "endJavaHeapKb": 8645,
+          "startJavaHeapKb": 4649,
+          "peakNativeHeapKb": 43174,
+          "endNativeHeapKb": 42332,
+          "peakJavaHeapKb": 9801,
+          "peakPssKb": 178658,
+          "endPssKb": 177510,
+          "startNativeHeapKb": 41628,
+          "startPssKb": 173809
+        },
+        "processCpuTimeMs": 30088,
+        "mainThread": {
+          "p99Ms": 33.266492,
+          "p95Ms": 33.233542,
+          "missedFrames": 170,
+          "p90Ms": 33.223424,
+          "maxMs": 33.288921,
+          "p50Ms": 16.614116,
+          "frameCount": 735,
+          "fps": 48.8714514533518
+        },
+        "wallTimeMs": 15039.455104,
+        "processCpuPercent": 200.06043963652368
+      },
+      "startedAtEpochMs": 1785327446493,
+      "completedAtEpochMs": 1785327461543
+    }
+  },
+  {
+    "renderer": "thor-gpu",
+    "thermalBefore": {
+      "status": 0,
+      "skinC": 37.5
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.1
+    },
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "thor-gpu",
+        "objectCount": 3200,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "ThorVG GlCanvas GLES3"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 37.131658163405035,
+        "frameCount": 559,
+        "missedFrames": 367,
+        "p50Ms": 26.64472997188568,
+        "p90Ms": 33.432883977890015,
+        "p95Ms": 35.6648850440979,
+        "p99Ms": 48.171345949172974,
+        "maxMs": 86.49350011348724
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 0,
+          "thermalStatusStart": 0,
+          "batteryTemperatureEndC": 31.8,
+          "batteryTemperatureStartC": 31.8,
+          "refreshRateHz": 60
+        },
+        "memory": {
+          "endJavaHeapKb": 4173,
+          "startJavaHeapKb": 4557,
+          "peakNativeHeapKb": 45152,
+          "endNativeHeapKb": 43474,
+          "peakJavaHeapKb": 9741,
+          "peakPssKb": 243972,
+          "endPssKb": 231125,
+          "startNativeHeapKb": 44311,
+          "startPssKb": 231251
+        },
+        "processCpuTimeMs": 33763,
+        "mainThread": {
+          "p99Ms": 33.228664,
+          "p95Ms": 16.652009,
+          "missedFrames": 35,
+          "p90Ms": 16.629214,
+          "maxMs": 33.242895,
+          "p50Ms": 16.611949,
+          "frameCount": 873,
+          "fps": 57.93093757450782
+        },
+        "wallTimeMs": 15069.668066,
+        "processCpuPercent": 224.04607621169617
+      },
+      "startedAtEpochMs": 1785327488274,
+      "completedAtEpochMs": 1785327503359
+    }
+  },
+  {
+    "renderer": "tgfx",
+    "thermalBefore": {
+      "status": 0,
+      "skinC": 35.9
+    },
+    "thermalAfter": {
+      "status": 0,
+      "skinC": 37.8
+    },
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx",
+        "objectCount": 3200,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "TGFX OpenGL ES"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 9.634346824341922,
+        "frameCount": 146,
+        "missedFrames": 760,
+        "p50Ms": 141.7515379190445,
+        "p90Ms": 179.7102689743042,
+        "p95Ms": 186.8803460597992,
+        "p99Ms": 214.50603902339935,
+        "maxMs": 290.0567309856415
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 0,
+          "thermalStatusStart": 0,
+          "batteryTemperatureEndC": 31.8,
+          "batteryTemperatureStartC": 31.8,
+          "refreshRateHz": 60
+        },
+        "memory": {
+          "endJavaHeapKb": 8857,
+          "startJavaHeapKb": 5777,
+          "peakNativeHeapKb": 92766,
+          "endNativeHeapKb": 74938,
+          "peakJavaHeapKb": 29485,
+          "peakPssKb": 256436,
+          "endPssKb": 227502,
+          "startNativeHeapKb": 83898,
+          "startPssKb": 226301
+        },
+        "processCpuTimeMs": 45730,
+        "mainThread": {
+          "p99Ms": 33.225454,
+          "p95Ms": 16.615315,
+          "missedFrames": 22,
+          "p90Ms": 16.612844,
+          "maxMs": 33.247605,
+          "p50Ms": 16.612661,
+          "frameCount": 893,
+          "fps": 58.720276614970835
+        },
+        "wallTimeMs": 15207.694028,
+        "processCpuPercent": 300.70305146725826
+      },
+      "startedAtEpochMs": 1785327637195,
+      "completedAtEpochMs": 1785327652573
+    }
+  }
+]

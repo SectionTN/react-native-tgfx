@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-07-29",
+  "device": {
+    "manufacturer": "Samsung",
+    "model": "SM-E146B",
+    "serial": "RZCW30KE1NB",
+    "android": "15",
+    "api": 35,
+    "buildFingerprint": "samsung/m14xins/m14x:15/AP3A.240905.015.A2/E146BXXSBDZB5:user/release-keys",
+    "soc": "s5e8535",
+    "gpu": "Mali-G68",
+    "cpuOnline": "0-7",
+    "memoryTotalKb": 5583188
+  },
+  "display": {
+    "physicalPixels": "1080x2408",
+    "benchmarkViewportDp": "384x856",
+    "densityDpi": 450,
+    "supportedRefreshRateHz": [
+      60,
+      90
+    ],
+    "activeRefreshRateHz": 60,
+    "peakRefreshRateSetting": 60,
+    "minRefreshRateSetting": 60,
+    "brightnessMode": "manual",
+    "brightnessInteger": 102,
+    "brightnessFraction": 0.4,
+    "orientation": "portrait",
+    "fontScale": 1.15
+  },
+  "power": {
+    "batterySaver": false,
+    "usbPowered": true,
+    "batteryLevelPercent": 100
+  },
+  "app": {
+    "buildType": "release",
+    "reactNative": "0.85.3",
+    "react": "19.2.3",
+    "hermes": true,
+    "newArchitecture": true,
+    "abi": "arm64-v8a",
+    "minSdk": 26,
+    "targetSdk": 36,
+    "skia": "2.9.1-next.1",
+    "skiaAndroidGraphite": "150.0.0",
+    "nitroThor": "0.0.2-alpha.1",
+    "tgfx": "0.0.1 local package",
+    "apkSha256": "848c810f11bdf7bbd3f04febcc67576a18e5c1db76b470ba12c2d62c98d8d8ed",
+    "apkBytes": 52899619
+  }
+}

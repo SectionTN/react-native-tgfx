@@ -15,10 +15,12 @@ COLS = ["lib", "wl", "n", "run", "uiFps", "jsFps", "prsFps", "jank", "f90", "f95
 NUM = ["uiFps", "jsFps", "prsFps", "jank", "f90", "f95", "uiJank", "uiMaxMs",
        "cpu", "pss", "mainCpu", "jsCpu", "rtCpu", "gfxCpu", "deg"]
 HIGHER = {"uiFps", "jsFps", "prsFps"}
+# tgfx is the baseline every other engine is compared against.
+LIBS = ("tgfx", "skia", "thor")
 # One verdict per independent axis. cpu is the SUM that already contains mainCpu
 # and jsCpu, so counting all three would count one improvement three times; total
 # cpu is the honest cost metric now that tgfx renders on a second thread.
-VERDICT = ["prsFps", "uiFps", "f95", "cpu", "pss"]
+VERDICT = ["prsFps", "f95", "cpu"]
 
 
 def parse(path):
@@ -47,7 +49,7 @@ def parse(path):
 
 def main(path):
     groups, baseline = parse(path)
-    ceiling = max((max(v["uiFps"]) for v in groups.values() if v["uiFps"]), default=0.0)
+    ceiling = max((max(v["prsFps"]) for v in groups.values() if v["prsFps"]), default=0.0)
 
     configs = sorted({(wl, n) for (wl, n, _) in groups})
     print()
@@ -63,7 +65,7 @@ def main(path):
     summary = []
     for wl, n in configs:
         stats = {}
-        for lib in ("tgfx", "skia"):
+        for lib in LIBS:
             g = groups.get((wl, n, lib))
             if not g:
                 continue
@@ -81,50 +83,53 @@ def main(path):
                   f"{rng('prsFps')} {med('f95'):>5.0f} {med('mainCpu'):>7.1f} "
                   f"{med('gfxCpu'):>6.1f} {rng('cpu')} {med('pss'):>7.1f} {med('deg'):>5.1f}")
 
-        if "tgfx" not in stats or "skia" not in stats:
+        if "tgfx" not in stats or len(stats) < 2:
             print()
             continue
-
-        t, s_ = stats["tgfx"], stats["skia"]
+        t = stats["tgfx"]
         # A canvas that never presented is a broken run, not a fast one.
-        for lib, st in (("tgfx", t), ("skia", s_)):
+        for lib, st in stats.items():
             if wl != "idle" and st.get("prsFps", (0,))[0] < 1.0:
                 print(f"{'':<7} {'':>5} !! {lib} presented < 1 fps — treat this row as FAILED")
 
-        verdicts = {}
-        lines = []
-        for c in VERDICT:
-            if c not in t or c not in s_:
+        for other, o in stats.items():
+            if other == "tgfx":
                 continue
-            tm, tlo, thi = t[c]
-            sm, slo, shi = s_[c]
-            capped = c in HIGHER and ceiling > 0 and tm >= ceiling * 0.98 and sm >= ceiling * 0.98
-            pct = ((tm - sm) / sm * 100) if sm else float("nan")
-            if capped:
-                verdicts[c] = "capped"
-                lines.append(f"{c} capped(both ~{ceiling:.0f})")
-                continue
-            better_hi = c in HIGHER
-            if (tlo > shi) if better_hi else (thi < slo):
-                verdicts[c] = "win"
-                lines.append(f"{c} {pct:+.1f}% WIN")
-            elif (thi < slo) if better_hi else (tlo > shi):
-                verdicts[c] = "loss"
-                lines.append(f"{c} {pct:+.1f}% LOSS")
-            else:
-                verdicts[c] = "tie"
-                lines.append(f"{c} {pct:+.1f}% tie")
-        print(f"{'':<7} {'':>5} {'Δ':<5} " + "  ".join(lines))
-        summary.append((wl, n, verdicts))
+            verdicts = {}
+            lines = []
+            for c in VERDICT:
+                if c not in t or c not in o:
+                    continue
+                tm, tlo, thi = t[c]
+                om, olo, ohi = o[c]
+                capped = (c in HIGHER and ceiling > 0 and tm >= ceiling * 0.98
+                          and om >= ceiling * 0.98)
+                pct = ((tm - om) / om * 100) if om else float("nan")
+                if capped:
+                    verdicts[c] = "capped"
+                    lines.append(f"{c} capped(both ~{ceiling:.0f})")
+                    continue
+                better_hi = c in HIGHER
+                if (tlo > ohi) if better_hi else (thi < olo):
+                    verdicts[c] = "win"
+                    lines.append(f"{c} {pct:+.1f}% WIN")
+                elif (thi < olo) if better_hi else (tlo > ohi):
+                    verdicts[c] = "loss"
+                    lines.append(f"{c} {pct:+.1f}% LOSS")
+                else:
+                    verdicts[c] = "tie"
+                    lines.append(f"{c} {pct:+.1f}% tie")
+            print(f"{'':<7} {'':>5} {'tgfx vs ' + other:<14} " + "  ".join(lines))
+            summary.append((wl, n, other, verdicts))
         print()
 
     print("=" * 78)
     print("verdict per config (ranges must not overlap to count as win/loss)")
-    for wl, n, v in summary:
+    for wl, n, other, v in summary:
         losses = [c for c, r in v.items() if r == "loss"]
         wins = [c for c, r in v.items() if r == "win"]
         state = "LOSES" if losses else ("wins" if wins else "tie")
-        print(f"  {wl:<7} N={n:<5} {state:<6} wins={wins or '-'} losses={losses or '-'}")
+        print(f"  {wl:<7} N={n:<5} vs {other:<5} {state:<6} wins={wins or '-'} losses={losses or '-'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,94 @@
+{
+  "skia-graphite": {
+    "statsStartEpochSeconds": 1785322417,
+    "statsEndEpochSeconds": 1785322440,
+    "displayOnTimeMs": 23623,
+    "globalMissedFrames": 3,
+    "layers": [
+      {
+        "layerName": "SurfaceView[com.rendererbenchmark/com.rendererbenchmark.MainActivity]@0(BLAST)#43470",
+        "totalFrames": 914,
+        "droppedFrames": 0,
+        "lateAcquireFrames": 0,
+        "badDesiredPresentFrames": 0,
+        "timelineFrames": 1,
+        "jankyFrames": 1,
+        "averageFps": 46.469
+      },
+      {
+        "layerName": "com.rendererbenchmark/com.rendererbenchmark.MainActivity$_28756#43463",
+        "totalFrames": 456,
+        "droppedFrames": 0,
+        "lateAcquireFrames": 0,
+        "badDesiredPresentFrames": 0,
+        "timelineFrames": 456,
+        "jankyFrames": 59,
+        "averageFps": 22.669
+      }
+    ]
+  },
+  "thor-cpu": {
+    "statsStartEpochSeconds": 1785322452,
+    "statsEndEpochSeconds": 1785322475,
+    "displayOnTimeMs": 23451,
+    "globalMissedFrames": 0,
+    "layers": [
+      {
+        "layerName": "com.rendererbenchmark/com.rendererbenchmark.MainActivity$_29124#43490",
+        "totalFrames": 1199,
+        "droppedFrames": 0,
+        "lateAcquireFrames": 0,
+        "badDesiredPresentFrames": 0,
+        "timelineFrames": 1199,
+        "jankyFrames": 4,
+        "averageFps": 62.115
+      }
+    ]
+  },
+  "thor-gpu": {
+    "statsStartEpochSeconds": 1785322488,
+    "statsEndEpochSeconds": 1785322511,
+    "displayOnTimeMs": 23374,
+    "globalMissedFrames": 2,
+    "layers": [
+      {
+        "layerName": "com.rendererbenchmark/com.rendererbenchmark.MainActivity$_29626#43513",
+        "totalFrames": 1195,
+        "droppedFrames": 0,
+        "lateAcquireFrames": 0,
+        "badDesiredPresentFrames": 0,
+        "timelineFrames": 1195,
+        "jankyFrames": 70,
+        "averageFps": 62.001
+      },
+      {
+        "layerName": "SurfaceView[com.rendererbenchmark/com.rendererbenchmark.MainActivity]@0(BLAST)#43520",
+        "totalFrames": 1183,
+        "droppedFrames": 0,
+        "lateAcquireFrames": 0,
+        "badDesiredPresentFrames": 0,
+        "timelineFrames": 1,
+        "jankyFrames": 1,
+        "averageFps": 61.83
+      }
+    ]
+  },
+  "tgfx": {
+    "statsStartEpochSeconds": 1785322756,
+    "statsEndEpochSeconds": 1785322780,
+    "displayOnTimeMs": 23551,
+    "globalMissedFrames": 0,
+    "layers": [
+      {
+        "layerName": "com.rendererbenchmark/com.rendererbenchmark.MainActivity$_31230#43572",
+        "totalFrames": 1128,
+        "droppedFrames": 0,
+        "lateAcquireFrames": 0,
+        "badDesiredPresentFrames": 0,
+        "timelineFrames": 1128,
+        "jankyFrames": 1,
+        "averageFps": 58.114
+      }
+    ]
+  }
+}

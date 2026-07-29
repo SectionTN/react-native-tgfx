@@ -10,7 +10,8 @@
  *  - SharedValues allocated ONCE for the whole sweep and sliced per config, so
  *    later configs do not pay for earlier ones' leaked mutables
  *  - Skia gets colorSpace="srgb" so it is not silently color-managing on iOS
- *  - each engine animates via ITS OWN documented fast path
+ *  - all three engines animate from ONE UI-thread worklet: tgfx/skia via
+ *    SharedValues, thor via its imperative drawShapes fast path
  *
  * Logs consumed by bench.sh:
  *   BENCH_BASELINE                      (nothing mounted — idle PSS reference)
@@ -18,12 +19,13 @@
  *   BENCH_END   lib= wl= n= run= uiFps= jsFps= uiJank= uiMaxMs= secs=
  *   BENCH_SWEEP_DONE
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   makeMutable,
   useDerivedValue,
   useFrameCallback,
+  useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
 import {
@@ -38,6 +40,12 @@ import {
   Shader as TgfxShader,
   SweepGradient as TgfxSweepGradient,
 } from 'react-native-tgfx';
+import { callback } from 'react-native-nitro-modules';
+import {
+  ThorCanvasNative,
+  type ThorShape,
+  type ThorView,
+} from 'react-native-nitro-thor';
 import {
   Canvas as SkiaCanvas,
   Circle as SkiaCircle,
@@ -64,10 +72,15 @@ vec4 main(vec2 pos) {
   float band = 0.5 + 0.5 * sin((uv.x - uv.y) * 9.0 + phase);
   return vec4(0.12 + 0.5 * band, 0.15, 0.55 - 0.3 * band, 1.0);
 }`;
-const SHOWCASE_EFFECT = Skia.RuntimeEffect.Make(SHOWCASE_SHADER);
+const showcaseEffect = Skia.RuntimeEffect.Make(SHOWCASE_SHADER);
+// Must not fail silently: a null effect would drop Skia's costliest showcase primitive.
+if (showcaseEffect == null) {
+  throw new Error('showcase SkSL failed to compile under Skia');
+}
+const SHOWCASE_EFFECT = showcaseEffect;
 const CARD_PATH = 'M0 40 C 30 0, 90 0, 120 40 S 210 80, 240 40';
 
-type Lib = 'tgfx' | 'skia';
+type Lib = 'tgfx' | 'skia' | 'thor';
 type Workload = 'leaves' | 'group' | 'mixed' | 'idle' | 'rects' | 'rrects' | 'strokes' | 'showcase';
 
 const FULL_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
@@ -75,7 +88,7 @@ const FULL_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
   { wl: 'group', counts: [1500], runs: 4 },
   { wl: 'mixed', counts: [600], runs: 4 },
   { wl: 'showcase', counts: [300, 900], runs: 4 },
-  { wl: 'idle', counts: [600], runs: 2 },
+  { wl: 'idle', counts: [600], runs: 4 },
 ];
 
 // Single-primitive probes: isolate which draw kind is slow.
@@ -88,7 +101,7 @@ const PROBE_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
 
 const WARMUP_MS = 2500;
 const WINDOW_MS = 6000;
-const SETTLE_MS = 2500;
+const SETTLE_MS = 3500;
 const BASELINE_MS = 4000;
 
 type Config = { lib: Lib; wl: Workload; n: number; run: number; preroll?: boolean };
@@ -99,6 +112,7 @@ function buildConfigs(plan: typeof FULL_PLAN): Config[] {
   const out: Config[] = [
     { lib: 'tgfx', wl: 'mixed', n: 300, run: 0, preroll: true },
     { lib: 'skia', wl: 'mixed', n: 300, run: 0, preroll: true },
+    { lib: 'thor', wl: 'leaves', n: 300, run: 0, preroll: true },
   ];
   const pairs: { wl: Workload; n: number; runs: number; wi: number; ci: number }[] = [];
   plan.forEach((p, wi) =>
@@ -113,8 +127,11 @@ function buildConfigs(plan: typeof FULL_PLAN): Config[] {
       if (run > p.runs) {
         continue;
       }
-      const flip = (run + p.ci + p.wi) % 2 === 0;
-      const order: Lib[] = flip ? ['tgfx', 'skia'] : ['skia', 'tgfx'];
+      // Thor's scene only implements circles, so it is compared on `leaves`
+      // only rather than silently drawing the wrong scene elsewhere.
+      const engines: Lib[] = p.wl === 'leaves' ? ['tgfx', 'skia', 'thor'] : ['tgfx', 'skia'];
+      const k = (run + p.ci + p.wi) % engines.length;
+      const order: Lib[] = [...engines.slice(k), ...engines.slice(0, k)];
       for (const lib of order) {
         out.push({ lib, wl: p.wl, n: p.n, run });
       }
@@ -175,17 +192,25 @@ function useLayout(n: number, width: number, height: number) {
  * frames — identical code for both engines.
  */
 function Driver({
+  lib,
   wl,
   n,
   bx,
   by,
   amp,
+  r,
+  colors,
+  thor,
 }: {
+  lib: Lib;
   wl: Workload;
   n: number;
   bx: number[];
   by: number[];
   amp: number;
+  r: number;
+  colors: string[];
+  thor: SharedValue<ThorView | null>;
 }) {
   const cxs = POOL.cxs;
   const cys = POOL.cys;
@@ -196,7 +221,22 @@ function Driver({
     if (wl === 'showcase') {
       angle.value = t * 0.5;
     }
-    if (wl !== 'group' && wl !== 'idle') {
+    if (lib === 'thor') {
+      const obj = thor.value;
+      if (obj != null) {
+        const shapes: ThorShape[] = [];
+        for (let i = 0; i < n; i++) {
+          shapes.push({
+            type: 'circle',
+            cx: bx[i] + amp * Math.cos(t * 2 + i),
+            cy: by[i] + amp * Math.sin(t * 2 + i * 1.3),
+            radius: r,
+            fill: colors[i],
+          });
+        }
+        obj.drawShapes(shapes);
+      }
+    } else if (wl !== 'group' && wl !== 'idle') {
       for (let i = 0; i < n; i++) {
         cxs[i].value = bx[i] + amp * Math.cos(t * 2 + i);
         cys[i].value = by[i] + amp * Math.sin(t * 2 + i * 1.3);
@@ -446,14 +486,12 @@ function SkiaScene({ wl, n, w, h }: { wl: Workload; n: number; w: number; h: num
             colors={['#0b1021', '#1d1136', '#07131f']}
           />
         </SkiaRect>
-        {SHOWCASE_EFFECT != null && (
-          <SkiaRect x={w * 0.06} y={h * 0.06} width={w * 0.88} height={h * 0.2}>
-            <SkiaShader
-              source={SHOWCASE_EFFECT}
-              uniforms={{ size: [w * 0.88, h * 0.2], phase: 1.2 }}
-            />
-          </SkiaRect>
-        )}
+        <SkiaRect x={w * 0.06} y={h * 0.06} width={w * 0.88} height={h * 0.2}>
+          <SkiaShader
+            source={SHOWCASE_EFFECT}
+            uniforms={{ size: [w * 0.88, h * 0.2], phase: 1.2 }}
+          />
+        </SkiaRect>
         {colors.map((c, i) => (
           <SkiaCircle key={i} cx={cxs[i]} cy={cys[i]} r={r} color={c} />
         ))}
@@ -520,13 +558,59 @@ function SkiaScene({ wl, n, w, h }: { wl: Workload; n: number; w: number; h: num
   return <>{out}</>;
 }
 
-function Scene({ lib, wl, n, w, h }: { lib: Lib; wl: Workload; n: number; w: number; h: number }) {
-  const { bx, by, amp } = useLayout(n, w, h);
+/**
+ * Thor via its documented worklet fast path: the native HybridObject is drawn
+ * imperatively from the shared UI-thread Driver, so no Fabric commit or JS
+ * render sits in the animation loop. `shapes` stays a stable empty array — a
+ * re-commit would clobber the worklet-drawn frame.
+ *
+ * backend="cpu": ThorVG's software rasterizer. Its GL backend is a GLSurfaceView,
+ * whose frames bypass HWUI and so cannot be counted by gfxinfo at all.
+ */
+const THOR_EMPTY: ThorShape[] = [];
+
+function ThorScene({
+  w,
+  h,
+  onRef,
+}: {
+  w: number;
+  h: number;
+  onRef: (ref: ThorView) => void;
+}) {
+  return (
+    <ThorCanvasNative
+      style={{ width: w, height: h }}
+      backend="cpu"
+      shapes={THOR_EMPTY}
+      hybridRef={callback(onRef)}
+    />
+  );
+}
+
+const Scene = memo(function Scene({
+  lib,
+  wl,
+  n,
+  w,
+  h,
+}: {
+  lib: Lib;
+  wl: Workload;
+  n: number;
+  w: number;
+  h: number;
+}) {
+  const { bx, by, amp, r, colors } = useLayout(n, w, h);
   const style = { width: w, height: h };
+  const thor = useSharedValue<ThorView | null>(null);
+  const onThorRef = useCallback((ref: ThorView) => { thor.value = ref; }, [thor]);
   return (
     <>
-      <Driver wl={wl} n={n} bx={bx} by={by} amp={amp} />
-      {lib === 'skia' ? (
+      <Driver lib={lib} wl={wl} n={n} bx={bx} by={by} amp={amp} r={r} colors={colors} thor={thor} />
+      {lib === 'thor' ? (
+        <ThorScene w={w} h={h} onRef={onThorRef} />
+      ) : lib === 'skia' ? (
         <SkiaCanvas style={style} colorSpace="srgb">
           <SkiaScene wl={wl} n={n} w={w} h={h} />
         </SkiaCanvas>
@@ -537,7 +621,7 @@ function Scene({ lib, wl, n, w, h }: { lib: Lib; wl: Workload; n: number; w: num
       )}
     </>
   );
-}
+});
 
 export function Bench({ plan }: { plan?: string }) {
   const { width, height } = useWindowDimensions();
@@ -566,15 +650,17 @@ export function Bench({ plan }: { plan?: string }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Live readout, sampled twice a second so the display itself costs almost
-  // nothing and costs both engines the same.
+  // Live readout, frozen while a window is measuring so the display cannot
+  // perturb either engine.
   useEffect(() => {
     let ui = 0;
     let js = 0;
     const id = setInterval(() => {
       const nowUi = uiFrames.value;
       const nowJs = jsFrames.current;
-      setLiveFps({ ui: (nowUi - ui) * 2, js: (nowJs - js) * 2 });
+      if (measuring.value !== 1) {
+        setLiveFps({ ui: (nowUi - ui) * 2, js: (nowJs - js) * 2 });
+      }
       ui = nowUi;
       js = nowJs;
     }, 500);
@@ -610,6 +696,7 @@ export function Bench({ plan }: { plan?: string }) {
         if (cancelled) return;
         if (preroll) {
           setMounted(false);
+          console.log('BENCH_IDLE');
           timers.push(setTimeout(() => !cancelled && setIdx((i) => i + 1), SETTLE_MS));
           return;
         }
@@ -636,7 +723,13 @@ export function Bench({ plan }: { plan?: string }) {
                 `uiFrames=${uf} jsFrames=${jf} uiJank=${uiJank.value} ` +
                 `uiMaxMs=${uiMaxMs.value.toFixed(1)} secs=${secs.toFixed(2)}`
             );
-            setMounted(false);
+            timers.push(
+              setTimeout(() => {
+                if (cancelled) return;
+                setMounted(false);
+                console.log('BENCH_IDLE');
+              }, 800)
+            );
             timers.push(setTimeout(() => !cancelled && setIdx((i) => i + 1), SETTLE_MS));
           }, WINDOW_MS)
         );
