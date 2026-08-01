@@ -16,7 +16,7 @@
     "react-native": "0.85.3",
     "react-native-gesture-handler": "^3.0.2",
     "react-native-nitro-modules": "0.35.9",
-    "react-native-nitro-thor": "file:/Users/riteshshukla/Desktop/development/opensource/skia-replacement/packages/react-native-thor",
+    "react-native-nitro-thor": "0.0.2-alpha.1",
     "react-native-reanimated": "^4.5.3",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-tgfx": "workspace:*",
