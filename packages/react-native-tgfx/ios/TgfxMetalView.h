@@ -9,8 +9,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface TgfxMetalView : UIView
 
-/// Update the compiled JSON draw-program.
-- (void)setSceneJSON:(NSString*)json;
+/// Update the binary draw-program and its string table.
+- (void)setScene:(const double*)words
+           count:(NSInteger)count
+         strings:(NSArray<NSString*>*)strings;
+
+/// Drop the current program (a recycled view must not flash the old scene).
+- (void)clearScene;
 
 /// Update the live animation value slots (called per frame from a worklet).
 - (void)setValues:(const double*)values count:(int32_t)count;

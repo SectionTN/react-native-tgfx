@@ -26,16 +26,6 @@ namespace margelo::nitro::tgfx::views {
                                            const HybridTgfxViewProps& sourceProps,
                                            const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    scene([&]() -> CachedProp<std::string> {
-      try {
-        const react::RawValue* rawValue = rawProps.at("scene", nullptr, nullptr);
-        if (rawValue == nullptr) return sourceProps.scene;
-        const auto& [runtime, value] = (std::pair<jsi::Runtime*, jsi::Value>)*rawValue;
-        return CachedProp<std::string>::fromRawValue(*runtime, value, sourceProps.scene);
-      } catch (const std::exception& exc) {
-        throw std::runtime_error(std::string("TgfxView.scene: ") + exc.what());
-      }
-    }()),
     hybridRef([&]() -> CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> {
       try {
         const react::RawValue* rawValue = rawProps.at("hybridRef", nullptr, nullptr);
@@ -49,7 +39,6 @@ namespace margelo::nitro::tgfx::views {
 
   bool HybridTgfxViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
-      case hashString("scene"): return true;
       case hashString("hybridRef"): return true;
       default: return false;
     }

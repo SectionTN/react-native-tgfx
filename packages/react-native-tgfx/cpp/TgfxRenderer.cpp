@@ -34,16 +34,58 @@ void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
   version_.fetch_add(1, std::memory_order_release);
 }
 
-void TgfxRenderer::setScene(const std::string& sceneJson) {
+namespace {
+
+/// FNV-1a over the raw program words, used to skip an unchanged program without
+/// keeping a second copy of it around to compare against.
+uint64_t hashWords(std::span<const double> words) {
+  uint64_t hash = 14695981039346656037ULL;
+  const auto* bytes = reinterpret_cast<const unsigned char*>(words.data());
+  for (size_t i = 0; i < words.size() * sizeof(double); i++) {
+    hash = (hash ^ bytes[i]) * 1099511628211ULL;
+  }
+  return hash;
+}
+
+}  // namespace
+
+void TgfxRenderer::setScene(std::span<const double> words,
+                            const std::vector<std::string>& strings) {
+  // The writer reuses (and grows) one buffer, so only the leading `words[1]`
+  // words belong to this program; the rest is stale capacity.
+  if (words.size() < 2) {
+    return;
+  }
+  auto used = static_cast<size_t>(words[1]);
+  if (used < 2 || used > words.size()) {
+    return;
+  }
+  words = words.first(used);
+  uint64_t hash = hashWords(words);
   {
+    // A reconciler commit can produce an identical program (an unrelated state
+    // change upstream); skipping it avoids a rebuild and a redundant frame.
     std::lock_guard<std::mutex> lock(mutex_);
-    if (sceneJson == lastScene_) {
+    if (hash == sceneHash_) {
       return;
     }
-    lastScene_ = sceneJson;
+    sceneHash_ = hash;
+    pendingScene_.assign(words.begin(), words.end());
+    pendingStrings_ = strings;
+    scenePending_ = true;
   }
-  // Compile the scene into the native command list once, off the render path.
-  scene_.setScene(sceneJson);
+  version_.fetch_add(1, std::memory_order_release);
+}
+
+void TgfxRenderer::clearScene() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pendingScene_.clear();
+    pendingStrings_.clear();
+    scenePending_ = false;
+    sceneHash_ = 0;
+  }
+  scene_.clearCaches();
   version_.fetch_add(1, std::memory_order_release);
 }
 
@@ -72,10 +114,24 @@ bool TgfxRenderer::draw() {
   }
   std::shared_ptr<tgfx::Window> window;
   std::vector<double> values;
+  std::vector<double> scene;
+  std::vector<std::string> strings;
+  bool hasScene = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
     values = values_;
+    if (scenePending_) {
+      scene = std::move(pendingScene_);
+      strings = std::move(pendingStrings_);
+      scenePending_ = false;
+      hasScene = true;
+    }
+  }
+  if (hasScene) {
+    // Compiling here keeps image/typeface caches on one thread and keeps the
+    // JS thread out of the engine entirely.
+    scene_.setScene(scene, strings);
   }
   if (window == nullptr) {
     return false;

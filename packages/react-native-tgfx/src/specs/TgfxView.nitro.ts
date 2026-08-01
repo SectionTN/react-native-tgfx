@@ -9,17 +9,29 @@ import type {
  * Props for the native tgfx canvas view.
  *
  * The declarative React tree (`<Canvas>` + `<Rect>` / `<Circle>` / `<Path>` /
- * `<Image>` / `<Text>` ...) is reconciled and compiled into a single JSON
- * "draw program" that is handed to the native side through {@link scene}. The
- * shared C++ engine parses it once per structural change and replays it through
- * tgfx on the platform's display-link / choreographer callback.
+ * `<Image>` / `<Text>` ...) is reconciled and compiled into a binary "draw
+ * program" that is handed to the native side through
+ * {@link TgfxViewMethods.setScene}. The shared C++ engine reads it once per
+ * structural change and replays it through tgfx on the platform's display-link
+ * / choreographer callback.
  */
-export interface TgfxViewProps extends HybridViewProps {
-  /** JSON-serialized draw program produced by the reconciler/compiler. */
-  scene: string
-}
+export interface TgfxViewProps extends HybridViewProps {}
 
 export interface TgfxViewMethods extends HybridViewMethods {
+  /**
+   * Replace the draw program.
+   *
+   * `scene` is the binary program (the buffer behind a `Float64Array`) and
+   * `strings` its string table — path data, text, image sources and shader
+   * source, which the program references by index.
+   *
+   * A direct hybrid-object call rather than a view prop: the scene changes on
+   * every reconciler commit, and a prop would push the whole program through a
+   * React re-render and a Fabric shadow-tree commit before reaching the engine.
+   * The buffer is only valid for the duration of the call; the engine copies it.
+   */
+  setScene(scene: ArrayBuffer, strings: string[]): void
+
   /** Request a repaint. */
   invalidate(): void
 

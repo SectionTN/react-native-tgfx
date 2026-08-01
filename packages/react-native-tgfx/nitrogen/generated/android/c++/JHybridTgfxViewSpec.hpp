@@ -50,11 +50,11 @@ namespace margelo::nitro::tgfx {
 
   public:
     // Properties
-    std::string getScene() override;
-    void setScene(const std::string& scene) override;
+    
 
   public:
     // Methods
+    void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) override;
     void invalidate() override;
     void setValues(const std::vector<double>& values) override;
     void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) override;

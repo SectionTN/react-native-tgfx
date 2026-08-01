@@ -79,11 +79,7 @@ using namespace margelo::nitro::tgfx::views;
   // 2. Update each prop individually
   swiftPart.beforeUpdate();
 
-  // scene: string
-  if (newViewProps.scene.isDirty) {
-    swiftPart.setScene(newViewProps.scene.value);
-    newViewProps.scene.isDirty = false;
-  }
+  
 
   swiftPart.afterUpdate();
 

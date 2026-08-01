@@ -26,25 +26,25 @@
   {
     "renderer": "thor-gpu",
     "thermalBefore": {
-      "status": 0,
-      "skinC": 37.7
+      "status": 1,
+      "skinC": 36.7
     },
     "thermalAfter": {
-      "status": 0,
-      "skinC": 37.9
+      "status": 1,
+      "skinC": 38
     },
-    "file": "/Users/riteshshukla/Desktop/development/opensource/Tgfx/benchmarks/renderer-benchmark/artifacts/surfaceflinger-thor-gpu.txt"
+    "file": "/Users/riteshshukla/Desktop/development/opensource/Tgfx/.claude/worktrees/tgfx-perf-improvement-9a0a0d/benchmarks/renderer-benchmark/artifacts/surfaceflinger-thor-gpu.txt"
   },
   {
     "renderer": "tgfx",
     "thermalBefore": {
-      "status": 0,
-      "skinC": 35.9
+      "status": 1,
+      "skinC": 36.8
     },
     "thermalAfter": {
-      "status": 0,
-      "skinC": 37.9
+      "status": 1,
+      "skinC": 38.7
     },
-    "file": "/Users/riteshshukla/Desktop/development/opensource/Tgfx/benchmarks/renderer-benchmark/artifacts/surfaceflinger-tgfx.txt"
+    "file": "/Users/riteshshukla/Desktop/development/opensource/Tgfx/.claude/worktrees/tgfx-perf-improvement-9a0a0d/benchmarks/renderer-benchmark/artifacts/surfaceflinger-tgfx.txt"
   }
 ]

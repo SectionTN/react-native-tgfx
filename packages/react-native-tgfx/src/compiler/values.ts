@@ -7,8 +7,9 @@
  * Reanimated, keeping it an optional peer dependency.
  *
  * In the static compile path here we read `.value` to take a snapshot. The
- * zero-JS-per-frame animation path (the Reanimated driver) instead allocates a
- * value slot for each SharedValue and patches it natively on the UI thread.
+ * zero-JS-per-frame animation path (the Reanimated driver) instead has the
+ * scene writer allocate a value slot for each SharedValue, which the native
+ * engine patches on the UI thread.
  */
 export interface MaybeSharedValue<T> {
   value: T
@@ -40,45 +41,4 @@ export function resolveNumber(v: unknown, fallback = 0): number {
   }
   const n = Number(raw)
   return Number.isFinite(n) ? n : fallback
-}
-
-/** An animated value slot placeholder emitted into the scene JSON. */
-export interface Slot {
-  __s: number
-}
-
-/**
- * Assigns a stable slot index to each distinct SharedValue encountered while
- * compiling a scene, so the native side can resolve `{ __s }` placeholders
- * against the per-frame values array.
- */
-export class SlotAllocator {
-  readonly values: MaybeSharedValue<unknown>[] = []
-  private readonly map = new Map<object, number>()
-
-  slot(sv: MaybeSharedValue<unknown>): number {
-    const existing = this.map.get(sv as object)
-    if (existing != null) {
-      return existing
-    }
-    const index = this.values.length
-    this.values.push(sv)
-    this.map.set(sv as object, index)
-    return index
-  }
-}
-
-/**
- * Resolve a numeric prop to either a literal number (static) or a `{ __s }` slot
- * placeholder (animated SharedValue) so animation flows through the values array.
- */
-export function num(
-  v: unknown,
-  alloc: SlotAllocator,
-  fallback = 0
-): number | Slot {
-  if (isSharedValue(v)) {
-    return { __s: alloc.slot(v) }
-  }
-  return resolveNumber(v, fallback)
 }

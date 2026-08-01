@@ -58,7 +58,7 @@ function waitForCoolDevice() {
   let sleeping = false
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const state = thermal()
-    if (state.status === 0 && state.skinC <= 36.0) {
+    if (state.status <= 1 && state.skinC <= 36.8) {
       if (sleeping) {
         adb(['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'])
         adb(['shell', 'wm', 'dismiss-keyguard'])

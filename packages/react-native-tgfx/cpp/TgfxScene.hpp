@@ -1,8 +1,8 @@
-// SceneRenderer compiles the JSON draw-program produced by the JS reconciler
+// SceneRenderer compiles the binary draw-program produced by the JS reconciler
 // into a native command list ONCE per scene change (setScene), resolving images,
 // paths, typefaces and static shaders up front. Each frame, render() executes
 // that immutable command list, resolving only the animated value slots — no
-// per-frame JSON parsing, base64 decoding, SVG path parsing, or font lookups.
+// per-frame parsing, base64 decoding, SVG path parsing, or font lookups.
 //
 // The compiled program is swapped under a mutex and read as an immutable
 // shared_ptr, so the render thread never sees a half-built program.
@@ -28,6 +28,9 @@ class Paint;
 }  // namespace tgfx
 
 namespace tgfxrn {
+
+/// Cursor over the binary draw program (defined in TgfxScene.cpp).
+struct SceneReader;
 
 /// A float that is either a literal or an animated slot (slot < 0 => literal).
 struct AnimF {
@@ -87,8 +90,10 @@ using Program = std::vector<DrawCmd>;
 
 class SceneRenderer {
  public:
-  /// Compile the serialized scene into the command program (once per change).
-  void setScene(const std::string& sceneJson);
+  /// Compile the binary program (see src/compiler/writer.ts) into the command
+  /// list, resolving `strings` indices to paths, text, images and shader source.
+  void setScene(std::span<const double> words,
+                const std::vector<std::string>& strings);
 
   /// Execute the compiled program, resolving slot placeholders against `values`.
   void render(tgfx::Canvas* canvas, std::span<const double> values);
@@ -106,6 +111,10 @@ class SceneRenderer {
 
   std::shared_ptr<tgfx::Image> getImage(const std::string& base64);
   std::shared_ptr<tgfx::Typeface> getTypeface(const std::string& family);
+
+  bool readNode(SceneReader& reader, DrawCmd& cmd);
+  void readPaint(SceneReader& reader, PaintCmd& paint);
+  std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader);
 
   void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
                tgfx::Paint& paint) const;
