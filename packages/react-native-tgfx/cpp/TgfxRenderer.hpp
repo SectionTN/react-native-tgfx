@@ -78,6 +78,10 @@ class TgfxRenderer {
   bool scenePending_ = false;
   uint64_t sceneHash_ = 0;
   std::vector<double> values_;
+  // Render-thread buffers, refilled in place so no frame allocates under the lock.
+  std::vector<double> drawValues_;
+  std::vector<double> drawScene_;
+  std::vector<std::string> drawStrings_;
   SceneRenderer scene_;
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};

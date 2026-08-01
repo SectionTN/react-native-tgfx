@@ -320,12 +320,19 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd) {
       cmd.kind = DrawCmd::Group;
       int opCount = r.nextInt();
       cmd.ops.reserve(static_cast<size_t>(std::max(0, opCount)));
+      bool animated = false;
       for (int i = 0; i < opCount && r.ok; i++) {
         TransformOpCmd op;
         op.type = r.nextInt();
         op.a = r.nextAnim();
         op.b = r.nextAnim();
+        animated = animated || op.a.slot >= 0 || op.b.slot >= 0;
         cmd.ops.push_back(op);
+      }
+      // No slot in the ops => the matrix can never change, so fold it here.
+      if (!animated && !cmd.ops.empty()) {
+        cmd.hasMatrix = true;
+        cmd.matrix = matrixFromOps(cmd.ops, {});
       }
       int childCount = r.nextInt();
       cmd.children.reserve(static_cast<size_t>(std::max(0, childCount)));
@@ -451,16 +458,18 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             std::span<const double> v,
                             tgfx::Paint& paint) const {
   if (cmd.kind == DrawCmd::Group) {
-    canvas->save();
-    if (cmd.hasMatrix) {
-      canvas->concat(cmd.matrix);
-    } else if (!cmd.ops.empty()) {
-      canvas->concat(matrixFromOps(cmd.ops, v));
+    // A group's only canvas state is its transform (opacity folds at compile time).
+    bool transformed = cmd.hasMatrix || !cmd.ops.empty();
+    if (transformed) {
+      canvas->save();
+      canvas->concat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
     }
     for (const auto& child : cmd.children) {
       drawCmd(canvas, child, v, paint);
     }
-    canvas->restore();
+    if (transformed) {
+      canvas->restore();
+    }
     return;
   }
 

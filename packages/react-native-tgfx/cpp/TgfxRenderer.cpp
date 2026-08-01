@@ -104,17 +104,14 @@ bool TgfxRenderer::draw() {
     return false;
   }
   std::shared_ptr<tgfx::Window> window;
-  std::vector<double> values;
-  std::vector<double> scene;
-  std::vector<std::string> strings;
   bool hasScene = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
-    values = values_;
+    drawValues_.assign(values_.begin(), values_.end());
     if (scenePending_) {
-      scene = std::move(pendingScene_);
-      strings = std::move(pendingStrings_);
+      drawScene_.swap(pendingScene_);
+      drawStrings_.swap(pendingStrings_);
       scenePending_ = false;
       hasScene = true;
     }
@@ -122,7 +119,7 @@ bool TgfxRenderer::draw() {
   if (hasScene) {
     // Compiling here keeps image/typeface caches on one thread and keeps the
     // JS thread out of the engine entirely.
-    scene_.setScene(scene, strings);
+    scene_.setScene(drawScene_, drawStrings_);
   }
   if (window == nullptr) {
     return false;
@@ -152,7 +149,7 @@ bool TgfxRenderer::draw() {
       canvas->save();
       canvas->concat(tgfx::Matrix::MakeScale(pixelRatio_, pixelRatio_));
     }
-    scene_.render(canvas, values);
+    scene_.render(canvas, drawValues_);
     if (pixelRatio_ != 1.0f) {
       canvas->restore();
     }
