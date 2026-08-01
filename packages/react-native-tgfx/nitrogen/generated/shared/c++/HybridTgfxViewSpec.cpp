@@ -16,6 +16,8 @@ namespace margelo::nitro::tgfx {
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridGetter("inHierarchy", &HybridTgfxViewSpec::getInHierarchy);
       prototype.registerHybridSetter("inHierarchy", &HybridTgfxViewSpec::setInHierarchy);
+      prototype.registerHybridGetter("opaque", &HybridTgfxViewSpec::getOpaque);
+      prototype.registerHybridSetter("opaque", &HybridTgfxViewSpec::setOpaque);
       prototype.registerHybridMethod("setScene", &HybridTgfxViewSpec::setScene);
       prototype.registerHybridMethod("invalidate", &HybridTgfxViewSpec::invalidate);
       prototype.registerHybridMethod("setValues", &HybridTgfxViewSpec::setValues);

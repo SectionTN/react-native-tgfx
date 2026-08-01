@@ -45,6 +45,7 @@ export function Canvas({
   children,
   style,
   composite = 'layer',
+  opaque = false,
 }: CanvasProps): React.ReactElement {
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
   const [view, setView] = useState<TgfxViewRef | null>(null)
@@ -93,6 +94,7 @@ export function Canvas({
     <>
       <TgfxNativeView
         inHierarchy={composite === 'texture'}
+        opaque={opaque}
         style={style}
         hybridRef={hybridRef.current}
       />

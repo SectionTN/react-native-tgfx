@@ -152,6 +152,15 @@
   [self wakeUp];
 }
 
+- (void)setOpaqueSurface:(BOOL)opaque {
+  self.opaque = opaque;
+  [self metalLayer].opaque = opaque;
+  if (_renderer != nullptr) {
+    _renderer->setOpaque(opaque);
+  }
+  [self wakeUp];
+}
+
 - (void)clearScene {
   if (_renderer != nullptr) {
     _renderer->clearScene();

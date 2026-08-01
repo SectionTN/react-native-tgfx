@@ -23,6 +23,12 @@ export interface TgfxViewProps extends HybridViewProps {
    * the native view is created.
    */
   inHierarchy: boolean
+
+  /**
+   * Composite without an alpha channel, so the layer needs no blending and the
+   * engine clears to opaque black instead of transparent.
+   */
+  opaque: boolean
 }
 
 export interface TgfxViewMethods extends HybridViewMethods {

@@ -128,6 +128,15 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
 }
 
 JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_setOpaque(JNIEnv*, jobject, jlong ptr,
+                                                 jboolean opaque) {
+  auto* view = asView(ptr);
+  if (view != nullptr) {
+    view->renderer.setOpaque(opaque == JNI_TRUE);
+  }
+}
+
+JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_clearScene(JNIEnv*, jobject, jlong ptr) {
   auto* view = asView(ptr);
   if (view != nullptr) {

@@ -52,6 +52,8 @@ namespace margelo::nitro::tgfx {
     // Properties
     bool getInHierarchy() override;
     void setInHierarchy(bool inHierarchy) override;
+    bool getOpaque() override;
+    void setOpaque(bool opaque) override;
 
   public:
     // Methods

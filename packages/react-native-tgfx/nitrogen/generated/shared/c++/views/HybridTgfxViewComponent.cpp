@@ -36,6 +36,16 @@ namespace margelo::nitro::tgfx::views {
         throw std::runtime_error(std::string("TgfxView.inHierarchy: ") + exc.what());
       }
     }()),
+    opaque([&]() -> CachedProp<bool> {
+      try {
+        const react::RawValue* rawValue = rawProps.at("opaque", nullptr, nullptr);
+        if (rawValue == nullptr) return sourceProps.opaque;
+        const auto& [runtime, value] = (std::pair<jsi::Runtime*, jsi::Value>)*rawValue;
+        return CachedProp<bool>::fromRawValue(*runtime, value, sourceProps.opaque);
+      } catch (const std::exception& exc) {
+        throw std::runtime_error(std::string("TgfxView.opaque: ") + exc.what());
+      }
+    }()),
     hybridRef([&]() -> CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> {
       try {
         const react::RawValue* rawValue = rawProps.at("hybridRef", nullptr, nullptr);
@@ -50,6 +60,7 @@ namespace margelo::nitro::tgfx::views {
   bool HybridTgfxViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
       case hashString("inHierarchy"): return true;
+      case hashString("opaque"): return true;
       case hashString("hybridRef"): return true;
       default: return false;
     }

@@ -21,8 +21,11 @@ internal class TgfxSurfaceView(context: Context, private val target: TgfxRenderT
 
   init {
     setZOrderMediaOverlay(true)
-    holder.setFormat(PixelFormat.TRANSLUCENT)
     holder.addCallback(this)
+  }
+
+  fun setOpaqueSurface(opaque: Boolean) {
+    holder.setFormat(if (opaque) PixelFormat.OPAQUE else PixelFormat.TRANSLUCENT)
   }
 
   override fun surfaceCreated(holder: SurfaceHolder) {}

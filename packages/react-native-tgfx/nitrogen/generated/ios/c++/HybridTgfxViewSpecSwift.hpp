@@ -72,6 +72,12 @@ namespace margelo::nitro::tgfx {
     inline void setInHierarchy(bool inHierarchy) noexcept override {
       _swiftPart.setInHierarchy(std::forward<decltype(inHierarchy)>(inHierarchy));
     }
+    inline bool getOpaque() noexcept override {
+      return _swiftPart.getOpaque();
+    }
+    inline void setOpaque(bool opaque) noexcept override {
+      _swiftPart.setOpaque(std::forward<decltype(opaque)>(opaque));
+    }
 
   public:
     // Methods

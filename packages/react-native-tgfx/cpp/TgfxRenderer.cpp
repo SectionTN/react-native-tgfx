@@ -89,6 +89,11 @@ void TgfxRenderer::clearScene() {
   version_.fetch_add(1, std::memory_order_release);
 }
 
+void TgfxRenderer::setOpaque(bool opaque) {
+  opaque_ = opaque;
+  version_.fetch_add(1, std::memory_order_release);
+}
+
 void TgfxRenderer::setValues(const std::vector<double>& values) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -154,7 +159,7 @@ bool TgfxRenderer::draw() {
   bool rendered = false;
   if (surface_ != nullptr) {
     auto* canvas = surface_->getCanvas();
-    canvas->clear(tgfx::Color::Transparent());
+    canvas->clear(opaque_ ? tgfx::Color::Black() : tgfx::Color::Transparent());
     // Scene coordinates are in logical pixels (dp); the tgfx surface is in
     // physical pixels. Scale by the device pixel ratio so they align.
     if (pixelRatio_ != 1.0f) {

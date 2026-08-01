@@ -131,6 +131,17 @@ open class HybridTgfxViewSpec_cxx {
       self.__implementation.inHierarchy = newValue
     }
   }
+  
+  public final var opaque: Bool {
+    @inline(__always)
+    get {
+      return self.__implementation.opaque
+    }
+    @inline(__always)
+    set {
+      self.__implementation.opaque = newValue
+    }
+  }
 
   // Methods
   @inline(__always)

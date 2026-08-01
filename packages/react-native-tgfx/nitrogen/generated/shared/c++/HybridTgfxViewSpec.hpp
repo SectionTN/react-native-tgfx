@@ -48,6 +48,8 @@ namespace margelo::nitro::tgfx {
       // Properties
       virtual bool getInHierarchy() = 0;
       virtual void setInHierarchy(bool inHierarchy) = 0;
+      virtual bool getOpaque() = 0;
+      virtual void setOpaque(bool opaque) = 0;
 
     public:
       // Methods
