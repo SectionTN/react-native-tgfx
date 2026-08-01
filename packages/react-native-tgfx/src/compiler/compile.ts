@@ -32,6 +32,23 @@ interface CompileCtx {
 /** Transform op codes, mirrored by the native parser. */
 const Op = { translate: 0, scale: 1, rotate: 2, skewX: 3, skewY: 4 } as const
 
+/**
+ * Node type to binary kind. One lookup per node replaces a chain of string
+ * comparisons; `<Paint>` and the gradient types are absent, which is what marks
+ * them as "contributes paint, draws nothing".
+ */
+const KIND_OF: Record<string, number | undefined> = {
+  [NodeType.Group]: Kind.Group,
+  [NodeType.Rect]: Kind.Rect,
+  [NodeType.RoundedRect]: Kind.RRect,
+  [NodeType.Oval]: Kind.Oval,
+  [NodeType.Circle]: Kind.Circle,
+  [NodeType.Line]: Kind.Line,
+  [NodeType.Path]: Kind.Path,
+  [NodeType.Image]: Kind.Image,
+  [NodeType.Text]: Kind.Text,
+}
+
 function vec(input: unknown): Vector | undefined {
   if (input == null) {
     return undefined
@@ -138,8 +155,8 @@ function localPaint(node: Node): {
   return { paint, drawingChildren }
 }
 
-/** Write one drawing node; returns false when the node type is not drawable. */
-function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
+/** Write one drawing node of the given kind. */
+function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx, kind: number): void {
   const p = node.props
 
   // Final alpha = inherited group opacity * own opacity. With no group opacity
@@ -149,17 +166,16 @@ function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
       ? p.opacity
       : ctx.opacity * resolveNumber(p.opacity, 1)
 
-  switch (node.type) {
-    case NodeType.Rect:
-      w.push(Kind.Rect)
+  w.push(kind)
+  switch (kind) {
+    case Kind.Rect:
       w.pushAnim(p.x)
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
       break
-    case NodeType.RoundedRect: {
+    case Kind.RRect: {
       const radius = p.r
-      w.push(Kind.RRect)
       w.pushAnim(p.x)
       w.pushAnim(p.y)
       w.pushAnim(p.width)
@@ -168,32 +184,27 @@ function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
       w.pushAnim(p.ry !== undefined ? p.ry : radius)
       break
     }
-    case NodeType.Oval:
-      w.push(Kind.Oval)
+    case Kind.Oval:
       w.pushAnim(p.x)
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
       break
-    case NodeType.Circle:
-      w.push(Kind.Circle)
+    case Kind.Circle:
       w.pushAnim(p.cx)
       w.pushAnim(p.cy)
       w.pushAnim(p.r)
       break
-    case NodeType.Line:
-      w.push(Kind.Line)
+    case Kind.Line:
       w.pushAnim(p.x1)
       w.pushAnim(p.y1)
       w.pushAnim(p.x2)
       w.pushAnim(p.y2)
       break
-    case NodeType.Path:
-      w.push(Kind.Path)
+    case Kind.Path:
       w.pushString(String(resolveValue(p.path) ?? ''))
       break
-    case NodeType.Image:
-      w.push(Kind.Image)
+    case Kind.Image:
       w.pushAnim(p.x)
       w.pushAnim(p.y)
       w.pushAnim(p.width)
@@ -201,9 +212,8 @@ function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
       w.pushString(String(resolveValue(p.image) ?? ''))
       w.push({ fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1)
       // Images carry no paint; drawImageRect uses the default paint.
-      return true
-    case NodeType.Text:
-      w.push(Kind.Text)
+      return
+    case Kind.Text:
       w.pushAnim(p.x)
       w.pushAnim(p.y)
       w.pushString(String(resolveValue(p.text) ?? ''))
@@ -211,7 +221,7 @@ function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
       w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
       break
     default:
-      return false
+      break
   }
   const own = paintFromChildren(node)
   if (own == null) {
@@ -219,7 +229,6 @@ function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
   } else {
     writePaint(w, NO_PAINT_PROPS, mergePaint(ctx.paint, own), alpha)
   }
-  return true
 }
 
 /** Write a group's transform ops; returns the number written. */
@@ -317,23 +326,16 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
 function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
   let count = 0
   for (const node of nodes) {
-    if (node.type === NodeType.Group) {
-      writeGroup(w, node, ctx)
-      count++
-    } else if (
-      node.type === NodeType.Paint ||
-      node.type === NodeType.LinearGradient ||
-      node.type === NodeType.RadialGradient ||
-      node.type === NodeType.SweepGradient ||
-      node.type === NodeType.DiamondGradient ||
-      node.type === NodeType.FractalNoise ||
-      node.type === NodeType.Turbulence ||
-      node.type === NodeType.Shader
-    ) {
+    const kind = KIND_OF[node.type]
+    if (kind === undefined) {
       continue
-    } else if (writeDrawing(w, node, ctx)) {
-      count++
     }
+    if (kind === Kind.Group) {
+      writeGroup(w, node, ctx)
+    } else {
+      writeDrawing(w, node, ctx, kind)
+    }
+    count++
   }
   return count
 }
