@@ -11,6 +11,10 @@ final class HybridTgfxView: HybridTgfxViewSpec {
 
   var view: UIView { metalView }
 
+  /// Android-only composition switch; a CAMetalLayer already composites inside
+  /// the view hierarchy, so transparency and transforms work either way.
+  var inHierarchy: Bool = false
+
   func setScene(scene: ArrayBuffer, strings: [String]) throws {
     // The buffer is only valid for this call; the engine copies what it needs.
     let words = UnsafeRawPointer(scene.data).assumingMemoryBound(to: Double.self)

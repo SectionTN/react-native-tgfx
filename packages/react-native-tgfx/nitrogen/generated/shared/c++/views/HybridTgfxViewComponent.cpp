@@ -26,6 +26,16 @@ namespace margelo::nitro::tgfx::views {
                                            const HybridTgfxViewProps& sourceProps,
                                            const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
+    inHierarchy([&]() -> CachedProp<bool> {
+      try {
+        const react::RawValue* rawValue = rawProps.at("inHierarchy", nullptr, nullptr);
+        if (rawValue == nullptr) return sourceProps.inHierarchy;
+        const auto& [runtime, value] = (std::pair<jsi::Runtime*, jsi::Value>)*rawValue;
+        return CachedProp<bool>::fromRawValue(*runtime, value, sourceProps.inHierarchy);
+      } catch (const std::exception& exc) {
+        throw std::runtime_error(std::string("TgfxView.inHierarchy: ") + exc.what());
+      }
+    }()),
     hybridRef([&]() -> CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> {
       try {
         const react::RawValue* rawValue = rawProps.at("hybridRef", nullptr, nullptr);
@@ -39,6 +49,7 @@ namespace margelo::nitro::tgfx::views {
 
   bool HybridTgfxViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
+      case hashString("inHierarchy"): return true;
       case hashString("hybridRef"): return true;
       default: return false;
     }

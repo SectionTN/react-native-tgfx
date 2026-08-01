@@ -41,7 +41,11 @@ function sameValueSet(
  * SharedValue props), and handed to the native GPU view. When the scene has
  * animated values, the {@link AnimationDriver} pushes them on the UI thread.
  */
-export function Canvas({ children, style }: CanvasProps): React.ReactElement {
+export function Canvas({
+  children,
+  style,
+  composite = 'layer',
+}: CanvasProps): React.ReactElement {
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
@@ -87,7 +91,11 @@ export function Canvas({ children, style }: CanvasProps): React.ReactElement {
 
   return (
     <>
-      <TgfxNativeView style={style} hybridRef={hybridRef.current} />
+      <TgfxNativeView
+        inHierarchy={composite === 'texture'}
+        style={style}
+        hybridRef={hybridRef.current}
+      />
       {AnimationDriver != null && view != null && values.length > 0 ? (
         <AnimationDriver view={view} values={values} />
       ) : null}

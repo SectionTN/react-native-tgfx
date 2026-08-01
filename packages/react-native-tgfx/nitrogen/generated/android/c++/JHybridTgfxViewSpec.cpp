@@ -44,7 +44,15 @@ namespace margelo::nitro::tgfx {
   }
 
   // Properties
-  
+  bool JHybridTgfxViewSpec::getInHierarchy() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jboolean()>("getInHierarchy");
+    auto __result = method(_javaPart);
+    return static_cast<bool>(__result);
+  }
+  void JHybridTgfxViewSpec::setInHierarchy(bool inHierarchy) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jboolean /* inHierarchy */)>("setInHierarchy");
+    method(_javaPart, inHierarchy);
+  }
 
   // Methods
   void JHybridTgfxViewSpec::setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) {

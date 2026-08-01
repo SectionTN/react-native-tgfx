@@ -27,7 +27,11 @@ import com.margelo.nitro.views.HybridView
 )
 abstract class HybridTgfxViewSpec: HybridView() {
   // Properties
-  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var inHierarchy: Boolean
 
   // Methods
   @DoNotStrip

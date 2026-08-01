@@ -66,7 +66,12 @@ namespace margelo::nitro::tgfx {
 
   public:
     // Properties
-    
+    inline bool getInHierarchy() noexcept override {
+      return _swiftPart.getInHierarchy();
+    }
+    inline void setInHierarchy(bool inHierarchy) noexcept override {
+      _swiftPart.setInHierarchy(std::forward<decltype(inHierarchy)>(inHierarchy));
+    }
 
   public:
     // Methods

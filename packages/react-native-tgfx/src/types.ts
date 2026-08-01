@@ -92,6 +92,20 @@ export interface TextProps extends PaintProps {
 export interface CanvasProps {
   style?: object
   children?: ReactNode
+  /**
+   * How the canvas is composited on Android.
+   *
+   * - `'layer'` (default) gives it its own compositor layer, which is fastest,
+   *   but it punches through the window: React Native content *behind* the
+   *   canvas does not show through its transparent pixels, and view transforms
+   *   do not apply to it. Content drawn on top composites normally.
+   * - `'texture'` draws the canvas inside the view hierarchy, so transparency
+   *   and transforms behave like any other view, at the cost of a window redraw
+   *   per frame.
+   *
+   * Ignored on iOS, where the Metal layer already composites in-hierarchy.
+   */
+  composite?: 'layer' | 'texture'
   /** Device-pixel debugging overlay hook (reserved). */
   debug?: boolean
 }

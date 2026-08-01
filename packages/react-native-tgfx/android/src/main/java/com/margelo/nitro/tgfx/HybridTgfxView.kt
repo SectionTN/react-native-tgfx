@@ -1,6 +1,7 @@
 package com.margelo.nitro.tgfx
 
 import android.content.Context
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.annotation.Keep
@@ -10,11 +11,16 @@ import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.views.RecyclableView
 
 // A FrameLayout wrapper so React-Native style props such as backgroundColor
-// apply: a bare SurfaceView cannot host a background drawable. Fabric sets this
-// view's bounds without a measure pass, so the GPU child is measured here.
-private class HostLayout(context: Context, child: TgfxSurfaceView) : FrameLayout(context) {
-  init {
-    addView(child, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+// apply: neither a bare SurfaceView nor a TextureView can host a background
+// drawable. Fabric sets this view's bounds without a measure pass, so the GPU
+// child is measured here.
+private class HostLayout(context: Context) : FrameLayout(context) {
+  fun setCanvas(child: View) {
+    removeAllViews()
+    addView(
+      child,
+      LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    )
   }
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
@@ -28,22 +34,43 @@ private class HostLayout(context: Context, child: TgfxSurfaceView) : FrameLayout
 
 @Keep
 @DoNotStrip
-class HybridTgfxView(context: ThemedReactContext) :
+class HybridTgfxView(private val context: ThemedReactContext) :
   HybridTgfxViewSpec(), RecyclableView {
 
-  private val tgfxView = TgfxSurfaceView(context)
-  override val view: FrameLayout = HostLayout(context, tgfxView)
+  private val target = TgfxRenderTarget()
+  private val host = HostLayout(context)
+  override val view: FrameLayout = host
+
+  init {
+    host.setCanvas(TgfxSurfaceView(context, target))
+  }
+
+  /**
+   * Swaps the canvas view when it changes. Fabric applies props before the view
+   * is attached, so the surface is created against whichever view is in place by
+   * then; a later change re-creates the surface, which the renderer handles.
+   */
+  override var inHierarchy: Boolean = false
+    set(value) {
+      if (field == value) {
+        return
+      }
+      field = value
+      host.setCanvas(
+        if (value) TgfxTextureView(context, target) else TgfxSurfaceView(context, target)
+      )
+    }
 
   override fun setScene(scene: ArrayBuffer, strings: Array<String>) {
-    tgfxView.setScene(scene.getBuffer(false), strings)
+    target.setScene(scene.getBuffer(false), strings)
   }
 
   override fun invalidate() {
-    tgfxView.requestRender()
+    target.requestRender()
   }
 
   override fun setValues(values: DoubleArray) {
-    tgfxView.setValues(values)
+    target.setValues(values)
   }
 
   override fun drawCameraFrame(
@@ -53,7 +80,7 @@ class HybridTgfxView(context: ThemedReactContext) :
     contours: DoubleArray,
     blurRadius: Double
   ) {
-    tgfxView.drawCameraFrame(
+    target.drawCameraFrame(
       buffer.toLong(),
       frameWidth.toFloat(),
       frameHeight.toFloat(),
@@ -63,10 +90,10 @@ class HybridTgfxView(context: ThemedReactContext) :
   }
 
   override fun prepareForRecycle() {
-    tgfxView.clearScene()
+    target.clearScene()
   }
 
   override fun onDropView() {
-    tgfxView.release()
+    target.release()
   }
 }

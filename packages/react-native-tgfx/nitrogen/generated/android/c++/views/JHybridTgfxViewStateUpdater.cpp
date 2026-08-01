@@ -37,7 +37,10 @@ void JHybridTgfxViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass> /*
   }
 
   // Update all props if they are dirty
-  
+  if (props->inHierarchy.isDirty) {
+    hybridView->setInHierarchy(props->inHierarchy.value);
+    props->inHierarchy.isDirty = false;
+  }
 
   // Update hybridRef if it changed
   if (props->hybridRef.isDirty) {
