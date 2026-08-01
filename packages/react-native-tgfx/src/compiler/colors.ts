@@ -125,15 +125,28 @@ function fromHsl(str: string): number {
   )
 }
 
-/** Resolve any supported color input to a packed `0xAARRGGBB` integer. */
-export function resolveColor(input: Color | undefined): number {
-  if (input == null) {
-    return 0xff000000
-  }
-  if (typeof input === 'number') {
-    return input >>> 0
-  }
-  const str = input.trim().toLowerCase()
+// Scenes reuse a handful of colors across every node, and this runs once per
+// node per commit, so parsing is cached by the raw string.
+const CACHE = new Map<string, number>()
+const CACHE_LIMIT = 512
+
+/** Test hooks, so tests can assert the cache caches and retains. */
+export const colorCacheTestHooks = {
+  parses: 0,
+  reset(): void {
+    CACHE.clear()
+    colorCacheTestHooks.parses = 0
+  },
+  get size(): number {
+    return CACHE.size
+  },
+  get limit(): number {
+    return CACHE_LIMIT
+  },
+}
+
+function parseColor(str: string): number {
+  colorCacheTestHooks.parses += 1
   if (str.startsWith('#')) {
     return fromHex(str)
   }
@@ -143,9 +156,30 @@ export function resolveColor(input: Color | undefined): number {
   if (str.startsWith('hsl')) {
     return fromHsl(str)
   }
-  const named = NAMED[str]
+  const named = Object.hasOwn(NAMED, str) ? NAMED[str] : undefined
   if (named != null) {
     return named
   }
   return 0xff000000
+}
+
+/** Resolve any supported color input to a packed `0xAARRGGBB` integer. */
+export function resolveColor(input: Color | undefined): number {
+  if (input == null) {
+    return 0xff000000
+  }
+  if (typeof input === 'number') {
+    return input >>> 0
+  }
+  const cached = CACHE.get(input)
+  if (cached !== undefined) {
+    return cached
+  }
+  const value = parseColor(input.trim().toLowerCase())
+  // Keep the first CACHE_LIMIT entries resident rather than evicting: a scene
+  // just past the cap would otherwise refill and clear every frame.
+  if (CACHE.size < CACHE_LIMIT) {
+    CACHE.set(input, value)
+  }
+  return value
 }
