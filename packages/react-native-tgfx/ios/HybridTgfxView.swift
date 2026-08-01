@@ -40,7 +40,21 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     contours: [Double],
     blurRadius: Double
   ) throws {
-    throw RuntimeError.error(withMessage: "drawCameraFrame is Android-only for now")
+    guard let pixelBuffer = UnsafeMutableRawPointer(bitPattern: UInt(buffer)) else {
+      throw RuntimeError.error(withMessage: "drawCameraFrame got a null buffer")
+    }
+    let points = contours.map { Float($0) }
+    points.withUnsafeBufferPointer { shapes in
+      guard let base = shapes.baseAddress else { return }
+      metalView.drawCameraFrame(
+        pixelBuffer,
+        frameWidth: Float(frameWidth),
+        frameHeight: Float(frameHeight),
+        contours: base,
+        count: shapes.count,
+        blurRadius: Float(blurRadius)
+      )
+    }
   }
 
   func onDropView() {
