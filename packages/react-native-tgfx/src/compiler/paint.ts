@@ -1,7 +1,8 @@
 import { resolveColor, type Color } from './colors'
 import { transpileShader } from './sksl'
 import type { Vector } from './transform'
-import { resolveNumber, resolveValue, type Slot } from './values'
+import { resolveNumber, resolveValue } from './values'
+import type { SceneWriter } from './writer'
 
 /** Public paint inputs shared by every drawing component and `<Paint>`. */
 export interface PaintInput {
@@ -36,29 +37,20 @@ export interface GradientInput {
   uniforms?: Record<string, number | number[]>
 }
 
-/** Compiled paint (the wire shape consumed by the native engine). */
-export interface CompiledPaint {
-  c: number
-  st: 0 | 1
-  sw: number
-  cap: 0 | 1 | 2
-  jn: 0 | 1 | 2
-  aa: boolean
-  /** Alpha multiplier: a literal, or a `{ __s }` slot when animated. */
-  a: number | Slot
-  g?: CompiledGradient
-}
-
-export type CompiledGradient =
-  | { k: 0; sx: number; sy: number; ex: number; ey: number; cs: number[]; ps?: number[] }
-  | { k: 1; cx: number; cy: number; r: number; cs: number[]; ps?: number[] }
-  | { k: 2; cx: number; cy: number; sa: number; ea: number; cs: number[]; ps?: number[] }
-  | { k: 3; cx: number; cy: number; r: number; cs: number[]; ps?: number[] }
-  | { k: 4 | 5; fx: number; fy: number; oc: number; sd: number }
-  | { k: 6; src: string; un: { n: string; v: number[] }[] }
-
 const CAPS = { butt: 0, round: 1, square: 2 } as const
 const JOINS = { miter: 0, round: 1, bevel: 2 } as const
+
+const SHADER_KIND = {
+  linear: 0,
+  radial: 1,
+  sweep: 2,
+  diamond: 3,
+  fractalNoise: 4,
+  turbulence: 5,
+  runtime: 6,
+} as const
+
+const NO_SHADER = -1
 
 /** Merge two paint inputs; defined fields in `over` win. */
 export function mergePaint(
@@ -82,84 +74,109 @@ export function mergePaint(
   return out
 }
 
-function compileRuntime(g: GradientInput): CompiledGradient {
-  const { body, uniformNames, uniformSizes } = transpileShader(g.source ?? '')
-  const un = uniformNames.map((name) => {
-    const raw = g.uniforms?.[name]
-    const v = Array.isArray(raw) ? raw.map(Number) : raw != null ? [Number(raw)] : []
-    const size = uniformSizes[name] ?? 1
-    while (v.length < size) {
-      v.push(0)
-    }
-    return { n: name, v: v.slice(0, size) }
-  })
-  return { k: 6, src: body, un }
-}
-
-function compileGradient(g: GradientInput): CompiledGradient {
-  if (g.kind === 'runtime') {
-    return compileRuntime(g)
+function writeStops(w: SceneWriter, g: GradientInput): void {
+  w.push(g.colors.length)
+  for (const color of g.colors) {
+    w.push(resolveColor(resolveValue(color)))
   }
-  const cs = g.colors.map((c) => resolveColor(resolveValue(c)))
-  const ps = g.positions != null ? g.positions.map((p) => resolveNumber(p)) : undefined
-  if (g.kind === 'fractalNoise' || g.kind === 'turbulence') {
-    return {
-      k: g.kind === 'fractalNoise' ? 4 : 5,
-      fx: resolveNumber(g.freqX, 0.05),
-      fy: resolveNumber(g.freqY, 0.05),
-      oc: resolveNumber(g.octaves, 1),
-      sd: resolveNumber(g.seed, 0),
-    }
-  }
-  if (g.kind === 'sweep') {
-    return {
-      k: 2,
-      cx: resolveNumber(g.center?.x),
-      cy: resolveNumber(g.center?.y),
-      sa: resolveNumber(g.startAngle, 0),
-      ea: resolveNumber(g.endAngle, 360),
-      cs,
-      ...(ps != null ? { ps } : {}),
-    }
-  }
-  if (g.kind === 'radial' || g.kind === 'diamond') {
-    return {
-      k: g.kind === 'radial' ? 1 : 3,
-      cx: resolveNumber(g.center?.x),
-      cy: resolveNumber(g.center?.y),
-      r: resolveNumber(g.radius),
-      cs,
-      ...(ps != null ? { ps } : {}),
-    }
-  }
-  return {
-    k: 0,
-    sx: resolveNumber(g.start?.x),
-    sy: resolveNumber(g.start?.y),
-    ex: resolveNumber(g.end?.x),
-    ey: resolveNumber(g.end?.y),
-    cs,
-    ...(ps != null ? { ps } : {}),
+  const positions = g.positions
+  w.push(positions?.length ?? 0)
+  for (const position of positions ?? []) {
+    w.push(resolveNumber(position))
   }
 }
 
-/** Resolve a merged paint input into the compiled wire shape. */
-export function compilePaint(input: PaintInput): CompiledPaint {
-  const stroke = input.style === 'stroke'
-  const out: CompiledPaint = {
-    c: resolveColor(resolveValue(input.color)),
-    st: stroke ? 1 : 0,
-    sw: resolveNumber(input.strokeWidth, 1),
-    cap: CAPS[input.strokeCap ?? 'butt'],
-    jn: JOINS[input.strokeJoin ?? 'miter'],
-    aa: input.antiAlias !== false,
-    // Alpha multiplier is threaded separately via ctx.opacity by the compiler.
-    a: 1,
+function writeGradient(w: SceneWriter, g: GradientInput): void {
+  w.push(SHADER_KIND[g.kind])
+  switch (g.kind) {
+    case 'runtime': {
+      const { body, uniformNames, uniformSizes } = transpileShader(g.source ?? '')
+      w.pushString(body)
+      w.push(uniformNames.length)
+      for (const name of uniformNames) {
+        const raw = g.uniforms?.[name]
+        const values = Array.isArray(raw) ? raw.map(Number) : raw != null ? [Number(raw)] : []
+        const size = uniformSizes[name] ?? 1
+        w.pushString(name)
+        w.push(size)
+        for (let i = 0; i < size; i++) {
+          w.push(values[i] ?? 0)
+        }
+      }
+      return
+    }
+    case 'fractalNoise':
+    case 'turbulence':
+      w.push(resolveNumber(g.freqX, 0.05))
+      w.push(resolveNumber(g.freqY, 0.05))
+      w.push(resolveNumber(g.octaves, 1))
+      w.push(resolveNumber(g.seed, 0))
+      return
+    case 'sweep':
+      w.push(resolveNumber(g.center?.x))
+      w.push(resolveNumber(g.center?.y))
+      w.push(resolveNumber(g.startAngle, 0))
+      w.push(resolveNumber(g.endAngle, 360))
+      writeStops(w, g)
+      return
+    case 'radial':
+    case 'diamond':
+      w.push(resolveNumber(g.center?.x))
+      w.push(resolveNumber(g.center?.y))
+      w.push(resolveNumber(g.radius))
+      writeStops(w, g)
+      return
+    default:
+      w.push(resolveNumber(g.start?.x))
+      w.push(resolveNumber(g.start?.y))
+      w.push(resolveNumber(g.end?.x))
+      w.push(resolveNumber(g.end?.y))
+      writeStops(w, g)
   }
-  if (input.gradient != null) {
-    out.g = compileGradient(input.gradient)
+}
+
+/** Props with no paint fields, for callers that only have an inherited paint. */
+export const NO_PAINT_PROPS: Record<string, unknown> = {}
+
+/**
+ * Write a node's paint into the program: color, flags, stroke geometry, the
+ * alpha multiplier (a live slot when the node's own opacity is animated), and
+ * an optional shader.
+ *
+ * Fields are read straight off the node's props, falling back to the inherited
+ * paint — the same precedence {@link mergePaint} gives, without building a
+ * merged object per node. Only the rare node that carries `<Paint>` or gradient
+ * children merges eagerly and passes the result as `inherited`.
+ */
+export function writePaint(
+  w: SceneWriter,
+  props: Record<string, unknown>,
+  inherited: PaintInput,
+  alpha: number | unknown
+): void {
+  const color = props.color !== undefined ? props.color : inherited.color
+  const style = props.style !== undefined ? props.style : inherited.style
+  const strokeWidth =
+    props.strokeWidth !== undefined ? props.strokeWidth : inherited.strokeWidth
+  const cap = props.strokeCap !== undefined ? props.strokeCap : inherited.strokeCap
+  const join =
+    props.strokeJoin !== undefined ? props.strokeJoin : inherited.strokeJoin
+  const antiAlias =
+    props.antiAlias !== undefined ? props.antiAlias : inherited.antiAlias
+  const gradient =
+    props.gradient !== undefined ? props.gradient : inherited.gradient
+
+  w.push(resolveColor(resolveValue(color as Color | undefined)))
+  w.push((style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0))
+  w.push(resolveNumber(strokeWidth, 1))
+  w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
+  w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])
+  w.pushAnim(alpha, 1)
+  if (gradient == null) {
+    w.push(NO_SHADER)
+    return
   }
-  return out
+  writeGradient(w, gradient as GradientInput)
 }
 
 /** Extract only the paint-related fields from an arbitrary props object. */

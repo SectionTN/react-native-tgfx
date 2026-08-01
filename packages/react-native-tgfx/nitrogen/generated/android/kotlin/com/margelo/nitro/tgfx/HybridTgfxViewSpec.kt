@@ -10,6 +10,7 @@ package com.margelo.nitro.tgfx
 import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
+import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.core.HybridObject
 import com.margelo.nitro.views.HybridView
 
@@ -26,13 +27,13 @@ import com.margelo.nitro.views.HybridView
 )
 abstract class HybridTgfxViewSpec: HybridView() {
   // Properties
-  @get:DoNotStrip
-  @get:Keep
-  @set:DoNotStrip
-  @set:Keep
-  abstract var scene: String
+  
 
   // Methods
+  @DoNotStrip
+  @Keep
+  abstract fun setScene(scene: ArrayBuffer, strings: Array<String>): Unit
+  
   @DoNotStrip
   @Keep
   abstract fun invalidate(): Unit

@@ -12,8 +12,11 @@
 // Forward declaration of `HybridTgfxViewSpec_cxx` to properly resolve imports.
 namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 
+// Forward declaration of `ArrayBufferHolder` to properly resolve imports.
+namespace NitroModules { class ArrayBufferHolder; }
 
-
+#include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
 #include <vector>
 
@@ -63,16 +66,16 @@ namespace margelo::nitro::tgfx {
 
   public:
     // Properties
-    inline std::string getScene() noexcept override {
-      auto __result = _swiftPart.getScene();
-      return __result;
-    }
-    inline void setScene(const std::string& scene) noexcept override {
-      _swiftPart.setScene(scene);
-    }
+    
 
   public:
     // Methods
+    inline void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) override {
+      auto __result = _swiftPart.setScene(ArrayBufferHolder(scene), strings);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline void invalidate() override {
       auto __result = _swiftPart.invalidate();
       if (__result.hasError()) [[unlikely]] {

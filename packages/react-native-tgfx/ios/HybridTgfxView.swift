@@ -11,10 +11,15 @@ final class HybridTgfxView: HybridTgfxViewSpec {
 
   var view: UIView { metalView }
 
-  var scene: String = "" {
-    didSet {
-      metalView.setSceneJSON(scene)
-    }
+  func setScene(scene: ArrayBuffer, strings: [String]) throws {
+    // The buffer is only valid for this call; the engine copies what it needs.
+    let words = UnsafeRawPointer(scene.data).assumingMemoryBound(to: Double.self)
+    metalView.setScene(words, count: scene.size / MemoryLayout<Double>.size,
+                       strings: strings)
+  }
+
+  func prepareForRecycle() {
+    metalView.clearScene()
   }
 
   func invalidate() throws {
@@ -23,8 +28,19 @@ final class HybridTgfxView: HybridTgfxViewSpec {
 
   func setValues(values: [Double]) throws {
     values.withUnsafeBufferPointer { buffer in
-      metalView.setValues(buffer.baseAddress, count: Int32(buffer.count))
+      guard let base = buffer.baseAddress else { return }
+      metalView.setValues(base, count: Int32(buffer.count))
     }
+  }
+
+  func drawCameraFrame(
+    buffer: UInt64,
+    frameWidth: Double,
+    frameHeight: Double,
+    contours: [Double],
+    blurRadius: Double
+  ) throws {
+    throw RuntimeError.error(withMessage: "drawCameraFrame is Android-only for now")
   }
 
   func onDropView() {

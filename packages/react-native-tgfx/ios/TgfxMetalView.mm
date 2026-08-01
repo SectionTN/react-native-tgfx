@@ -3,8 +3,11 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
+#include <atomic>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 #include "TgfxRenderer.hpp"
 #include "tgfx/gpu/metal/MetalWindow.h"
@@ -12,8 +15,13 @@
 @implementation TgfxMetalView {
   std::unique_ptr<tgfxrn::TgfxRenderer> _renderer;
   CADisplayLink* _displayLink;
-  BOOL _windowBound;
-  int _idleFrames;
+  // GPU work runs here, not on the main thread: the display link only enqueues.
+  dispatch_queue_t _renderQueue;
+  std::atomic<bool> _drawPending;
+  std::atomic<int> _idleFrames;
+  std::atomic<bool> _windowBound;
+  std::atomic<double> _drawableWidth;
+  std::atomic<double> _drawableHeight;
 }
 
 + (Class)layerClass {
@@ -40,7 +48,14 @@
 
 - (void)commonInit {
   _renderer = std::make_unique<tgfxrn::TgfxRenderer>();
-  _windowBound = NO;
+  _windowBound = false;
+  _drawPending = false;
+  _idleFrames = 0;
+  _drawableWidth = 0;
+  _drawableHeight = 0;
+  _renderQueue = dispatch_queue_create("tgfx.render", DISPATCH_QUEUE_SERIAL);
+  dispatch_set_target_queue(
+      _renderQueue, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0));
   self.contentScaleFactor = UIScreen.mainScreen.nativeScale;
   self.opaque = NO;
   CAMetalLayer* layer = [self metalLayer];
@@ -61,7 +76,12 @@
   CAMetalLayer* layer = [self metalLayer];
   layer.contentsScale = scale;
   layer.drawableSize = CGSizeMake(size.width * scale, size.height * scale);
+  // Cached so the render thread never reads a CALayer property.
+  _drawableWidth = size.width * scale;
+  _drawableHeight = size.height * scale;
   if (_renderer != nullptr) {
+    // Scene coordinates are logical points; the drawable is in physical pixels.
+    _renderer->setPixelRatio(static_cast<float>(scale));
     _renderer->onResize();
   }
   [self wakeUp];
@@ -71,41 +91,68 @@
   if (_windowBound || _renderer == nullptr) {
     return;
   }
-  CAMetalLayer* layer = [self metalLayer];
-  if (layer.drawableSize.width <= 0 || layer.drawableSize.height <= 0) {
+  if (_drawableWidth <= 0 || _drawableHeight <= 0) {
     return;
   }
-  auto window = tgfx::MetalWindow::MakeFrom(layer);
+  auto window = tgfx::MetalWindow::MakeFrom([self metalLayer]);
   if (window != nullptr) {
     _renderer->setWindow(window);
-    _windowBound = YES;
+    _windowBound = true;
   }
 }
 
+// Main thread: hand the frame to the render queue and return immediately. A
+// frame still in flight is not queued twice, so a slow frame cannot pile up.
 - (void)render {
-  [self bindWindowIfNeeded];
-  bool didDraw = (_renderer != nullptr) && _renderer->draw();
-  if (didDraw) {
-    _idleFrames = 0;
-  } else {
-    _idleFrames++;
-  }
-  // Pause the display link after a few idle frames; -wakeUp resumes it.
   if (_idleFrames > 3) {
     _displayLink.paused = YES;
+    return;
   }
+  if (_drawPending.exchange(true)) {
+    return;
+  }
+  dispatch_async(_renderQueue, ^{
+    [self bindWindowIfNeeded];
+    bool didDraw = (self->_renderer != nullptr) && self->_renderer->draw();
+    self->_idleFrames = didDraw ? 0 : self->_idleFrames.load() + 1;
+    self->_drawPending = false;
+  });
 }
 
+// Callable from any thread; the display link belongs to the main run loop.
 - (void)wakeUp {
   _idleFrames = 0;
-  if (_displayLink != nil) {
-    _displayLink.paused = NO;
+  if (_displayLink == nil) {
+    return;
   }
+  if (NSThread.isMainThread) {
+    _displayLink.paused = NO;
+    return;
+  }
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self->_displayLink.paused = NO;
+  });
 }
 
-- (void)setSceneJSON:(NSString*)json {
-  if (_renderer != nullptr && json != nil) {
-    _renderer->setScene(std::string(json.UTF8String));
+- (void)setScene:(const double*)words
+           count:(NSInteger)count
+         strings:(NSArray<NSString*>*)strings {
+  if (_renderer == nullptr || words == nullptr || count <= 0) {
+    return;
+  }
+  std::vector<std::string> table;
+  table.reserve(strings.count);
+  for (NSString* string in strings) {
+    table.emplace_back(string.UTF8String);
+  }
+  _renderer->setScene(std::span<const double>(words, static_cast<size_t>(count)),
+                      table);
+  [self wakeUp];
+}
+
+- (void)clearScene {
+  if (_renderer != nullptr) {
+    _renderer->clearScene();
   }
   [self wakeUp];
 }
@@ -124,10 +171,14 @@
 - (void)releaseRenderer {
   [_displayLink invalidate];
   _displayLink = nil;
-  _windowBound = NO;
-  if (_renderer != nullptr) {
-    _renderer->releaseWindow();
+  _windowBound = false;
+  if (_renderer == nullptr) {
+    return;
   }
+  // Wait for any in-flight frame before tearing the GPU resources down.
+  dispatch_sync(_renderQueue, ^{
+    self->_renderer->releaseWindow();
+  });
 }
 
 - (void)dealloc {

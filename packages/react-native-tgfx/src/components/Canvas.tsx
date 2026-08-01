@@ -5,8 +5,6 @@ import { TgfxRoot } from '../reconciler/Reconciler'
 import type { CanvasProps } from '../types'
 import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
-const EMPTY_SCENE = '{"v":1,"root":{"t":"g","ch":[]}}'
-
 // The Reanimated UI-thread driver is loaded lazily so react-native-reanimated
 // stays an optional peer dependency (static scenes never need it).
 type DriverComponent = React.ComponentType<{
@@ -39,30 +37,39 @@ function sameValueSet(
 /**
  * The declarative tgfx canvas. Children (`<Rect>`, `<Circle>`, `<Path>`,
  * `<Image>`, `<Text>`, `<Group>`, ...) are reconciled into an immutable node
- * tree, compiled to a JSON draw-program (with `{ __s }` slots for any Reanimated
+ * tree, compiled to a binary draw program (with live slots for any Reanimated
  * SharedValue props), and handed to the native GPU view. When the scene has
  * animated values, the {@link AnimationDriver} pushes them on the UI thread.
  */
 export function Canvas({ children, style }: CanvasProps): React.ReactElement {
-  const [scene, setScene] = useState<string>(EMPTY_SCENE)
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
-  const hybridRef = useRef(callback((ref: TgfxViewRef) => setView(ref)))
-  const prevScene = useRef<string>(EMPTY_SCENE)
+  const viewRef = useRef<TgfxViewRef | null>(null)
+  const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
+  const hybridRef = useRef(
+    callback((ref: TgfxViewRef) => {
+      viewRef.current = ref
+      // Commits can land before the native view exists; flush the latest scene.
+      if (scene.current != null) {
+        ref.setScene(scene.current.buffer, scene.current.strings)
+      }
+      setView(ref)
+    })
+  )
 
   if (rootRef.current == null) {
-    // Only push to state when the value actually changes, so the native view
-    // and the Reanimated mapper aren't re-driven on every reconciler commit.
-    rootRef.current = new TgfxRoot((json, vals) => {
-      if (json !== prevScene.current) {
-        prevScene.current = json
-        setScene(json)
-      }
+    // The program goes straight to the hybrid object: as a prop it would ride a
+    // React re-render plus a Fabric shadow-tree commit on every frame.
+    rootRef.current = new TgfxRoot((buffer, strings, vals) => {
+      scene.current = { buffer, strings }
+      viewRef.current?.setScene(buffer, strings)
+      // The Reanimated mapper must re-subscribe when the value set changes —
+      // but only then, not on every reconciler commit.
       if (!sameValueSet(prevValues.current, vals)) {
-        prevValues.current = vals
-        setValues(vals)
+        prevValues.current = vals.slice()
+        setValues(prevValues.current)
       }
     })
   }
@@ -80,7 +87,7 @@ export function Canvas({ children, style }: CanvasProps): React.ReactElement {
 
   return (
     <>
-      <TgfxNativeView scene={scene} style={style} hybridRef={hybridRef.current} />
+      <TgfxNativeView style={style} hybridRef={hybridRef.current} />
       {AnimationDriver != null && view != null && values.length > 0 ? (
         <AnimationDriver view={view} values={values} />
       ) : null}

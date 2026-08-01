@@ -20,6 +20,7 @@ namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
+#include <string>
 #include <vector>
 
 /**
@@ -28,6 +29,17 @@ namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
  */
 namespace margelo::nitro::tgfx::bridge::swift {
 
+  // pragma MARK: std::vector<std::string>
+  /**
+   * Specialized version of `std::vector<std::string>`.
+   */
+  using std__vector_std__string_ = std::vector<std::string>;
+  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
+    std::vector<std::string> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
   // pragma MARK: std::vector<double>
   /**
    * Specialized version of `std::vector<double>`.

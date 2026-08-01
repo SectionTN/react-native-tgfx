@@ -36,7 +36,7 @@ const defaultConfig: BenchmarkConfig = {
   seed: 20260729,
 }
 
-type Stage = 'config' | 'warmup' | 'measure' | 'stopping' | 'result'
+type Stage = 'config' | 'warmup' | 'measure' | 'stopping' | 'result' | 'frozen'
 
 function Option<T extends string | number>({
   label,
@@ -185,10 +185,6 @@ export function BenchmarkScreen(): React.JSX.Element {
     if (stageRef.current !== 'config') {
       return
     }
-    if (config.renderer === 'skia-graphite' && !getSkiaBackendProof().graphiteEnabled) {
-      setError('Graphite runtime device is unavailable')
-      return
-    }
     setError(null)
     setResult(null)
     setPhase(0)
@@ -219,7 +215,7 @@ export function BenchmarkScreen(): React.JSX.Element {
     setStageValue,
   ])
 
-  if (stage === 'warmup' || stage === 'measure') {
+  if (stage === 'warmup' || stage === 'measure' || stage === 'frozen') {
     return (
       <View style={styles.benchmark}>
         <StatusBar hidden />
@@ -392,6 +388,20 @@ export function BenchmarkScreen(): React.JSX.Element {
         style={styles.start}
       >
         <Text style={styles.startText}>Start benchmark</Text>
+      </Pressable>
+      {/* Renders phase 0 without animating, so a screenshot is a deterministic
+          pixel reference for cross-renderer and before/after comparison. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Freeze frame"
+        testID="freeze-frame"
+        onPress={() => {
+          setPhase(0)
+          setStageValue('frozen')
+        }}
+        style={styles.start}
+      >
+        <Text style={styles.startText}>Freeze frame</Text>
       </Pressable>
     </ScrollView>
   )

@@ -2,10 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <iterator>
-
-#include <nlohmann/json.hpp>
 
 #include "Base64.hpp"
 #include "Log.hpp"
@@ -26,43 +23,63 @@
 
 namespace tgfxrn {
 
-using json = nlohmann::json;
+/// Cursor over the binary draw program written by src/compiler/writer.ts.
+///
+/// Fields are read strictly in write order, so resolving an animated field is a
+/// pointer bump: the patch table lists word indices in increasing order, and
+/// `patchAt` walks it alongside the read cursor.
+struct SceneReader {
+  SceneReader(std::span<const double> words, std::span<const double> patches,
+              const std::vector<std::string>& strings)
+      : words(words), patches(patches), strings(strings) {}
+
+  std::span<const double> words;
+  std::span<const double> patches;
+  const std::vector<std::string>& strings;
+  size_t at = 3;  // past the header
+  size_t patchAt = 0;
+  bool ok = true;
+
+  double next() {
+    if (at >= words.size()) {
+      ok = false;
+      return 0;
+    }
+    return words[at++];
+  }
+
+  int nextInt() {
+    return static_cast<int>(next());
+  }
+
+  AnimF nextAnim() {
+    AnimF f;
+    if (patchAt + 1 < patches.size() &&
+        static_cast<size_t>(patches[patchAt]) == at) {
+      f.slot = static_cast<int>(patches[patchAt + 1]);
+      patchAt += 2;
+    }
+    f.literal = static_cast<float>(next());
+    return f;
+  }
+
+  const std::string& nextString() {
+    static const std::string kEmpty;
+    int index = nextInt();
+    if (index < 0 || static_cast<size_t>(index) >= strings.size()) {
+      ok = false;
+      return kEmpty;
+    }
+    return strings[static_cast<size_t>(index)];
+  }
+};
 
 namespace {
 
-// ---------------- compile helpers (scene-change thread only) ----------------
+constexpr double kSceneVersion = 2;
 
-AnimF parseAnimF(const json& field, float def) {
-  AnimF f;
-  f.literal = def;
-  if (field.is_number()) {
-    f.literal = field.get<float>();
-  } else if (field.is_object()) {
-    auto it = field.find("__s");
-    if (it != field.end() && it->is_number()) {
-      f.slot = it->get<int>();
-    }
-  }
-  return f;
-}
-
-AnimF getAnimF(const json& n, const char* key, float def) {
-  auto it = n.find(key);
-  if (it != n.end()) {
-    return parseAnimF(*it, def);
-  }
-  AnimF f;
-  f.literal = def;
-  return f;
-}
-
-int getInt(const json& n, const char* key, int def) {
-  auto it = n.find(key);
-  if (it != n.end() && it->is_number()) {
-    return it->get<int>();
-  }
-  return def;
-}
+/// Node kinds, mirrored from src/compiler/writer.ts.
+enum Kind { KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText };
 
 tgfx::Color colorFromPacked(uint32_t c) {
   uint8_t a = (c >> 24) & 0xff;
@@ -72,79 +89,18 @@ tgfx::Color colorFromPacked(uint32_t c) {
   return tgfx::Color::FromRGBA(r, g, b, a);
 }
 
-std::shared_ptr<tgfx::Shader> buildShader(const json& g) {
-  int kind = getInt(g, "k", 0);
-  if (kind == 6) {
-    std::string body;
-    if (auto it = g.find("src"); it != g.end() && it->is_string()) {
-      body = it->get<std::string>();
-    }
-    std::vector<tgfx::RuntimeShaderUniform> uniforms;
-    if (auto it = g.find("un"); it != g.end() && it->is_array()) {
-      for (const auto& u : *it) {
-        tgfx::RuntimeShaderUniform uniform;
-        if (auto n = u.find("n"); n != u.end() && n->is_string()) {
-          uniform.name = n->get<std::string>();
-        }
-        if (auto v = u.find("v"); v != u.end() && v->is_array()) {
-          for (const auto& value : *v) {
-            uniform.values.push_back(value.get<float>());
-          }
-        }
-        if (!uniform.name.empty() && !uniform.values.empty()) {
-          uniforms.push_back(std::move(uniform));
-        }
-      }
-    }
-    return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms));
+void readStops(SceneReader& r, std::vector<tgfx::Color>& colors,
+               std::vector<float>& positions) {
+  int colorCount = r.nextInt();
+  colors.reserve(static_cast<size_t>(std::max(0, colorCount)));
+  for (int i = 0; i < colorCount && r.ok; i++) {
+    colors.push_back(colorFromPacked(static_cast<uint32_t>(r.next())));
   }
-  // Perlin noise shaders are parameter-only — they have no colour stops.
-  if (kind == 4 || kind == 5) {
-    float fx = getAnimF(g, "fx", 0.05f).literal;
-    float fy = getAnimF(g, "fy", 0.05f).literal;
-    int octaves = getInt(g, "oc", 1);
-    float seed = getAnimF(g, "sd", 0).literal;
-    return kind == 4 ? tgfx::Shader::MakeFractalNoise(fx, fy, octaves, seed)
-                     : tgfx::Shader::MakeTurbulence(fx, fy, octaves, seed);
+  int positionCount = r.nextInt();
+  positions.reserve(static_cast<size_t>(std::max(0, positionCount)));
+  for (int i = 0; i < positionCount && r.ok; i++) {
+    positions.push_back(static_cast<float>(r.next()));
   }
-
-  std::vector<tgfx::Color> colors;
-  if (auto it = g.find("cs"); it != g.end() && it->is_array()) {
-    for (const auto& c : *it) {
-      colors.push_back(colorFromPacked(c.get<uint32_t>()));
-    }
-  }
-  if (colors.size() < 2) {
-    return nullptr;
-  }
-  std::vector<float> positions;
-  if (auto it = g.find("ps"); it != g.end() && it->is_array()) {
-    for (const auto& p : *it) {
-      positions.push_back(p.get<float>());
-    }
-  }
-  auto center = tgfx::Point::Make(getAnimF(g, "cx", 0).literal,
-                                  getAnimF(g, "cy", 0).literal);
-  switch (kind) {
-    case 1:
-      return tgfx::Shader::MakeRadialGradient(center, getAnimF(g, "r", 0).literal,
-                                              colors, positions);
-    case 2:
-      return tgfx::Shader::MakeConicGradient(center, getAnimF(g, "sa", 0).literal,
-                                             getAnimF(g, "ea", 360).literal, colors,
-                                             positions);
-    case 3:
-      return tgfx::Shader::MakeDiamondGradient(center, getAnimF(g, "r", 0).literal,
-                                               colors, positions);
-    default:
-      break;
-  }
-  return tgfx::Shader::MakeLinearGradient(
-      tgfx::Point::Make(getAnimF(g, "sx", 0).literal,
-                        getAnimF(g, "sy", 0).literal),
-      tgfx::Point::Make(getAnimF(g, "ex", 0).literal,
-                        getAnimF(g, "ey", 0).literal),
-      colors, positions);
 }
 
 // ---------------- per-frame helpers (render thread) ----------------
@@ -275,168 +231,216 @@ void SceneRenderer::clearCaches() {
   typefaceCache_.clear();
 }
 
-void SceneRenderer::setScene(const std::string& sceneJson) {
-  json root;
-  try {
-    root = json::parse(sceneJson);
-  } catch (...) {
-    TGFXRN_LOGW("scene JSON parse failed");
+std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r) {
+  int kind = r.nextInt();
+  if (kind < 0) {
+    return nullptr;
+  }
+  if (kind == 6) {
+    std::string body = r.nextString();
+    int uniformCount = r.nextInt();
+    std::vector<tgfx::RuntimeShaderUniform> uniforms;
+    uniforms.reserve(static_cast<size_t>(std::max(0, uniformCount)));
+    for (int i = 0; i < uniformCount && r.ok; i++) {
+      tgfx::RuntimeShaderUniform uniform;
+      uniform.name = r.nextString();
+      int size = r.nextInt();
+      for (int v = 0; v < size && r.ok; v++) {
+        uniform.values.push_back(static_cast<float>(r.next()));
+      }
+      if (!uniform.name.empty() && !uniform.values.empty()) {
+        uniforms.push_back(std::move(uniform));
+      }
+    }
+    return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms));
+  }
+  if (kind == 4 || kind == 5) {
+    float fx = static_cast<float>(r.next());
+    float fy = static_cast<float>(r.next());
+    int octaves = r.nextInt();
+    float seed = static_cast<float>(r.next());
+    return kind == 4 ? tgfx::Shader::MakeFractalNoise(fx, fy, octaves, seed)
+                     : tgfx::Shader::MakeTurbulence(fx, fy, octaves, seed);
+  }
+
+  std::vector<tgfx::Color> colors;
+  std::vector<float> positions;
+  if (kind == 0) {
+    auto start = tgfx::Point::Make(static_cast<float>(r.next()),
+                                   static_cast<float>(r.next()));
+    auto end = tgfx::Point::Make(static_cast<float>(r.next()),
+                                 static_cast<float>(r.next()));
+    readStops(r, colors, positions);
+    if (colors.size() < 2) {
+      return nullptr;
+    }
+    return tgfx::Shader::MakeLinearGradient(start, end, colors, positions);
+  }
+  auto center = tgfx::Point::Make(static_cast<float>(r.next()),
+                                  static_cast<float>(r.next()));
+  if (kind == 2) {
+    float startAngle = static_cast<float>(r.next());
+    float endAngle = static_cast<float>(r.next());
+    readStops(r, colors, positions);
+    if (colors.size() < 2) {
+      return nullptr;
+    }
+    return tgfx::Shader::MakeConicGradient(center, startAngle, endAngle, colors,
+                                           positions);
+  }
+  float radius = static_cast<float>(r.next());
+  readStops(r, colors, positions);
+  if (colors.size() < 2) {
+    return nullptr;
+  }
+  return kind == 3
+             ? tgfx::Shader::MakeDiamondGradient(center, radius, colors, positions)
+             : tgfx::Shader::MakeRadialGradient(center, radius, colors, positions);
+}
+
+void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
+  paint.color = static_cast<uint32_t>(r.next());
+  int flags = r.nextInt();
+  paint.stroke = (flags & 1) != 0;
+  paint.antiAlias = (flags & 2) != 0;
+  paint.strokeWidth = AnimF{static_cast<float>(r.next()), -1};
+  paint.cap = r.nextInt();
+  paint.join = r.nextInt();
+  paint.alpha = r.nextAnim();
+  paint.shader = readShader(r);
+}
+
+bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd) {
+  int kind = r.nextInt();
+  if (!r.ok) {
+    return false;
+  }
+  switch (kind) {
+    case KGroup: {
+      cmd.kind = DrawCmd::Group;
+      int opCount = r.nextInt();
+      cmd.ops.reserve(static_cast<size_t>(std::max(0, opCount)));
+      for (int i = 0; i < opCount && r.ok; i++) {
+        TransformOpCmd op;
+        op.type = r.nextInt();
+        op.a = r.nextAnim();
+        op.b = r.nextAnim();
+        cmd.ops.push_back(op);
+      }
+      int childCount = r.nextInt();
+      cmd.children.reserve(static_cast<size_t>(std::max(0, childCount)));
+      for (int i = 0; i < childCount && r.ok; i++) {
+        DrawCmd child;
+        if (!readNode(r, child)) {
+          return false;
+        }
+        cmd.children.push_back(std::move(child));
+      }
+      return r.ok;
+    }
+    case KRect:
+      cmd.kind = DrawCmd::Rect;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.w = r.nextAnim();
+      cmd.h = r.nextAnim();
+      break;
+    case KRRect:
+      cmd.kind = DrawCmd::RRect;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.w = r.nextAnim();
+      cmd.h = r.nextAnim();
+      cmd.rx = r.nextAnim();
+      cmd.ry = r.nextAnim();
+      break;
+    case KOval:
+      cmd.kind = DrawCmd::Oval;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.w = r.nextAnim();
+      cmd.h = r.nextAnim();
+      break;
+    case KCircle:
+      cmd.kind = DrawCmd::Circle;
+      cmd.cx = r.nextAnim();
+      cmd.cy = r.nextAnim();
+      cmd.r = r.nextAnim();
+      break;
+    case KLine:
+      cmd.kind = DrawCmd::Line;
+      cmd.x1 = r.nextAnim();
+      cmd.y1 = r.nextAnim();
+      cmd.x2 = r.nextAnim();
+      cmd.y2 = r.nextAnim();
+      break;
+    case KPath:
+      cmd.kind = DrawCmd::Path;
+      cmd.path = parseSvgPath(r.nextString());
+      break;
+    case KImage: {
+      // Images draw with the default paint, so the program carries none.
+      cmd.kind = DrawCmd::Image;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.w = r.nextAnim();
+      cmd.h = r.nextAnim();
+      cmd.image = getImage(r.nextString());
+      cmd.fit = r.nextInt();
+      return r.ok;
+    }
+    case KText: {
+      cmd.kind = DrawCmd::Text;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.text = r.nextString();
+      cmd.fontSize = r.nextAnim();
+      cmd.typeface = getTypeface(r.nextString());
+      break;
+    }
+    default:
+      TGFXRN_LOGW("unknown node kind %d in draw program", kind);
+      r.ok = false;
+      return false;
+  }
+  readPaint(r, cmd.paint);
+  return r.ok;
+}
+
+void SceneRenderer::setScene(std::span<const double> words,
+                             const std::vector<std::string>& strings) {
+  if (words.size() < 4 || words[0] != kSceneVersion) {
+    TGFXRN_LOGW("draw program has an unexpected header");
     return;
   }
-  auto rootIt = root.find("root");
-  if (rootIt == root.end()) {
+  auto total = static_cast<size_t>(words[1]);
+  auto patchStart = static_cast<size_t>(words[2]);
+  if (total > words.size() || patchStart + 1 > total) {
+    TGFXRN_LOGW("draw program is truncated");
     return;
   }
+  auto patchCount = static_cast<size_t>(words[patchStart]);
+  if (patchStart + 1 + patchCount * 2 > total) {
+    TGFXRN_LOGW("draw program patch table is truncated");
+    return;
+  }
+  SceneReader reader(words.first(patchStart),
+                     words.subspan(patchStart + 1, patchCount * 2), strings);
 
   auto program = std::make_shared<Program>();
-
-  // Recursive compile (explicit std::function is fine here — compile is rare).
-  std::function<bool(const json&, DrawCmd&)> compile = [&](const json& n,
-                                                           DrawCmd& cmd) -> bool {
-    auto tIt = n.find("t");
-    if (tIt == n.end() || !tIt->is_string()) {
-      return false;
+  int rootCount = reader.nextInt();
+  program->reserve(static_cast<size_t>(std::max(0, rootCount)));
+  for (int i = 0; i < rootCount && reader.ok; i++) {
+    DrawCmd cmd;
+    if (!readNode(reader, cmd)) {
+      break;
     }
-    const std::string t = tIt->get<std::string>();
-
-    if (t == "g") {
-      cmd.kind = DrawCmd::Group;
-      if (auto ops = n.find("ops"); ops != n.end() && ops->is_array()) {
-        for (const auto& op : *ops) {
-          auto opT = op.find("t");
-          if (opT == op.end() || !opT->is_string()) {
-            continue;
-          }
-          const std::string ot = opT->get<std::string>();
-          TransformOpCmd tc;
-          if (ot == "translate") {
-            tc.type = 0;
-            tc.a = getAnimF(op, "x", 0);
-            tc.b = getAnimF(op, "y", 0);
-          } else if (ot == "scale") {
-            tc.type = 1;
-            tc.a = getAnimF(op, "x", 1);
-            tc.b = getAnimF(op, "y", 1);
-          } else if (ot == "rotate") {
-            tc.type = 2;
-            tc.a = getAnimF(op, "r", 0);
-          } else if (ot == "skewX") {
-            tc.type = 3;
-            tc.a = getAnimF(op, "v", 0);
-          } else if (ot == "skewY") {
-            tc.type = 4;
-            tc.a = getAnimF(op, "v", 0);
-          } else {
-            continue;
-          }
-          cmd.ops.push_back(tc);
-        }
-      } else if (auto m = n.find("m");
-                 m != n.end() && m->is_array() && m->size() == 6) {
-        const auto& a = *m;
-        cmd.hasMatrix = true;
-        cmd.matrix = tgfx::Matrix::MakeAll(a[0].get<float>(), a[1].get<float>(),
-                                           a[2].get<float>(), a[3].get<float>(),
-                                           a[4].get<float>(), a[5].get<float>());
-      }
-      if (auto ch = n.find("ch"); ch != n.end() && ch->is_array()) {
-        for (const auto& childJson : *ch) {
-          DrawCmd child;
-          if (compile(childJson, child)) {
-            cmd.children.push_back(std::move(child));
-          }
-        }
-      }
-      return true;
-    }
-
-    if (auto pIt = n.find("p"); pIt != n.end() && pIt->is_object()) {
-      const json& p = *pIt;
-      PaintCmd& pc = cmd.paint;
-      if (auto it = p.find("c"); it != p.end() && it->is_number()) {
-        pc.color = it->get<uint32_t>();
-      }
-      pc.stroke = getInt(p, "st", 0) == 1;
-      pc.strokeWidth = getAnimF(p, "sw", 1);
-      pc.cap = getInt(p, "cap", 0);
-      pc.join = getInt(p, "jn", 0);
-      if (auto it = p.find("aa"); it != p.end() && it->is_boolean()) {
-        pc.antiAlias = it->get<bool>();
-      }
-      pc.alpha = getAnimF(p, "a", 1);
-      if (auto it = p.find("g"); it != p.end() && it->is_object()) {
-        pc.shader = buildShader(*it);
-      }
-    }
-
-    if (t == "r") {
-      cmd.kind = DrawCmd::Rect;
-    } else if (t == "rr") {
-      cmd.kind = DrawCmd::RRect;
-      cmd.rx = getAnimF(n, "rx", 0);
-      cmd.ry = getAnimF(n, "ry", 0);
-    } else if (t == "o") {
-      cmd.kind = DrawCmd::Oval;
-    } else if (t == "c") {
-      cmd.kind = DrawCmd::Circle;
-      cmd.cx = getAnimF(n, "cx", 0);
-      cmd.cy = getAnimF(n, "cy", 0);
-      cmd.r = getAnimF(n, "r", 0);
-    } else if (t == "ln") {
-      cmd.kind = DrawCmd::Line;
-      cmd.x1 = getAnimF(n, "x1", 0);
-      cmd.y1 = getAnimF(n, "y1", 0);
-      cmd.x2 = getAnimF(n, "x2", 0);
-      cmd.y2 = getAnimF(n, "y2", 0);
-    } else if (t == "pa") {
-      cmd.kind = DrawCmd::Path;
-      std::string d;
-      if (auto it = n.find("d"); it != n.end() && it->is_string()) {
-        d = it->get<std::string>();
-      }
-      cmd.path = parseSvgPath(d);
-    } else if (t == "im") {
-      cmd.kind = DrawCmd::Image;
-      std::string src;
-      if (auto it = n.find("src"); it != n.end() && it->is_string()) {
-        src = it->get<std::string>();
-      }
-      cmd.image = getImage(src);
-      cmd.fit = getInt(n, "fit", 1);
-    } else if (t == "tx") {
-      cmd.kind = DrawCmd::Text;
-      std::string family;
-      if (auto it = n.find("s"); it != n.end() && it->is_string()) {
-        cmd.text = it->get<std::string>();
-      }
-      if (auto it = n.find("ff"); it != n.end() && it->is_string()) {
-        family = it->get<std::string>();
-      }
-      cmd.typeface = getTypeface(family);
-      cmd.fontSize = getAnimF(n, "fs", 14);
-    } else {
-      return false;
-    }
-
-    if (cmd.kind != DrawCmd::Circle && cmd.kind != DrawCmd::Line) {
-      cmd.x = getAnimF(n, "x", 0);
-      cmd.y = getAnimF(n, "y", 0);
-    }
-    if (cmd.kind == DrawCmd::Rect || cmd.kind == DrawCmd::RRect ||
-        cmd.kind == DrawCmd::Oval || cmd.kind == DrawCmd::Image) {
-      cmd.w = getAnimF(n, "w", 0);
-      cmd.h = getAnimF(n, "h", 0);
-    }
-    return true;
-  };
-
-  if (auto ch = rootIt->find("ch"); ch != rootIt->end() && ch->is_array()) {
-    for (const auto& childJson : *ch) {
-      DrawCmd cmd;
-      if (compile(childJson, cmd)) {
-        program->push_back(std::move(cmd));
-      }
-    }
+    program->push_back(std::move(cmd));
+  }
+  if (!reader.ok) {
+    // A half-read program would draw a truncated scene; keep the previous one.
+    TGFXRN_LOGW("draw program could not be read");
+    return;
   }
 
   std::lock_guard<std::mutex> lock(programMutex_);

@@ -6,12 +6,13 @@ import android.widget.FrameLayout
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.uimanager.ThemedReactContext
+import com.margelo.nitro.core.ArrayBuffer
 import com.margelo.nitro.views.RecyclableView
 
 // A FrameLayout wrapper so React-Native style props such as backgroundColor
-// apply: a bare TextureView cannot host a background drawable. Fabric sets this
+// apply: a bare SurfaceView cannot host a background drawable. Fabric sets this
 // view's bounds without a measure pass, so the GPU child is measured here.
-private class HostLayout(context: Context, child: TgfxTextureView) : FrameLayout(context) {
+private class HostLayout(context: Context, child: TgfxSurfaceView) : FrameLayout(context) {
   init {
     addView(child, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
   }
@@ -30,14 +31,12 @@ private class HostLayout(context: Context, child: TgfxTextureView) : FrameLayout
 class HybridTgfxView(context: ThemedReactContext) :
   HybridTgfxViewSpec(), RecyclableView {
 
-  private val tgfxView = TgfxTextureView(context)
+  private val tgfxView = TgfxSurfaceView(context)
   override val view: FrameLayout = HostLayout(context, tgfxView)
 
-  override var scene: String = EMPTY_SCENE
-    set(value) {
-      field = value
-      tgfxView.setScene(value)
-    }
+  override fun setScene(scene: ArrayBuffer, strings: Array<String>) {
+    tgfxView.setScene(scene.getBuffer(false), strings)
+  }
 
   override fun invalidate() {
     tgfxView.requestRender()
@@ -64,7 +63,7 @@ class HybridTgfxView(context: ThemedReactContext) :
   }
 
   override fun prepareForRecycle() {
-    scene = EMPTY_SCENE
+    tgfxView.clearScene()
   }
 
   override fun onDropView() {

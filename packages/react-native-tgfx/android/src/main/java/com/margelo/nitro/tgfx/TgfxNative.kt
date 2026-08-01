@@ -1,6 +1,7 @@
 package com.margelo.nitro.tgfx
 
 import android.view.Surface
+import java.nio.ByteBuffer
 
 /**
  * JNI bridge to the shared C++ renderer (libNitroTgfx). Each method operates on
@@ -16,7 +17,8 @@ internal object TgfxNative {
   external fun surfaceChanged(ptr: Long, width: Int, height: Int)
   external fun surfaceDestroyed(ptr: Long)
   external fun setPixelRatio(ptr: Long, ratio: Float)
-  external fun setScene(ptr: Long, scene: String)
+  external fun setScene(ptr: Long, scene: ByteBuffer, strings: Array<String>)
+  external fun clearScene(ptr: Long)
   external fun setValues(ptr: Long, values: DoubleArray)
   external fun drawCameraFrame(
     ptr: Long,

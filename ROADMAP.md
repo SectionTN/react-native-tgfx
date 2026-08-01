@@ -8,6 +8,40 @@ Legend: 🔴 high priority · 🟠 medium · 🟡 nice-to-have · ✅ done
 
 ---
 
+## ✅ Done — renderer performance pass (this branch)
+
+Measured on a Samsung SM-E146B (Mali-G68) and the iPhone 17 Pro Simulator, 400
+objects with 15 ms of main-thread pressure per vsync; medians of 3–5 accepted
+runs are in `benchmarks/renderer-benchmark/artifacts/quick-*.json`.
+
+- ✅ **Scene off the Fabric prop path** — the draw program goes straight to the
+  hybrid object (`setScene`), not through a React re-render + shadow-tree commit.
+  Android main-thread FPS 54.1 → 56.9, main p99 33.2 → 22.2 ms.
+- ✅ **Binary wire format** — the compiler writes a flat `Float64Array` program
+  plus a string table over a zero-copy Nitro `ArrayBuffer`; no `JSON.stringify`,
+  no `nlohmann` parse. Native scene compile fell to 1.32 ms/frame; app frames
+  +12%, JS FPS +3.6, CPU −10 points.
+- ✅ **SurfaceView instead of TextureView** — the canvas is its own compositor
+  layer, so a new frame costs the app window no traversal or HWUI redraw.
+  Peak PSS 149 → 135 MB.
+- ✅ **Allocation-free paint resolution** — paint fields are read from props with
+  the inherited paint as fallback, instead of building a merged paint object per
+  node. JS FPS 42.7 → 48.6.
+- ✅ **iOS renders off the main thread** — the display link enqueues onto a serial
+  render queue. iOS main-thread FPS 58.2 → 59.9, main p99 33.3 → 16.7 ms.
+- ✅ **iOS device pixel ratio** — the Metal view never told the renderer its
+  scale, so the whole scene drew at 1/3 size on a 3× screen.
+
+### Measured next frontier
+
+`context->flush()` is 29.7 ms of the ~37 ms render-thread frame (Perfetto,
+400 objects). Inside it, `DrawingBuffer::encode()` is 27.5 ms: ~800 draw ops at
+~32 µs each (geometry 2.8 µs, program key + lookup 3.9 µs, uniforms 10.2 µs,
+draw call 15.2 µs). Batching is limited because the scene alternates fill and
+stroke, and `OpsCompositor::ShouldFlushRectOps` flushes on every alternation.
+Reducing per-op cost in tgfx's GL backend is where the remaining gap to
+`react-native-nitro-thor` lives.
+
 ## ✅ Done — performance + stability pass (commit `c7a9662`)
 
 - ✅ **Dirty-driven redraw** — `draw()` is a no-op when nothing changed.
@@ -51,10 +85,6 @@ Legend: 🔴 high priority · 🟠 medium · 🟡 nice-to-have · ✅ done
 
 ## Rendering engine (features + perf)
 
-- 🔴 **Dirty-driven redraw.** The render loop draws every vsync even when idle.
-  Redraw only on scene/value change, with an opt-in continuous animation loop.
-- 🟠 **Dedicated GPU render thread.** Rendering currently runs on the main/UI
-  thread (matches tgfx's samples); move GPU work off the main thread.
 - 🟠 **Full animated-prop coverage.** Value slots cover geometry, opacity, and
   transform ops (rotate/scale/translate). Add slots for colors, strokeWidth,
   gradient stops/endpoints, path data, fontSize, and text.
@@ -77,7 +107,7 @@ Legend: 🔴 high priority · 🟠 medium · 🟡 nice-to-have · ✅ done
 - 🟠 Re-subscribe the `useAnimatedReaction` mapper only when the value *set*
   changes (currently re-subscribes on every commit due to new array identity).
 - 🟠 Send values via a shared ArrayBuffer instead of a fresh `number[]` per frame
-  (fewer allocations/conversions for many values).
+  (the scene already travels this way; `setValues` still takes `number[]`).
 - 🟡 Examples + tests for gesture-driven (gesture-handler is installed but
   unused), `withDecay`, `useDerivedValue`, `useClock`.
 - 🟡 Document that animated `rotate`/`skew` expect radians (`'45deg'` strings are
@@ -88,7 +118,7 @@ Legend: 🔴 high priority · 🟠 medium · 🟡 nice-to-have · ✅ done
 - 🟠 The HostConfig is cast (`as unknown`) with stubbed suspense/hydration
   members — test Suspense (image loading), error boundaries, concurrent features.
 - 🟠 Incremental/diff updates to native (Skia diffs a command list); currently
-  the whole scene re-serializes to JSON every commit (O(n)).
+  the whole scene is re-encoded every commit (O(n), but now allocation-free).
 - 🟡 Verify hooks/effects/context behave in the custom reconciler exactly like
   the main renderer (the example creates SharedValues in the main tree to be safe).
 - 🟡 Tighter `<Paint>`/gradient child semantics (multiple paints, scoping, z-index).

@@ -24,10 +24,20 @@ function polygonPath(points: number[]): string {
   return `${path} Z`
 }
 
+/**
+ * Which Skia GPU backend this build actually links. `Skia.hasDevice()` only
+ * exists on the Graphite line and reports its Dawn device, so its absence is
+ * what identifies a Ganesh build. Switch builds with scripts/set-skia-backend.sh.
+ */
 export function getSkiaBackendProof(): Record<string, string | boolean> {
-  const hasDevice = Skia.hasDevice()
+  let hasDevice = false
+  try {
+    hasDevice = Skia.hasDevice?.() ?? false
+  } catch {
+    hasDevice = false
+  }
   return {
-    requestedBackend: 'graphite',
+    backend: hasDevice ? 'graphite' : 'ganesh',
     graphiteEnabled: hasDevice,
     nativeDeviceAvailable: hasDevice,
   }

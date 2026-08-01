@@ -9,6 +9,8 @@
 
 
 
+#include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/JArrayBuffer.hpp>
 #include <string>
 #include <vector>
 
@@ -42,17 +44,22 @@ namespace margelo::nitro::tgfx {
   }
 
   // Properties
-  std::string JHybridTgfxViewSpec::getScene() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getScene");
-    auto __result = method(_javaPart);
-    return __result->toStdString();
-  }
-  void JHybridTgfxViewSpec::setScene(const std::string& scene) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* scene */)>("setScene");
-    method(_javaPart, jni::make_jstring(scene));
-  }
+  
 
   // Methods
+  void JHybridTgfxViewSpec::setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JArrayBuffer::javaobject> /* scene */, jni::alias_ref<jni::JArrayClass<jni::JString>> /* strings */)>("setScene");
+    method(_javaPart, JArrayBuffer::wrap(scene), [&](auto&& __input) {
+      size_t __size = __input.size();
+      jni::local_ref<jni::JArrayClass<jni::JString>> __array = jni::JArrayClass<jni::JString>::newArray(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        const auto& __element = __input[__i];
+        auto __elementJni = jni::make_jstring(__element);
+        __array->setElement(__i, *__elementJni);
+      }
+      return __array;
+    }(strings));
+  }
   void JHybridTgfxViewSpec::invalidate() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("invalidate");
     method(_javaPart);

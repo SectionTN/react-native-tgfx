@@ -24,7 +24,6 @@ import { TgfxNativeView, type TgfxViewRef } from 'react-native-tgfx';
 
 const BLUR_RADIUS = 25;
 const CONTOURS: (keyof Contours)[] = ['FACE', 'LEFT_CHEEK', 'RIGHT_CHEEK'];
-const EMPTY_SCENE = '{"v":1,"root":{"t":"g","ch":[]}}';
 
 export function TgfxFaceBlur() {
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -115,7 +114,6 @@ export function TgfxFaceBlur() {
       />
       <TgfxNativeView
         style={StyleSheet.absoluteFill}
-        scene={EMPTY_SCENE}
         hybridRef={hybridRef}
       />
       {/* <Text style={styles.badge}>tgfx · MLKit · VisionCamera v5</Text> */}

@@ -121,18 +121,20 @@ open class HybridTgfxViewSpec_cxx {
   }
 
   // Properties
-  public final var scene: std.string {
-    @inline(__always)
-    get {
-      return std.string(self.__implementation.scene)
-    }
-    @inline(__always)
-    set {
-      self.__implementation.scene = String(newValue)
-    }
-  }
+  
 
   // Methods
+  @inline(__always)
+  public final func setScene(scene: ArrayBuffer, strings: bridge.std__vector_std__string_) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.setScene(scene: scene, strings: strings.map({ __item in String(__item) }))
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
   @inline(__always)
   public final func invalidate() -> bridge.Result_void_ {
     do {

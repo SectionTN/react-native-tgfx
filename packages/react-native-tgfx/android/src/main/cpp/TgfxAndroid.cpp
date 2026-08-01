@@ -4,7 +4,9 @@
 #include <jni.h>
 
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 #include "TgfxRenderer.hpp"
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
@@ -89,15 +91,47 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setPixelRatio(JNIEnv*, jobject, jlong ptr
 
 JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
-                                                jstring scene) {
+                                                jobject sceneBuffer,
+                                                jobjectArray stringTable) {
   auto* view = asView(ptr);
-  if (view == nullptr || scene == nullptr) {
+  if (view == nullptr || sceneBuffer == nullptr) {
     return;
   }
-  const char* chars = env->GetStringUTFChars(scene, nullptr);
-  if (chars != nullptr) {
-    view->renderer.setScene(std::string(chars));
-    env->ReleaseStringUTFChars(scene, chars);
+  // The ArrayBuffer belongs to JS and is only valid for this call, so the
+  // renderer copies the words before returning.
+  auto* words = static_cast<const double*>(
+      env->GetDirectBufferAddress(sceneBuffer));
+  auto bytes = env->GetDirectBufferCapacity(sceneBuffer);
+  if (words == nullptr || bytes <= 0) {
+    return;
+  }
+  std::vector<std::string> strings;
+  if (stringTable != nullptr) {
+    jsize count = env->GetArrayLength(stringTable);
+    strings.reserve(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+      auto item = reinterpret_cast<jstring>(
+          env->GetObjectArrayElement(stringTable, i));
+      const char* chars = item != nullptr
+                              ? env->GetStringUTFChars(item, nullptr)
+                              : nullptr;
+      strings.emplace_back(chars != nullptr ? chars : "");
+      if (chars != nullptr) {
+        env->ReleaseStringUTFChars(item, chars);
+      }
+      env->DeleteLocalRef(item);
+    }
+  }
+  view->renderer.setScene(
+      std::span<const double>(words, static_cast<size_t>(bytes) / sizeof(double)),
+      strings);
+}
+
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_clearScene(JNIEnv*, jobject, jlong ptr) {
+  auto* view = asView(ptr);
+  if (view != nullptr) {
+    view->renderer.clearScene();
   }
 }
 

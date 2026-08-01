@@ -13,6 +13,7 @@ namespace margelo::nitro::tgfx { class HybridTgfxViewSpec; }
 
 // Include C++ defined types
 #include "HybridTgfxViewSpec.hpp"
+#include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>

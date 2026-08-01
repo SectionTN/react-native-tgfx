@@ -15,6 +15,7 @@
 
 
 
+#include <NitroModules/ArrayBuffer.hpp>
 #include <string>
 #include <vector>
 
@@ -45,11 +46,11 @@ namespace margelo::nitro::tgfx {
 
     public:
       // Properties
-      virtual std::string getScene() = 0;
-      virtual void setScene(const std::string& scene) = 0;
+      
 
     public:
       // Methods
+      virtual void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) = 0;
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
       virtual void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) = 0;

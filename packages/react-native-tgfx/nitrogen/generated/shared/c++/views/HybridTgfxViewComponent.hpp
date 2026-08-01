@@ -16,7 +16,6 @@
 #include <react/renderer/components/view/ConcreteViewShadowNode.h>
 #include <react/renderer/components/view/ViewProps.h>
 
-#include <string>
 #include <memory>
 #include "HybridTgfxViewSpec.hpp"
 #include <functional>
@@ -42,7 +41,6 @@ namespace margelo::nitro::tgfx::views {
                         const react::RawProps& rawProps);
 
   public:
-    CachedProp<std::string> scene;
     CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> hybridRef;
 
   private:

@@ -1,42 +1,36 @@
 import { NodeType, type Node } from '../reconciler/types'
 import type { Color } from './colors'
 import {
-  compilePaint,
   mergePaint,
+  NO_PAINT_PROPS,
   pickPaintInput,
+  writePaint,
   type GradientInput,
   type PaintInput,
 } from './paint'
 import { toRadians, type Transform, type Vector } from './transform'
 import {
   isSharedValue,
-  num,
   resolveNumber,
   resolveValue,
-  SlotAllocator,
   type MaybeSharedValue,
-  type Slot,
 } from './values'
+import { Kind, type SceneWriter } from './writer'
 
-/** Compiled scene wire format (mirrored by the native C++ parser). */
-export interface Scene {
-  v: 1
-  root: CompiledNode
-}
-
-/** Result of compiling: the JSON program plus the ordered animated values. */
+/** Result of compiling: the binary program plus the ordered animated values. */
 export interface CompileResult {
-  json: string
+  buffer: ArrayBuffer
+  strings: string[]
   values: MaybeSharedValue<unknown>[]
 }
-
-type CompiledNode = Record<string, unknown> & { t: string }
-type Num = number | Slot
 
 interface CompileCtx {
   paint: PaintInput
   opacity: number
 }
+
+/** Transform op codes, mirrored by the native parser. */
+const Op = { translate: 0, scale: 1, rotate: 2, skewX: 3, skewY: 4 } as const
 
 function vec(input: unknown): Vector | undefined {
   if (input == null) {
@@ -97,16 +91,13 @@ function extractGradient(node: Node): GradientInput | undefined {
   return undefined
 }
 
-function localPaint(node: Node): {
-  paint: PaintInput
-  drawingChildren: Node[]
-} {
-  let paint: PaintInput = pickPaintInput(node.props)
-  const ownGradient = node.props.gradient as GradientInput | undefined
-  if (ownGradient != null) {
-    paint.gradient = ownGradient
-  }
-  const drawingChildren: Node[] = []
+/**
+ * Merge a node's `<Paint>` and gradient children into its own paint. Returns
+ * null when it has none, which is the common case — the caller then reads the
+ * node's props directly instead of allocating a merged paint per node.
+ */
+function paintFromChildren(node: Node): PaintInput | null {
+  let paint: PaintInput | null = null
   for (const child of node.children) {
     if (child.type === NodeType.Paint) {
       const childPaint = pickPaintInput(child.props)
@@ -116,169 +107,219 @@ function localPaint(node: Node): {
           childPaint.gradient = grad
         }
       }
-      paint = mergePaint(paint, childPaint)
+      paint = mergePaint(paint ?? pickPaintInput(node.props), childPaint)
     } else {
       const grad = extractGradient(child)
       if (grad != null) {
+        paint = paint ?? pickPaintInput(node.props)
         paint.gradient = grad
-      } else {
-        drawingChildren.push(child)
       }
+    }
+  }
+  return paint
+}
+
+/** A group's own paint plus the children that actually draw. */
+function localPaint(node: Node): {
+  paint: PaintInput
+  drawingChildren: Node[]
+} {
+  const paint = paintFromChildren(node) ?? pickPaintInput(node.props)
+  const ownGradient = node.props.gradient as GradientInput | undefined
+  if (ownGradient != null && paint.gradient == null) {
+    paint.gradient = ownGradient
+  }
+  const drawingChildren: Node[] = []
+  for (const child of node.children) {
+    if (child.type !== NodeType.Paint && extractGradient(child) == null) {
+      drawingChildren.push(child)
     }
   }
   return { paint, drawingChildren }
 }
 
-function compileDrawing(
-  node: Node,
-  ctx: CompileCtx,
-  alloc: SlotAllocator
-): CompiledNode | null {
+/** Write one drawing node; returns false when the node type is not drawable. */
+function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx): boolean {
   const p = node.props
-  const { paint: local } = localPaint(node)
-  const cp = compilePaint(mergePaint(ctx.paint, local))
 
-  // Final alpha = inherited group opacity * own opacity. When there is no group
-  // opacity and the own opacity is animated, emit it as a live slot.
-  if (ctx.opacity === 1 && isSharedValue(p.opacity)) {
-    cp.a = { __s: alloc.slot(p.opacity as MaybeSharedValue<unknown>) }
-  } else {
-    cp.a = ctx.opacity * resolveNumber(p.opacity, 1)
-  }
-
-  const n = (v: unknown, fallback = 0): Num => num(v, alloc, fallback)
+  // Final alpha = inherited group opacity * own opacity. With no group opacity
+  // and an animated own opacity, the alpha stays a live slot.
+  const alpha =
+    ctx.opacity === 1 && isSharedValue(p.opacity)
+      ? p.opacity
+      : ctx.opacity * resolveNumber(p.opacity, 1)
 
   switch (node.type) {
     case NodeType.Rect:
-      return { t: 'r', x: n(p.x), y: n(p.y), w: n(p.width), h: n(p.height), p: cp }
+      w.push(Kind.Rect)
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
+      w.pushAnim(p.width)
+      w.pushAnim(p.height)
+      break
     case NodeType.RoundedRect: {
-      const hasR = p.r !== undefined
-      return {
-        t: 'rr',
-        x: n(p.x),
-        y: n(p.y),
-        w: n(p.width),
-        h: n(p.height),
-        rx: p.rx !== undefined ? n(p.rx) : hasR ? n(p.r) : 0,
-        ry: p.ry !== undefined ? n(p.ry) : hasR ? n(p.r) : 0,
-        p: cp,
-      }
+      const radius = p.r
+      w.push(Kind.RRect)
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
+      w.pushAnim(p.width)
+      w.pushAnim(p.height)
+      w.pushAnim(p.rx !== undefined ? p.rx : radius)
+      w.pushAnim(p.ry !== undefined ? p.ry : radius)
+      break
     }
     case NodeType.Oval:
-      return { t: 'o', x: n(p.x), y: n(p.y), w: n(p.width), h: n(p.height), p: cp }
+      w.push(Kind.Oval)
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
+      w.pushAnim(p.width)
+      w.pushAnim(p.height)
+      break
     case NodeType.Circle:
-      return { t: 'c', cx: n(p.cx), cy: n(p.cy), r: n(p.r), p: cp }
+      w.push(Kind.Circle)
+      w.pushAnim(p.cx)
+      w.pushAnim(p.cy)
+      w.pushAnim(p.r)
+      break
     case NodeType.Line:
-      return {
-        t: 'ln',
-        x1: n(p.x1),
-        y1: n(p.y1),
-        x2: n(p.x2),
-        y2: n(p.y2),
-        p: cp,
-      }
+      w.push(Kind.Line)
+      w.pushAnim(p.x1)
+      w.pushAnim(p.y1)
+      w.pushAnim(p.x2)
+      w.pushAnim(p.y2)
+      break
     case NodeType.Path:
-      return { t: 'pa', d: String(resolveValue(p.path) ?? ''), p: cp }
+      w.push(Kind.Path)
+      w.pushString(String(resolveValue(p.path) ?? ''))
+      break
     case NodeType.Image:
-      return {
-        t: 'im',
-        x: n(p.x),
-        y: n(p.y),
-        w: n(p.width),
-        h: n(p.height),
-        src: String(resolveValue(p.image) ?? ''),
-        fit: { fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1,
-      }
+      w.push(Kind.Image)
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
+      w.pushAnim(p.width)
+      w.pushAnim(p.height)
+      w.pushString(String(resolveValue(p.image) ?? ''))
+      w.push({ fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1)
+      // Images carry no paint; drawImageRect uses the default paint.
+      return true
     case NodeType.Text:
-      return {
-        t: 'tx',
-        x: n(p.x),
-        y: n(p.y),
-        s: String(resolveValue(p.text) ?? ''),
-        fs: n(p.fontSize, 14),
-        ...(p.fontFamily != null ? { ff: String(p.fontFamily) } : {}),
-        p: cp,
-      }
+      w.push(Kind.Text)
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
+      w.pushString(String(resolveValue(p.text) ?? ''))
+      w.pushAnim(p.fontSize, 14)
+      w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
+      break
     default:
-      return null
+      return false
   }
+  const own = paintFromChildren(node)
+  if (own == null) {
+    writePaint(w, p, ctx.paint, alpha)
+  } else {
+    writePaint(w, NO_PAINT_PROPS, mergePaint(ctx.paint, own), alpha)
+  }
+  return true
 }
 
-/** Build a list of transform ops with animated values resolved to slots. */
-function buildOps(
+/** Write a group's transform ops; returns the number written. */
+function writeOps(
+  w: SceneWriter,
   transform: Transform,
-  origin: Vector | undefined,
-  alloc: SlotAllocator
-): Record<string, unknown>[] {
-  const ops: Record<string, unknown>[] = []
-  const angle = (v: unknown): Num =>
-    isSharedValue(v)
-      ? { __s: alloc.slot(v as MaybeSharedValue<unknown>) }
-      : toRadians(v as number | string)
-  const n = (v: unknown, fallback = 0): Num => num(v, alloc, fallback)
-
-  if (origin != null && (origin.x !== 0 || origin.y !== 0)) {
-    ops.push({ t: 'translate', x: origin.x, y: origin.y })
+  origin: Vector | undefined
+): number {
+  let count = 0
+  const shift = origin != null && (origin.x !== 0 || origin.y !== 0) ? origin : null
+  const angle = (v: unknown): void => {
+    if (isSharedValue(v)) {
+      w.pushAnim(v)
+    } else {
+      w.push(toRadians(v as number | string))
+    }
+  }
+  if (shift != null) {
+    w.push(Op.translate)
+    w.push(shift.x)
+    w.push(shift.y)
+    count++
   }
   for (const op of transform) {
     const o = op as Record<string, unknown>
     if ('translateX' in o) {
-      ops.push({ t: 'translate', x: n(o.translateX), y: 0 })
+      w.push(Op.translate)
+      w.pushAnim(o.translateX)
+      w.push(0)
     } else if ('translateY' in o) {
-      ops.push({ t: 'translate', x: 0, y: n(o.translateY) })
+      w.push(Op.translate)
+      w.push(0)
+      w.pushAnim(o.translateY)
     } else if ('translate' in o) {
       const t = o.translate as [unknown, unknown]
-      ops.push({ t: 'translate', x: n(t[0]), y: n(t[1]) })
+      w.push(Op.translate)
+      w.pushAnim(t[0])
+      w.pushAnim(t[1])
     } else if ('scale' in o) {
-      const s = n(o.scale, 1)
-      ops.push({ t: 'scale', x: s, y: s })
+      // One animated scale drives both axes, so it is written into both slots.
+      w.push(Op.scale)
+      w.pushAnim(o.scale, 1)
+      w.pushAnim(o.scale, 1)
     } else if ('scaleX' in o) {
-      ops.push({ t: 'scale', x: n(o.scaleX, 1), y: 1 })
+      w.push(Op.scale)
+      w.pushAnim(o.scaleX, 1)
+      w.push(1)
     } else if ('scaleY' in o) {
-      ops.push({ t: 'scale', x: 1, y: n(o.scaleY, 1) })
+      w.push(Op.scale)
+      w.push(1)
+      w.pushAnim(o.scaleY, 1)
     } else if ('rotate' in o || 'rotateZ' in o) {
-      ops.push({ t: 'rotate', r: angle('rotate' in o ? o.rotate : o.rotateZ) })
+      w.push(Op.rotate)
+      angle('rotate' in o ? o.rotate : o.rotateZ)
+      w.push(0)
     } else if ('skewX' in o) {
-      ops.push({ t: 'skewX', v: angle(o.skewX) })
+      w.push(Op.skewX)
+      angle(o.skewX)
+      w.push(0)
     } else if ('skewY' in o) {
-      ops.push({ t: 'skewY', v: angle(o.skewY) })
+      w.push(Op.skewY)
+      angle(o.skewY)
+      w.push(0)
+    } else {
+      continue
     }
+    count++
   }
-  if (origin != null && (origin.x !== 0 || origin.y !== 0)) {
-    ops.push({ t: 'translate', x: -origin.x, y: -origin.y })
+  if (shift != null) {
+    w.push(Op.translate)
+    w.push(-shift.x)
+    w.push(-shift.y)
+    count++
   }
-  return ops
+  return count
 }
 
-function compileGroup(
-  node: Node,
-  ctx: CompileCtx,
-  alloc: SlotAllocator
-): CompiledNode {
+function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const { paint: local, drawingChildren } = localPaint(node)
   const childCtx: CompileCtx = {
     paint: mergePaint(ctx.paint, local),
     opacity: ctx.opacity * resolveNumber(node.props.opacity, 1),
   }
-  const transform = node.props.transform
-  const origin = vec(node.props.origin)
-  const out: CompiledNode = { t: 'g', ch: compileNodes(drawingChildren, childCtx, alloc) }
-  const ops = buildOps((transform as Transform) ?? [], origin, alloc)
-  if (ops.length > 0) {
-    out.ops = ops
-  }
-  return out
+  w.push(Kind.Group)
+  const opCountAt = w.reserve()
+  w.patch(
+    opCountAt,
+    writeOps(w, (node.props.transform as Transform) ?? [], vec(node.props.origin))
+  )
+  const childCountAt = w.reserve()
+  w.patch(childCountAt, writeNodes(w, drawingChildren, childCtx))
 }
 
-function compileNodes(
-  nodes: Node[],
-  ctx: CompileCtx,
-  alloc: SlotAllocator
-): CompiledNode[] {
-  const out: CompiledNode[] = []
+/** Write a node list; returns how many nodes were actually written. */
+function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
+  let count = 0
   for (const node of nodes) {
     if (node.type === NodeType.Group) {
-      out.push(compileGroup(node, ctx, alloc))
+      writeGroup(w, node, ctx)
+      count++
     } else if (
       node.type === NodeType.Paint ||
       node.type === NodeType.LinearGradient ||
@@ -290,27 +331,23 @@ function compileNodes(
       node.type === NodeType.Shader
     ) {
       continue
-    } else {
-      const compiled = compileDrawing(node, ctx, alloc)
-      if (compiled != null) {
-        out.push(compiled)
-      }
+    } else if (writeDrawing(w, node, ctx)) {
+      count++
     }
   }
-  return out
+  return count
 }
 
 const ROOT_CTX: CompileCtx = { paint: {}, opacity: 1 }
 
 /**
- * Compile a list of root nodes into the serialized scene JSON plus the ordered
- * list of SharedValues whose live values back the scene's `{ __s }` slots.
+ * Compile a list of root nodes into the binary draw program plus the ordered
+ * list of SharedValues backing its animated slots. The writer is reused across
+ * commits, so compiling allocates nothing beyond the occasional buffer growth.
  */
-export function compileScene(roots: Node[]): CompileResult {
-  const alloc = new SlotAllocator()
-  const scene: Scene = {
-    v: 1,
-    root: { t: 'g', ch: compileNodes(roots, ROOT_CTX, alloc) },
-  }
-  return { json: JSON.stringify(scene), values: alloc.values }
+export function compileScene(roots: Node[], w: SceneWriter): CompileResult {
+  w.reset()
+  const countAt = w.reserve()
+  w.patch(countAt, writeNodes(w, roots, ROOT_CTX))
+  return { buffer: w.finish(), strings: w.strings, values: w.values }
 }

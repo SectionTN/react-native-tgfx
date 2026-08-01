@@ -8,8 +8,10 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -33,8 +35,14 @@ class TgfxRenderer {
   /// Bind to a freshly created platform window. Replaces any previous window.
   void setWindow(std::shared_ptr<tgfx::Window> window);
 
-  /// Update the JSON draw-program; the next draw() reflects it.
-  void setScene(const std::string& sceneJson);
+  /// Stage a new binary draw-program. `words` belongs to the caller and is only
+  /// valid for this call, so it is copied here; the (cheap) compile into the
+  /// command list then happens on the render thread inside draw().
+  void setScene(std::span<const double> words,
+                const std::vector<std::string>& strings);
+
+  /// Drop the current program (a recycled view must not flash the old scene).
+  void clearScene();
 
   /// Update the live animation value slots (called every frame from a worklet).
   void setValues(const std::vector<double>& values);
@@ -62,7 +70,10 @@ class TgfxRenderer {
  private:
   std::shared_ptr<tgfx::Window> window_;
   std::shared_ptr<tgfx::Surface> surface_;
-  std::string lastScene_;
+  std::vector<double> pendingScene_;
+  std::vector<std::string> pendingStrings_;
+  bool scenePending_ = false;
+  uint64_t sceneHash_ = 0;
   std::vector<double> values_;
   SceneRenderer scene_;
   std::mutex mutex_;
