@@ -27,18 +27,23 @@ const HOST_CONTEXT = {}
 
 const HostTransitionContext = createContext<unknown>(null)
 
-function shallowEqualProps(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  const ak = Object.keys(a)
-  const bk = Object.keys(b)
-  if (ak.length !== bk.length) {
-    return false
-  }
-  for (const k of ak) {
-    if (a[k] !== b[k]) {
+// Called for every cloned node on every commit, so it counts keys in place
+// rather than materialising two Object.keys arrays per node per frame.
+export function shallowEqualProps(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  let count = 0
+  for (const key in a) {
+    if (a[key] !== b[key]) {
       return false
     }
+    count++
   }
-  return true
+  for (const _ in b) {
+    if (count === 0) {
+      return false
+    }
+    count--
+  }
+  return count === 0
 }
 
 const hostConfig = {
