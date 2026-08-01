@@ -77,16 +77,25 @@ function wake() {
   adb(['shell', 'input', 'keyevent', 'KEYCODE_WAKEUP'])
   adb(['shell', 'wm', 'dismiss-keyguard'])
   adb(['shell', 'cmd', 'statusbar', 'collapse'])
+  // The keyguard animates out; driving the UI before it finishes misses taps.
+  run('sleep', ['1'])
 }
 
-function waitForThermalGate() {
-  // Blanking the screen cools faster, but a credential-protected lockscreen
-  // then covers the app and no adb command can dismiss it, so stay awake.
-  // ColorOS exits non-zero here despite applying the setting.
+// Blanking the screen cools much faster, but on a device with a credential
+// lockscreen it comes back covered by a keyguard no adb command can dismiss.
+// `locksettings get-disabled` reports the credential without touching the
+// screen: it errors on a secured device and prints a boolean otherwise.
+function canBlankScreen() {
   try {
-    adb(['shell', 'svc', 'power', 'stayon', 'true'])
-  } catch {}
+    return adb(['shell', 'locksettings', 'get-disabled']).trim() === 'true'
+  } catch {
+    return false
+  }
+}
+
+function waitForThermalGate(blankable) {
   let previousSkinC = Number.NaN
+  let blanked = false
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = thermal()
     // The device settles at thermal status 1 after a few runs and never drops
@@ -101,6 +110,10 @@ function waitForThermalGate() {
     if (state.status <= 1 && (cool || plateaued)) {
       wake()
       return state
+    }
+    if (blankable && !blanked) {
+      adb(['shell', 'input', 'keyevent', 'KEYCODE_SLEEP'])
+      blanked = true
     }
     process.stdout.write(
       `cooldown status=${state.status} skin=${state.skinC.toFixed(1)}C bat=${state.batteryC.toFixed(1)}C\n`
@@ -143,6 +156,7 @@ const median = (values) => {
 }
 
 const records = []
+const blankable = canBlankScreen()
 mkdirSync(artifacts, { recursive: true })
 const outputPath = resolve(artifacts, `quick-${tag}.json`)
 
@@ -151,7 +165,7 @@ for (let rep = 0; rep < reps; rep += 1) {
     let attempts = 0
     for (;;) {
       attempts += 1
-      const thermalBefore = waitForThermalGate()
+      const thermalBefore = waitForThermalGate(blankable)
       process.stdout.write(
         `run rep=${rep + 1}/${reps} renderer=${renderer} skin=${thermalBefore.skinC.toFixed(1)}C\n`
       )
