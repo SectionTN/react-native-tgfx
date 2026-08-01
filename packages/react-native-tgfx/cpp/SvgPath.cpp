@@ -19,15 +19,6 @@ struct Cursor {
     }
   }
 
-  bool hasNumber() {
-    skipSep();
-    if (p >= end) {
-      return false;
-    }
-    char c = *p;
-    return (c == '+' || c == '-' || c == '.' || (c >= '0' && c <= '9'));
-  }
-
   float number() {
     skipSep();
     char* next = nullptr;
@@ -52,6 +43,7 @@ tgfx::Path parseSvgPath(const std::string& data) {
   float ctrlX = 0, ctrlY = 0;    // last control point (for S/T reflection)
   char prevCmd = 0;
   char cmd = 0;
+  bool tookArgs = false;
 
   while (true) {
     cur.skipSep();
@@ -63,6 +55,10 @@ tgfx::Path parseSvgPath(const std::string& data) {
       cmd = c;
       cur.p++;
     } else {
+      // Only an argument-taking command can repeat implicitly; Z takes none.
+      if (!tookArgs) {
+        break;
+      }
       // Implicit repeat of previous command (M->L, m->l).
       if (cmd == 'M') {
         cmd = 'L';
@@ -71,6 +67,7 @@ tgfx::Path parseSvgPath(const std::string& data) {
       }
     }
 
+    const char* argsBegin = cur.p;
     bool relative = std::islower(static_cast<unsigned char>(cmd)) != 0;
     switch (std::toupper(static_cast<unsigned char>(cmd))) {
       case 'M': {
@@ -209,6 +206,7 @@ tgfx::Path parseSvgPath(const std::string& data) {
         cur.p = cur.end;
         break;
     }
+    tookArgs = cur.p != argsBegin;
     prevCmd = cmd;
   }
   return path;
