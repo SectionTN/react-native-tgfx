@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from 'react'
+import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
   CircleProps,
@@ -12,41 +12,25 @@ import type {
 } from '../types'
 
 /** Axis-aligned rectangle. */
-export function Rect(props: RectProps): ReactElement {
-  return createElement(NodeType.Rect, props)
-}
+export const Rect = NodeType.Rect as unknown as FC<RectProps>
 
 /** Rounded rectangle (`r`, or independent `rx`/`ry`). */
-export function RoundedRect(props: RoundedRectProps): ReactElement {
-  return createElement(NodeType.RoundedRect, props)
-}
+export const RoundedRect = NodeType.RoundedRect as unknown as FC<RoundedRectProps>
 
 /** Ellipse inscribed in the given rectangle. */
-export function Oval(props: OvalProps): ReactElement {
-  return createElement(NodeType.Oval, props)
-}
+export const Oval = NodeType.Oval as unknown as FC<OvalProps>
 
 /** Circle centered at (`cx`, `cy`) with radius `r`. */
-export function Circle(props: CircleProps): ReactElement {
-  return createElement(NodeType.Circle, props)
-}
+export const Circle = NodeType.Circle as unknown as FC<CircleProps>
 
 /** Straight line from (`x1`, `y1`) to (`x2`, `y2`). */
-export function Line(props: LineProps): ReactElement {
-  return createElement(NodeType.Line, props)
-}
+export const Line = NodeType.Line as unknown as FC<LineProps>
 
 /** Vector path from SVG path data. */
-export function Path(props: PathProps): ReactElement {
-  return createElement(NodeType.Path, props)
-}
+export const Path = NodeType.Path as unknown as FC<PathProps>
 
 /** Bitmap image drawn into the destination rect with the given `fit`. */
-export function Image(props: ImageProps): ReactElement {
-  return createElement(NodeType.Image, props)
-}
+export const Image = NodeType.Image as unknown as FC<ImageProps>
 
 /** A run of text with its baseline at (`x`, `y`). */
-export function Text(props: TextProps): ReactElement {
-  return createElement(NodeType.Text, props)
-}
+export const Text = NodeType.Text as unknown as FC<TextProps>

@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from 'react'
+import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
   LinearGradientProps,
@@ -14,44 +14,28 @@ import type {
  * a child of a `<Group>` it sets the inherited default paint for descendants. A
  * gradient child (`<LinearGradient>` / `<RadialGradient>`) sets its shader.
  */
-export function Paint(props: PaintComponentProps): ReactElement {
-  return createElement(NodeType.Paint, props)
-}
+export const Paint = NodeType.Paint as unknown as FC<PaintComponentProps>
 
 /** Linear gradient shader; use inside a shape or `<Paint>`. */
-export function LinearGradient(props: LinearGradientProps): ReactElement {
-  return createElement(NodeType.LinearGradient, props)
-}
+export const LinearGradient = NodeType.LinearGradient as unknown as FC<LinearGradientProps>
 
 /** Radial gradient shader; use inside a shape or `<Paint>`. */
-export function RadialGradient(props: RadialGradientProps): ReactElement {
-  return createElement(NodeType.RadialGradient, props)
-}
+export const RadialGradient = NodeType.RadialGradient as unknown as FC<RadialGradientProps>
 
 /** Sweep (conic) gradient shader. `start`/`end` are in degrees, as in Skia. */
-export function SweepGradient(props: SweepGradientProps): ReactElement {
-  return createElement(NodeType.SweepGradient, props)
-}
+export const SweepGradient = NodeType.SweepGradient as unknown as FC<SweepGradientProps>
 
 /** Diamond gradient shader, drawn from the center to the diamond's vertices. */
-export function DiamondGradient(props: RadialGradientProps): ReactElement {
-  return createElement(NodeType.DiamondGradient, props)
-}
+export const DiamondGradient = NodeType.DiamondGradient as unknown as FC<RadialGradientProps>
 
 /** Perlin fractal-noise shader. */
-export function FractalNoise(props: NoiseProps): ReactElement {
-  return createElement(NodeType.FractalNoise, props)
-}
+export const FractalNoise = NodeType.FractalNoise as unknown as FC<NoiseProps>
 
 /**
  * A runtime shader. `source` is SkSL (the subset tgfx can translate); `uniforms`
  * supplies a value per declared uniform.
  */
-export function Shader(props: ShaderProps): ReactElement {
-  return createElement(NodeType.Shader, props)
-}
+export const Shader = NodeType.Shader as unknown as FC<ShaderProps>
 
 /** Perlin turbulence shader — like fractal noise but with sharper patterns. */
-export function Turbulence(props: NoiseProps): ReactElement {
-  return createElement(NodeType.Turbulence, props)
-}
+export const Turbulence = NodeType.Turbulence as unknown as FC<NoiseProps>
