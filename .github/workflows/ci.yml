@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  package:
+    name: Package (typecheck, tests, codegen)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        working-directory: packages/react-native-tgfx
+        run: bun run typecheck
+      - name: Unit tests
+        working-directory: packages/react-native-tgfx
+        run: bun run test
+      - name: Nitrogen output is committed and in sync
+        working-directory: packages/react-native-tgfx
+        run: |
+          bunx nitrogen
+          cd ../..
+          if ! git diff --quiet -- packages/react-native-tgfx/nitrogen; then
+            echo "::error::nitrogen output is stale — run 'bun specs' and commit the result"
+            git diff --stat -- packages/react-native-tgfx/nitrogen
+            exit 1
+          fi
+
+  ios:
+    name: iOS Simulator build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Fetch tgfx third-party dependencies
+        working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
+        run: ./install_tools.sh && ./sync_deps.sh
+      - name: Build the tgfx static library
+        run: bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
+      - name: Install pods
+        working-directory: benchmarks/renderer-benchmark
+        run: |
+          npm ci
+          cd ios && pod install
+      # Compile only: this is the step that would have caught the missing
+      # drawCameraFrame implementation and the unwrapped baseAddress.
+      - name: Build
+        working-directory: benchmarks/renderer-benchmark/ios
+        run: |
+          xcodebuild -workspace RendererBenchmark.xcworkspace \
+            -scheme RendererBenchmark -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
+
+  android:
+    name: Android release build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Fetch tgfx third-party dependencies
+        working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
+        run: ./install_tools.sh && ./sync_deps.sh
+      - name: Assemble
+        working-directory: benchmarks/renderer-benchmark
+        run: |
+          npm ci
+          cd android && ./gradlew assembleRelease -x lint
