@@ -87,6 +87,21 @@ test('multiplies group opacity into the child alpha', () => {
   expect(used[17]).toBeCloseTo(0.25)
 })
 
+// The invariant the native dedupe key rests on: strings are indices, so the
+// words alone cannot tell a content change apart. See cpp/SceneHash.hpp.
+test('a text-only change leaves the word buffer byte-identical', () => {
+  const usedBytes = (buffer: ArrayBuffer) =>
+    new Uint8Array(buffer).slice(0, new Float64Array(buffer)[1]! * 8)
+  const writer = new SceneWriter()
+  const props = { x: 1, y: 2, fontSize: 16 }
+  const first = compileScene([node(NodeType.Text, { ...props, text: '1' })], writer)
+  const firstWords = usedBytes(first.buffer)
+  const firstStrings = first.strings.slice()
+  const second = compileScene([node(NodeType.Text, { ...props, text: '2' })], writer)
+  expect(usedBytes(second.buffer)).toEqual(firstWords)
+  expect(second.strings).not.toEqual(firstStrings)
+})
+
 test('reuses the writer across compiles without leaking state', () => {
   const writer = new SceneWriter()
   const first = compileScene([node(NodeType.Path, { path: 'M0 0' })], writer)

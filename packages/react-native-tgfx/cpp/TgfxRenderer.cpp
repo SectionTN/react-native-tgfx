@@ -4,6 +4,7 @@
 
 #include <span>
 
+#include "SceneHash.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageFilter.h"
@@ -34,21 +35,6 @@ void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
   version_.fetch_add(1, std::memory_order_release);
 }
 
-namespace {
-
-/// FNV-1a over the raw program words, used to skip an unchanged program without
-/// keeping a second copy of it around to compare against.
-uint64_t hashWords(std::span<const double> words) {
-  uint64_t hash = 14695981039346656037ULL;
-  const auto* bytes = reinterpret_cast<const unsigned char*>(words.data());
-  for (size_t i = 0; i < words.size() * sizeof(double); i++) {
-    hash = (hash ^ bytes[i]) * 1099511628211ULL;
-  }
-  return hash;
-}
-
-}  // namespace
-
 void TgfxRenderer::setScene(std::span<const double> words,
                             const std::vector<std::string>& strings) {
   // The writer reuses (and grows) one buffer, so only the leading `words[1]`
@@ -61,7 +47,7 @@ void TgfxRenderer::setScene(std::span<const double> words,
     return;
   }
   words = words.first(used);
-  uint64_t hash = hashWords(words);
+  uint64_t hash = hashScene(words, strings);
   {
     // A reconciler commit can produce an identical program (an unrelated state
     // change upstream); skipping it avoids a rebuild and a redundant frame.
