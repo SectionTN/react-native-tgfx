@@ -1,0 +1,3 @@
+[test]
+# Keep bun test out of the vendored tgfx submodule.
+root = "src"
