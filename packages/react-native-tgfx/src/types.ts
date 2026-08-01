@@ -157,4 +157,4 @@ export interface NoiseProps {
   seed?: number
 }
 
-export interface PaintComponentProps extends PaintProps {}
+export type PaintComponentProps = PaintProps

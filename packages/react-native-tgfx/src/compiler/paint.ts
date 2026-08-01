@@ -17,7 +17,14 @@ export interface PaintInput {
 }
 
 export interface GradientInput {
-  kind: 'linear' | 'radial' | 'sweep' | 'diamond' | 'fractalNoise' | 'turbulence' | 'runtime'
+  kind:
+    | 'linear'
+    | 'radial'
+    | 'sweep'
+    | 'diamond'
+    | 'fractalNoise'
+    | 'turbulence'
+    | 'runtime'
   start?: Vector
   end?: Vector
   center?: Vector
@@ -90,12 +97,18 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
   w.push(SHADER_KIND[g.kind])
   switch (g.kind) {
     case 'runtime': {
-      const { body, uniformNames, uniformSizes } = transpileShader(g.source ?? '')
+      const { body, uniformNames, uniformSizes } = transpileShader(
+        g.source ?? ''
+      )
       w.pushString(body)
       w.push(uniformNames.length)
       for (const name of uniformNames) {
         const raw = g.uniforms?.[name]
-        const values = Array.isArray(raw) ? raw.map(Number) : raw != null ? [Number(raw)] : []
+        const values = Array.isArray(raw)
+          ? raw.map(Number)
+          : raw != null
+            ? [Number(raw)]
+            : []
         const size = uniformSizes[name] ?? 1
         w.pushString(name)
         w.push(size)
@@ -158,7 +171,8 @@ export function writePaint(
   const style = props.style !== undefined ? props.style : inherited.style
   const strokeWidth =
     props.strokeWidth !== undefined ? props.strokeWidth : inherited.strokeWidth
-  const cap = props.strokeCap !== undefined ? props.strokeCap : inherited.strokeCap
+  const cap =
+    props.strokeCap !== undefined ? props.strokeCap : inherited.strokeCap
   const join =
     props.strokeJoin !== undefined ? props.strokeJoin : inherited.strokeJoin
   const antiAlias =

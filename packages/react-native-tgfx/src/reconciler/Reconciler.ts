@@ -29,21 +29,21 @@ const HostTransitionContext = createContext<unknown>(null)
 
 // Called for every cloned node on every commit, so it counts keys in place
 // rather than materialising two Object.keys arrays per node per frame.
-export function shallowEqualProps(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  let count = 0
+export function shallowEqualProps(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): boolean {
   for (const key in a) {
     if (a[key] !== b[key]) {
       return false
     }
-    count++
   }
-  for (const _ in b) {
-    if (count === 0) {
+  for (const key in b) {
+    if (!(key in a)) {
       return false
     }
-    count--
   }
-  return count === 0
+  return true
 }
 
 const hostConfig = {
@@ -109,7 +109,11 @@ const hostConfig = {
       children: keepChildren ? [...instance.children] : [],
     }
   },
-  cloneHiddenInstance(instance: Instance, type: NodeTypeName, props: Record<string, unknown>): Instance {
+  cloneHiddenInstance(
+    instance: Instance,
+    type: NodeTypeName,
+    props: Record<string, unknown>
+  ): Instance {
     return { type, props, children: [...instance.children] }
   },
   cloneHiddenTextInstance(instance: Instance): Instance {
@@ -122,7 +126,10 @@ const hostConfig = {
     childSet.push(child)
   },
   finalizeContainerChildren(): void {},
-  replaceContainerChildren(container: Container, newChildren: Instance[]): void {
+  replaceContainerChildren(
+    container: Container,
+    newChildren: Instance[]
+  ): void {
     container.root = newChildren
   },
   clearContainer(container: Container): void {

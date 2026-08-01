@@ -92,7 +92,7 @@ function fromHsl(str: string): number {
   const l = parseFloat(parts[2] ?? '0') / 100
   const alpha = parts[3] != null ? parseFloat(parts[3]) : 1
   const c = (1 - Math.abs(2 * l - 1)) * s
-  const hp = ((((h % 360) + 360) % 360) / 60)
+  const hp = (((h % 360) + 360) % 360) / 60
   const x = c * (1 - Math.abs((hp % 2) - 1))
   let r = 0
   let g = 0
@@ -117,7 +117,12 @@ function fromHsl(str: string): number {
     b = x
   }
   const m = l - c / 2
-  return pack(Math.round(alpha * 255), (r + m) * 255, (g + m) * 255, (b + m) * 255)
+  return pack(
+    Math.round(alpha * 255),
+    (r + m) * 255,
+    (g + m) * 255,
+    (b + m) * 255
+  )
 }
 
 /** Resolve any supported color input to a packed `0xAARRGGBB` integer. */

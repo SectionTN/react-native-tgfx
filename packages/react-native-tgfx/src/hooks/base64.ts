@@ -1,5 +1,4 @@
-const CHARS =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 /** Encode raw bytes to a standard base64 string (no data-URI prefix). */
 export function bytesToBase64(bytes: Uint8Array): string {
