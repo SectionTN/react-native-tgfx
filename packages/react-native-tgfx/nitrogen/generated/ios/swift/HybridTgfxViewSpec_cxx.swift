@@ -121,7 +121,16 @@ open class HybridTgfxViewSpec_cxx {
   }
 
   // Properties
-  
+  public final var inHierarchy: Bool {
+    @inline(__always)
+    get {
+      return self.__implementation.inHierarchy
+    }
+    @inline(__always)
+    set {
+      self.__implementation.inHierarchy = newValue
+    }
+  }
 
   // Methods
   @inline(__always)

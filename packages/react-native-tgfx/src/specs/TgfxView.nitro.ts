@@ -15,7 +15,15 @@ import type {
  * structural change and replays it through tgfx on the platform's display-link
  * / choreographer callback.
  */
-export interface TgfxViewProps extends HybridViewProps {}
+export interface TgfxViewProps extends HybridViewProps {
+  /**
+   * Android composition mode: `true` draws the canvas inside the view hierarchy
+   * (a TextureView) so transparency and transforms behave like any other view;
+   * `false` gives it its own compositor layer, which is faster. Read once, when
+   * the native view is created.
+   */
+  inHierarchy: boolean
+}
 
 export interface TgfxViewMethods extends HybridViewMethods {
   /**

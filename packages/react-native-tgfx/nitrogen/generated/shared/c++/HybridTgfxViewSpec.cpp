@@ -14,6 +14,8 @@ namespace margelo::nitro::tgfx {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
+      prototype.registerHybridGetter("inHierarchy", &HybridTgfxViewSpec::getInHierarchy);
+      prototype.registerHybridSetter("inHierarchy", &HybridTgfxViewSpec::setInHierarchy);
       prototype.registerHybridMethod("setScene", &HybridTgfxViewSpec::setScene);
       prototype.registerHybridMethod("invalidate", &HybridTgfxViewSpec::invalidate);
       prototype.registerHybridMethod("setValues", &HybridTgfxViewSpec::setValues);

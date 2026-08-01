@@ -4,6 +4,7 @@
   "bubblingEventTypes": {},
   "directEventTypes": {},
   "validAttributes": {
+    "inHierarchy": true,
     "hybridRef": true
   }
 }

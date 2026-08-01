@@ -41,6 +41,7 @@ namespace margelo::nitro::tgfx::views {
                         const react::RawProps& rawProps);
 
   public:
+    CachedProp<bool> inHierarchy;
     CachedProp<std::optional<std::function<void(const std::shared_ptr<HybridTgfxViewSpec>& /* ref */)>>> hybridRef;
 
   private:

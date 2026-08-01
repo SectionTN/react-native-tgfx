@@ -50,7 +50,8 @@ namespace margelo::nitro::tgfx {
 
   public:
     // Properties
-    
+    bool getInHierarchy() override;
+    void setInHierarchy(bool inHierarchy) override;
 
   public:
     // Methods

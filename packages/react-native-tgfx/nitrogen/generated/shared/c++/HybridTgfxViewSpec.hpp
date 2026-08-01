@@ -46,7 +46,8 @@ namespace margelo::nitro::tgfx {
 
     public:
       // Properties
-      
+      virtual bool getInHierarchy() = 0;
+      virtual void setInHierarchy(bool inHierarchy) = 0;
 
     public:
       // Methods

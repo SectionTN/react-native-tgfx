@@ -79,7 +79,11 @@ using namespace margelo::nitro::tgfx::views;
   // 2. Update each prop individually
   swiftPart.beforeUpdate();
 
-  
+  // inHierarchy: boolean
+  if (newViewProps.inHierarchy.isDirty) {
+    swiftPart.setInHierarchy(newViewProps.inHierarchy.value);
+    newViewProps.inHierarchy.isDirty = false;
+  }
 
   swiftPart.afterUpdate();
 
