@@ -21,7 +21,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-SERIAL="${ANDROID_SERIAL:-RZCW30KE1NB}"
+SERIAL="${ANDROID_SERIAL:-$(adb devices | awk '$2=="device"{print $1; exit}')}"
+[ -n "$SERIAL" ] || { echo "no adb device connected"; exit 1; }
 
 rm -f "$HERE/android/app/build/generated/assets/react/release/index.android.bundle"
 cd "$HERE/android"

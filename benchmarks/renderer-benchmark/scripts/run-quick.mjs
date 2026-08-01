@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const artifacts = resolve(root, 'artifacts')
 const serial = process.env.ANDROID_SERIAL ?? 'RZCW30KE1NB'
-const session = 'renderer-benchmark'
+// One session per device, so two phones can be driven side by side.
+const session = `renderer-benchmark-${serial}`
 const app = 'com.rendererbenchmark'
 const labels = {
   'skia-graphite': 'Skia Graphite',
@@ -53,12 +54,22 @@ const agent = (args) =>
   run('agent-device', [...args, '--session', session, '--platform', 'android', '--serial', serial])
 const adb = (args) => run('adb', ['-s', serial, ...args])
 
+// Sensor names differ per vendor — SM-E146B reports SKIN/BAT, moto g35 reports
+// skin-thmzone/battery — so match on the name loosely and take the hottest
+// matching sensor rather than the first.
 function thermal() {
   const raw = adb(['shell', 'dumpsys', 'thermalservice'])
+  const temps = [...raw.matchAll(/mValue=([\d.]+),\s*mType=\d+,\s*mName=([^,\s}]+)/g)]
+  const hottest = (pattern) => {
+    const values = temps
+      .filter(([, , name]) => pattern.test(name))
+      .map(([, value]) => Number(value))
+    return values.length > 0 ? Math.max(...values) : Number.NaN
+  }
   return {
     status: Number(raw.match(/Thermal Status:\s*(\d+)/)?.[1] ?? -1),
-    skinC: Number(raw.match(/mValue=([\d.]+).*mName=SKIN,\s*mStatus/)?.[1] ?? Number.NaN),
-    batteryC: Number(raw.match(/mValue=([\d.]+).*mName=BAT,\s*mStatus/)?.[1] ?? Number.NaN),
+    skinC: hottest(/skin/i),
+    batteryC: hottest(/^bat/i),
   }
 }
 
@@ -69,19 +80,27 @@ function wake() {
 }
 
 function waitForThermalGate() {
-  let sleeping = false
+  // Blanking the screen cools faster, but a credential-protected lockscreen
+  // then covers the app and no adb command can dismiss it, so stay awake.
+  // ColorOS exits non-zero here despite applying the setting.
+  try {
+    adb(['shell', 'svc', 'power', 'stayon', 'true'])
+  } catch {}
+  let previousSkinC = Number.NaN
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = thermal()
     // The device settles at thermal status 1 after a few runs and never drops
     // back to 0, so the gate is a stable-and-cool check plus the thor-gpu
-    // control run, which reveals any drift between sessions.
-    if (state.status <= 1 && state.skinC <= 36.8 && state.batteryC <= 35) {
+    // control run, which reveals any drift between sessions. Idle temperature
+    // is device-specific (the Nord CE sits at 42C on USB power where the moto
+    // sits at 34C), so a plateau also opens the gate once the status is safe.
+    const cool = state.skinC <= 36.8 && state.batteryC <= 35
+    const plateaued =
+      Number.isFinite(previousSkinC) && Math.abs(state.skinC - previousSkinC) < 0.3
+    previousSkinC = state.skinC
+    if (state.status <= 1 && (cool || plateaued)) {
       wake()
       return state
-    }
-    if (!sleeping) {
-      adb(['shell', 'input', 'keyevent', 'KEYCODE_SLEEP'])
-      sleeping = true
     }
     process.stdout.write(
       `cooldown status=${state.status} skin=${state.skinC.toFixed(1)}C bat=${state.batteryC.toFixed(1)}C\n`
@@ -147,7 +166,14 @@ for (let rep = 0; rep < reps; rep += 1) {
       adb(['shell', 'dumpsys', 'gfxinfo', app, 'reset'])
       agent(['press', 'role=button label="Start benchmark"'])
       agent(['wait', String((warmup + duration + 2) * 1000)])
-      agent(['wait', 'text', 'Benchmark complete', '8000'])
+      // The published result in logcat is the source of truth; the on-screen
+      // text is only a hint, and waiting on it has failed on a run that
+      // completed perfectly well.
+      try {
+        agent(['wait', 'text', 'Benchmark complete', '8000'])
+      } catch {
+        process.stdout.write('  (result screen not detected; reading logcat)\n')
+      }
       const result = parsePublishedResult(adb(['logcat', '-d']))
       const gfxInfo = parseGfxInfo(adb(['shell', 'dumpsys', 'gfxinfo', app, 'framestats']))
       const thermalAfter = thermal()
