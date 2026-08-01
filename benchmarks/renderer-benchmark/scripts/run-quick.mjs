@@ -21,6 +21,7 @@ const labels = {
   'thor-cpu': 'Thor CPU',
   'thor-gpu': 'Thor GPU',
   tgfx: 'Tgfx GPU',
+  'tgfx-animated': 'Tgfx Animated',
 }
 
 const arg = (name, fallback) =>

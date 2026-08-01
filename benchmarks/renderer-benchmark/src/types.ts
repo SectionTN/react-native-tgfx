@@ -1,4 +1,9 @@
-export type RendererId = 'skia-graphite' | 'thor-cpu' | 'thor-gpu' | 'tgfx'
+export type RendererId =
+  | 'skia-graphite'
+  | 'thor-cpu'
+  | 'thor-gpu'
+  | 'tgfx'
+  | 'tgfx-animated'
 
 export type Shape =
   | {

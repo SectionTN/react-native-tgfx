@@ -11,6 +11,7 @@ import {
 import { benchmarkMetrics } from './nativeMetrics'
 import { buildScene, summarizeFrames } from './scene'
 import { getSkiaBackendProof, SkiaRenderer } from './renderers/SkiaRenderer'
+import { TgfxAnimatedRenderer } from './renderers/TgfxAnimatedRenderer'
 import { TgfxRenderer } from './renderers/TgfxRenderer'
 import { ThorRenderer } from './renderers/ThorRenderer'
 import type {
@@ -25,6 +26,7 @@ const renderers: { id: RendererId; label: string }[] = [
   { id: 'thor-cpu', label: 'Thor CPU' },
   { id: 'thor-gpu', label: 'Thor GPU' },
   { id: 'tgfx', label: 'Tgfx GPU' },
+  { id: 'tgfx-animated', label: 'Tgfx Animated' },
 ]
 
 const defaultConfig: BenchmarkConfig = {
@@ -77,6 +79,9 @@ function backendProof(renderer: RendererId): Record<string, string | number | bo
   if (renderer === 'thor-gpu') {
     return { requestedBackend: 'gpu', engine: 'ThorVG GlCanvas GLES3' }
   }
+  if (renderer === 'tgfx-animated') {
+    return { requestedBackend: 'gpu', engine: 'TGFX OpenGL ES', driver: 'reanimated UI thread' }
+  }
   return { requestedBackend: 'gpu', engine: 'TGFX OpenGL ES' }
 }
 
@@ -96,6 +101,9 @@ function Renderer({
   }
   if (config.renderer === 'tgfx') {
     return <TgfxRenderer width={width} height={height} shapes={shapes} />
+  }
+  if (config.renderer === 'tgfx-animated') {
+    return <TgfxAnimatedRenderer width={width} height={height} shapes={shapes} />
   }
   return (
     <ThorRenderer
@@ -122,9 +130,12 @@ export function BenchmarkScreen(): React.JSX.Element {
 
   const width = Math.round(window.width)
   const height = Math.round(window.height)
+  // The animated renderer drives positions on the UI thread from a tree built
+  // once, so its scene must not depend on `phase`.
+  const animated = config.renderer === 'tgfx-animated'
   const shapes = useMemo(
-    () => buildScene(config.objectCount, config.seed, width, height, phase),
-    [config.objectCount, config.seed, height, phase, width]
+    () => buildScene(config.objectCount, config.seed, width, height, animated ? 0 : phase),
+    [animated, config.objectCount, config.seed, height, phase, width]
   )
 
   const setStageValue = useCallback((value: Stage) => {
