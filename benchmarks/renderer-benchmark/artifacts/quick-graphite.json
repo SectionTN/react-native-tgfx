@@ -1,0 +1,779 @@
+[
+  {
+    "tag": "graphite",
+    "rep": 1,
+    "renderer": "skia-graphite",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "skia-graphite",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "backend": "graphite",
+        "graphiteEnabled": true,
+        "nativeDeviceAvailable": true
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 18.415460414005683,
+        "frameCount": 278,
+        "missedFrames": 1056,
+        "p50Ms": 48.61950000375509,
+        "p90Ms": 65.94088400155306,
+        "p95Ms": 76.1404609978199,
+        "p99Ms": 92.83953800052404,
+        "maxMs": 182.96996100246906
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 4908,
+          "startJavaHeapKb": 5884,
+          "peakNativeHeapKb": 85470,
+          "endNativeHeapKb": 83872,
+          "peakJavaHeapKb": 10396,
+          "peakPssKb": 209070,
+          "endPssKb": 202022,
+          "startNativeHeapKb": 65351,
+          "startPssKb": 187721
+        },
+        "processCpuTimeMs": 30816,
+        "mainThread": {
+          "p99Ms": 88.595043,
+          "p95Ms": 44.305798,
+          "missedFrames": 763,
+          "p90Ms": 44.282031,
+          "maxMs": 110.769829,
+          "p50Ms": 22.14984,
+          "frameCount": 604,
+          "fps": 39.87913273725761
+        },
+        "wallTimeMs": 15145.765681,
+        "processCpuPercent": 203.46280702505473
+      },
+      "startedAtEpochMs": 1785567357255,
+      "completedAtEpochMs": 1785567372459
+    },
+    "gfxInfo": {
+      "totalFrames": 372,
+      "jankyPercent": 86.83,
+      "p95Ms": 53,
+      "p99Ms": 77,
+      "missedVsync": 190
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.8
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.4,
+      "batteryC": 33.2
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 1,
+    "renderer": "tgfx",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "TGFX OpenGL ES"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 43.900261273440016,
+        "frameCount": 660,
+        "missedFrames": 663,
+        "p50Ms": 21.563576996326447,
+        "p90Ms": 31.542576998472214,
+        "p95Ms": 39.55384600162506,
+        "p99Ms": 65.33100000023842,
+        "maxMs": 94.41730800271034
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 8624,
+          "startJavaHeapKb": 4392,
+          "peakNativeHeapKb": 46985,
+          "endNativeHeapKb": 46581,
+          "peakJavaHeapKb": 9544,
+          "peakPssKb": 136681,
+          "endPssKb": 134881,
+          "startNativeHeapKb": 45029,
+          "startPssKb": 132460
+        },
+        "processCpuTimeMs": 41538,
+        "mainThread": {
+          "p99Ms": 33.22099,
+          "p95Ms": 22.158725,
+          "missedFrames": 507,
+          "p90Ms": 22.152897,
+          "maxMs": 33.232578,
+          "p50Ms": 22.146545,
+          "frameCount": 851,
+          "fps": 56.54179759817693
+        },
+        "wallTimeMs": 15050.812605,
+        "processCpuPercent": 275.9850985467771
+      },
+      "startedAtEpochMs": 1785567560557,
+      "completedAtEpochMs": 1785567576289
+    },
+    "gfxInfo": {
+      "totalFrames": 868,
+      "jankyPercent": 58.41,
+      "p95Ms": 42,
+      "p99Ms": 48,
+      "missedVsync": 214
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.8
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 39.8,
+      "batteryC": 33.2
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 1,
+    "renderer": "thor-gpu",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "thor-gpu",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "ThorVG GlCanvas GLES3"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 59.72857224143238,
+        "frameCount": 897,
+        "missedFrames": 459,
+        "p50Ms": 16.67161600291729,
+        "p90Ms": 17.317384995520115,
+        "p95Ms": 17.855500005185604,
+        "p99Ms": 22.593307003378868,
+        "maxMs": 32.44353900104761
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 5300,
+          "startJavaHeapKb": 7788,
+          "peakNativeHeapKb": 44791,
+          "endNativeHeapKb": 43541,
+          "peakJavaHeapKb": 9372,
+          "peakPssKb": 249655,
+          "endPssKb": 217688,
+          "startNativeHeapKb": 44420,
+          "startPssKb": 249655
+        },
+        "processCpuTimeMs": 22522,
+        "mainThread": {
+          "p99Ms": 22.167704,
+          "p95Ms": 22.15713,
+          "missedFrames": 456,
+          "p90Ms": 22.152732,
+          "maxMs": 22.179085,
+          "p50Ms": 22.13818,
+          "frameCount": 902,
+          "fps": 59.985705788037926
+        },
+        "wallTimeMs": 15036.915681,
+        "processCpuPercent": 149.7780560707528
+      },
+      "startedAtEpochMs": 1785567795655,
+      "completedAtEpochMs": 1785567810701
+    },
+    "gfxInfo": {
+      "totalFrames": 1152,
+      "jankyPercent": 40.97,
+      "p95Ms": 32,
+      "p99Ms": 36,
+      "missedVsync": 69
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.6
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.9,
+      "batteryC": 32.7
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 2,
+    "renderer": "skia-graphite",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "skia-graphite",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "backend": "graphite",
+        "graphiteEnabled": true,
+        "nativeDeviceAvailable": true
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 18.907682022320795,
+        "frameCount": 285,
+        "missedFrames": 1062,
+        "p50Ms": 49.929654002189636,
+        "p90Ms": 66.44838400185108,
+        "p95Ms": 78.8856920003891,
+        "p99Ms": 92.10107700526714,
+        "maxMs": 123.60280700027943
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 4104,
+          "startJavaHeapKb": 4992,
+          "peakNativeHeapKb": 90098,
+          "endNativeHeapKb": 81562,
+          "peakJavaHeapKb": 9408,
+          "peakPssKb": 214213,
+          "endPssKb": 204325,
+          "startNativeHeapKb": 68342,
+          "startPssKb": 184152
+        },
+        "processCpuTimeMs": 29337,
+        "mainThread": {
+          "p99Ms": 99.674295,
+          "p95Ms": 55.360094,
+          "missedFrames": 776,
+          "p90Ms": 44.293705,
+          "maxMs": 143.983635,
+          "p50Ms": 22.150019,
+          "frameCount": 584,
+          "fps": 38.7685525990697
+        },
+        "wallTimeMs": 15063.755566,
+        "processCpuPercent": 194.75223075323765
+      },
+      "startedAtEpochMs": 1785568014497,
+      "completedAtEpochMs": 1785568029608
+    },
+    "gfxInfo": {
+      "totalFrames": 374,
+      "jankyPercent": 85.03,
+      "p95Ms": 48,
+      "p99Ms": 69,
+      "missedVsync": 188
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.7
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.7,
+      "batteryC": 33
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 2,
+    "renderer": "tgfx",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "TGFX OpenGL ES"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 41.6713185354572,
+        "frameCount": 627,
+        "missedFrames": 768,
+        "p50Ms": 22.934576995670795,
+        "p90Ms": 31.505923002958298,
+        "p95Ms": 35.509884998202324,
+        "p99Ms": 49.41853800415993,
+        "maxMs": 87.50773099809885
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 8868,
+          "startJavaHeapKb": 4200,
+          "peakNativeHeapKb": 46998,
+          "endNativeHeapKb": 46331,
+          "peakJavaHeapKb": 9672,
+          "peakPssKb": 140609,
+          "endPssKb": 135576,
+          "startNativeHeapKb": 44888,
+          "startPssKb": 140609
+        },
+        "processCpuTimeMs": 42957,
+        "mainThread": {
+          "p99Ms": 22.185179,
+          "p95Ms": 22.155327,
+          "missedFrames": 489,
+          "p90Ms": 22.152391,
+          "maxMs": 33.241626,
+          "p50Ms": 22.145233,
+          "frameCount": 870,
+          "fps": 57.790316620271476
+        },
+        "wallTimeMs": 15054.42522,
+        "processCpuPercent": 285.34467023643697
+      },
+      "startedAtEpochMs": 1785568218133,
+      "completedAtEpochMs": 1785568233208
+    },
+    "gfxInfo": {
+      "totalFrames": 873,
+      "jankyPercent": 59.22,
+      "p95Ms": 40,
+      "p99Ms": 44,
+      "missedVsync": 221
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.7,
+      "batteryC": 32.6
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.3,
+      "batteryC": 32.7
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 2,
+    "renderer": "thor-gpu",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "thor-gpu",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "ThorVG GlCanvas GLES3"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 60.05734719574839,
+        "frameCount": 902,
+        "missedFrames": 594,
+        "p50Ms": 16.754960998892784,
+        "p90Ms": 17.281307004392147,
+        "p95Ms": 17.552539005875587,
+        "p99Ms": 19.888616003096104,
+        "maxMs": 24.31826899945736
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 4896,
+          "startJavaHeapKb": 7540,
+          "peakNativeHeapKb": 45033,
+          "endNativeHeapKb": 43654,
+          "peakJavaHeapKb": 9704,
+          "peakPssKb": 246996,
+          "endPssKb": 215276,
+          "startNativeHeapKb": 44552,
+          "startPssKb": 242771
+        },
+        "processCpuTimeMs": 22934,
+        "mainThread": {
+          "p99Ms": 22.163977,
+          "p95Ms": 22.154399,
+          "missedFrames": 455,
+          "p90Ms": 22.151991,
+          "maxMs": 22.200241,
+          "p50Ms": 22.136712,
+          "frameCount": 903,
+          "fps": 60.04193288298626
+        },
+        "wallTimeMs": 15039.489181,
+        "processCpuPercent": 152.4918813663795
+      },
+      "startedAtEpochMs": 1785568390800,
+      "completedAtEpochMs": 1785568405847
+    },
+    "gfxInfo": {
+      "totalFrames": 1143,
+      "jankyPercent": 40.51,
+      "p95Ms": 34,
+      "p99Ms": 38,
+      "missedVsync": 64
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.7
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.9,
+      "batteryC": 32.8
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 3,
+    "renderer": "skia-graphite",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "skia-graphite",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "backend": "graphite",
+        "graphiteEnabled": true,
+        "nativeDeviceAvailable": true
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 18.5669108263873,
+        "frameCount": 280,
+        "missedFrames": 1067,
+        "p50Ms": 48.64834699779749,
+        "p90Ms": 66.43119199573994,
+        "p95Ms": 69.70915400236845,
+        "p99Ms": 82.32223099470139,
+        "maxMs": 93.92026899755001
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 4268,
+          "startJavaHeapKb": 5148,
+          "peakNativeHeapKb": 81086,
+          "endNativeHeapKb": 79820,
+          "peakJavaHeapKb": 9436,
+          "peakPssKb": 207452,
+          "endPssKb": 201065,
+          "startNativeHeapKb": 60417,
+          "startPssKb": 185631
+        },
+        "processCpuTimeMs": 30485,
+        "mainThread": {
+          "p99Ms": 77.574812,
+          "p95Ms": 55.366534,
+          "missedFrames": 773,
+          "p90Ms": 44.295497,
+          "maxMs": 110.74266,
+          "p50Ms": 22.150298,
+          "frameCount": 590,
+          "fps": 39.0830966211378
+        },
+        "wallTimeMs": 15096.040258,
+        "processCpuPercent": 201.94037296531963
+      },
+      "startedAtEpochMs": 1785568609107,
+      "completedAtEpochMs": 1785568624229
+    },
+    "gfxInfo": {
+      "totalFrames": 388,
+      "jankyPercent": 86.6,
+      "p95Ms": 61,
+      "p99Ms": 93,
+      "missedVsync": 194
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.6
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.4,
+      "batteryC": 32.7
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 3,
+    "renderer": "tgfx",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "TGFX OpenGL ES"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 44.77471884750386,
+        "frameCount": 673,
+        "missedFrames": 702,
+        "p50Ms": 20.63519199937582,
+        "p90Ms": 29.22053799778223,
+        "p95Ms": 32.74742300063372,
+        "p99Ms": 47.857885003089905,
+        "maxMs": 79.09569200128317
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 9256,
+          "startJavaHeapKb": 4264,
+          "peakNativeHeapKb": 46716,
+          "endNativeHeapKb": 46519,
+          "peakJavaHeapKb": 9576,
+          "peakPssKb": 137468,
+          "endPssKb": 136075,
+          "startNativeHeapKb": 45084,
+          "startPssKb": 136432
+        },
+        "processCpuTimeMs": 42899,
+        "mainThread": {
+          "p99Ms": 22.192241,
+          "p95Ms": 22.159892,
+          "missedFrames": 489,
+          "p90Ms": 22.153247,
+          "maxMs": 33.226636,
+          "p50Ms": 22.144126,
+          "frameCount": 870,
+          "fps": 57.77643250364935
+        },
+        "wallTimeMs": 15058.042913,
+        "processCpuPercent": 284.89093999701765
+      },
+      "startedAtEpochMs": 1785568781715,
+      "completedAtEpochMs": 1785568796808
+    },
+    "gfxInfo": {
+      "totalFrames": 915,
+      "jankyPercent": 57.49,
+      "p95Ms": 40,
+      "p99Ms": 46,
+      "missedVsync": 229
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.7
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.8,
+      "batteryC": 32.7
+    }
+  },
+  {
+    "tag": "graphite",
+    "rep": 3,
+    "renderer": "thor-gpu",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "thor-gpu",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "requestedBackend": "gpu",
+        "engine": "ThorVG GlCanvas GLES3"
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 58.277617819757964,
+        "frameCount": 875,
+        "missedFrames": 547,
+        "p50Ms": 17.181191995739937,
+        "p90Ms": 18.32438500225544,
+        "p95Ms": 18.81123099476099,
+        "p99Ms": 21.918193005025387,
+        "maxMs": 26.76876999437809
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 33.4,
+          "batteryTemperatureStartC": 33.4,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 8044,
+          "startJavaHeapKb": 7736,
+          "peakNativeHeapKb": 44903,
+          "endNativeHeapKb": 44455,
+          "peakJavaHeapKb": 9400,
+          "peakPssKb": 245111,
+          "endPssKb": 222934,
+          "startNativeHeapKb": 44555,
+          "startPssKb": 241089
+        },
+        "processCpuTimeMs": 23621,
+        "mainThread": {
+          "p99Ms": 22.185097,
+          "p95Ms": 22.160865,
+          "missedFrames": 482,
+          "p90Ms": 22.154304,
+          "maxMs": 33.203838,
+          "p50Ms": 22.139351,
+          "frameCount": 877,
+          "fps": 58.26376568569319
+        },
+        "wallTimeMs": 15052.236835,
+        "processCpuPercent": 156.92684256120396
+      },
+      "startedAtEpochMs": 1785568970482,
+      "completedAtEpochMs": 1785568985547
+    },
+    "gfxInfo": {
+      "totalFrames": 973,
+      "jankyPercent": 50.26,
+      "p95Ms": 36,
+      "p99Ms": 42,
+      "missedVsync": 121
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 36.8,
+      "batteryC": 32.7
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 38.5,
+      "batteryC": 33
+    }
+  }
+]

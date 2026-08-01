@@ -185,10 +185,6 @@ export function BenchmarkScreen(): React.JSX.Element {
     if (stageRef.current !== 'config') {
       return
     }
-    if (config.renderer === 'skia-graphite' && !getSkiaBackendProof().graphiteEnabled) {
-      setError('Graphite runtime device is unavailable')
-      return
-    }
     setError(null)
     setResult(null)
     setPhase(0)
