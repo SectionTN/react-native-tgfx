@@ -21,7 +21,7 @@ import { isSharedValue, type MaybeSharedValue } from './values'
  * patch table, so the engine knows which words to resolve against the live value
  * array each frame.
  */
-export const SCENE_VERSION = 2
+export const SCENE_VERSION = 3
 
 export const Kind = {
   Group: 0,

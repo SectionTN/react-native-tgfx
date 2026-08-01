@@ -87,6 +87,97 @@ test('multiplies group opacity into the child alpha', () => {
   expect(used[17]).toBeCloseTo(0.25)
 })
 
+test('keeps an animated group opacity as a live alpha slot', () => {
+  const fade = sharedValue(0.4)
+  const { used, values } = compile([
+    node(NodeType.Group, { opacity: fade }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(values).toEqual([fade])
+  // group(kind ops=0 children=1) rect(kind x y w h) paint(... alpha at 17)
+  expect(used[17]).toBe(0)
+  const patchStart = used[2]!
+  expect(used[patchStart]).toBe(1)
+  expect(used[patchStart + 1]).toBe(17)
+  expect(used[patchStart + 2]).toBe(0)
+})
+
+test('snapshots the product when two opacities in one chain are animated', () => {
+  const { values, used } = compile([
+    node(NodeType.Group, { opacity: sharedValue(0.5) }, [
+      node(NodeType.Rect, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        opacity: sharedValue(0.5),
+      }),
+    ]),
+  ])
+  expect(values).toEqual([])
+  expect(used[17]).toBeCloseTo(0.25)
+})
+
+test('keeps an animated <Paint opacity> as a live alpha slot', () => {
+  const fade = sharedValue(0.4)
+  const { used, values } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Paint, { opacity: fade }),
+    ]),
+  ])
+  expect(values).toEqual([fade])
+  const patchStart = used[2]!
+  expect(used[patchStart]).toBe(1)
+  expect(used[patchStart + 1]).toBe(14) // the rect's alpha word
+})
+
+test('folds <Paint opacity> into the alpha', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, opacity: 0.5 }, [
+      node(NodeType.Paint, { opacity: 0.25 }),
+    ]),
+  ])
+  // rect(kind x y w h) paint(color flags sw cap join alpha)
+  expect(used[14]).toBeCloseTo(0.25)
+})
+
+test('inherits <Paint opacity> from a group into its children', () => {
+  const { used } = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.Paint, { opacity: 0.5 }),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, opacity: 0.5 }),
+    ]),
+  ])
+  expect(used[17]).toBeCloseTo(0.25)
+})
+
+test('writes an alpha word for images so they inherit group opacity', () => {
+  const { used } = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      node(NodeType.Image, { x: 0, y: 0, width: 1, height: 1, image: 'a' }),
+    ]),
+  ])
+  // header(3) rootCount group(kind ops children) image(kind x y w h src fit
+  // alpha) + patch table (count only)
+  expect(used.length).toBe(3 + 1 + 3 + 8 + 1)
+  expect(used[13]).toBe(1) // fit: contain
+  expect(used[14]).toBeCloseTo(0.5)
+})
+
+test('patches the image alpha word when the group opacity is animated', () => {
+  const fade = sharedValue(0.4)
+  const { used, values } = compile([
+    node(NodeType.Group, { opacity: fade }, [
+      node(NodeType.Image, { x: 0, y: 0, width: 1, height: 1, image: 'a' }),
+    ]),
+  ])
+  expect(values).toEqual([fade])
+  const patchStart = used[2]!
+  expect(patchStart).toBe(15) // the alpha word is the image node's last
+  expect(used[patchStart + 1]).toBe(14)
+})
+
 // The invariant the native dedupe key rests on: strings are indices, so the
 // words alone cannot tell a content change apart. See cpp/SceneHash.hpp.
 test('a text-only change leaves the word buffer byte-identical', () => {

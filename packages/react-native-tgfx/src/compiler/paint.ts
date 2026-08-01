@@ -1,7 +1,7 @@
 import { resolveColor, type Color } from './colors'
 import { transpileShader } from './sksl'
 import type { Vector } from './transform'
-import { resolveNumber, resolveValue } from './values'
+import { resolveNumber, resolveValue, type MaybeSharedValue } from './values'
 import type { SceneWriter } from './writer'
 
 /** Public paint inputs shared by every drawing component and `<Paint>`. */
@@ -12,6 +12,8 @@ export interface PaintInput {
   strokeWidth?: number
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
+  /** Kept unresolved so an animated opacity can stay a live alpha slot. */
+  opacity?: number | MaybeSharedValue<number>
   antiAlias?: boolean
   gradient?: GradientInput
 }
@@ -210,6 +212,9 @@ export function pickPaintInput(props: Record<string, unknown>): PaintInput {
   }
   if (props.strokeJoin !== undefined) {
     out.strokeJoin = props.strokeJoin as PaintInput['strokeJoin']
+  }
+  if (props.opacity !== undefined) {
+    out.opacity = props.opacity as PaintInput['opacity']
   }
   if (props.antiAlias !== undefined) {
     out.antiAlias = Boolean(props.antiAlias)

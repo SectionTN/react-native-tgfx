@@ -24,9 +24,39 @@ export interface CompileResult {
   values: MaybeSharedValue<unknown>[]
 }
 
+/** An accumulated opacity: a literal, or the one SharedValue still driving it. */
+type Opacity = number | MaybeSharedValue<number>
+
 interface CompileCtx {
   paint: PaintInput
-  opacity: number
+  opacity: Opacity
+}
+
+let warnedFrozenOpacity = false
+
+/** Combine opacities; one alpha slot per command, so only one can stay live. */
+function mulOpacity(inherited: Opacity, own: unknown): Opacity {
+  if (own === undefined) {
+    return inherited
+  }
+  const ownLive = isSharedValue(own)
+  if (!isSharedValue(inherited)) {
+    if (!ownLive) {
+      return inherited * resolveNumber(own, 1)
+    }
+    if (inherited === 1) {
+      return own as MaybeSharedValue<number>
+    }
+  } else if (!ownLive && resolveNumber(own, 1) === 1) {
+    return inherited
+  }
+  if (!warnedFrozenOpacity) {
+    warnedFrozenOpacity = true
+    console.warn(
+      '[tgfx] two opacities in one chain, at least one animated: a draw command has a single alpha slot, so their product is frozen at the last commit. Animate one opacity per chain.'
+    )
+  }
+  return resolveNumber(inherited, 1) * resolveNumber(own, 1)
 }
 
 /** Transform op codes, mirrored by the native parser. */
@@ -169,13 +199,9 @@ function writeDrawing(
   kind: number
 ): void {
   const p = node.props
-
-  // Final alpha = inherited group opacity * own opacity. With no group opacity
-  // and an animated own opacity, the alpha stays a live slot.
-  const alpha =
-    ctx.opacity === 1 && isSharedValue(p.opacity)
-      ? p.opacity
-      : ctx.opacity * resolveNumber(p.opacity, 1)
+  // A `<Paint>` child overrides the node's own opacity, as it does every field.
+  const own = paintFromChildren(node)
+  const alpha = mulOpacity(ctx.opacity, own == null ? p.opacity : own.opacity)
 
   w.push(kind)
   switch (kind) {
@@ -224,7 +250,8 @@ function writeDrawing(
       w.push(
         { fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1
       )
-      // Images carry no paint; drawImageRect uses the default paint.
+      // Images draw with the default paint, so only the alpha is carried.
+      w.pushAnim(alpha, 1)
       return
     case Kind.Text:
       w.pushAnim(p.x)
@@ -236,7 +263,6 @@ function writeDrawing(
     default:
       break
   }
-  const own = paintFromChildren(node)
   if (own == null) {
     writePaint(w, p, ctx.paint, alpha)
   } else {
@@ -324,7 +350,7 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const { paint: local, drawingChildren } = localPaint(node)
   const childCtx: CompileCtx = {
     paint: mergePaint(ctx.paint, local),
-    opacity: ctx.opacity * resolveNumber(node.props.opacity, 1),
+    opacity: mulOpacity(ctx.opacity, local.opacity),
   }
   w.push(Kind.Group)
   const opCountAt = w.reserve()

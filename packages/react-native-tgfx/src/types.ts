@@ -21,7 +21,7 @@ export interface PaintProps {
   strokeWidth?: Animated<number>
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
-  /** Paint-wide alpha multiplier in [0, 1]. */
+  /** Paint-wide alpha multiplier in [0, 1]; only one per chain can animate. */
   opacity?: Animated<number>
   antiAlias?: boolean
   children?: ReactNode

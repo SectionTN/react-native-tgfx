@@ -76,7 +76,7 @@ struct SceneReader {
 
 namespace {
 
-constexpr double kSceneVersion = 2;
+constexpr double kSceneVersion = 3;
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind { KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText };
@@ -386,7 +386,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd) {
       cmd.path = parseSvgPath(r.nextString());
       break;
     case KImage: {
-      // Images draw with the default paint, so the program carries none.
+      // Images draw with the default paint, so only the alpha is carried.
       cmd.kind = DrawCmd::Image;
       cmd.x = r.nextAnim();
       cmd.y = r.nextAnim();
@@ -394,6 +394,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd) {
       cmd.h = r.nextAnim();
       cmd.image = getImage(r.nextString());
       cmd.fit = r.nextInt();
+      cmd.paint.alpha = r.nextAnim();
       return r.ok;
     }
     case KText: {
@@ -448,6 +449,13 @@ void SceneRenderer::setScene(std::span<const double> words,
     // A half-read program would draw a truncated scene; keep the previous one.
     TGFXRN_LOGW("draw program could not be read");
     return;
+  }
+  if (reader.at != reader.words.size() ||
+      reader.patchAt != reader.patches.size()) {
+    // Anything unread means the writer and this reader disagree on a field.
+    TGFXRN_LOGW("draw program not fully consumed: %zu/%zu words, %zu/%zu patch words",
+                reader.at, reader.words.size(), reader.patchAt,
+                reader.patches.size());
   }
 
   std::lock_guard<std::mutex> lock(programMutex_);
