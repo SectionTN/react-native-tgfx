@@ -1,22 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { callback } from 'react-native-nitro-modules'
 import type { MaybeSharedValue } from '../compiler/values'
+import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import type { CanvasProps } from '../types'
 import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
-// The Reanimated UI-thread driver is loaded lazily so react-native-reanimated
-// stays an optional peer dependency (static scenes never need it).
-type DriverComponent = React.ComponentType<{
-  view: TgfxViewRef
-  values: MaybeSharedValue<unknown>[]
-}>
-let AnimationDriver: DriverComponent | null = null
-try {
-  AnimationDriver = require('../reanimated/AnimationDriver').AnimationDriver
-} catch {
-  AnimationDriver = null
-}
+let warnedNoDriver = false
 
 /** True when two SharedValue lists reference the same set in the same order. */
 function sameValueSet(
@@ -89,6 +79,13 @@ export function Canvas({
       rootRef.current = null
     }
   }, [])
+
+  if (AnimationDriver == null && values.length > 0 && !warnedNoDriver) {
+    warnedNoDriver = true
+    console.warn(
+      '[tgfx] SharedValue props need react-native-reanimated, which is not installed: they stay frozen at their last committed value.'
+    )
+  }
 
   return (
     <>
