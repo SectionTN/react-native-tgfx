@@ -6,8 +6,10 @@ import { Kind, SCENE_VERSION, SceneWriter } from './writer'
 const node = (type: unknown, props: object, children: Node[] = []): Node =>
   ({ type, props, children }) as Node
 
-const sharedValue = (value: number) =>
-  ({ value, _isReanimatedSharedValue: true as const })
+const sharedValue = (value: number) => ({
+  value,
+  _isReanimatedSharedValue: true as const,
+})
 
 function compile(roots: Node[]) {
   const writer = new SceneWriter()
@@ -62,11 +64,9 @@ test('interns strings and references them by index', () => {
 
 test('nests groups with their transform ops and child count', () => {
   const { used } = compile([
-    node(
-      NodeType.Group,
-      { transform: [{ translateX: 10 }, { scale: 2 }] },
-      [node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })]
-    ),
+    node(NodeType.Group, { transform: [{ translateX: 10 }, { scale: 2 }] }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
   ])
   expect(used[3]).toBe(1) // one root
   expect(used[4]).toBe(Kind.Group)

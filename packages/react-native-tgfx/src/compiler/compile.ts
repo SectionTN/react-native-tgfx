@@ -68,7 +68,10 @@ function extractGradient(node: Node): GradientInput | undefined {
       positions: p.positions as number[] | undefined,
     }
   }
-  if (node.type === NodeType.RadialGradient || node.type === NodeType.DiamondGradient) {
+  if (
+    node.type === NodeType.RadialGradient ||
+    node.type === NodeType.DiamondGradient
+  ) {
     return {
       kind: node.type === NodeType.RadialGradient ? 'radial' : 'diamond',
       center: vec(p.center) ?? vec({ x: p.cx, y: p.cy }),
@@ -95,7 +98,10 @@ function extractGradient(node: Node): GradientInput | undefined {
       uniforms: (p.uniforms as Record<string, number | number[]>) ?? {},
     }
   }
-  if (node.type === NodeType.FractalNoise || node.type === NodeType.Turbulence) {
+  if (
+    node.type === NodeType.FractalNoise ||
+    node.type === NodeType.Turbulence
+  ) {
     return {
       kind: node.type === NodeType.FractalNoise ? 'fractalNoise' : 'turbulence',
       colors: [],
@@ -156,7 +162,12 @@ function localPaint(node: Node): {
 }
 
 /** Write one drawing node of the given kind. */
-function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx, kind: number): void {
+function writeDrawing(
+  w: SceneWriter,
+  node: Node,
+  ctx: CompileCtx,
+  kind: number
+): void {
   const p = node.props
 
   // Final alpha = inherited group opacity * own opacity. With no group opacity
@@ -210,7 +221,9 @@ function writeDrawing(w: SceneWriter, node: Node, ctx: CompileCtx, kind: number)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
       w.pushString(String(resolveValue(p.image) ?? ''))
-      w.push({ fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1)
+      w.push(
+        { fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1
+      )
       // Images carry no paint; drawImageRect uses the default paint.
       return
     case Kind.Text:
@@ -238,7 +251,8 @@ function writeOps(
   origin: Vector | undefined
 ): number {
   let count = 0
-  const shift = origin != null && (origin.x !== 0 || origin.y !== 0) ? origin : null
+  const shift =
+    origin != null && (origin.x !== 0 || origin.y !== 0) ? origin : null
   const angle = (v: unknown): void => {
     if (isSharedValue(v)) {
       w.pushAnim(v)
@@ -316,7 +330,11 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const opCountAt = w.reserve()
   w.patch(
     opCountAt,
-    writeOps(w, (node.props.transform as Transform) ?? [], vec(node.props.origin))
+    writeOps(
+      w,
+      (node.props.transform as Transform) ?? [],
+      vec(node.props.origin)
+    )
   )
   const childCountAt = w.reserve()
   w.patch(childCountAt, writeNodes(w, drawingChildren, childCtx))

@@ -77,9 +77,13 @@ export function transpileShader(source: string): TranspiledShader {
     }
   )
 
-  const signature = /\b(?:half4|float4|vec4)\s+main\s*\(([^)]*)\)\s*\{/.exec(withoutUniforms)
+  const signature = /\b(?:half4|float4|vec4)\s+main\s*\(([^)]*)\)\s*\{/.exec(
+    withoutUniforms
+  )
   if (signature == null) {
-    throw new Error("[tgfx] shader: expected a 'vec4 main(vec2 pos)' entry point")
+    throw new Error(
+      "[tgfx] shader: expected a 'vec4 main(vec2 pos)' entry point"
+    )
   }
   const open = signature.index + signature[0].length - 1
   const body = blockAt(withoutUniforms, open)

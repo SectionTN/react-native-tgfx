@@ -18,7 +18,9 @@ test('unequal when either side has an extra key', () => {
 test('compares by identity, not deeply', () => {
   const shared = { nested: true }
   expect(shallowEqualProps({ a: shared }, { a: shared })).toBe(true)
-  expect(shallowEqualProps({ a: { nested: true } }, { a: { nested: true } })).toBe(false)
+  expect(
+    shallowEqualProps({ a: { nested: true } }, { a: { nested: true } })
+  ).toBe(false)
 })
 
 test('key order does not matter', () => {
