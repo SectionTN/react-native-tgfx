@@ -41,6 +41,10 @@ void JHybridTgfxViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass> /*
     hybridView->setInHierarchy(props->inHierarchy.value);
     props->inHierarchy.isDirty = false;
   }
+  if (props->opaque.isDirty) {
+    hybridView->setOpaque(props->opaque.value);
+    props->opaque.isDirty = false;
+  }
 
   // Update hybridRef if it changed
   if (props->hybridRef.isDirty) {

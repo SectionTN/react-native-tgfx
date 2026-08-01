@@ -17,6 +17,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Drop the current program (a recycled view must not flash the old scene).
 - (void)clearScene;
 
+/// Composite without an alpha channel, so the layer needs no blending.
+- (void)setOpaqueSurface:(BOOL)opaque;
+
 /// Update the live animation value slots (called per frame from a worklet).
 - (void)setValues:(const double*)values count:(int32_t)count;
 

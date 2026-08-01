@@ -84,6 +84,11 @@ using namespace margelo::nitro::tgfx::views;
     swiftPart.setInHierarchy(newViewProps.inHierarchy.value);
     newViewProps.inHierarchy.isDirty = false;
   }
+  // opaque: boolean
+  if (newViewProps.opaque.isDirty) {
+    swiftPart.setOpaque(newViewProps.opaque.value);
+    newViewProps.opaque.isDirty = false;
+  }
 
   swiftPart.afterUpdate();
 

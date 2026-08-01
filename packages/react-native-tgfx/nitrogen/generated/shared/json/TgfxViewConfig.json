@@ -5,6 +5,7 @@
   "directEventTypes": {},
   "validAttributes": {
     "inHierarchy": true,
+    "opaque": true,
     "hybridRef": true
   }
 }

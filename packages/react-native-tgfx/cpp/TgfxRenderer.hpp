@@ -44,6 +44,9 @@ class TgfxRenderer {
   /// Drop the current program (a recycled view must not flash the old scene).
   void clearScene();
 
+  /// Clear to opaque black instead of transparent, for an opaque surface.
+  void setOpaque(bool opaque);
+
   /// Update the live animation value slots (called every frame from a worklet).
   void setValues(const std::vector<double>& values);
 
@@ -79,6 +82,7 @@ class TgfxRenderer {
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};
   float pixelRatio_{1.0f};
+  std::atomic<bool> opaque_{false};
   std::atomic<uint64_t> version_{1};
   uint64_t drawnVersion_{0};
 };

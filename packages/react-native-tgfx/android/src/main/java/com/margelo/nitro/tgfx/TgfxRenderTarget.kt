@@ -50,6 +50,14 @@ internal class TgfxRenderTarget {
     requestRender()
   }
 
+  fun setOpaque(opaque: Boolean) {
+    val ptr = nativePtr
+    if (ptr != 0L) {
+      TgfxNative.setOpaque(ptr, opaque)
+    }
+    requestRender()
+  }
+
   fun clearScene() {
     val ptr = nativePtr
     if (ptr != 0L) {

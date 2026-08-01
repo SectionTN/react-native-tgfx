@@ -32,6 +32,12 @@ abstract class HybridTgfxViewSpec: HybridView() {
   @set:DoNotStrip
   @set:Keep
   abstract var inHierarchy: Boolean
+  
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var opaque: Boolean
 
   // Methods
   @DoNotStrip

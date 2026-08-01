@@ -23,6 +23,10 @@ internal class TgfxTextureView(context: Context, private val target: TgfxRenderT
     surfaceTextureListener = this
   }
 
+  fun setOpaqueSurface(opaque: Boolean) {
+    isOpaque = opaque
+  }
+
   override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
     target.surfaceAvailable(Surface(st), width, height, resources.displayMetrics.density)
   }

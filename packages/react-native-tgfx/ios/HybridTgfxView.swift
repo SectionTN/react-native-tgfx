@@ -15,6 +15,12 @@ final class HybridTgfxView: HybridTgfxViewSpec {
   /// the view hierarchy, so transparency and transforms work either way.
   var inHierarchy: Bool = false
 
+  var opaque: Bool = false {
+    didSet {
+      metalView.setOpaqueSurface(opaque)
+    }
+  }
+
   func setScene(scene: ArrayBuffer, strings: [String]) throws {
     // The buffer is only valid for this call; the engine copies what it needs.
     let words = UnsafeRawPointer(scene.data).assumingMemoryBound(to: Double.self)

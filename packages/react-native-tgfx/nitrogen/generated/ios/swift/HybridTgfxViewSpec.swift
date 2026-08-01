@@ -11,6 +11,7 @@ import NitroModules
 public protocol HybridTgfxViewSpec_protocol: HybridObject, HybridView {
   // Properties
   var inHierarchy: Bool { get set }
+  var opaque: Bool { get set }
 
   // Methods
   func setScene(scene: ArrayBuffer, strings: [String]) throws -> Void

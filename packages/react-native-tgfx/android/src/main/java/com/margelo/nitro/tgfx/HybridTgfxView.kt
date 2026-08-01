@@ -42,7 +42,17 @@ class HybridTgfxView(private val context: ThemedReactContext) :
   override val view: FrameLayout = host
 
   init {
-    host.setCanvas(TgfxSurfaceView(context, target))
+    applyCanvas()
+  }
+
+  private fun applyCanvas() {
+    val canvas =
+      if (inHierarchy) TgfxTextureView(context, target) else TgfxSurfaceView(context, target)
+    when (canvas) {
+      is TgfxTextureView -> canvas.setOpaqueSurface(opaque)
+      is TgfxSurfaceView -> canvas.setOpaqueSurface(opaque)
+    }
+    host.setCanvas(canvas)
   }
 
   /**
@@ -56,9 +66,17 @@ class HybridTgfxView(private val context: ThemedReactContext) :
         return
       }
       field = value
-      host.setCanvas(
-        if (value) TgfxTextureView(context, target) else TgfxSurfaceView(context, target)
-      )
+      applyCanvas()
+    }
+
+  override var opaque: Boolean = false
+    set(value) {
+      if (field == value) {
+        return
+      }
+      field = value
+      target.setOpaque(value)
+      applyCanvas()
     }
 
   override fun setScene(scene: ArrayBuffer, strings: Array<String>) {

@@ -106,6 +106,16 @@ export interface CanvasProps {
    * Ignored on iOS, where the Metal layer already composites in-hierarchy.
    */
   composite?: 'layer' | 'texture'
+  /**
+   * Render without an alpha channel: the layer composites without blending and
+   * the engine clears to opaque black. Anything behind the canvas stops showing
+   * through.
+   *
+   * Measured neutral on a Mali-G68 with 400 animated shapes (main-thread FPS
+   * 57.5 → 56.7), so treat it as a correctness/appearance switch rather than an
+   * optimisation, and measure before enabling it for speed.
+   */
+  opaque?: boolean
   /** Device-pixel debugging overlay hook (reserved). */
   debug?: boolean
 }

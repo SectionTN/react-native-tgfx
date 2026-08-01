@@ -19,6 +19,7 @@ internal object TgfxNative {
   external fun setPixelRatio(ptr: Long, ratio: Float)
   external fun setScene(ptr: Long, scene: ByteBuffer, strings: Array<String>)
   external fun clearScene(ptr: Long)
+  external fun setOpaque(ptr: Long, opaque: Boolean)
   external fun setValues(ptr: Long, values: DoubleArray)
   external fun drawCameraFrame(
     ptr: Long,
