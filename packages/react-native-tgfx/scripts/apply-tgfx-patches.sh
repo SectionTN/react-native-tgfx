@@ -9,7 +9,12 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TGFX="$HERE/cpp/third_party/tgfx"
 PATCHES="$HERE/patches"
 
-[ -e "$TGFX/.git" ] || { echo "tgfx submodule not initialised at $TGFX" >&2; exit 1; }
+# Sources, not .git: an npm tarball ships tgfx as plain files, and git apply needs no repo.
+[ -e "$TGFX/CMakeLists.txt" ] || { echo "tgfx sources missing: no $TGFX/CMakeLists.txt" >&2; exit 1; }
+
+# Under node_modules the consumer's own repo is an ancestor; without a ceiling git
+# would discover it, resolve patch paths against its toplevel, and skip every hunk.
+export GIT_CEILING_DIRECTORIES="${TGFX%/*}"
 
 for patch in "$PATCHES"/*.patch; do
   [ -e "$patch" ] || continue

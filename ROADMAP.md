@@ -69,10 +69,11 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 - 🔴 **Bootstrap script for tgfx deps.** `cpp/third_party/tgfx/third_party`
   (depsync output) is gitignored; a fresh clone can't build until re-fetched.
   Add a `postinstall`/setup script (submodule init + targeted dep fetch).
-- 🟠 **tgfx patches.** The vendor `CONFIG_DIR` / `-s` / shaderc-stub fixes are
-  applied to the submodule working tree by self-healing CMake (Android) and the
-  iOS build script. Replace with a tracked `.patch` file or a tgfx fork the
-  submodule points at, so the gitlink can reference the patched commit.
+- 🟠 **tgfx patches.** The vendor `CONFIG_DIR` fix is now a tracked patch
+  (`patches/0003-vendor-config-dir.patch`) applied by `apply-tgfx-patches.sh`
+  from both builds. The `-s` / shaderc-stub fixes still edit `third_party/`,
+  which tgfx gitignores and depsync re-fetches, so they cannot be patch files;
+  upstreaming them to vendor_tools is the only fix left.
 - 🟠 **Multi-ABI Android.** Currently built/tested for `arm64-v8a` only; add
   `x86_64`/`armeabi-v7a` for emulators and older devices.
 - 🟠 **npm publish readiness.** `package.json` `files` includes `cpp` (would

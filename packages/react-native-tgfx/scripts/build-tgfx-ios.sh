@@ -22,15 +22,8 @@ DEPLOY="${DEPLOY:-15.1}"
 echo ">>> tgfx: $TGFX_DIR"
 echo ">>> platform=$PLATFORM deployment=$DEPLOY"
 
-# 1) Patch tgfx's vendor target to find vendor.json at the tgfx root (idempotent).
-CML="$TGFX_DIR/CMakeLists.txt"
-if ! grep -q 'CONFIG_DIR ${CMAKE_CURRENT_SOURCE_DIR})' "$CML"; then
-  sed -i.bak \
-    's|add_vendor_target(tgfx-vendor STATIC_VENDORS ${TGFX_STATIC_VENDORS} SHARED_VENDORS ${TGFX_SHARED_VENDORS})|add_vendor_target(tgfx-vendor STATIC_VENDORS ${TGFX_STATIC_VENDORS} SHARED_VENDORS ${TGFX_SHARED_VENDORS} CONFIG_DIR ${CMAKE_CURRENT_SOURCE_DIR})|' \
-    "$CML"
-  rm -f "$CML.bak"
-  echo ">>> patched tgfx vendor CONFIG_DIR"
-fi
+# 1) Apply the tracked tgfx patches; idempotent, and loud if one stops applying.
+bash "$HERE/apply-tgfx-patches.sh"
 
 # 2) Configure (Metal backend, no OpenGL/Vulkan) via tgfx's iOS toolchain.
 cmake -S "$TGFX_DIR" -B "$BUILD_DIR" -G Ninja \

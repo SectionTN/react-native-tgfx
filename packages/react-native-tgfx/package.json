@@ -18,6 +18,8 @@
     "android/CMakeLists.txt",
     "android/src",
     "cpp",
+    "patches",
+    "scripts",
     "ios/**/*.h",
     "ios/**/*.m",
     "ios/**/*.mm",

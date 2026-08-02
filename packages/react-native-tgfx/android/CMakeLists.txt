@@ -14,23 +14,19 @@ set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 # failing) sync step.
 file(MAKE_DIRECTORY "${TGFX_DIR}/third_party/shaderc/third_party/glslang")
 
-# When tgfx is embedded via add_subdirectory in an NDK/ninja build, its
-# `add_vendor_target(tgfx-vendor ...)` call must be told where vendor.json lives
-# (the tgfx root) — otherwise vendor-build runs with the wrong working dir. Patch
-# it idempotently so clean checkouts of the submodule self-heal.
-set(_tgfx_cml "${TGFX_DIR}/CMakeLists.txt")
-file(READ "${_tgfx_cml}" _tgfx_cml_content)
-if (NOT _tgfx_cml_content MATCHES "tgfx-vendor STATIC_VENDORS \\\${TGFX_STATIC_VENDORS} SHARED_VENDORS \\\${TGFX_SHARED_VENDORS} CONFIG_DIR")
-  string(REPLACE
-    "add_vendor_target(tgfx-vendor STATIC_VENDORS \${TGFX_STATIC_VENDORS} SHARED_VENDORS \${TGFX_SHARED_VENDORS})"
-    "add_vendor_target(tgfx-vendor STATIC_VENDORS \${TGFX_STATIC_VENDORS} SHARED_VENDORS \${TGFX_SHARED_VENDORS} CONFIG_DIR \${CMAKE_CURRENT_SOURCE_DIR})"
-    _tgfx_cml_content "${_tgfx_cml_content}")
-  file(WRITE "${_tgfx_cml}" "${_tgfx_cml_content}")
+# Every change to a tracked tgfx file lives in patches/ and is applied by this
+# script, which is idempotent and fails loudly if a patch no longer applies.
+execute_process(
+  COMMAND bash "${CMAKE_SOURCE_DIR}/../scripts/apply-tgfx-patches.sh"
+  RESULT_VARIABLE _tgfx_patch_status)
+if (NOT _tgfx_patch_status EQUAL 0)
+  message(FATAL_ERROR "apply-tgfx-patches.sh failed (status ${_tgfx_patch_status})")
 endif ()
 
 # vendor_tools' vendor-build guesses its source dir from argv[1], which breaks
 # under the workspace symlink (node_modules/react-native-tgfx -> packages/...).
-# Force `-s ${CONFIG_DIR}` so it finds vendor.json at the tgfx root.
+# Force `-s ${CONFIG_DIR}` so it finds vendor.json at the tgfx root. Not a patch:
+# tgfx gitignores third_party/, which depsync re-fetches, so nothing is tracked.
 set(_vendor_cml "${TGFX_DIR}/third_party/vendor_tools/vendor.cmake")
 if (EXISTS "${_vendor_cml}")
   file(READ "${_vendor_cml}" _vendor_cml_content)
