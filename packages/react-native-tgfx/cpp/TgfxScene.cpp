@@ -80,7 +80,9 @@ namespace {
 constexpr int kMaxNodeDepth = 256;
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
-enum Kind { KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText };
+enum Kind {
+  KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill
+};
 
 tgfx::Color colorFromPacked(uint32_t c) {
   uint8_t a = (c >> 24) & 0xff;
@@ -383,6 +385,10 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       return r.ok;
     }
+    case KFill:
+      // No geometry: it covers whatever the clip is at draw time.
+      cmd.kind = DrawCmd::Fill;
+      break;
     case KRect:
       cmd.kind = DrawCmd::Rect;
       cmd.x = r.nextAnim();
@@ -540,6 +546,9 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
   }
 
   switch (cmd.kind) {
+    case DrawCmd::Fill:
+      canvas->drawPaint(*p);
+      break;
     case DrawCmd::Rect:
       canvas->drawRect(rectOf(cmd, v), *p);
       break;

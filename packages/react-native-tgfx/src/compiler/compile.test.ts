@@ -461,3 +461,26 @@ test('the native wire version matches SCENE_VERSION', async () => {
   const found = hpp.match(/kSceneVersion = (\d+);/)?.[1]
   expect(found).toBe(String(SCENE_VERSION))
 })
+
+test('a Fill writes its paint and no geometry', () => {
+  const { used } = compile([node(NodeType.Fill, { color: '#ff0000' })])
+  // header(3) rootCount kind + paint(7) + patch count
+  expect(used.length).toBe(3 + 1 + 1 + 7 + 1)
+  expect(used[4]).toBe(Kind.Fill)
+  expect(used[5]).toBe(0xffff0000)
+})
+
+test('a Fill carries a runtime shader like any other drawing', () => {
+  const t = sharedValue(0)
+  const { used, values } = compile([
+    node(NodeType.Fill, {}, [
+      node(NodeType.Shader, {
+        source:
+          'uniform float uT;\nhalf4 main(float2 p) { return half4(uT, 0.0, 0.0, 1.0); }',
+        uniforms: { uT: t },
+      }),
+    ]),
+  ])
+  expect(values).toEqual([t])
+  expect(used[4]).toBe(Kind.Fill)
+})

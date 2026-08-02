@@ -33,7 +33,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 6;
+inline constexpr double kSceneVersion = 7;
 
 /// Cursor over the binary draw program (defined in TgfxScene.cpp).
 struct SceneReader;
@@ -93,7 +93,7 @@ struct TransformOpCmd {
 };
 
 struct DrawCmd {
-  enum Kind { Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text };
+  enum Kind { Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill };
   Kind kind = Group;
 
   AnimF x, y, w, h, rx, ry, cx, cy, r, x1, y1, x2, y2, fontSize;

@@ -22,6 +22,7 @@ export const NodeType = {
   FractalNoise: 'tgfx_fractalnoise',
   Turbulence: 'tgfx_turbulence',
   Shader: 'tgfx_shader',
+  Fill: 'tgfx_fill',
 } as const
 
 export type NodeTypeName = (typeof NodeType)[keyof typeof NodeType]

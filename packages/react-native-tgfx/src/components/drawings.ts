@@ -5,6 +5,7 @@ import type {
   ImageProps,
   LineProps,
   OvalProps,
+  PaintComponentProps,
   PathProps,
   RectProps,
   RoundedRectProps,
@@ -35,3 +36,12 @@ export const Image = NodeType.Image as unknown as FC<ImageProps>
 
 /** A run of text with its baseline at (`x`, `y`). */
 export const Text = NodeType.Text as unknown as FC<TextProps>
+
+/**
+ * Fills the whole canvas, so a runtime shader does not need to be told the
+ * canvas size to cover it. The tgfx counterpart of Skia's `<Fill>`.
+ *
+ * Coverage comes from the device-space clip, so a transform on an enclosing
+ * `<Group>` moves the paint but not the area filled, as it does in Skia.
+ */
+export const Fill = NodeType.Fill as unknown as FC<PaintComponentProps>

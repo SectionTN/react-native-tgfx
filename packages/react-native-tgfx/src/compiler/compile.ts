@@ -77,6 +77,7 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Path]: Kind.Path,
   [NodeType.Image]: Kind.Image,
   [NodeType.Text]: Kind.Text,
+  [NodeType.Fill]: Kind.Fill,
 }
 
 function vec(input: unknown): Vector | undefined {

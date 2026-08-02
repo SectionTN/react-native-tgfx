@@ -5,6 +5,7 @@ export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'
 export {
   Circle,
+  Fill,
   Image,
   Line,
   Oval,
@@ -24,6 +25,7 @@ export {
   Turbulence,
 } from './components/Paint'
 
+export { useClock } from './hooks/useClock'
 export { useImage } from './hooks/useImage'
 
 export { TgfxNativeView } from './views/TgfxNativeView'

@@ -341,6 +341,63 @@ void animatedUniformDrawsWhatTheRebuildDraws() {
   CHECK(render(write(withDropped), strings, {0.0, 0.6}) == baked);
 }
 
+/// A Fill must cover the whole surface, not just where a rect would have been,
+/// and must carry a shader like any other drawing.
+void fillCoversTheWholeCanvas() {
+  Writer fill;
+  fill.push(1);
+  fill.push(9);  // Fill: no geometry words
+  fill.pushPaint(0xff3366cc, false);
+
+  Writer rect;
+  rect.push(1);
+  rect.push(1);  // Rect
+  rect.pushAnim(0);
+  rect.pushAnim(0);
+  rect.pushAnim(kWidth);
+  rect.pushAnim(kHeight);
+  rect.pushPaint(0xff3366cc, false);
+
+  auto filled = render(fill.finish(), {}, {});
+  CHECK(anyPixelSet(filled));
+  CHECK(filled == render(rect.finish(), {}, {}));
+
+  // A Fill smaller than the surface would match a half-height rect instead.
+  Writer half;
+  half.push(1);
+  half.push(1);
+  half.pushAnim(0);
+  half.pushAnim(0);
+  half.pushAnim(kWidth);
+  half.pushAnim(kHeight / 2);
+  half.pushPaint(0xff3366cc, false);
+  CHECK(filled != render(half.finish(), {}, {}));
+
+  // A Fill must carry a shader and an animated alpha like any other drawing,
+  // so dropping either on this kind alone has to fail.
+  const std::vector<std::string> strings = {
+      "return vec4(uLevel, 0.0, 0.0, 1.0);", "uLevel"};
+  const std::vector<Writer::Uniform> uniforms = {{1, {{0, 0}}}};
+
+  Writer shaded;
+  shaded.push(1);
+  shaded.push(9);
+  shaded.pushRuntimePaint(0xff000000, uniforms);
+  // finish() appends a patch table, so it must be called once per writer.
+  auto shadedWords = shaded.finish();
+  auto shadedPixels = render(shadedWords, strings, {0.75});
+  CHECK(anyPixelSet(shadedPixels));
+  // Without the shader the paint is opaque black, and the uniform must reach it.
+  CHECK(shadedPixels != filled);
+  CHECK(shadedPixels != render(shadedWords, strings, {0.25}));
+
+  Writer faded;
+  faded.push(1);
+  faded.push(9);
+  faded.pushPaint(0xff3366cc, false, 1, 0, 0);
+  CHECK(render(faded.finish(), {}, {0.5}) != filled);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -352,6 +409,7 @@ int main() {
   staticTextDrawsWhatTheRebuildDraws();
   animatedFieldsStillAnimate();
   animatedUniformDrawsWhatTheRebuildDraws();
+  fillCoversTheWholeCanvas();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

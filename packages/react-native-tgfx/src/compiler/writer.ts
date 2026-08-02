@@ -24,7 +24,8 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // 6: shader uniform floats may carry patch entries. The layout is unchanged,
 // but a reader that walks them with a plain read leaves the patch cursor
 // stranded, freezing every animated field after them.
-export const SCENE_VERSION = 6
+// 7: adds the Fill kind, which an older reader would not draw.
+export const SCENE_VERSION = 7
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
@@ -61,6 +62,7 @@ export const Kind = {
   Path: 6,
   Image: 7,
   Text: 8,
+  Fill: 9,
 } as const
 
 const HEADER_WORDS = 3
