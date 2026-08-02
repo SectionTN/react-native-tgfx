@@ -197,19 +197,26 @@ std::shared_ptr<tgfx::Image> SceneRenderer::getImage(const std::string& base64) 
   if (it != imageCache_.end()) {
     return it->second;
   }
+  decodeCount_++;
   auto bytes = base64Decode(base64);
   std::shared_ptr<tgfx::Image> image;
   if (!bytes.empty()) {
     auto data = tgfx::Data::MakeWithCopy(bytes.data(), bytes.size());
+    if (data == nullptr) {
+      // Out of memory, not a broken payload: retry instead of caching a failure.
+      return nullptr;
+    }
     image = tgfx::Image::MakeFromEncoded(std::move(data));
   }
   if (image == nullptr) {
     TGFXRN_LOGW("failed to decode image (%zu base64 chars)", base64.size());
   }
   // Bound the cache so a long-lived view doesn't accumulate every image shown.
-  if (imageCache_.size() >= 32) {
-    imageCache_.clear();
+  if (imageCacheOrder_.size() >= 32) {
+    imageCache_.erase(imageCacheOrder_.front());
+    imageCacheOrder_.pop_front();
   }
+  imageCacheOrder_.push_back(key);
   imageCache_[key] = image;
   return image;
 }
@@ -245,6 +252,7 @@ void SceneRenderer::clearCaches() {
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = nullptr;
   imageCache_.clear();
+  imageCacheOrder_.clear();
   typefaceCache_.clear();
 }
 

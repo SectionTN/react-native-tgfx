@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -131,13 +132,22 @@ class SceneRenderer {
   /// Drop the program and the cached images/typefaces.
   void clearCaches();
 
+  /// Image payload decodes attempted, i.e. cache misses. Pins the eviction
+  /// policy in tests, which is otherwise not observable in the pixels.
+  size_t decodeCount() const {
+    return decodeCount_;
+  }
+
  private:
   std::shared_ptr<const Program> program_;
   std::mutex programMutex_;
 
   // Compile-time resource caches (accessed only on the scene-change thread).
   std::unordered_map<size_t, std::shared_ptr<tgfx::Image>> imageCache_;
+  // Insertion order of imageCache_ keys, so eviction drops one entry, not all.
+  std::deque<size_t> imageCacheOrder_;
   std::unordered_map<std::string, std::shared_ptr<tgfx::Typeface>> typefaceCache_;
+  size_t decodeCount_ = 0;
 
   std::shared_ptr<tgfx::Image> getImage(const std::string& base64);
   std::shared_ptr<tgfx::Typeface> getTypeface(const std::string& family);
