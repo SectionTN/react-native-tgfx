@@ -21,7 +21,8 @@ internal object TgfxNative {
   external fun clearScene(ptr: Long)
   external fun setOpaque(ptr: Long, opaque: Boolean)
   external fun setValues(ptr: Long, values: DoubleArray)
-  external fun drawCameraFrame(
+  /** Acquires [buffer] and parks the frame in the renderer's single-frame slot. */
+  external fun stageCameraFrame(
     ptr: Long,
     buffer: Long,
     frameWidth: Float,
@@ -29,6 +30,9 @@ internal object TgfxNative {
     contours: FloatArray,
     blurRadius: Float
   )
+
+  /** Draws and releases whatever [stageCameraFrame] last parked; no-ops if empty. */
+  external fun drawCameraFrame(ptr: Long)
   external fun draw(ptr: Long): Boolean
   external fun destroy(ptr: Long)
 }

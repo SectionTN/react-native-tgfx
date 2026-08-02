@@ -65,6 +65,10 @@ export interface TgfxViewMethods extends HybridViewMethods {
    *
    * The frame and the contours are mapped with the same transform, so the blur
    * cannot drift from the image.
+   *
+   * The buffer is retained for as long as the draw needs it, so the caller may
+   * release its own reference as soon as this returns. A frame the renderer has
+   * not drawn yet is superseded by the next one rather than queued behind it.
    */
   drawCameraFrame(
     buffer: UInt64,
