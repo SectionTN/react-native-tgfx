@@ -95,13 +95,15 @@ a checkout in which the DEPS sync has run.
   vendor_tools             MIT — Copyright (c) 2021-present, Dom Chen (build
                            tooling only)
 
-2b. Tracked in tgfx's own source tree
+2b. Present in tgfx's source tree but NOT distributed
 
-These are not DEPS entries. They are committed under cpp/third_party/tgfx/
-vendor/ and are therefore present whenever the tgfx submodule is checked out.
+swiftshader and angle are committed under cpp/third_party/tgfx/vendor/, but that
+directory is outside this package's files allowlist, so neither is published.
+They are listed here only because tgfx's own LICENSE.txt covers them; this
+package ships no part of either.
 
-  swiftshader              Apache License 2.0 (desktop/CI only)
-  angle                    BSD 3-Clause — The ANGLE Project Authors (Windows only)
+  swiftshader              Apache License 2.0 (not shipped)
+  angle                    BSD 3-Clause — The ANGLE Project Authors (not shipped)
 
 cpp/third_party/tgfx/LICENSE.txt reproduces the license terms for 18 of the
 above: freetype, libpng, libwebp, pathkit, skcms, highway, libjpeg-turbo, zlib,

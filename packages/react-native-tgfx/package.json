@@ -17,7 +17,6 @@
     "android/fix-prefab.gradle",
     "android/CMakeLists.txt",
     "android/src",
-    "cpp",
     "patches",
     "scripts",
     "ios/**/*.h",
@@ -30,7 +29,19 @@
     "*.podspec",
     "README.md",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "cpp/*.cpp",
+    "cpp/*.hpp",
+    "cpp/third_party/tgfx/CMakeLists.txt",
+    "cpp/third_party/tgfx/DEPS",
+    "cpp/third_party/tgfx/vendor.json",
+    "cpp/third_party/tgfx/LICENSE.txt",
+    "cpp/third_party/tgfx/include",
+    "cpp/third_party/tgfx/third_party",
+    "cpp/third_party/tgfx/src",
+    "cpp/third_party/tgfx/android",
+    "cpp/third_party/tgfx/ios",
+    "cpp/third_party/tgfx/mac"
   ],
   "scripts": {
     "prepack": "npx --no-install tsc --build --force && ls lib/index.js lib/index.d.ts LICENSE NOTICE > /dev/null",
