@@ -1,0 +1,347 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/*
+ * Two accents, and they carry meaning: copper is work the JS thread pays for,
+ * blue is work the native render thread pays for. Nothing else uses them.
+ */
+:root {
+  --tg-ground: #fafbfc;
+  --tg-surface: #ffffff;
+  --tg-line: #dfe3ea;
+  --tg-ink: #171b23;
+  --tg-muted: #5d6577;
+  --tg-js: #a75f21;
+  --tg-native: #1f5fbf;
+
+  --color-fd-background: var(--tg-ground);
+  --color-fd-foreground: var(--tg-ink);
+  --color-fd-muted-foreground: var(--tg-muted);
+  --color-fd-border: var(--tg-line);
+  --color-fd-card: var(--tg-surface);
+  --color-fd-popover: var(--tg-surface);
+  --color-fd-primary: var(--tg-js);
+  --color-fd-accent: #eef1f6;
+  --color-fd-accent-foreground: var(--tg-ink);
+
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-newsreader), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex), ui-monospace, SFMono-Regular, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tg-ground: #0d1017;
+    --tg-surface: #151a23;
+    --tg-line: #232a36;
+    --tg-ink: #e6eaf2;
+    --tg-muted: #8b93a5;
+    --tg-js: #d98a4a;
+    --tg-native: #6aa9ff;
+    --color-fd-accent: #1c222d;
+  }
+}
+
+:root[data-theme='dark'] {
+  --tg-ground: #0d1017;
+  --tg-surface: #151a23;
+  --tg-line: #232a36;
+  --tg-ink: #e6eaf2;
+  --tg-muted: #8b93a5;
+  --tg-js: #d98a4a;
+  --tg-native: #6aa9ff;
+  --color-fd-accent: #1c222d;
+}
+
+:root[data-theme='light'] {
+  --tg-ground: #fafbfc;
+  --tg-surface: #ffffff;
+  --tg-line: #dfe3ea;
+  --tg-ink: #171b23;
+  --tg-muted: #5d6577;
+  --tg-js: #a75f21;
+  --tg-native: #1f5fbf;
+  --color-fd-accent: #eef1f6;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+h1,
+h2,
+h3,
+h4,
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+#nd-sidebar,
+#nd-tocnav,
+#nd-toc {
+  font-family: var(--font-display);
+}
+
+/* Thread marks. Colour is never the only signal — each carries its label. */
+.tg-thread {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.tg-thread[data-thread='js'] {
+  color: var(--tg-js);
+}
+
+.tg-thread[data-thread='native'] {
+  color: var(--tg-native);
+}
+
+.tg-thread::before {
+  content: '';
+  width: 0.45em;
+  height: 0.45em;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+/* Release status is not thread work, so it must not borrow a thread hue. */
+.tg-status {
+  display: inline-block;
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid var(--tg-line);
+  color: var(--tg-muted);
+}
+
+.tg-rail {
+  border-left: 2px solid var(--tg-line);
+  padding-left: 1rem;
+}
+
+.tg-rail[data-thread='js'] {
+  border-color: var(--tg-js);
+}
+
+.tg-rail[data-thread='native'] {
+  border-color: var(--tg-native);
+}
+
+/* ---- landing ---- */
+.tg-hero {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: min(92vh, 900px);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.tg-hero-word {
+  position: absolute;
+  bottom: -0.14em;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.tg-hero-word h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(140px, 26vw, 420px);
+  line-height: 0.8;
+  letter-spacing: -0.05em;
+  color: var(--tg-surface);
+}
+
+.tg-hero-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.tg-hero-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.tg-hero-lit {
+  position: absolute;
+  inset: 0;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+}
+
+.tg-hero-content {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.1rem;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 7rem 1.5rem 4rem;
+}
+
+.tg-hero-headline {
+  margin: 0;
+  max-width: 17ch;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2rem, 4.6vw, 3.4rem);
+  line-height: 1.06;
+  letter-spacing: -0.03em;
+}
+
+.tg-word {
+  display: inline-block;
+  margin-right: 0.26em;
+  opacity: 0;
+  animation: tg-word-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes tg-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+.tg-hero-sub {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 1.05rem;
+  opacity: 0.78;
+}
+
+.tg-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.tg-cta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  text-decoration: none;
+  background: color-mix(in srgb, var(--tg-js) 16%, transparent);
+}
+
+.tg-cta-bg {
+  position: absolute;
+  top: 0.3rem;
+  bottom: 0.3rem;
+  left: 0.35rem;
+  width: calc(100% - 3.4rem);
+  border-radius: 999px;
+  background: var(--tg-js);
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tg-cta:hover .tg-cta-bg {
+  width: calc(100% - 0.7rem);
+}
+
+.tg-cta-text {
+  position: relative;
+  z-index: 1;
+  padding: 0.7rem 1.6rem;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--tg-ground);
+  white-space: nowrap;
+}
+
+.tg-cta-circle {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: var(--tg-native);
+  color: var(--tg-ground);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tg-cta:hover .tg-cta-circle {
+  transform: translateX(-0.4rem);
+}
+
+.tg-ghost {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid var(--tg-line);
+  padding-bottom: 2px;
+}
+
+.tg-ghost:hover {
+  border-color: var(--tg-js);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .tg-word {
+    opacity: 1;
+    animation: none;
+  }
+}

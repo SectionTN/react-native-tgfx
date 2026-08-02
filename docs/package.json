@@ -1,0 +1,29 @@
+{
+  "name": "@tgfx/docs",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "fumadocs-mdx"
+  },
+  "dependencies": {
+    "fumadocs-core": "16.14.0",
+    "fumadocs-mdx": "15.2.2",
+    "fumadocs-ui": "16.14.0",
+    "next": "16.2.12",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/mdx": "^2.0.13",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.7.2"
+  }
+}

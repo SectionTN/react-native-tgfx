@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "docs"
   ],
   "scripts": {
     "specs": "bun --cwd packages/react-native-tgfx run specs",
