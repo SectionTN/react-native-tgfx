@@ -67,7 +67,7 @@ class TgfxRenderer {
   void drawCameraFrame(void* hardwareBuffer, float frameWidth, float frameHeight,
                        const std::vector<float>& contours, float blurRadius);
 
-  /// Release the surface, window, and cached resources.
+  /// Release the platform surface and window while preserving the current scene.
   void releaseWindow();
 
  private:

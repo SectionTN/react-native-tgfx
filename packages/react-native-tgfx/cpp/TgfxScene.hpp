@@ -101,6 +101,9 @@ class SceneRenderer {
   /// Drop the program and cached GPU/CPU resources.
   void clearCaches();
 
+  /// Drop cached resources that are not retained by the current program.
+  void clearResourceCaches();
+
  private:
   std::shared_ptr<const Program> program_;
   std::mutex programMutex_;

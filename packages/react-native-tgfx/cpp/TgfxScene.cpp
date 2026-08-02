@@ -227,6 +227,10 @@ std::shared_ptr<tgfx::Typeface> SceneRenderer::getTypeface(
 void SceneRenderer::clearCaches() {
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = nullptr;
+  clearResourceCaches();
+}
+
+void SceneRenderer::clearResourceCaches() {
   imageCache_.clear();
   typefaceCache_.clear();
 }

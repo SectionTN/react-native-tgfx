@@ -256,7 +256,7 @@ void TgfxRenderer::releaseWindow() {
       auto* context = device->lockContext();
       if (context != nullptr) {
         surface_ = nullptr;
-        scene_.clearCaches();
+        scene_.clearResourceCaches();
         device->unlock();
       }
     }
