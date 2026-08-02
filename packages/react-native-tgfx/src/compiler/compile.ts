@@ -152,6 +152,10 @@ function extractGradient(node: Node): GradientInput | undefined {
 function paintFromChildren(node: Node): PaintInput | null {
   let paint: PaintInput | null = null
   for (const child of node.children) {
+    // A drawable child never yields a gradient, so skip probing it.
+    if (KIND_OF[child.type] !== undefined) {
+      continue
+    }
     if (child.type === NodeType.Paint) {
       const childPaint = pickPaintInput(child.props)
       for (const g of child.children) {
@@ -172,23 +176,14 @@ function paintFromChildren(node: Node): PaintInput | null {
   return paint
 }
 
-/** A group's own paint plus the children that actually draw. */
-function localPaint(node: Node): {
-  paint: PaintInput
-  drawingChildren: Node[]
-} {
+/** A group's own paint, merged with whatever its paint-bearing children add. */
+function localPaint(node: Node): PaintInput {
   const paint = paintFromChildren(node) ?? pickPaintInput(node.props)
   const ownGradient = node.props.gradient as GradientInput | undefined
   if (ownGradient != null && paint.gradient == null) {
     paint.gradient = ownGradient
   }
-  const drawingChildren: Node[] = []
-  for (const child of node.children) {
-    if (child.type !== NodeType.Paint && extractGradient(child) == null) {
-      drawingChildren.push(child)
-    }
-  }
-  return { paint, drawingChildren }
+  return paint
 }
 
 /** Write one drawing node of the given kind. */
@@ -270,6 +265,14 @@ function writeDrawing(
   }
 }
 
+function angle(w: SceneWriter, v: unknown): void {
+  if (isSharedValue(v)) {
+    w.pushAnim(v)
+  } else {
+    w.push(toRadians(v as number | string))
+  }
+}
+
 /** Write a group's transform ops; returns the number written. */
 function writeOps(
   w: SceneWriter,
@@ -279,13 +282,6 @@ function writeOps(
   let count = 0
   const shift =
     origin != null && (origin.x !== 0 || origin.y !== 0) ? origin : null
-  const angle = (v: unknown): void => {
-    if (isSharedValue(v)) {
-      w.pushAnim(v)
-    } else {
-      w.push(toRadians(v as number | string))
-    }
-  }
   if (shift != null) {
     w.push(Op.translate)
     w.push(shift.x)
@@ -322,15 +318,15 @@ function writeOps(
       w.pushAnim(o.scaleY, 1)
     } else if ('rotate' in o || 'rotateZ' in o) {
       w.push(Op.rotate)
-      angle('rotate' in o ? o.rotate : o.rotateZ)
+      angle(w, 'rotate' in o ? o.rotate : o.rotateZ)
       w.push(0)
     } else if ('skewX' in o) {
       w.push(Op.skewX)
-      angle(o.skewX)
+      angle(w, o.skewX)
       w.push(0)
     } else if ('skewY' in o) {
       w.push(Op.skewY)
-      angle(o.skewY)
+      angle(w, o.skewY)
       w.push(0)
     } else {
       continue
@@ -347,7 +343,7 @@ function writeOps(
 }
 
 function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
-  const { paint: local, drawingChildren } = localPaint(node)
+  const local = localPaint(node)
   const childCtx: CompileCtx = {
     paint: mergePaint(ctx.paint, local),
     opacity: mulOpacity(ctx.opacity, local.opacity),
@@ -363,7 +359,8 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     )
   )
   const childCountAt = w.reserve()
-  w.patch(childCountAt, writeNodes(w, drawingChildren, childCtx))
+  // writeNodes already skips everything absent from KIND_OF.
+  w.patch(childCountAt, writeNodes(w, node.children, childCtx))
 }
 
 /** Write a node list; returns how many nodes were actually written. */

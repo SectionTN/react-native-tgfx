@@ -195,6 +195,43 @@ test('a text-only change leaves the word buffer byte-identical', () => {
   expect(second.strings).not.toEqual(firstStrings)
 })
 
+// Golden encoding: paint-bearing children add paint but never enter the stream.
+const MIXED_GROUP_WORDS = [
+  3, 60, 57, 1, 0, 2, 2, 1.5707963267948966, 0, 3, 0, 0, 2, 0, 1, 4,
+  0.5235987755982988, 0, 1, 1, 0, 0, 1, 1, 4294901760, 3, 3, 0, 0, 1, 1, 1, 2,
+  5, 2, 4294967295, 4278190080, 0, 1, 2, 3, 4, 5, 4294901760, 3, 3, 0, 0, 1, 1,
+  1, 2, 5, 2, 4294967295, 4278190080, 0, 1, 10, 0,
+]
+
+test('a group draws only drawing children, the rest are paint', () => {
+  const spin = sharedValue(0.5)
+  const transform = [{ rotate: '90deg' }, { skewX: spin }]
+  const { used, values } = compile([
+    node(NodeType.Group, { transform }, [
+      node(NodeType.Paint, { color: 'red', style: 'stroke', strokeWidth: 3 }, [
+        node(NodeType.LinearGradient, {
+          start: { x: 0, y: 0 },
+          end: { x: 10, y: 10 },
+          colors: ['#ff0000', '#0000ff'],
+        }),
+      ]),
+      node(NodeType.RadialGradient, {
+        cx: 1,
+        cy: 2,
+        r: 5,
+        colors: ['white', 'black'],
+      }),
+      node(NodeType.Group, { transform: [{ skewY: '30deg' }] }, [
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+      node(NodeType.Rect, { x: 2, y: 3, width: 4, height: 5 }),
+    ]),
+  ])
+  expect(used[12]).toBe(2) // the <Paint> and gradient children are not drawn
+  expect(Array.from(used)).toEqual(MIXED_GROUP_WORDS)
+  expect(values).toEqual([spin])
+})
+
 test('reuses the writer across compiles without leaking state', () => {
   const writer = new SceneWriter()
   const first = compileScene([node(NodeType.Path, { path: 'M0 0' })], writer)
