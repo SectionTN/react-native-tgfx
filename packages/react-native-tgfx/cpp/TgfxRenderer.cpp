@@ -283,14 +283,14 @@ void TgfxRenderer::releaseWindow() {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
   }
-  // Release GPU resources on a locked context when still possible.
+  // Drop the surface on a locked context when still possible. The scene's
+  // images and typefaces are context-free, so they stay for the next window.
   if (window != nullptr) {
     auto device = window->getDevice();
     if (device != nullptr) {
       auto* context = device->lockContext();
       if (context != nullptr) {
         surface_ = nullptr;
-        scene_.clearResourceCaches();
         device->unlock();
       }
     }

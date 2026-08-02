@@ -113,11 +113,8 @@ class SceneRenderer {
   /// Execute the compiled program, resolving slot placeholders against `values`.
   void render(tgfx::Canvas* canvas, std::span<const double> values);
 
-  /// Drop the program and cached GPU/CPU resources.
+  /// Drop the program and the cached images/typefaces.
   void clearCaches();
-
-  /// Drop cached resources that are not retained by the current program.
-  void clearResourceCaches();
 
  private:
   std::shared_ptr<const Program> program_;
