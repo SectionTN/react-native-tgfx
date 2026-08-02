@@ -11,7 +11,7 @@
 //                                         [--baseline=artifacts/gate-baseline.json]
 //                                         [--reps=3] [--update-baseline]
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -35,7 +35,7 @@ const TOLERANCE = {
   peakPssMb: 0.1,
 }
 
-const run = (cmd, args, opts = {}) =>
+const exec = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
@@ -43,12 +43,37 @@ const run = (cmd, args, opts = {}) =>
     ...opts,
   })
 
+// Any agent can leave a session holding the device, and `agent-device session
+// list` reports an empty list while one still does — so the only reliable
+// handle on the squatter is the name in the error itself.
+function run(cmd, args, opts = {}) {
+  try {
+    return exec(cmd, args, opts)
+  } catch (error) {
+    const stuck = String(error.stderr ?? '').match(/DEVICE_IN_USE.*?session "([^"]+)"/s)
+    if (stuck === null) {
+      throw error
+    }
+    process.stdout.write(`  releasing leaked session "${stuck[1]}" and retrying\n`)
+    try {
+      exec('agent-device', ['close', '--session', stuck[1]], { stdio: 'ignore' })
+    } catch {}
+    return exec(cmd, args, opts)
+  }
+}
+
 function pixelCheck() {
   if (!existsSync(golden)) {
     return { ok: false, detail: `golden missing: ${golden}. Capture one first.` }
   }
-  run('node', ['scripts/pixel-gate.mjs'])
   const shot = resolve(root, 'artifacts/frames/tgfx-frame.png')
+  // The committed frame is byte-identical to the golden, so a capture that
+  // never happened would compare IDENTICAL against the leftover file.
+  rmSync(shot, { force: true })
+  run('node', ['scripts/pixel-gate.mjs'])
+  if (!existsSync(shot)) {
+    return { ok: false, detail: `pixel-gate captured no frame at ${shot}` }
+  }
   try {
     const out = run('/tmp/pixvenv/bin/python3', [
       'scripts/compare-frames.py',
