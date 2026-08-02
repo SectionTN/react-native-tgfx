@@ -1,9 +1,9 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
 import React, { StrictMode, useEffect } from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
-
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true
+;(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true
 
 // Scene word layout is [VERSION, wordCount, patchTableStart, rootNodeCount, ...].
 let scenes: number[][] = []

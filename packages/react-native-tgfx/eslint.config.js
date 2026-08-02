@@ -3,6 +3,7 @@
 // ESLint 9 (`context.getAllComments is not a function`) — so this package lints
 // with typescript-eslint directly instead. Formatting is prettier's job.
 const js = require('@eslint/js')
+const prettier = require('eslint-config-prettier/flat')
 const tseslint = require('@typescript-eslint/eslint-plugin')
 const tsparser = require('@typescript-eslint/parser')
 
@@ -40,4 +41,7 @@ module.exports = [
       'no-undef': 'off',
     },
   },
+  // Last: turns off every rule prettier already decides, so the two gates
+  // cannot contradict each other the way no-extra-semi did.
+  prettier,
 ]

@@ -11,11 +11,14 @@ test('the package itself being absent, in every runtime shape', () => {
     true
   )
   expect(
-    isModuleNotFound(withCode(`Cannot find package '${NAME}' from '/app'`), NAME)
+    isModuleNotFound(
+      withCode(`Cannot find package '${NAME}' from '/app'`),
+      NAME
+    )
   ).toBe(true)
-  expect(isModuleNotFound(new Error(`Cannot find module '${NAME}'`), NAME)).toBe(
-    true
-  )
+  expect(
+    isModuleNotFound(new Error(`Cannot find module '${NAME}'`), NAME)
+  ).toBe(true)
   expect(isModuleNotFound(new Error('Cannot find module'), NAME)).toBe(true)
   // Node's ESM loader: a different code, and "package" rather than "module".
   expect(
@@ -28,7 +31,10 @@ test('the package itself being absent, in every runtime shape', () => {
     )
   ).toBe(true)
   expect(
-    isModuleNotFound(new Error(`Cannot find package '${NAME}' from '/app'`), NAME)
+    isModuleNotFound(
+      new Error(`Cannot find package '${NAME}' from '/app'`),
+      NAME
+    )
   ).toBe(true)
 })
 
@@ -41,7 +47,10 @@ test('the package being installed but broken', () => {
     )
   ).toBe(false)
   expect(
-    isModuleNotFound(new Error('[Reanimated] Mismatch between JS and native'), NAME)
+    isModuleNotFound(
+      new Error('[Reanimated] Mismatch between JS and native'),
+      NAME
+    )
   ).toBe(false)
   expect(isModuleNotFound(null, NAME)).toBe(false)
 })

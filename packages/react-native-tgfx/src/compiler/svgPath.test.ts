@@ -34,8 +34,14 @@ const CASES: [string, string][] = [
   // SVG 2 §9.3.8: `A` carries rx ry rot large-arc sweep x y, converted to a
   // centre parameterisation by appendix F.6.5. tgfx::Path::arcTo implements
   // F.6.5, but its `reversed` is the inverse of the SVG sweep flag.
-  ['M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14z', 'M8,15 A7,7 0 1 0 8,1 A7,7 0 0 0 8,15 Z'],
-  ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12,21 A9,9 0 1 1 12,3 A9,9 0 0 1 12,21 Z'],
+  [
+    'M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14z',
+    'M8,15 A7,7 0 1 0 8,1 A7,7 0 0 0 8,15 Z',
+  ],
+  [
+    'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
+    'M12,21 A9,9 0 1 1 12,3 A9,9 0 0 1 12,21 Z',
+  ],
   [
     'M22 12 A10 10 0 1 1 2 12 A10 10 0 1 1 22 12 Z',
     'M22,12 A10,10 0 1 0 2,12 A10,10 0 1 0 22,12 Z',
@@ -43,7 +49,10 @@ const CASES: [string, string][] = [
   // The compact form svgo/Figma emit: `flag ::= "0" | "1"` is one character, so
   // `110-14` is large-arc=1, sweep=1, 0, -14. Reading it as the number 110
   // desynchronises every later token, eating the `z`. Must match the case above.
-  ['M8 15a7 7 0 110-14 7 7 0 010 14z', 'M8,15 A7,7 0 1 0 8,1 A7,7 0 0 0 8,15 Z'],
+  [
+    'M8 15a7 7 0 110-14 7 7 0 010 14z',
+    'M8,15 A7,7 0 1 0 8,1 A7,7 0 0 0 8,15 Z',
+  ],
   ['M0 0a5 5 0 01-10 0', 'M0,0 A5,5 0 0 0 -10,0'],
   ['M0 0A5 5 0 0110 0', 'M0,0 A5,5 0 0 0 10,0'],
   // A flag that is neither 0 nor 1 is a path-data error: render up to but not
@@ -129,15 +138,24 @@ function parseAll(): string[] {
     const binary = join(dir, 'main')
     writeFileSync(source, PROGRAM)
     const cpp = resolve(import.meta.dir, '../../cpp')
-    execFileSync('c++', [
-      '-std=c++20',
-      '-I', dir,
-      '-I', cpp,
-      source,
-      join(cpp, 'SvgPath.cpp'),
-      '-o', binary,
-    ], { stdio: ['ignore', 'pipe', 'inherit'] })
-    return execFileSync(binary, { encoding: 'utf8' }).split('\n').slice(0, CASES.length)
+    execFileSync(
+      'c++',
+      [
+        '-std=c++20',
+        '-I',
+        dir,
+        '-I',
+        cpp,
+        source,
+        join(cpp, 'SvgPath.cpp'),
+        '-o',
+        binary,
+      ],
+      { stdio: ['ignore', 'pipe', 'inherit'] }
+    )
+    return execFileSync(binary, { encoding: 'utf8' })
+      .split('\n')
+      .slice(0, CASES.length)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

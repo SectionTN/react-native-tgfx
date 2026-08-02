@@ -34,7 +34,11 @@ export const SCENE_VERSION = 5
  */
 export function packStringTable(prev: string[], next: string[]): string[] {
   let kept = 0
-  while (kept < prev.length && kept < next.length && prev[kept] === next[kept]) {
+  while (
+    kept < prev.length &&
+    kept < next.length &&
+    prev[kept] === next[kept]
+  ) {
     kept++
   }
   const packed: string[] = [String(kept)]

@@ -7,6 +7,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# tee in a `run:` returns tee's status, so a failing step reports success.
+# `shell: bash` is the alias that carries -o pipefail.
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
   pull-requests: write
@@ -34,7 +40,9 @@ jobs:
         id: format
         working-directory: packages/react-native-tgfx
         continue-on-error: true
-        run: bunx prettier --check "src/**/*.{ts,tsx}" 2>&1 | tee /tmp/format.txt
+        # bun run resolves node_modules/.bin locally, so the prettier major
+        # cannot depend on the cwd. The root hoists a different one.
+        run: bun run format:check 2>&1 | tee /tmp/format.txt
 
       # The generated bindings must match the spec, or the native side silently
       # drifts from the TypeScript API.
@@ -42,8 +50,10 @@ jobs:
         id: codegen
         continue-on-error: true
         run: |
-          (cd packages/react-native-tgfx && bunx nitrogen)
-          git diff --exit-code -- packages/react-native-tgfx/nitrogen 2>&1 | tee /tmp/codegen.txt
+          # nitrogen's own failure has to reach the file too, or -e aborts
+          # before the tee and the PR comment renders an empty block.
+          (cd packages/react-native-tgfx && bunx nitrogen) 2>&1 | tee /tmp/codegen.txt
+          git diff --exit-code -- packages/react-native-tgfx/nitrogen 2>&1 | tee -a /tmp/codegen.txt
 
       # A change to the draw-program format is only safe if both ends move
       # together, so flag it for a human rather than trying to judge it here.
@@ -52,8 +62,8 @@ jobs:
         continue-on-error: true
         run: |
           BASE=$(git merge-base origin/${{ github.base_ref }} HEAD)
-          JS=$(git diff --name-only $BASE HEAD -- packages/react-native-tgfx/src/compiler/writer.ts | wc -l)
-          NATIVE=$(git diff --name-only $BASE HEAD -- packages/react-native-tgfx/cpp/TgfxScene.cpp | wc -l)
+          JS=$(git diff --name-only "$BASE" HEAD -- packages/react-native-tgfx/src/compiler/writer.ts | wc -l)
+          NATIVE=$(git diff --name-only "$BASE" HEAD -- packages/react-native-tgfx/cpp/TgfxScene.cpp | wc -l)
           if [ "$JS" -ne "$NATIVE" ]; then
             echo "writer.ts and TgfxScene.cpp changed independently — the binary draw program is written by one and read by the other, so check they still agree." | tee /tmp/wire.txt
             exit 1

@@ -100,7 +100,13 @@ describe('resolveColor', () => {
   })
 
   it('warns on a malformed function or hex form', () => {
-    for (const bad of ['rgb(oops)', 'rgb(1, 2)', 'hsl(nope)', '#gggggg', '#12']) {
+    for (const bad of [
+      'rgb(oops)',
+      'rgb(1, 2)',
+      'hsl(nope)',
+      '#gggggg',
+      '#12',
+    ]) {
       const warnings = warningsDuring(() => {
         expect(resolveColor(bad)).toBe(0xff000000)
       })

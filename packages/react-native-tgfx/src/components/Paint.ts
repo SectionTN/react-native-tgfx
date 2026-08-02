@@ -17,16 +17,20 @@ import type {
 export const Paint = NodeType.Paint as unknown as FC<PaintComponentProps>
 
 /** Linear gradient shader; use inside a shape or `<Paint>`. */
-export const LinearGradient = NodeType.LinearGradient as unknown as FC<LinearGradientProps>
+export const LinearGradient =
+  NodeType.LinearGradient as unknown as FC<LinearGradientProps>
 
 /** Radial gradient shader; use inside a shape or `<Paint>`. */
-export const RadialGradient = NodeType.RadialGradient as unknown as FC<RadialGradientProps>
+export const RadialGradient =
+  NodeType.RadialGradient as unknown as FC<RadialGradientProps>
 
 /** Sweep (conic) gradient shader. `start`/`end` are in degrees, as in Skia. */
-export const SweepGradient = NodeType.SweepGradient as unknown as FC<SweepGradientProps>
+export const SweepGradient =
+  NodeType.SweepGradient as unknown as FC<SweepGradientProps>
 
 /** Diamond gradient shader, drawn from the center to the diamond's vertices. */
-export const DiamondGradient = NodeType.DiamondGradient as unknown as FC<RadialGradientProps>
+export const DiamondGradient =
+  NodeType.DiamondGradient as unknown as FC<RadialGradientProps>
 
 /** Perlin fractal-noise shader. */
 export const FractalNoise = NodeType.FractalNoise as unknown as FC<NoiseProps>

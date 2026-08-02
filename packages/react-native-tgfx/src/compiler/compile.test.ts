@@ -4,7 +4,7 @@ import { compileScene } from './compile'
 import { Kind, SCENE_VERSION, SceneWriter } from './writer'
 
 const node = (type: unknown, props: object, children: Node[] = []): Node =>
-  ({ type, props, children } as Node)
+  ({ type, props, children }) as Node
 
 const sharedValue = (value: number) => ({
   value,
@@ -291,7 +291,13 @@ const RECT_ALPHA_WORD = 14
 test('animates strokeWidth through a patch slot', () => {
   const width = sharedValue(6)
   const { used, values } = compile([
-    node(NodeType.Rect, { x: 1, y: 2, width: 3, height: 4, strokeWidth: width }),
+    node(NodeType.Rect, {
+      x: 1,
+      y: 2,
+      width: 3,
+      height: 4,
+      strokeWidth: width,
+    }),
   ])
   expect(values).toEqual([width])
   const patchStart = used[2]!

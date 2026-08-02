@@ -13,7 +13,7 @@ let startMapper: ((worklet: () => void, deps: unknown[]) => number) | undefined
 let stopMapper: ((id: number) => void) | undefined
 try {
   // A require inside a try is what makes Reanimated optional to Metro; a static import never is.
-  ({ startMapper, stopMapper } = require('react-native-reanimated'))
+  ;({ startMapper, stopMapper } = require('react-native-reanimated'))
 } catch (e) {
   if (!isModuleNotFound(e, 'react-native-reanimated')) {
     throw e

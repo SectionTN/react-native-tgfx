@@ -187,7 +187,9 @@ export function writePaint(
     props.gradient !== undefined ? props.gradient : inherited.gradient
 
   w.push(resolveColor(resolveValue(color as Color | undefined)))
-  w.push((forceStroke || style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0))
+  w.push(
+    (forceStroke || style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0)
+  )
   w.pushAnim(strokeWidth, 1)
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])

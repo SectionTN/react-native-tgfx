@@ -15,7 +15,8 @@ import type {
 export const Rect = NodeType.Rect as unknown as FC<RectProps>
 
 /** Rounded rectangle (`r`, or independent `rx`/`ry`). */
-export const RoundedRect = NodeType.RoundedRect as unknown as FC<RoundedRectProps>
+export const RoundedRect =
+  NodeType.RoundedRect as unknown as FC<RoundedRectProps>
 
 /** Ellipse inscribed in the given rectangle. */
 export const Oval = NodeType.Oval as unknown as FC<OvalProps>
