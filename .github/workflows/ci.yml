@@ -40,6 +40,20 @@ jobs:
             git diff --stat -- packages/react-native-tgfx/nitrogen
             exit 1
           fi
+      - name: Tarball carries the entrypoints and the legal files
+        working-directory: packages/react-native-tgfx
+        run: |
+          rm -rf lib
+          npm pack --silent
+          # Herestring, not a pipe: `grep -q` would SIGPIPE tar and trip pipefail.
+          entries=$(tar -tzf react-native-tgfx-*.tgz)
+          for f in package/lib/index.js package/lib/index.d.ts package/LICENSE package/NOTICE; do
+            if ! grep -qx "$f" <<<"$entries"; then
+              echo "::error::$f is missing from the packed tarball"
+              exit 1
+            fi
+          done
+          rm -f react-native-tgfx-*.tgz
 
   ios:
     name: iOS Simulator build

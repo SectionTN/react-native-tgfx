@@ -7,11 +7,13 @@ Pod::Spec.new do |s|
   s.version      = package["version"]
   s.summary      = package["description"]
   s.homepage     = package["homepage"]
-  s.license      = package["license"]
+  # :text, not :file — acknowledgements render one blob, and NOTICE belongs in it.
+  s.license      = { :type => package["license"], :text => ["LICENSE", "NOTICE"].map { |f| File.read(File.join(__dir__, f), encoding: "UTF-8") }.join("\n") }
   s.authors      = package["author"]
 
   s.platforms    = { :ios => min_ios_version_supported }
-  s.source       = { :git => "https://github.com/mrousavy/nitro.git", :tag => "#{s.version}" }
+  s.source       = { :git => "https://github.com/riteshshukla04/react-native-tgfx.git", :tag => "#{s.version}" }
+  s.preserve_paths = ["LICENSE", "NOTICE"]
 
   # IMPORTANT: only our own sources — NOT cpp/third_party/tgfx (built separately
   # into a static lib by scripts/build-tgfx-ios.sh and linked via vendored_libraries).

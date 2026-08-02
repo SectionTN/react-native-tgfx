@@ -1,0 +1,139 @@
+react-native-tgfx
+Copyright (c) 2026 Ritesh Shukla
+
+This product is licensed under the MIT License (see LICENSE) and includes or
+builds against the third-party software listed below. Each component remains
+under its own license; the terms below are reproduced or referenced as those
+licenses require.
+
+================================================================================
+1. tgfx — BSD 3-Clause License
+================================================================================
+
+Distributed in this package at: cpp/third_party/tgfx/
+Source: https://github.com/Tencent/tgfx
+
+Tencent is pleased to support the open source community by making tgfx
+available.
+
+Copyright (C) 2025 Tencent. All rights reserved. The below software in this
+distribution may have been modified by Tencent ("Tencent Modifications"). All
+Tencent Modifications are Copyright (C) Tencent.
+
+The patches in patches/ are modifications to tgfx and are subject to the same
+license.
+
+The complete upstream notice, including tgfx's own third-party inventory, is
+preserved verbatim at cpp/third_party/tgfx/LICENSE.txt.
+
+Terms of the BSD 3-Clause License:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+================================================================================
+2. Components vendored by tgfx
+================================================================================
+
+This package ships no prebuilt binaries. tgfx and the components below are
+distributed as source and are compiled into the tgfx static library by the
+consuming app's own iOS or Android build.
+
+2a. Fetched by tgfx's DEPS
+
+cpp/third_party/tgfx/DEPS lists 21 repositories, which tgfx checks out into
+cpp/third_party/tgfx/third_party/. Nothing under that directory is tracked by
+git, so these sources are present in this package only when it is packed from
+a checkout in which the DEPS sync has run.
+
+  freetype                 The FreeType Project License (FTL) / GPLv2
+  libpng                   libpng License
+  zlib                     zlib License
+  libwebp                  BSD 3-Clause — Copyright (c) 2010 Google Inc.
+  libjpeg-turbo            IJG License / BSD 3-Clause / zlib
+  harfbuzz                 "Old MIT" License
+  libexpat                 MIT — Thai Open Source Software Center Ltd, et al.
+  pathkit                  BSD 3-Clause — Copyright (c) 2011 Google Inc.
+  skcms                    BSD 3-Clause — Copyright 2018 Google Inc.
+  highway                  Apache License 2.0 OR BSD 3-Clause — The Highway
+                           Project Authors
+  concurrentqueue          BSD 2-Clause — Copyright (c) 2013-2016 Cameron Desrochers
+  volk                     MIT — Copyright (c) 2018-2024 Arseny Kapoulkine
+  VulkanMemoryAllocator    MIT — Copyright (c) 2017-2025 Advanced Micro Devices, Inc.
+                           (tgfx's own LICENSE.txt summarises this as 2017-2024;
+                           the year here is from the pinned component's own file,
+                           which is the notice that must travel with what ships.)
+  Vulkan-Headers           Apache License 2.0 — The Khronos Group Inc.
+  shaderc                  Apache License 2.0 — The Shaderc Authors
+  SPIRV-Cross              Apache License 2.0 — The Khronos Group Inc.
+  tint                     Apache License 2.0 — The Dawn/Tint Authors
+  abseil-cpp               Apache License 2.0 — The Abseil Authors
+  nlohmann/json            MIT — Copyright (c) 2013-2021 Niels Lohmann
+  googletest               BSD 3-Clause — Copyright 2008 Google Inc. (tests only)
+  vendor_tools             MIT — Copyright (c) 2021-present, Dom Chen (build
+                           tooling only)
+
+2b. Tracked in tgfx's own source tree
+
+These are not DEPS entries. They are committed under cpp/third_party/tgfx/
+vendor/ and are therefore present whenever the tgfx submodule is checked out.
+
+  swiftshader              Apache License 2.0 (desktop/CI only)
+  angle                    BSD 3-Clause — The ANGLE Project Authors (Windows only)
+
+cpp/third_party/tgfx/LICENSE.txt reproduces the license terms for 18 of the
+above: freetype, libpng, libwebp, pathkit, skcms, highway, libjpeg-turbo, zlib,
+harfbuzz, libexpat, volk, VulkanMemoryAllocator, swiftshader, Vulkan-Headers,
+shaderc, SPIRV-Cross, angle and concurrentqueue. For the remaining five —
+vendor_tools, googletest, nlohmann/json, tint and abseil-cpp — the license file
+shipped in each component's own source tree applies.
+
+================================================================================
+3. Nitro Modules — MIT License
+================================================================================
+
+The sources under nitrogen/generated/ are produced by Nitrogen, part of
+react-native-nitro-modules.
+
+Copyright © Marc Rousavy @ Margelo
+Source: https://github.com/mrousavy/nitro
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
