@@ -43,8 +43,13 @@ export function Canvas({
   const viewRef = useRef<TgfxViewRef | null>(null)
   const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
-  const hybridRef = useRef(
-    callback((ref: TgfxViewRef) => {
+  const hybridRef = useRef<ReturnType<
+    typeof callback<(ref: TgfxViewRef) => void>
+  > | null>(null)
+
+  // `useRef(callback(...))` would wrap a fresh Nitro callback on every render.
+  if (hybridRef.current == null) {
+    hybridRef.current = callback((ref: TgfxViewRef) => {
       viewRef.current = ref
       // Commits can land before the native view exists; flush the latest scene.
       if (scene.current != null) {
@@ -52,7 +57,8 @@ export function Canvas({
       }
       setView(ref)
     })
-  )
+  }
+  const hybrid = hybridRef.current
 
   if (rootRef.current == null) {
     // The program goes straight to the hybrid object: as a prop it would ride a
@@ -73,10 +79,10 @@ export function Canvas({
     rootRef.current?.render(<>{children}</>)
   }, [children])
 
+  // Not nulled: the render body that builds it never re-runs on a StrictMode remount.
   useEffect(() => {
     return () => {
       rootRef.current?.unmount()
-      rootRef.current = null
     }
   }, [])
 
@@ -93,7 +99,7 @@ export function Canvas({
         inHierarchy={composite === 'texture'}
         opaque={opaque}
         style={style}
-        hybridRef={hybridRef.current}
+        hybridRef={hybrid}
       />
       {AnimationDriver != null && view != null && values.length > 0 ? (
         <AnimationDriver view={view} values={values} />
