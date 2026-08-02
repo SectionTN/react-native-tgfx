@@ -202,11 +202,68 @@ test('a text-only change leaves the word buffer byte-identical', () => {
 })
 
 // Golden encoding: paint-bearing children add paint but never enter the stream.
+// Word 0 is the version, which every bump would otherwise strand this golden on.
 const MIXED_GROUP_WORDS = [
-  5, 60, 57, 1, 0, 2, 2, 1.5707963267948966, 0, 3, 0.5, 0, 2, 0, 1, 4,
-  0.5235987755982988, 0, 1, 1, 0, 0, 1, 1, 4294901760, 3, 3, 0, 0, 1, 1, 1, 2,
-  5, 2, 4294967295, 4278190080, 0, 1, 2, 3, 4, 5, 4294901760, 3, 3, 0, 0, 1, 1,
-  1, 2, 5, 2, 4294967295, 4278190080, 0, 1, 10, 0,
+  SCENE_VERSION,
+  60,
+  57,
+  1,
+  0,
+  2,
+  2,
+  1.5707963267948966,
+  0,
+  3,
+  0.5,
+  0,
+  2,
+  0,
+  1,
+  4,
+  0.5235987755982988,
+  0,
+  1,
+  1,
+  0,
+  0,
+  1,
+  1,
+  4294901760,
+  3,
+  3,
+  0,
+  0,
+  1,
+  1,
+  1,
+  2,
+  5,
+  2,
+  4294967295,
+  4278190080,
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  4294901760,
+  3,
+  3,
+  0,
+  0,
+  1,
+  1,
+  1,
+  2,
+  5,
+  2,
+  4294967295,
+  4278190080,
+  0,
+  1,
+  10,
+  0,
 ]
 
 test('a group draws only drawing children, the rest are paint', () => {
@@ -345,4 +402,62 @@ test('an animated strokeWidth costs no extra word and stays ordered', () => {
   expect(animated.used[patchStart]).toBe(2)
   expect(animated.used[patchStart + 1]).toBe(RECT_STROKE_WIDTH_WORD)
   expect(animated.used[patchStart + 3]).toBe(RECT_ALPHA_WORD)
+})
+
+test('an animated shader uniform gets a slot, a static one stays a literal', () => {
+  const level = sharedValue(0.75)
+  const source = `
+uniform float uLevel;
+uniform float2 uSize;
+half4 main(float2 p) {
+  return half4(uLevel, p.x / uSize.x, 0.0, 1.0);
+}
+`
+  const { used, values } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 4, height: 4 }, [
+      node(NodeType.Shader, {
+        source,
+        uniforms: { uLevel: level, uSize: [8, 9] },
+      }),
+    ]),
+  ])
+  expect(values).toEqual([level])
+
+  const patchStart = used[2]
+  expect(used[patchStart]).toBe(1)
+  const at = used[patchStart + 1]
+  // The patched word is the uniform's literal, kept as the pre-setValues value.
+  expect(used[at]).toBe(0.75)
+  expect(used[patchStart + 2]).toBe(0)
+  // The static vector is written straight through, unpatched.
+  expect(Array.from(used.subarray(at + 3, at + 5))).toEqual([8, 9])
+})
+
+test('a uniform vector may mix animated and static components', () => {
+  const x = sharedValue(3)
+  const { used, values } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 4, height: 4 }, [
+      node(NodeType.Shader, {
+        source:
+          'uniform float2 uAt;\nhalf4 main(float2 p) { return half4(uAt, 0.0, 1.0); }',
+        uniforms: { uAt: [x, 9] },
+      }),
+    ]),
+  ])
+  expect(values).toEqual([x])
+  const patchStart = used[2]
+  expect(used[patchStart]).toBe(1)
+  const at = used[patchStart + 1]
+  expect(used[at]).toBe(3)
+  expect(used[at + 1]).toBe(9)
+})
+
+// A one-sided bump leaves every test green and fails on device as a blank
+// canvas, so the two constants are checked against each other directly.
+test('the native wire version matches SCENE_VERSION', async () => {
+  const hpp = await Bun.file(
+    new URL('../../cpp/TgfxScene.hpp', import.meta.url)
+  ).text()
+  const found = hpp.match(/kSceneVersion = (\d+);/)?.[1]
+  expect(found).toBe(String(SCENE_VERSION))
 })

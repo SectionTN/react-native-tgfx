@@ -144,10 +144,16 @@ export interface SweepGradientProps extends GradientStops {
   end?: number
 }
 
+/**
+ * A uniform value. A SharedValue element becomes an animation slot the native
+ * engine patches on the UI thread, so animating it costs no JS per frame.
+ */
+export type UniformValue = Animated<number> | Array<Animated<number>>
+
 export interface ShaderProps {
   /** SkSL source with a `vec4 main(vec2 pos)` entry point. */
   source: string
-  uniforms?: Record<string, number | number[]>
+  uniforms?: Record<string, UniformValue>
 }
 
 export interface NoiseProps {

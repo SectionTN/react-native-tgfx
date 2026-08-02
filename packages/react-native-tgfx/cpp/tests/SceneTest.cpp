@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "TgfxScene.hpp"
@@ -62,6 +63,32 @@ struct Writer {
     push(0);
     pushAnim(alpha, alphaSlot);
     push(-1);
+  }
+
+  /// One uniform: its name's string index and a component per (value, slot).
+  struct Uniform {
+    int name;
+    std::vector<std::pair<double, int>> components;
+  };
+
+  /// A paint whose shader is a runtime shader. Strings: 0 = body, then names.
+  void pushRuntimePaint(uint32_t color, const std::vector<Uniform>& uniforms) {
+    push(color);
+    push(2);
+    pushAnim(1);
+    push(0);
+    push(0);
+    pushAnim(1);
+    push(6);  // runtime shader
+    push(0);  // body
+    push(static_cast<double>(uniforms.size()));
+    for (const auto& uniform : uniforms) {
+      push(uniform.name);
+      push(static_cast<double>(uniform.components.size()));
+      for (const auto& [value, slot] : uniform.components) {
+        pushAnim(value, slot);
+      }
+    }
   }
 
   std::vector<double> finish() {
@@ -264,6 +291,56 @@ void animatedFieldsStillAnimate() {
 
 }  // namespace
 
+/// A uniform on a slot must draw what the same uniform as a literal drew, and
+/// must still move when the slot value changes -- the shader is rebuilt per
+/// frame, so a stale cached paint would pin it to its first value.
+///
+/// The animated component sits between static ones and behind a multi-component
+/// uniform, because the slots are held in one flat run across all uniforms: a
+/// run that restarted per uniform, or ran in the wrong order, would read a
+/// static component here and still draw the right thing for a single uniform.
+void animatedUniformDrawsWhatTheRebuildDraws() {
+  const std::vector<std::string> strings = {
+      "return vec4(uLevel, uTint) + vec4(uPad.x, uPad.y, 0.0, 0.0);", "uTint",
+      "uLevel", "uPad", ""};
+  const std::vector<Writer::Uniform> baseUniforms = {
+      {1, {{0.1, -1}, {0.2, -1}, {0.3, -1}}},
+      {2, {{0.6, -1}}},
+      {3, {{0.05, -1}, {0.0, -1}}},
+  };
+  auto slotted = baseUniforms;
+  // Slot 1, not 0: a build that resolved every animated component against
+  // values[0] would survive a test that only ever used the first slot.
+  slotted[1].components[0] = {0, 1};
+
+  auto write = [](const std::vector<Writer::Uniform>& uniforms) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushRuntimePaint(0xff000000, uniforms);
+    return w.finish();
+  };
+
+  auto words = write(slotted);
+  auto baked = render(write(baseUniforms), strings, {});
+  auto resolved = render(words, strings, {0.0, 0.6});
+  CHECK(anyPixelSet(baked));
+  CHECK(baked == resolved);
+
+  // Same compiled program, different value: the second frame must differ.
+  CHECK(render(words, strings, {0.0, 0.2}) != resolved);
+
+  // An empty-named uniform is dropped, and must take its slots with it or the
+  // flat run desyncs and every survivor reads the wrong component.
+  auto withDropped = slotted;
+  withDropped.insert(withDropped.begin(), {4, {{0.9, 0}, {0.9, -1}}});
+  CHECK(render(write(withDropped), strings, {0.0, 0.6}) == baked);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -274,6 +351,7 @@ int main() {
   animatedStrokeWidthDrawsWhatTheRebuildDraws();
   staticTextDrawsWhatTheRebuildDraws();
   animatedFieldsStillAnimate();
+  animatedUniformDrawsWhatTheRebuildDraws();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

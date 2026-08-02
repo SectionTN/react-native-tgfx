@@ -76,7 +76,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; DrawCmd is 352 B, so 256 deep is ~90 KB of stack.
+/// Bounds readNode and so drawCmd too; DrawCmd is 504 B, so 256 deep is ~129 KB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
@@ -150,7 +150,9 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
   paint.reset();
   tgfx::Color color = colorFromPacked(pc.color);
   paint.setColor(color);
-  if (pc.shader != nullptr) {
+  if (pc.runtime != nullptr) {
+    paint.setShader(pc.runtime->build(v));
+  } else if (pc.shader != nullptr) {
     paint.setShader(pc.shader);
   }
   if (pc.stroke) {
@@ -174,6 +176,18 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
 }
 
 }  // namespace
+
+std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
+    std::span<const double> values) const {
+  auto resolved = uniforms;
+  size_t at = 0;
+  for (auto& uniform : resolved) {
+    for (auto& value : uniform.values) {
+      value = slots[at++].resolve(values);
+    }
+  }
+  return tgfx::Shader::MakeRuntimeShader(body, std::move(resolved));
+}
 
 std::shared_ptr<tgfx::Image> SceneRenderer::getImage(const std::string& base64) {
   size_t key = std::hash<std::string>{}(base64);
@@ -232,7 +246,8 @@ void SceneRenderer::clearCaches() {
   typefaceCache_.clear();
 }
 
-std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r) {
+std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(
+    SceneReader& r, std::shared_ptr<RuntimeShaderCmd>* runtimeOut) {
   int kind = r.nextInt();
   if (kind < 0) {
     return nullptr;
@@ -242,16 +257,33 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r) {
     int uniformCount = r.nextInt();
     std::vector<tgfx::RuntimeShaderUniform> uniforms;
     uniforms.reserve(static_cast<size_t>(std::max(0, uniformCount)));
+    std::vector<AnimF> slots;
+    bool animated = false;
     for (int i = 0; i < uniformCount && r.ok; i++) {
       tgfx::RuntimeShaderUniform uniform;
       uniform.name = r.nextString();
       int size = r.nextInt();
+      std::vector<AnimF> uniformSlots;
       for (int v = 0; v < size && r.ok; v++) {
-        uniform.values.push_back(static_cast<float>(r.next()));
+        AnimF f = r.nextAnim();
+        uniform.values.push_back(f.literal);
+        uniformSlots.push_back(f);
       }
+      // Dropped uniforms must drop their slots too, or the flat run desyncs.
       if (!uniform.name.empty() && !uniform.values.empty()) {
         uniforms.push_back(std::move(uniform));
+        for (const auto& f : uniformSlots) {
+          animated = animated || f.slot >= 0;
+          slots.push_back(f);
+        }
       }
+    }
+    if (animated && runtimeOut != nullptr) {
+      auto cmd = std::make_shared<RuntimeShaderCmd>();
+      cmd->body = body;
+      cmd->uniforms = uniforms;
+      cmd->slots = std::move(slots);
+      *runtimeOut = std::move(cmd);
     }
     return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms));
   }
@@ -308,7 +340,7 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.cap = r.nextInt();
   paint.join = r.nextInt();
   paint.alpha = r.nextAnim();
-  paint.shader = readShader(r);
+  paint.shader = readShader(r, &paint.runtime);
   applyPaint(paint, {}, paint.cached);
 }
 

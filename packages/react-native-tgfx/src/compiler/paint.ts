@@ -1,5 +1,6 @@
 import { resolveColor, type Color } from './colors'
 import { transpileShader } from './sksl'
+import type { UniformValue } from '../types'
 import type { Vector } from './transform'
 import { resolveNumber, resolveValue, type MaybeSharedValue } from './values'
 import type { SceneWriter } from './writer'
@@ -43,7 +44,7 @@ export interface GradientInput {
   seed?: number
   /** Runtime shader source (SkSL subset) and its uniform values. */
   source?: string
-  uniforms?: Record<string, number | number[]>
+  uniforms?: Record<string, UniformValue>
 }
 
 const CAPS = { butt: 0, round: 1, square: 2 } as const
@@ -106,16 +107,14 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
       w.push(uniformNames.length)
       for (const name of uniformNames) {
         const raw = g.uniforms?.[name]
-        const values = Array.isArray(raw)
-          ? raw.map(Number)
-          : raw != null
-            ? [Number(raw)]
-            : []
+        // Left unresolved: pushAnim turns a SharedValue element into a slot the
+        // engine patches on the UI thread, so an animated uniform costs no JS.
+        const values = Array.isArray(raw) ? raw : raw != null ? [raw] : []
         const size = uniformSizes[name] ?? 1
         w.pushString(name)
         w.push(size)
         for (let i = 0; i < size; i++) {
-          w.push(values[i] ?? 0)
+          w.pushAnim(values[i] ?? 0)
         }
       }
       return

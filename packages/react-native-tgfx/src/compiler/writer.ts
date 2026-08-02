@@ -21,7 +21,10 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
  * patch table, so the engine knows which words to resolve against the live value
  * array each frame.
  */
-export const SCENE_VERSION = 5
+// 6: shader uniform floats may carry patch entries. The layout is unchanged,
+// but a reader that walks them with a plain read leaves the patch cursor
+// stranded, freezing every animated field after them.
+export const SCENE_VERSION = 6
 
 /**
  * Encode a string table as a delta against the one the engine already holds:

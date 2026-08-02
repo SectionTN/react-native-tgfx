@@ -33,7 +33,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 5;
+inline constexpr double kSceneVersion = 6;
 
 /// Cursor over the binary draw program (defined in TgfxScene.cpp).
 struct SceneReader;
@@ -51,6 +51,18 @@ struct AnimF {
   }
 };
 
+/// A runtime shader with at least one uniform on an animation slot, so the
+/// shader has to be rebuilt per frame. Cheap: tgfx keys the compiled program on
+/// the source and the uniform names/sizes, never on the values.
+struct RuntimeShaderCmd {
+  std::string body;
+  std::vector<tgfx::RuntimeShaderUniform> uniforms;
+  /// One per float across `uniforms`, in order.
+  std::vector<AnimF> slots;
+
+  std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
+};
+
 struct PaintCmd {
   uint32_t color = 0xff000000;
   bool stroke = false;
@@ -60,13 +72,16 @@ struct PaintCmd {
   bool antiAlias = true;
   AnimF alpha{1, -1};
   std::shared_ptr<tgfx::Shader> shader;  // built once for static gradients
+  /// Set only when a uniform is animated; otherwise the shader above stands.
+  std::shared_ptr<RuntimeShaderCmd> runtime;
   /// The whole paint resolved against its literals, built once by setScene.
   tgfx::Paint cached;
 
   /// True when a per-frame value feeds the paint, so `cached` is not the paint.
   /// strokeWidth only reaches the paint on a stroke, so a fill keeps its cache.
   bool animated() const {
-    return alpha.slot >= 0 || (stroke && strokeWidth.slot >= 0);
+    return alpha.slot >= 0 || runtime != nullptr ||
+           (stroke && strokeWidth.slot >= 0);
   }
 };
 
@@ -129,7 +144,8 @@ class SceneRenderer {
 
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
   void readPaint(SceneReader& reader, PaintCmd& paint);
-  std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader);
+  std::shared_ptr<tgfx::Shader> readShader(
+      SceneReader& reader, std::shared_ptr<RuntimeShaderCmd>* runtimeOut);
 
   void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
                tgfx::Paint& paint) const;
