@@ -20,6 +20,9 @@ const labels = {
   'thor-cpu': 'Thor CPU',
   'thor-gpu': 'Thor GPU',
   tgfx: 'Tgfx GPU',
+  // Reproducible because the frozen stage leaves its frame callback inactive,
+  // so every node sits on the same phase-0 position tgfx draws.
+  'tgfx-animated': 'Tgfx Animated',
 }
 
 const arg = (name, fallback) =>

@@ -1,5 +1,10 @@
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
+> **Re-baseline note:** `artifacts/quick-it12-values-array.json` and
+> `artifacts/quick-it12-values-buffer.json` predate the `tgfx-animated` scene-pinning
+> and geometry-parity fix, so they are no longer comparable to any `tgfx-animated`
+> run recorded after it — treat them as a different adapter, not a shifted one.
+
 # Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.

@@ -90,11 +90,13 @@ function Renderer({
   width,
   height,
   shapes,
+  animate,
 }: {
   config: BenchmarkConfig
   width: number
   height: number
   shapes: Shape[]
+  animate: boolean
 }): React.JSX.Element {
   if (config.renderer === 'skia-graphite') {
     return <SkiaRenderer width={width} height={height} shapes={shapes} />
@@ -103,7 +105,14 @@ function Renderer({
     return <TgfxRenderer width={width} height={height} shapes={shapes} />
   }
   if (config.renderer === 'tgfx-animated') {
-    return <TgfxAnimatedRenderer width={width} height={height} shapes={shapes} />
+    return (
+      <TgfxAnimatedRenderer
+        width={width}
+        height={height}
+        shapes={shapes}
+        animate={animate}
+      />
+    )
   }
   return (
     <ThorRenderer
@@ -132,10 +141,10 @@ export function BenchmarkScreen(): React.JSX.Element {
   const height = Math.round(window.height)
   // The animated renderer drives positions on the UI thread from a tree built
   // once, so its scene must not depend on `phase`.
-  const animated = config.renderer === 'tgfx-animated'
+  const scenePhase = config.renderer === 'tgfx-animated' ? 0 : phase
   const shapes = useMemo(
-    () => buildScene(config.objectCount, config.seed, width, height, animated ? 0 : phase),
-    [animated, config.objectCount, config.seed, height, phase, width]
+    () => buildScene(config.objectCount, config.seed, width, height, scenePhase),
+    [config.objectCount, config.seed, height, scenePhase, width]
   )
 
   const setStageValue = useCallback((value: Stage) => {
@@ -230,7 +239,13 @@ export function BenchmarkScreen(): React.JSX.Element {
     return (
       <View style={styles.benchmark}>
         <StatusBar hidden />
-        <Renderer config={config} width={width} height={height} shapes={shapes} />
+        <Renderer
+          config={config}
+          width={width}
+          height={height}
+          shapes={shapes}
+          animate={stage !== 'frozen'}
+        />
       </View>
     )
   }
