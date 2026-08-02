@@ -1,8 +1,5 @@
 import { expect, test } from 'bun:test'
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { HARNESS_TIMEOUT_MS, runCppHarness } from '../testing/cppHarness'
 
 // [path data, expected op stream]. parseSvgPath runs on the render thread, so a
 // case that never returns wedges every canvas in the process: the alarm below
@@ -127,44 +124,23 @@ int main() {
 }
 `
 
-// Requires a C++20 `c++` on PATH, as CI (ubuntu-latest / macos-15) has.
 function parseAll(): string[] {
-  const dir = mkdtempSync(join(tmpdir(), 'tgfx-svg-path-'))
-  try {
-    const stubDir = join(dir, 'tgfx', 'core')
-    mkdirSync(stubDir, { recursive: true })
-    writeFileSync(join(stubDir, 'Path.h'), STUB)
-    const source = join(dir, 'main.cpp')
-    const binary = join(dir, 'main')
-    writeFileSync(source, PROGRAM)
-    const cpp = resolve(import.meta.dir, '../../cpp')
-    execFileSync(
-      'c++',
-      [
-        '-std=c++20',
-        '-I',
-        dir,
-        '-I',
-        cpp,
-        source,
-        join(cpp, 'SvgPath.cpp'),
-        '-o',
-        binary,
-      ],
-      { stdio: ['ignore', 'pipe', 'inherit'] }
-    )
-    return execFileSync(binary, { encoding: 'utf8' })
-      .split('\n')
-      .slice(0, CASES.length)
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+  return runCppHarness('tgfx-svg-path', PROGRAM, {
+    headers: { 'tgfx/core/Path.h': STUB },
+    sources: ['SvgPath.cpp'],
+  })
+    .stdout.split('\n')
+    .slice(0, CASES.length)
 }
 
-// Timeout covers the c++ invocation, not the parser: `alarm` above guards that.
-test('parseSvgPath terminates and renders up to the first error', () => {
-  const actual = parseAll()
-  expect(CASES.map(([input], i) => `${input} -> ${actual[i]}`)).toEqual(
-    CASES.map(([input, expected]) => `${input} -> ${expected}`)
-  )
-}, 60_000)
+// The alarm above, not this timeout, is what catches a parser that never returns.
+test(
+  'parseSvgPath terminates and renders up to the first error',
+  () => {
+    const actual = parseAll()
+    expect(CASES.map(([input], i) => `${input} -> ${actual[i]}`)).toEqual(
+      CASES.map(([input, expected]) => `${input} -> ${expected}`)
+    )
+  },
+  HARNESS_TIMEOUT_MS
+)

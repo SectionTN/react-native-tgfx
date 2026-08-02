@@ -1,8 +1,5 @@
 import { expect, test } from 'bun:test'
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { HARNESS_TIMEOUT_MS, runCppHarness } from '../testing/cppHarness'
 
 // hashScene is the native dedupe key: setScene drops any commit whose hash matches the previous one.
 const CASES = [
@@ -38,46 +35,39 @@ int main() {
 }
 `
 
-// Requires a C++20 `c++` on PATH, as CI (ubuntu-latest / macos-15) has.
 function hashScene(): string[] {
-  const dir = mkdtempSync(join(tmpdir(), 'tgfx-scene-hash-'))
-  try {
-    const source = join(dir, 'main.cpp')
-    const binary = join(dir, 'main')
-    writeFileSync(source, PROGRAM)
-    const include = resolve(import.meta.dir, '../../cpp')
-    execFileSync('c++', ['-std=c++20', '-I', include, source, '-o', binary])
-    return execFileSync(binary, { encoding: 'utf8' }).trim().split('\n')
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+  return runCppHarness('tgfx-scene-hash', PROGRAM).stdout.trim().split('\n')
 }
 
-test('hashScene covers the string table, not just the words', () => {
-  const [
-    text1,
-    text2,
-    text1Again,
-    noTable,
-    emptyString,
-    abC,
-    aBc,
-    cAb,
-    otherWords,
-    shortWords,
-    longWords,
-  ] = hashScene()
-  // The regression: <Text>{count}</Text> going 1 -> 2 leaves the words byte-identical.
-  expect(text2).not.toBe(text1)
-  expect(text1Again).toBe(text1)
-  // An absent table, a single empty string, and a populated table are all distinct.
-  expect(noTable).not.toBe(emptyString)
-  expect(noTable).not.toBe(text1)
-  // Re-splitting or permuting the same bytes must not collide.
-  expect(aBc).not.toBe(abC)
-  expect(cAb).not.toBe(abC)
-  // And the words still count.
-  expect(otherWords).not.toBe(text1)
-  // A trailing word must not be able to stand in for the table-size field.
-  expect(longWords).not.toBe(shortWords)
-})
+test(
+  'hashScene covers the string table, not just the words',
+  () => {
+    const [
+      text1,
+      text2,
+      text1Again,
+      noTable,
+      emptyString,
+      abC,
+      aBc,
+      cAb,
+      otherWords,
+      shortWords,
+      longWords,
+    ] = hashScene()
+    // The regression: <Text>{count}</Text> going 1 -> 2 leaves the words byte-identical.
+    expect(text2).not.toBe(text1)
+    expect(text1Again).toBe(text1)
+    // An absent table, a single empty string, and a populated table are all distinct.
+    expect(noTable).not.toBe(emptyString)
+    expect(noTable).not.toBe(text1)
+    // Re-splitting or permuting the same bytes must not collide.
+    expect(aBc).not.toBe(abC)
+    expect(cAb).not.toBe(abC)
+    // And the words still count.
+    expect(otherWords).not.toBe(text1)
+    // A trailing word must not be able to stand in for the table-size field.
+    expect(longWords).not.toBe(shortWords)
+  },
+  HARNESS_TIMEOUT_MS
+)

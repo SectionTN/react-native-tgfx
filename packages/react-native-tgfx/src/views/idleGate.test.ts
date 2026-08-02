@@ -1,8 +1,5 @@
 import { expect, test } from 'bun:test'
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { HARNESS_TIMEOUT_MS, runCppHarness } from '../testing/cppHarness'
 
 // Script alphabet: w = wakeUp, t = idle tick, T = tick during an in-flight frame.
 const PROGRAMS = [
@@ -42,32 +39,25 @@ int main(int argc, char** argv) {
 }
 `
 
-// Requires a C++20 `c++` on PATH, as CI (ubuntu-latest / macos-15) has.
 function run(): string[] {
-  const dir = mkdtempSync(join(tmpdir(), 'tgfx-idle-gate-'))
-  try {
-    const source = join(dir, 'main.cpp')
-    const binary = join(dir, 'main')
-    writeFileSync(source, PROGRAM)
-    const include = resolve(import.meta.dir, '../../cpp')
-    execFileSync('c++', ['-std=c++20', '-I', include, source, '-o', binary])
-    return execFileSync(binary, [...PROGRAMS], { encoding: 'utf8' })
-      .trim()
-      .split('\n')
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+  return runCppHarness('tgfx-idle-gate', PROGRAM, { args: PROGRAMS })
+    .stdout.trim()
+    .split('\n')
 }
 
-test('a frame in flight is neither idle nor a consumed wake', () => {
-  const [idle, wakeAfterPause, wakeDuringFrame, longFrame] = run()
+test(
+  'a frame in flight is neither idle nor a consumed wake',
+  () => {
+    const [idle, wakeAfterPause, wakeDuringFrame, longFrame] = run()
 
-  // The power optimisation, direction one: a still canvas pauses the link.
-  expect(idle).toBe('DDDPP')
-  // Direction two: setScene wakes it, and the very next tick draws.
-  expect(wakeAfterPause).toBe('DDDPwD')
+    // The power optimisation, direction one: a still canvas pauses the link.
+    expect(idle).toBe('DDDPP')
+    // Direction two: setScene wakes it, and the very next tick draws.
+    expect(wakeAfterPause).toBe('DDDPwD')
 
-  // The regression: a frame-spanned tick neither pauses the link nor eats the wake.
-  expect(wakeDuringFrame).toBe('DwSSSSSSD')
-  expect(longFrame).toBe('DSSSSSSSSD')
-})
+    // The regression: a frame-spanned tick neither pauses the link nor eats the wake.
+    expect(wakeDuringFrame).toBe('DwSSSSSSD')
+    expect(longFrame).toBe('DSSSSSSSSD')
+  },
+  HARNESS_TIMEOUT_MS
+)

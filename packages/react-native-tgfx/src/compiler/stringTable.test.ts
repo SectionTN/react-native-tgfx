@@ -1,8 +1,5 @@
 import { expect, test } from 'bun:test'
-import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { HARNESS_TIMEOUT_MS, runCppHarness } from '../testing/cppHarness'
 import { packStringTable } from './writer'
 
 // packStringTable (JS) and applyStringTable (C++) are one wire format. A writer
@@ -74,31 +71,25 @@ int main() {
   return 0;
 }
 `
-  const dir = mkdtempSync(join(tmpdir(), 'tgfx-string-table-'))
-  try {
-    const source = join(dir, 'main.cpp')
-    const binary = join(dir, 'main')
-    writeFileSync(source, program)
-    const include = resolve(import.meta.dir, '../../cpp')
-    execFileSync('c++', ['-std=c++20', '-I', include, source, '-o', binary])
-    const out = spawnSync(binary, { encoding: 'utf8' })
-    const commits = out.stdout
-      .split(TABLE_SEP)
-      .slice(0, -1)
-      .map((table) => table.split(ENTRY_SEP).slice(0, -1))
-    return {
-      tables: commits.map((entries) => entries.slice(1)),
-      allocations: commits.map((entries) => entries[0]!),
-      warnings: out.stderr,
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
+  const out = runCppHarness('tgfx-string-table', program)
+  const commits = out.stdout
+    .split(TABLE_SEP)
+    .slice(0, -1)
+    .map((table) => table.split(ENTRY_SEP).slice(0, -1))
+  return {
+    tables: commits.map((entries) => entries.slice(1)),
+    allocations: commits.map((entries) => entries[0]!),
+    warnings: out.stderr,
   }
 }
 
-test('the engine reconstructs the exact table the compiler produced', () => {
-  expect(apply(pack(COMMITS))).toEqual(COMMITS)
-})
+test(
+  'the engine reconstructs the exact table the compiler produced',
+  () => {
+    expect(apply(pack(COMMITS))).toEqual(COMMITS)
+  },
+  HARNESS_TIMEOUT_MS
+)
 
 test('an unchanged payload crosses the boundary once', () => {
   const sizes = pack(COMMITS).map((delta) => delta.join('').length)
@@ -109,35 +100,51 @@ test('an unchanged payload crosses the boundary once', () => {
   expect(sizes[3]).toBeLessThan(PAYLOAD.length)
 })
 
-test('a carry-over larger than the held table is clamped and reported', () => {
-  // What a dropped delta looks like from the reader's side: JS counts from its
-  // own cursor, so the count can exceed everything the engine actually holds.
-  // Silently trusting it would index words at entries that were never sent.
-  const { tables, warnings } = run([['2', 'tail']])
-  expect(tables).toEqual([['tail']])
-  expect(warnings).toContain('carries over 2 entries but only 0 are held')
-})
+test(
+  'a carry-over larger than the held table is clamped and reported',
+  () => {
+    // What a dropped delta looks like from the reader's side: JS counts from its
+    // own cursor, so the count can exceed everything the engine actually holds.
+    // Silently trusting it would index words at entries that were never sent.
+    const { tables, warnings } = run([['2', 'tail']])
+    expect(tables).toEqual([['tail']])
+    expect(warnings).toContain('carries over 2 entries but only 0 are held')
+  },
+  HARNESS_TIMEOUT_MS
+)
 
-test('a redundant commit reuses the held table instead of re-copying it', () => {
-  // The point of the delta: COMMITS[1] re-renders with the same payload, so the
-  // engine must keep the allocation it already has. Rebuilding it there would
-  // reinstate the per-commit copy of every payload this format exists to remove.
-  const marks = allocations(pack(COMMITS))
-  expect(marks[1]).toBe('same')
-  expect(marks[0]).toBe('new')
-  expect(marks[2]).toBe('new')
-})
+test(
+  'a redundant commit reuses the held table instead of re-copying it',
+  () => {
+    // The point of the delta: COMMITS[1] re-renders with the same payload, so the
+    // engine must keep the allocation it already has. Rebuilding it there would
+    // reinstate the per-commit copy of every payload this format exists to remove.
+    const marks = allocations(pack(COMMITS))
+    expect(marks[1]).toBe('same')
+    expect(marks[0]).toBe('new')
+    expect(marks[2]).toBe('new')
+  },
+  HARNESS_TIMEOUT_MS
+)
 
-test('a carry-over past 2^32 is compared before it is narrowed', () => {
-  // `size_t` is 32-bit on armeabi-v7a, where narrowing first turns 2^32 into 0
-  // and the count sneaks under the clamp. This host is 64-bit, so it documents
-  // the reporting rather than regression-testing the narrowing itself.
-  const { warnings } = run([['4294967296', 'tail']])
-  expect(warnings).toContain('carries over 4294967296 entries')
-})
+test(
+  'a carry-over past 2^32 is compared before it is narrowed',
+  () => {
+    // `size_t` is 32-bit on armeabi-v7a, where narrowing first turns 2^32 into 0
+    // and the count sneaks under the clamp. This host is 64-bit, so it documents
+    // the reporting rather than regression-testing the narrowing itself.
+    const { warnings } = run([['4294967296', 'tail']])
+    expect(warnings).toContain('carries over 4294967296 entries')
+  },
+  HARNESS_TIMEOUT_MS
+)
 
-test('a delta with no header is ignored rather than emptying the table', () => {
-  const { tables, warnings } = run([['0', 'kept'], []])
-  expect(tables).toEqual([['kept'], ['kept']])
-  expect(warnings).toContain('no header')
-})
+test(
+  'a delta with no header is ignored rather than emptying the table',
+  () => {
+    const { tables, warnings } = run([['0', 'kept'], []])
+    expect(tables).toEqual([['kept'], ['kept']])
+    expect(warnings).toContain('no header')
+  },
+  HARNESS_TIMEOUT_MS
+)
