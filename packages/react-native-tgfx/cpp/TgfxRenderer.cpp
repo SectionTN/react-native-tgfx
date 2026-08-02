@@ -9,6 +9,7 @@
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageFilter.h"
+#include "Trace.hpp"
 #include "tgfx/core/Paint.h"
 #include "tgfx/core/Path.h"
 #include "tgfx/core/TileMode.h"
@@ -119,6 +120,7 @@ void TgfxRenderer::setPixelRatio(float ratio) {
 }
 
 bool TgfxRenderer::draw() {
+  TGFXRN_TRACE("tgfx.draw");
   uint64_t version = version_.load(std::memory_order_acquire);
   if (version == drawnVersion_) {
     return false;
@@ -146,6 +148,7 @@ bool TgfxRenderer::draw() {
   if (hasScene) {
     // Compiling here keeps image/typeface caches on one thread and keeps the
     // JS thread out of the engine entirely.
+    TGFXRN_TRACE("tgfx.setScene");
     scene_.setScene(drawScene_, *drawStrings_);
   } else if (dropCaches) {
     // Nothing staged, so release the string table pinning the base64 payloads.
@@ -183,12 +186,19 @@ bool TgfxRenderer::draw() {
       canvas->save();
       canvas->concat(tgfx::Matrix::MakeScale(pixelRatio, pixelRatio));
     }
-    scene_.render(canvas, drawValues_);
+    {
+      TGFXRN_TRACE("tgfx.render");
+      scene_.render(canvas, drawValues_);
+    }
     if (pixelRatio != 1.0f) {
       canvas->restore();
     }
-    auto recording = context->flush();
+    auto recording = [&] {
+      TGFXRN_TRACE("tgfx.flush");
+      return context->flush();
+    }();
     if (recording != nullptr) {
+      TGFXRN_TRACE("tgfx.submit");
       context->submit(std::move(recording));
     }
     rendered = true;
