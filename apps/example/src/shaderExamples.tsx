@@ -5,10 +5,11 @@
  * Three things about this API are worth knowing before writing your own, and
  * all three are load-bearing for the shaders below:
  *
- * 1. `main` receives the *device pixel* position, not a 0..1 uv and not a dp
- *    coordinate. Normalise it yourself against uniforms you pass in, scaled by
- *    `PixelRatio.get()`, or the effect drifts on every device with a different
- *    density.
+ * 1. `main` receives the position in *layout points*, the same units the shape
+ *    is laid out in, not a 0..1 uv. The native side scales the canvas by the
+ *    display density before drawing, so pass sizes straight through: scaling
+ *    them by `PixelRatio.get()` makes every uniform too large by that factor
+ *    and the effect only covers a fraction of the shape.
  * 2. Helper functions are not supported. The transpiler splices everything
  *    before `main` into `main`'s body, and GLSL ES has no nested functions, so
  *    a `float noise(vec2 p) {...}` above `main` fails to compile. Everything
@@ -17,13 +18,7 @@
  *    pixels behind it. A true backdrop blur is therefore not expressible — see
  *    `blurSource` below for what is.
  */
-import { PixelRatio } from 'react-native';
 import { Rect, RoundedRect, Shader } from 'react-native-tgfx';
-
-const scale = PixelRatio.get();
-
-/** dp -> device px, which is the space `main`'s argument is in. */
-const px = (dp: number) => dp * scale;
 
 /**
  * A real separable-kernel blur — of a procedurally generated pattern, not of
@@ -147,9 +142,9 @@ export function BlurPanel({
       <Shader
         source={blurSource}
         uniforms={{
-          uOrigin: [px(x), px(y)],
-          uSize: [px(width), px(height)],
-          uRadius: px(radius),
+          uOrigin: [x, y],
+          uSize: [width, height],
+          uRadius: radius,
         }}
       />
     </RoundedRect>
@@ -169,8 +164,8 @@ export function CyberpunkPanel({
       <Shader
         source={cyberpunkSource}
         uniforms={{
-          uOrigin: [px(x), px(y)],
-          uSize: [px(width), px(height)],
+          uOrigin: [x, y],
+          uSize: [width, height],
           uTime: time,
         }}
       />
@@ -191,8 +186,8 @@ export function CheckerReference({ x, y, width, height }: Box) {
       <Shader
         source={blurSource}
         uniforms={{
-          uOrigin: [px(x), px(y)],
-          uSize: [px(width), px(height)],
+          uOrigin: [x, y],
+          uSize: [width, height],
           uRadius: 0,
         }}
       />

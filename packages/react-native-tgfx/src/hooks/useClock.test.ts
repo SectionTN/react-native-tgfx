@@ -39,8 +39,9 @@ test('the clock reads the frame time and keeps one callback identity', async () 
   })
   expect(got).toBe(shared)
 
+  // Seconds, not milliseconds: a ms clock overflows GLSL ES mediump in a minute.
   registered!({ timeSinceFirstFrame: 250 })
-  expect(shared.value).toBe(250)
+  expect(shared.value).toBe(0.25)
 
   // A fresh callback each render would re-register and reset the clock to zero.
   await TestRenderer.act(async () => {

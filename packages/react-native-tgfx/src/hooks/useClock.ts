@@ -25,10 +25,15 @@ if (installed && (useSharedValue == null || useFrameCallback == null)) {
 }
 
 /**
- * Milliseconds since the first frame, as a SharedValue.
+ * Seconds since the first frame, as a SharedValue.
  *
  * Written on the UI thread, so feeding it to a shader uniform animates without
- * re-encoding the scene from JS. The tgfx counterpart of Skia's `useClock`.
+ * re-encoding the scene from JS.
+ *
+ * Seconds rather than milliseconds because the value is usually bound for a
+ * shader uniform, and GLSL ES mediump floats stop being representable above
+ * 65504: a millisecond clock turns every shader that reads it black after about
+ * a minute of uptime, silently. Seconds buy eighteen hours instead.
  */
 export function useClock(): MaybeSharedValue<number> {
   if (!installed) {
@@ -42,7 +47,7 @@ export function useClock(): MaybeSharedValue<number> {
   const tick = useCallback(
     (frame: Frame) => {
       'worklet'
-      clock.value = frame.timeSinceFirstFrame
+      clock.value = frame.timeSinceFirstFrame / 1000
     },
     [clock]
   )
