@@ -70,8 +70,9 @@ void TgfxRenderer::clearScene() {
     pendingStrings_.clear();
     scenePending_ = false;
     sceneHash_ = 0;
+    // The caches belong to the render thread, so draw() does the clearing.
+    cachesDirty_ = true;
   }
-  scene_.clearCaches();
   version_.fetch_add(1, std::memory_order_release);
 }
 
@@ -105,10 +106,13 @@ bool TgfxRenderer::draw() {
   }
   std::shared_ptr<tgfx::Window> window;
   bool hasScene = false;
+  bool dropCaches = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
     drawValues_.assign(values_.begin(), values_.end());
+    dropCaches = cachesDirty_;
+    cachesDirty_ = false;
     if (scenePending_) {
       drawScene_.swap(pendingScene_);
       drawStrings_.swap(pendingStrings_);
@@ -116,10 +120,20 @@ bool TgfxRenderer::draw() {
       hasScene = true;
     }
   }
+  // Ahead of the window check, so a recycled but unbound view still drops them.
+  if (dropCaches) {
+    scene_.clearCaches();
+  }
   if (hasScene) {
     // Compiling here keeps image/typeface caches on one thread and keeps the
     // JS thread out of the engine entirely.
     scene_.setScene(drawScene_, drawStrings_);
+  } else if (dropCaches) {
+    // Nothing staged, so release the string table pinning the base64 payloads.
+    drawScene_.clear();
+    drawScene_.shrink_to_fit();
+    drawStrings_.clear();
+    drawStrings_.shrink_to_fit();
   }
   if (window == nullptr) {
     return false;

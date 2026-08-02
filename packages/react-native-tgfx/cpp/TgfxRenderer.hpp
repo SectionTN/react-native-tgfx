@@ -42,6 +42,7 @@ class TgfxRenderer {
                 const std::vector<std::string>& strings);
 
   /// Drop the current program (a recycled view must not flash the old scene).
+  /// Safe from any thread: the caches are dropped by the next draw().
   void clearScene();
 
   /// Clear to opaque black instead of transparent, for an opaque surface.
@@ -76,6 +77,7 @@ class TgfxRenderer {
   std::vector<double> pendingScene_;
   std::vector<std::string> pendingStrings_;
   bool scenePending_ = false;
+  bool cachesDirty_ = false;
   uint64_t sceneHash_ = 0;
   std::vector<double> values_;
   // Render-thread buffers, refilled in place so no frame allocates under the lock.
