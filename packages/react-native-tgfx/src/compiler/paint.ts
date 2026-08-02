@@ -162,12 +162,16 @@ export const NO_PAINT_PROPS: Record<string, unknown> = {}
  * paint — the same precedence {@link mergePaint} gives, without building a
  * merged object per node. Only the rare node that carries `<Paint>` or gradient
  * children merges eagerly and passes the result as `inherited`.
+ *
+ * `forceStroke` is for `<Line>`, which has no interior to fill: the engine draws
+ * the compiled paint as-is, so the style has to be settled here.
  */
 export function writePaint(
   w: SceneWriter,
   props: Record<string, unknown>,
   inherited: PaintInput,
-  alpha: number | unknown
+  alpha: number | unknown,
+  forceStroke = false
 ): void {
   const color = props.color !== undefined ? props.color : inherited.color
   const style = props.style !== undefined ? props.style : inherited.style
@@ -183,7 +187,7 @@ export function writePaint(
     props.gradient !== undefined ? props.gradient : inherited.gradient
 
   w.push(resolveColor(resolveValue(color as Color | undefined)))
-  w.push((style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0))
+  w.push((forceStroke || style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0))
   w.push(resolveNumber(strokeWidth, 1))
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])

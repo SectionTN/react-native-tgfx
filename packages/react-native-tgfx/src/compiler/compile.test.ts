@@ -4,7 +4,7 @@ import { compileScene } from './compile'
 import { Kind, SCENE_VERSION, SceneWriter } from './writer'
 
 const node = (type: unknown, props: object, children: Node[] = []): Node =>
-  ({ type, props, children }) as Node
+  ({ type, props, children } as Node)
 
 const sharedValue = (value: number) => ({
   value,
@@ -187,10 +187,16 @@ test('a text-only change leaves the word buffer byte-identical', () => {
     new Uint8Array(buffer).slice(0, new Float64Array(buffer)[1]! * 8)
   const writer = new SceneWriter()
   const props = { x: 1, y: 2, fontSize: 16 }
-  const first = compileScene([node(NodeType.Text, { ...props, text: '1' })], writer)
+  const first = compileScene(
+    [node(NodeType.Text, { ...props, text: '1' })],
+    writer
+  )
   const firstWords = usedBytes(first.buffer)
   const firstStrings = first.strings.slice()
-  const second = compileScene([node(NodeType.Text, { ...props, text: '2' })], writer)
+  const second = compileScene(
+    [node(NodeType.Text, { ...props, text: '2' })],
+    writer
+  )
   expect(usedBytes(second.buffer)).toEqual(firstWords)
   expect(second.strings).not.toEqual(firstStrings)
 })
@@ -259,4 +265,20 @@ test('a non-finite shared value falls back rather than writing NaN', () => {
     node(NodeType.Circle, { cx: sharedValue(Number.NaN), cy: 5, r: 1 }),
   ])
   expect(used[5]).toBe(0)
+})
+
+// The engine draws a compiled paint as-is, so a `<Line>` — which has no
+// interior to fill — has to carry the stroke style and its width from here.
+test('compiles a line as a stroke that keeps its stroke width', () => {
+  const { used } = compile([
+    node(NodeType.Line, { x1: 0, y1: 0, x2: 10, y2: 5, strokeWidth: 4 }),
+  ])
+  expect(used[4]).toBe(Kind.Line)
+  expect(used[10]! & 1).toBe(1)
+  expect(used[11]).toBe(4)
+})
+
+test('leaves a non-line node filled by default', () => {
+  const { used } = compile([node(NodeType.Rect, { x: 0, y: 0 })])
+  expect(used[10]! & 1).toBe(0)
 })

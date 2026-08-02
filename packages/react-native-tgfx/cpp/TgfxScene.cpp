@@ -315,6 +315,7 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.join = r.nextInt();
   paint.alpha = r.nextAnim();
   paint.shader = readShader(r);
+  applyPaint(paint, {}, paint.cached);
 }
 
 bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
@@ -391,6 +392,12 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.y1 = r.nextAnim();
       cmd.x2 = r.nextAnim();
       cmd.y2 = r.nextAnim();
+      cmd.lineAnimated = cmd.x1.slot >= 0 || cmd.y1.slot >= 0 ||
+                         cmd.x2.slot >= 0 || cmd.y2.slot >= 0;
+      if (!cmd.lineAnimated) {
+        cmd.path.moveTo(cmd.x1.literal, cmd.y1.literal);
+        cmd.path.lineTo(cmd.x2.literal, cmd.y2.literal);
+      }
       break;
     case KPath:
       cmd.kind = DrawCmd::Path;
@@ -406,6 +413,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.image = getImage(r.nextString());
       cmd.fit = r.nextInt();
       cmd.paint.alpha = r.nextAnim();
+      applyPaint(cmd.paint, {}, cmd.paint.cached);
       return r.ok;
     }
     case KText: {
@@ -414,7 +422,12 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.y = r.nextAnim();
       cmd.text = r.nextString();
       cmd.fontSize = r.nextAnim();
-      cmd.typeface = getTypeface(r.nextString());
+      auto typeface = getTypeface(r.nextString());
+      if (typeface != nullptr) {
+        // An animated size writes a 0 literal, and a 0-sized font has no typeface.
+        float size = cmd.fontSize.slot >= 0 ? 1.0f : cmd.fontSize.literal;
+        cmd.font.emplace(std::move(typeface), size);
+      }
       break;
     }
     default:
@@ -492,37 +505,43 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     return;
   }
 
-  applyPaint(cmd.paint, v, paint);
+  // Only alpha and strokeWidth can move per frame; everything else in the paint
+  // was fixed at setScene, so a static paint is handed over untouched.
+  const tgfx::Paint* p = &cmd.paint.cached;
+  if (cmd.paint.animated()) {
+    applyPaint(cmd.paint, v, paint);
+    p = &paint;
+  }
 
   switch (cmd.kind) {
     case DrawCmd::Rect:
-      canvas->drawRect(rectOf(cmd, v), paint);
+      canvas->drawRect(rectOf(cmd, v), *p);
       break;
     case DrawCmd::RRect:
       canvas->drawRRect(
           tgfx::RRect::MakeRectXY(rectOf(cmd, v), cmd.rx.resolve(v),
                                   cmd.ry.resolve(v)),
-          paint);
+          *p);
       break;
     case DrawCmd::Oval:
-      canvas->drawOval(rectOf(cmd, v), paint);
+      canvas->drawOval(rectOf(cmd, v), *p);
       break;
     case DrawCmd::Circle:
       canvas->drawCircle(cmd.cx.resolve(v), cmd.cy.resolve(v), cmd.r.resolve(v),
-                         paint);
+                         *p);
       break;
-    case DrawCmd::Line: {
-      if (paint.getStyle() != tgfx::PaintStyle::Stroke) {
-        paint.setStyle(tgfx::PaintStyle::Stroke);
+    case DrawCmd::Line:
+      if (cmd.lineAnimated) {
+        tgfx::Path line;
+        line.moveTo(cmd.x1.resolve(v), cmd.y1.resolve(v));
+        line.lineTo(cmd.x2.resolve(v), cmd.y2.resolve(v));
+        canvas->drawPath(line, *p);
+      } else {
+        canvas->drawPath(cmd.path, *p);
       }
-      tgfx::Path line;
-      line.moveTo(cmd.x1.resolve(v), cmd.y1.resolve(v));
-      line.lineTo(cmd.x2.resolve(v), cmd.y2.resolve(v));
-      canvas->drawPath(line, paint);
       break;
-    }
     case DrawCmd::Path:
-      canvas->drawPath(cmd.path, paint);
+      canvas->drawPath(cmd.path, *p);
       break;
     case DrawCmd::Image: {
       if (cmd.image == nullptr || cmd.image->width() <= 0) {
@@ -533,7 +552,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       tgfx::SamplingOptions sampling(tgfx::FilterMode::Linear);
       if (cmd.fit == 0) {
         canvas->drawImageRect(cmd.image, tgfx::Rect::MakeXYWH(x, y, w, h),
-                              sampling, &paint);
+                              sampling, p);
       } else {
         float iw = static_cast<float>(cmd.image->width());
         float ih = static_cast<float>(cmd.image->height());
@@ -547,7 +566,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
           canvas->clipRect(tgfx::Rect::MakeXYWH(x, y, w, h));
         }
         canvas->drawImageRect(cmd.image, tgfx::Rect::MakeXYWH(dx, dy, sw, sh),
-                              sampling, &paint);
+                              sampling, p);
         if (clip) {
           canvas->restore();
         }
@@ -555,10 +574,15 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       break;
     }
     case DrawCmd::Text:
-      if (cmd.typeface != nullptr && !cmd.text.empty()) {
-        tgfx::Font font(cmd.typeface, cmd.fontSize.resolve(v));
-        canvas->drawSimpleText(cmd.text, cmd.x.resolve(v), cmd.y.resolve(v),
-                               font, paint);
+      if (cmd.font.has_value() && !cmd.text.empty()) {
+        float x = cmd.x.resolve(v), y = cmd.y.resolve(v);
+        if (cmd.fontSize.slot >= 0) {
+          tgfx::Font sized = *cmd.font;
+          sized.setSize(cmd.fontSize.resolve(v));
+          canvas->drawSimpleText(cmd.text, x, y, sized, *p);
+        } else {
+          canvas->drawSimpleText(cmd.text, x, y, *cmd.font, *p);
+        }
       }
       break;
     default:
@@ -576,7 +600,7 @@ void SceneRenderer::render(tgfx::Canvas* canvas,
   if (program == nullptr) {
     return;
   }
-  // One Paint reused across the whole pass (applyPaint resets it per command).
+  // Scratch for the commands whose paint actually moves; the rest use their own.
   tgfx::Paint paint;
   for (const auto& cmd : *program) {
     drawCmd(canvas, cmd, values, paint);

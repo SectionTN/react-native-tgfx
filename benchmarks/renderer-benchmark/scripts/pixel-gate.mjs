@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const shots = resolve(root, 'artifacts', 'frames')
 const serial = process.env.ANDROID_SERIAL ?? 'RZCW30KE1NB'
-const session = 'renderer-benchmark'
+// One session per device, so two phones can be driven side by side.
+const session = `renderer-benchmark-${serial}`
 const app = 'com.rendererbenchmark'
 const labels = {
   'skia-graphite': 'Skia Graphite',

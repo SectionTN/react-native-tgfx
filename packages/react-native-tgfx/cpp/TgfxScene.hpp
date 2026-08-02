@@ -11,12 +11,15 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "tgfx/core/Font.h"
 #include "tgfx/core/Matrix.h"
+#include "tgfx/core/Paint.h"
 #include "tgfx/core/Path.h"
 
 namespace tgfx {
@@ -24,7 +27,6 @@ class Canvas;
 class Image;
 class Shader;
 class Typeface;
-class Paint;
 }  // namespace tgfx
 
 namespace tgfxrn {
@@ -54,6 +56,13 @@ struct PaintCmd {
   bool antiAlias = true;
   AnimF alpha{1, -1};
   std::shared_ptr<tgfx::Shader> shader;  // built once for static gradients
+  /// The whole paint resolved against its literals, built once by setScene.
+  tgfx::Paint cached;
+
+  /// True when a per-frame value feeds the paint, so `cached` is not the paint.
+  bool animated() const {
+    return alpha.slot >= 0 || strokeWidth.slot >= 0;
+  }
 };
 
 /// type: 0 translate(a=x,b=y), 1 scale(a=x,b=y), 2 rotate(a), 3 skewX(a), 4 skewY(a)
@@ -76,14 +85,15 @@ struct DrawCmd {
   std::vector<TransformOpCmd> ops;
   std::vector<DrawCmd> children;
 
-  // Path (parsed once)
+  // Path (parsed once); a static Line keeps its two-point path here too.
   tgfx::Path path;
+  bool lineAnimated = false;
   // Image (created once)
   std::shared_ptr<tgfx::Image> image;
   int fit = 1;
-  // Text
+  // Text (font built once; absent when no typeface resolved)
   std::string text;
-  std::shared_ptr<tgfx::Typeface> typeface;
+  std::optional<tgfx::Font> font;
 };
 
 using Program = std::vector<DrawCmd>;

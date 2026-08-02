@@ -258,10 +258,11 @@ function writeDrawing(
     default:
       break
   }
+  const line = kind === Kind.Line
   if (own == null) {
-    writePaint(w, p, ctx.paint, alpha)
+    writePaint(w, p, ctx.paint, alpha, line)
   } else {
-    writePaint(w, NO_PAINT_PROPS, mergePaint(ctx.paint, own), alpha)
+    writePaint(w, NO_PAINT_PROPS, mergePaint(ctx.paint, own), alpha, line)
   }
 }
 
