@@ -2,6 +2,7 @@
  * react-native-tgfx example — shapes, strokes, gradients, image and text,
  * all rendered through tgfx via the declarative <Canvas> API.
  */
+import { useEffect, useState } from 'react';
 import { Text as RNText, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -31,6 +32,11 @@ import {
   Wave,
 } from './src/customShapes';
 import { AnimatedSection } from './src/animatedExamples';
+import {
+  BlurPanel,
+  CheckerReference,
+  CyberpunkPanel,
+} from './src/shaderExamples';
 
 function Demo() {
   const insets = useSafeAreaInsets();
@@ -166,6 +172,13 @@ function Demo() {
         />
       </Section>
 
+      <Section label="Runtime shader · blur kernel (procedural)" height={140}>
+        <CheckerReference x={0} y={0} width={168} height={120} />
+        <BlurPanel x={182} y={0} width={168} height={120} radius={3} />
+      </Section>
+
+      <ShaderScreenSection />
+
       <View style={styles.section}>
         <RNText style={styles.sectionLabel}>
           Animated · Reanimated UI-thread driver (zero JS / frame)
@@ -173,6 +186,34 @@ function Demo() {
         <AnimatedSection />
       </View>
     </ScrollView>
+  );
+}
+
+/**
+ * The cyberpunk shader animates through `uTime`, and shader uniforms are
+ * snapshotted at commit time rather than bound to an animation slot, so each
+ * tick re-encodes the scene. That is the expensive path — an animated
+ * `opacity` or `strokeWidth` rides a SharedValue slot and costs nothing per
+ * frame. 20 Hz here keeps the demo alive without pretending otherwise.
+ */
+function ShaderScreenSection() {
+  const [time, setTime] = useState(0);
+
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => setTime((Date.now() - started) / 1000), 50);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.sectionLabel}>
+        Runtime shader · cyberpunk screen (uniform re-encodes per tick)
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 200 }]}>
+        <CyberpunkPanel x={0} y={0} width={350} height={180} time={time} />
+      </Canvas>
+    </View>
   );
 }
 
