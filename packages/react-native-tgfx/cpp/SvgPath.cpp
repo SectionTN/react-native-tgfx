@@ -1,5 +1,7 @@
 #include "SvgPath.hpp"
 
+#include "Log.hpp"
+
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -29,6 +31,17 @@ struct Cursor {
     }
     p = next;
     return v;
+  }
+
+  // SVG 2 path grammar: `flag ::= "0" | "1"`, one character wide. Reading it as
+  // a number swallows the digits after it and desynchronises the whole string.
+  int flag() {
+    skipSep();
+    if (p < end && (*p == '0' || *p == '1')) {
+      return *p++ - '0';
+    }
+    p = end;
+    return -1;
   }
 };
 
@@ -183,14 +196,23 @@ tgfx::Path parseSvgPath(const std::string& data) {
         break;
       }
       case 'A': {
-        // Skip rx, ry, xAxisRotation, largeArc, sweep; approximate to endpoint.
-        cur.number(); cur.number(); cur.number();
-        cur.number(); cur.number();
+        float rx = cur.number(), ry = cur.number(), rotation = cur.number();
+        int largeArc = cur.flag(), sweep = cur.flag();
         float x = cur.number(), y = cur.number();
+        if (largeArc < 0 || sweep < 0) {
+          TGFXRN_LOGW("svg path: arc flag is not 0 or 1, dropping the rest of the path");
+          break;
+        }
         if (relative) {
           x += curX; y += curY;
         }
-        path.lineTo(x, y);
+        if (path.isEmpty()) {
+          path.moveTo(curX, curY);
+        }
+        // tgfx applies F.6.5, but its `reversed` is the inverse of SVG's sweep.
+        path.arcTo(rx, ry, rotation,
+                   largeArc != 0 ? tgfx::PathArcSize::Large : tgfx::PathArcSize::Small,
+                   sweep == 0, tgfx::Point::Make(x, y));
         curX = x;
         curY = y;
         break;
