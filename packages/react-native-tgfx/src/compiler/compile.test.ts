@@ -47,7 +47,9 @@ test('records a patch for every animated field, and reuses one slot', () => {
   expect(used[patchStart + 2]).toBe(0)
   expect(used[patchStart + 3]).toBe(7)
   expect(used[patchStart + 4]).toBe(0)
-  expect(used[5]).toBe(0)
+  // The literal carries the current value, not a placeholder: it is what native
+  // renders until the first setValues lands.
+  expect(used[5]).toBe(7)
   expect(used[6]).toBe(5)
 })
 
@@ -96,7 +98,7 @@ test('keeps an animated group opacity as a live alpha slot', () => {
   ])
   expect(values).toEqual([fade])
   // group(kind ops=0 children=1) rect(kind x y w h) paint(... alpha at 17)
-  expect(used[17]).toBe(0)
+  expect(used[17]).toBeCloseTo(0.4)
   const patchStart = used[2]!
   expect(used[patchStart]).toBe(1)
   expect(used[patchStart + 1]).toBe(17)
@@ -201,4 +203,23 @@ test('reuses the writer across compiles without leaking state', () => {
   expect(second.strings).toEqual([])
   expect(second.values).toEqual([])
   expect(new Float64Array(second.buffer)[3]).toBe(1)
+})
+
+test('a constant shared value renders at its value, not at zero', () => {
+  const opacity = sharedValue(1)
+  const { used } = compile([
+    node(NodeType.Group, { opacity }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  // A shared value that never changes never gets a setValues, so a zero literal
+  // would leave the group permanently invisible.
+  expect(used[17]).toBeCloseTo(1)
+})
+
+test('a non-finite shared value falls back rather than writing NaN', () => {
+  const { used } = compile([
+    node(NodeType.Circle, { cx: sharedValue(Number.NaN), cy: 5, r: 1 }),
+  ])
+  expect(used[5]).toBe(0)
 })

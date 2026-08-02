@@ -1,4 +1,4 @@
-import { isSharedValue, type MaybeSharedValue } from './values'
+import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 
 /**
  * Writer for the binary draw-program the native engine consumes.
@@ -68,7 +68,9 @@ export class SceneWriter {
   pushAnim(value: unknown, fallback = 0): void {
     if (isSharedValue(value)) {
       this.patches.push(this.n, this.slot(value))
-      this.push(0)
+      // The literal is what native resolves against until the first setValues,
+      // and a never-changing shared value never gets one.
+      this.push(resolveNumber(value, fallback))
       return
     }
     const n = Number(value ?? fallback)
