@@ -91,6 +91,24 @@ describe('resolveColor', () => {
     }
   })
 
+  // `green` was #00ff00, which is `lime`; `lime` and `darkgrey` were absent.
+  it('uses the CSS value for names an sRGB-vs-lime mixup gets wrong', () => {
+    expect(resolveColor('green')).toBe(0xff008000)
+    expect(resolveColor('lime')).toBe(0xff00ff00)
+    expect(resolveColor('green')).not.toBe(resolveColor('lime'))
+    expect(resolveColor('darkgrey')).toBe(0xffa9a9a9)
+    expect(resolveColor('darkgrey')).toBe(resolveColor('darkgray'))
+    expect(resolveColor('gray')).toBe(0xff808080)
+    expect(resolveColor('purple')).toBe(0xff800080)
+    expect(resolveColor('maroon')).toBe(0xff800000)
+    expect(resolveColor('olive')).toBe(0xff808000)
+    expect(resolveColor('navy')).toBe(0xff000080)
+    expect(resolveColor('teal')).toBe(0xff008080)
+    expect(resolveColor('silver')).toBe(0xffc0c0c0)
+    expect(resolveColor('aqua')).toBe(resolveColor('cyan'))
+    expect(resolveColor('fuchsia')).toBe(resolveColor('magenta'))
+  })
+
   it('warns on an unknown name instead of silently going black', () => {
     const warnings = warningsDuring(() => {
       expect(resolveColor('nosuchcolor')).toBe(0xff000000)

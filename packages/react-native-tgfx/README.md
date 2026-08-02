@@ -104,6 +104,42 @@ once before `pod install`:
 bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh   # SIMULATORARM64 by default
 ```
 
+## On-device rendering tests
+
+Rendering is verified with [React Native Harness][harness] image snapshots,
+which mount a real `<Canvas>` in the example app and screenshot it — no app
+navigation and no UI selectors.
+
+```bash
+cd apps/example
+npx react-native run-android          # rebuild once after adding @react-native-harness/ui
+npx react-native-harness --harnessRunner android-emulator
+```
+
+Tests live in `apps/example/src/*.harness.tsx`; baselines land in
+`apps/example/src/__image_snapshots__/<runner>/`. Runners are declared in
+`apps/example/rn-harness.config.mjs`.
+
+**`android-emulator` is the authoritative runner.** It targets the
+`Pixel_8_API_35` AVD, which anyone can recreate, so a diff there is a rendering
+change rather than a different phone. Review that set as the source of truth.
+
+The `android` runner (motorola moto g35 5G) is **advisory**: real GPU and real
+driver, but its baselines only ever match that one phone. GPU, density and
+anti-aliasing all move pixels, so a diff there on another device is not a
+regression — check the emulator before believing it.
+
+**Never delete a baseline to "fix" a failure.** A missing baseline is written on
+the spot and reported as a pass, so a checkout with no baselines passes without
+comparing anything. Regenerate deliberately: delete the file, re-run, then open
+the new PNG and confirm it is actually correct before committing it.
+
+Snapshot targets must use `composite="texture"`: a screenshot draws the view
+tree into a bitmap, and a `composite="layer"` canvas lives on its own
+compositor layer where nothing can see it.
+
+[harness]: https://react-native-harness.dev
+
 ## License
 
 MIT — wraps tgfx (BSD-3-Clause) and Nitro (MIT).

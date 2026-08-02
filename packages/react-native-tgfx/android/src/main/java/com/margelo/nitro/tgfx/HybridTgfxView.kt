@@ -1,6 +1,8 @@
 package com.margelo.nitro.tgfx
 
 import android.content.Context
+import android.graphics.Canvas
+import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -29,6 +31,35 @@ private class HostLayout(context: Context) : FrameLayout(context) {
       MeasureSpec.makeMeasureSpec(b - t, MeasureSpec.EXACTLY)
     )
     super.onLayout(changed, l, t, r, b)
+  }
+
+  /**
+   * A non-accelerated canvas means someone is screenshotting the window into a
+   * Bitmap. `TextureView.draw` is final and renders nothing there, so the last
+   * frame is blitted by hand — otherwise every screenshot of the canvas comes
+   * back empty. Only reachable for `composite="texture"`; a SurfaceView keeps
+   * its own layer and cannot be captured this way at all.
+   *
+   * `getBitmap` allocates per capture, and the early return drops any sibling
+   * child — this layout only ever holds the canvas, so neither costs anything
+   * today, but both would need revisiting if that changed.
+   *
+   * The bitmap is not recycled: a `Picture.beginRecording()` canvas also reports
+   * `isHardwareAccelerated == false` but replays its display list later, so a
+   * recycled bitmap would crash on playback instead of copying synchronously.
+   * A null frame falls through to `super.dispatchDraw` rather than drawing
+   * nothing, which would silently produce a blank screenshot.
+   */
+  override fun dispatchDraw(canvas: Canvas) {
+    val child = getChildAt(0)
+    if (!canvas.isHardwareAccelerated && child is TextureView && child.isAvailable) {
+      val frame = child.bitmap
+      if (frame != null) {
+        canvas.drawBitmap(frame, 0f, 0f, null)
+        return
+      }
+    }
+    super.dispatchDraw(canvas)
   }
 }
 
