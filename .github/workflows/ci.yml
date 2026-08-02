@@ -28,6 +28,8 @@ jobs:
       - name: Unit tests
         working-directory: packages/react-native-tgfx
         run: bun run test
+      - name: Benchmark acceptance gate tests
+        run: bun test benchmarks/renderer-benchmark/scripts
       - name: Nitrogen output is committed and in sync
         working-directory: packages/react-native-tgfx
         run: |

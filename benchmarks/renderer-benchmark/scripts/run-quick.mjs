@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { rejectReason } from './gate.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const artifacts = resolve(root, 'artifacts')
@@ -156,6 +157,7 @@ const median = (values) => {
 }
 
 const records = []
+let previousStartedAtEpochMs = -Infinity
 const blankable = canBlankScreen()
 mkdirSync(artifacts, { recursive: true })
 const outputPath = resolve(artifacts, `quick-${tag}.json`)
@@ -191,23 +193,34 @@ for (let rep = 0; rep < reps; rep += 1) {
       const result = parsePublishedResult(adb(['logcat', '-d']))
       const gfxInfo = parseGfxInfo(adb(['shell', 'dumpsys', 'gfxinfo', app, 'framestats']))
       const thermalAfter = thermal()
-      const valid =
-        result.config.renderer === renderer &&
-        result.config.objectCount === objects &&
-        result.native.wallTimeMs >= duration * 1000 - 100 &&
-        result.native.wallTimeMs <= duration * 1000 + 300 &&
-        result.native.device.thermalStatusStart <= 1 &&
-        result.native.device.thermalStatusEnd ===
-          result.native.device.thermalStatusStart &&
-        thermalAfter.status <= 1
-      if (!valid) {
-        process.stdout.write(`  rejected (attempt ${attempts}); retrying slot\n`)
+      const reason = rejectReason({
+        platform: 'android',
+        result,
+        renderer,
+        objects,
+        duration,
+        thermalAfter,
+        previousStartedAtEpochMs,
+      })
+      if (reason !== null) {
+        process.stdout.write(`  rejected (attempt ${attempts}): ${reason}; retrying slot\n`)
         if (attempts >= 4) {
           throw new Error(`renderer ${renderer} failed the acceptance gate 4 times`)
         }
         continue
       }
-      records.push({ tag, rep: rep + 1, renderer, result, gfxInfo, thermalBefore, thermalAfter })
+      previousStartedAtEpochMs = result.startedAtEpochMs
+      records.push({
+        tag,
+        rep: rep + 1,
+        renderer,
+        platform: 'android-device',
+        gate: 'android-full',
+        result,
+        gfxInfo,
+        thermalBefore,
+        thermalAfter,
+      })
       writeFileSync(outputPath, `${JSON.stringify(records, null, 2)}\n`)
       process.stdout.write(
         `  js=${result.js.fps.toFixed(2)} main=${result.native.mainThread.fps.toFixed(2)} ` +

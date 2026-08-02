@@ -1,11 +1,17 @@
-// iOS Simulator counterpart of run-quick.mjs. Same workload and metric windows;
-// the published result is read from the app container instead of logcat.
+// iOS Simulator counterpart of run-quick.mjs. Same workload, metric windows and
+// acceptance gate minus the thermal conjuncts (see gate.mjs); the published
+// result is read from the app container instead of logcat.
+//
+// Simulator numbers are not comparable to on-device numbers under any gate —
+// no thermal model, a desktop GPU, a different CPU. Records carry
+// platform/gate so nothing downstream lines these up against Android medians.
 //
 // Usage: node scripts/run-quick-ios.mjs --tag=baseline [--renderers=tgfx] [--reps=3]
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { rejectReason } from './gate.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const artifacts = resolve(root, 'artifacts')
@@ -47,42 +53,68 @@ const median = (values) => {
 }
 
 const records = []
+let previousStartedAtEpochMs = -Infinity
 mkdirSync(artifacts, { recursive: true })
 const outputPath = resolve(artifacts, `quick-ios-${tag}.json`)
 
 for (let rep = 0; rep < reps; rep += 1) {
   for (const renderer of renderers) {
-    agent(['open', bundleId, '--relaunch'])
-    agent(['wait', 'text', 'Renderer stress benchmark', '30000'])
-    agent(['press', `role=button label="${labels[renderer]}"`, '--settle'])
-    agent(['press', `role=button label="${objects}"`, '--settle'])
-    agent(['press', `role=button label="${warmup}s"`, '--settle'])
-    agent(['press', `role=button label="${duration}s"`, '--settle'])
-    agent(['press', `role=button label="${seed}"`, '--settle'])
-    agent(['press', 'role=button label="Start benchmark"'])
-    await sleep((warmup + duration + 3) * 1000)
-    agent(['wait', 'text', 'Benchmark complete', '15000'])
-    await sleep(500)
+    let attempts = 0
+    for (;;) {
+      attempts += 1
+      agent(['open', bundleId, '--relaunch'])
+      agent(['wait', 'text', 'Renderer stress benchmark', '30000'])
+      agent(['press', `role=button label="${labels[renderer]}"`, '--settle'])
+      agent(['press', `role=button label="${objects}"`, '--settle'])
+      agent(['press', `role=button label="${warmup}s"`, '--settle'])
+      agent(['press', `role=button label="${duration}s"`, '--settle'])
+      agent(['press', `role=button label="${seed}"`, '--settle'])
+      agent(['press', 'role=button label="Start benchmark"'])
+      await sleep((warmup + duration + 3) * 1000)
+      agent(['wait', 'text', 'Benchmark complete', '15000'])
+      await sleep(500)
 
-    // simctl prints an unrelated getpwuid_r warning first; the path is last.
-    const container = simctl(['get_app_container', udid, bundleId, 'data'])
-      .trim()
-      .split('\n')
-      .at(-1)
-      .trim()
-    const result = JSON.parse(
-      readFileSync(resolve(container, 'Documents', 'benchmark-result.json'), 'utf8')
-    )
-    if (result.config.renderer !== renderer) {
-      throw new Error(`stale result: ${result.config.renderer} != ${renderer}`)
+      // simctl prints an unrelated getpwuid_r warning first; the path is last.
+      const container = simctl(['get_app_container', udid, bundleId, 'data'])
+        .trim()
+        .split('\n')
+        .at(-1)
+        .trim()
+      const result = JSON.parse(
+        readFileSync(resolve(container, 'Documents', 'benchmark-result.json'), 'utf8')
+      )
+      const reason = rejectReason({
+        platform: 'ios',
+        result,
+        renderer,
+        objects,
+        duration,
+        previousStartedAtEpochMs,
+      })
+      if (reason !== null) {
+        process.stdout.write(`  rejected (attempt ${attempts}): ${reason}; retrying slot\n`)
+        if (attempts >= 4) {
+          throw new Error(`renderer ${renderer} failed the acceptance gate 4 times`)
+        }
+        continue
+      }
+      previousStartedAtEpochMs = result.startedAtEpochMs
+      records.push({
+        tag,
+        rep: rep + 1,
+        renderer,
+        platform: 'ios-simulator',
+        gate: 'ios-minimal',
+        result,
+      })
+      writeFileSync(outputPath, `${JSON.stringify(records, null, 2)}\n`)
+      process.stdout.write(
+        `rep=${rep + 1} ${renderer} js=${result.js.fps.toFixed(2)} ` +
+          `main=${result.native.mainThread.fps.toFixed(2)} ` +
+          `cpu=${result.native.processCpuPercent.toFixed(1)}%\n`
+      )
+      break
     }
-    records.push({ tag, rep: rep + 1, renderer, result })
-    writeFileSync(outputPath, `${JSON.stringify(records, null, 2)}\n`)
-    process.stdout.write(
-      `rep=${rep + 1} ${renderer} js=${result.js.fps.toFixed(2)} ` +
-        `main=${result.native.mainThread.fps.toFixed(2)} ` +
-        `cpu=${result.native.processCpuPercent.toFixed(1)}%\n`
-    )
   }
 }
 
