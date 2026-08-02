@@ -78,6 +78,9 @@ namespace {
 
 constexpr double kSceneVersion = 3;
 
+/// Bounds readNode and so drawCmd too; DrawCmd is 352 B, so 256 deep is ~90 KB of stack.
+constexpr int kMaxNodeDepth = 256;
+
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind { KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText };
 
@@ -314,7 +317,11 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.shader = readShader(r);
 }
 
-bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd) {
+bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
+  if (depth > kMaxNodeDepth) {
+    r.ok = false;
+    return false;
+  }
   int kind = r.nextInt();
   if (!r.ok) {
     return false;
@@ -342,7 +349,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd) {
       cmd.children.reserve(static_cast<size_t>(std::max(0, childCount)));
       for (int i = 0; i < childCount && r.ok; i++) {
         DrawCmd child;
-        if (!readNode(r, child)) {
+        if (!readNode(r, child, depth + 1)) {
           return false;
         }
         cmd.children.push_back(std::move(child));
@@ -444,7 +451,7 @@ void SceneRenderer::setScene(std::span<const double> words,
   program->reserve(static_cast<size_t>(std::max(0, rootCount)));
   for (int i = 0; i < rootCount && reader.ok; i++) {
     DrawCmd cmd;
-    if (!readNode(reader, cmd)) {
+    if (!readNode(reader, cmd, 0)) {
       break;
     }
     program->push_back(std::move(cmd));

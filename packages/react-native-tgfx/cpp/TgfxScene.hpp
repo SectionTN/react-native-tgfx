@@ -115,7 +115,7 @@ class SceneRenderer {
   std::shared_ptr<tgfx::Image> getImage(const std::string& base64);
   std::shared_ptr<tgfx::Typeface> getTypeface(const std::string& family);
 
-  bool readNode(SceneReader& reader, DrawCmd& cmd);
+  bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
   void readPaint(SceneReader& reader, PaintCmd& paint);
   std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader);
 

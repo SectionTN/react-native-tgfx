@@ -159,12 +159,14 @@ bool TgfxRenderer::draw() {
     canvas->clear(opaque_ ? tgfx::Color::Black() : tgfx::Color::Transparent());
     // Scene coordinates are in logical pixels (dp); the tgfx surface is in
     // physical pixels. Scale by the device pixel ratio so they align.
-    if (pixelRatio_ != 1.0f) {
+    // One load: a concurrent setPixelRatio must not unbalance save/restore.
+    float pixelRatio = pixelRatio_.load(std::memory_order_relaxed);
+    if (pixelRatio != 1.0f) {
       canvas->save();
-      canvas->concat(tgfx::Matrix::MakeScale(pixelRatio_, pixelRatio_));
+      canvas->concat(tgfx::Matrix::MakeScale(pixelRatio, pixelRatio));
     }
     scene_.render(canvas, drawValues_);
-    if (pixelRatio_ != 1.0f) {
+    if (pixelRatio != 1.0f) {
       canvas->restore();
     }
     auto recording = context->flush();
