@@ -181,8 +181,9 @@ const reconciler = ReactReconciler(
 
 /** A mounted reconciler root that renders a React element tree into a container. */
 export class TgfxRoot {
-  private readonly container: TgfxContainer
+  readonly container: TgfxContainer
   private readonly root: ReturnType<typeof reconciler.createContainer>
+  private direct = false
 
   constructor(onCommit: CommitListener) {
     this.container = new TgfxContainer(onCommit)
@@ -201,10 +202,35 @@ export class TgfxRoot {
   }
 
   render(element: ReactNode): void {
+    this.direct = false
     reconciler.updateContainer(element, this.root, null, null)
+  }
+
+  /** Hand the container over to a root built without the reconciler. */
+  setDirect(roots: Node[]): void {
+    if (!this.direct) {
+      // `updateContainer` only schedules, so the reconciler's teardown would
+      // otherwise land *after* this scene and blank the canvas. Flush it now,
+      // muted, so the empty tree never reaches the view.
+      this.container.muted = true
+      try {
+        reconciler.updateContainerSync(null, this.root, null, null)
+        reconciler.flushSyncWork()
+      } finally {
+        // A stuck mute would leave the canvas silently blank forever.
+        this.container.muted = false
+      }
+      this.direct = true
+    }
+    this.container.setRootDirect(roots)
   }
 
   unmount(): void {
     reconciler.updateContainer(null, this.root, null, null)
+    // A root built by setRootDirect is not owned by the reconciler, so its
+    // teardown does not empty the container. Commit the empty scene either way.
+    if (this.container.root.length > 0) {
+      this.container.setRootDirect([])
+    }
   }
 }

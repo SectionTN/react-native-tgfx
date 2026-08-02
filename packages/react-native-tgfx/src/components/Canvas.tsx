@@ -4,6 +4,7 @@ import type { MaybeSharedValue } from '../compiler/values'
 import { packStringTable } from '../compiler/writer'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { TgfxRoot } from '../reconciler/Reconciler'
+import { directNodes } from '../reconciler/directNodes'
 import type { CanvasProps } from '../types'
 import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
@@ -88,7 +89,19 @@ export function Canvas({
   }
 
   useEffect(() => {
-    rootRef.current?.render(<>{children}</>)
+    const root = rootRef.current
+    if (root == null) {
+      return
+    }
+    // Plain shape trees need none of the reconciler's machinery, and mounting a
+    // fiber per node is the JS thread's largest cost on an animated scene.
+    // Anything it cannot handle returns null and takes the reconciler as before.
+    const direct = directNodes(children)
+    if (direct !== null) {
+      root.setDirect(direct)
+      return
+    }
+    root.render(<>{children}</>)
   }, [children])
 
   // Not nulled: the render body that builds it never re-runs on a StrictMode remount.

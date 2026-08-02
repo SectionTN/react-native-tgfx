@@ -17,6 +17,8 @@ export type CommitListener = (
  */
 export class TgfxContainer {
   root: Node[] = []
+  /** Drops commits while a torn-down root is about to be replaced. */
+  muted = false
   private readonly writer = new SceneWriter()
   private readonly onCommit: CommitListener
 
@@ -24,7 +26,16 @@ export class TgfxContainer {
     this.onCommit = onCommit
   }
 
+  /** Swap in a root built without the reconciler, then compile as usual. */
+  setRootDirect(roots: Node[]): void {
+    this.root = roots
+    this.redraw()
+  }
+
   redraw(): void {
+    if (this.muted) {
+      return
+    }
     const { buffer, strings, values } = compileScene(this.root, this.writer)
     this.onCommit(buffer, strings, values)
   }

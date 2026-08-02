@@ -31,7 +31,22 @@ mock.module('react-native-nitro-modules', () => ({
 
 // Synchronous: a top-level await lets another test file's mock.module land first.
 const { Canvas } = require('./Canvas') as typeof import('./Canvas')
-const { Rect } = require('./drawings') as typeof import('./drawings')
+const { Rect, Path } = require('./drawings') as typeof import('./drawings')
+
+function Star(): React.ReactElement {
+  return <Path path="M0 0L1 1" color="gold" />
+}
+
+function Toggle({ custom }: { custom: boolean }): React.ReactElement {
+  return (
+    <Canvas>
+      <Rect x={0} y={0} width={10} height={10} color="red" />
+      {custom ? <Star /> : null}
+    </Canvas>
+  )
+}
+
+const rootCounts = () => scenes.map((words) => words[3])
 
 const SCENE = (
   <Canvas>
@@ -66,6 +81,32 @@ test('a static scene reaches the native view after a StrictMode remount', async 
   await render(<StrictMode>{SCENE}</StrictMode>)
 
   expect(scenes.at(-1)).toEqual(plain!)
+})
+
+test('switching from the fallback path back to the direct one keeps the scene', async () => {
+  const tree = await render(<Toggle custom />)
+  expect(scenes.at(-1)![3]).toBe(2)
+
+  scenes = []
+  await act(async () => {
+    tree.update(<Toggle custom={false} />)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  })
+
+  expect(scenes.at(-1)![3]).toBe(1)
+  expect(rootCounts()).not.toContain(0)
+})
+
+test('the paths keep swapping without losing the scene', async () => {
+  const tree = await render(<Toggle custom />)
+  for (const custom of [false, true, false]) {
+    await act(async () => {
+      tree.update(<Toggle custom={custom} />)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(scenes.at(-1)![3]).toBe(custom ? 2 : 1)
+  }
+  expect(rootCounts()).not.toContain(0)
 })
 
 test('unmounting still tears the root down', async () => {
