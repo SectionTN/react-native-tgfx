@@ -76,8 +76,6 @@ struct SceneReader {
 
 namespace {
 
-constexpr double kSceneVersion = 3;
-
 /// Bounds readNode and so drawCmd too; DrawCmd is 352 B, so 256 deep is ~90 KB of stack.
 constexpr int kMaxNodeDepth = 256;
 
@@ -310,7 +308,7 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   int flags = r.nextInt();
   paint.stroke = (flags & 1) != 0;
   paint.antiAlias = (flags & 2) != 0;
-  paint.strokeWidth = AnimF{static_cast<float>(r.next()), -1};
+  paint.strokeWidth = r.nextAnim();
   paint.cap = r.nextInt();
   paint.join = r.nextInt();
   paint.alpha = r.nextAnim();

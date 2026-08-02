@@ -203,7 +203,7 @@ test('a text-only change leaves the word buffer byte-identical', () => {
 
 // Golden encoding: paint-bearing children add paint but never enter the stream.
 const MIXED_GROUP_WORDS = [
-  3, 60, 57, 1, 0, 2, 2, 1.5707963267948966, 0, 3, 0.5, 0, 2, 0, 1, 4,
+  4, 60, 57, 1, 0, 2, 2, 1.5707963267948966, 0, 3, 0.5, 0, 2, 0, 1, 4,
   0.5235987755982988, 0, 1, 1, 0, 0, 1, 1, 4294901760, 3, 3, 0, 0, 1, 1, 1, 2,
   5, 2, 4294967295, 4278190080, 0, 1, 2, 3, 4, 5, 4294901760, 3, 3, 0, 0, 1, 1,
   1, 2, 5, 2, 4294967295, 4278190080, 0, 1, 10, 0,
@@ -281,4 +281,62 @@ test('compiles a line as a stroke that keeps its stroke width', () => {
 test('leaves a non-line node filled by default', () => {
   const { used } = compile([node(NodeType.Rect, { x: 0, y: 0 })])
   expect(used[10]! & 1).toBe(0)
+})
+
+// Paint block layout, mirrored by readPaint in cpp/TgfxScene.cpp:
+// color, flags, strokeWidth, cap, join, alpha, shader.
+const RECT_STROKE_WIDTH_WORD = 11
+const RECT_ALPHA_WORD = 14
+
+test('animates strokeWidth through a patch slot', () => {
+  const width = sharedValue(6)
+  const { used, values } = compile([
+    node(NodeType.Rect, { x: 1, y: 2, width: 3, height: 4, strokeWidth: width }),
+  ])
+  expect(values).toEqual([width])
+  const patchStart = used[2]!
+  expect(used[patchStart]).toBe(1)
+  expect(used[patchStart + 1]).toBe(RECT_STROKE_WIDTH_WORD)
+  expect(used[patchStart + 2]).toBe(0)
+  expect(used[RECT_STROKE_WIDTH_WORD]).toBe(6)
+})
+
+test('animates a strokeWidth inherited from a group', () => {
+  const width = sharedValue(6)
+  const { used, values } = compile([
+    node(NodeType.Group, { strokeWidth: width }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(values).toEqual([width])
+  // group(kind ops=0 children=1) rect(kind x y w h) paint(color flags sw ...)
+  const strokeWidthWord = 14
+  const patchStart = used[2]!
+  expect(used[patchStart]).toBe(1)
+  expect(used[patchStart + 1]).toBe(strokeWidthWord)
+  expect(used[strokeWidthWord]).toBe(6)
+})
+
+test('keeps a static strokeWidth a literal with no patch', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, strokeWidth: 6 }),
+  ])
+  expect(used[RECT_STROKE_WIDTH_WORD]).toBe(6)
+  expect(used[used[2]!]).toBe(0)
+})
+
+// nextAnim matches patches positionally, so the reader only stays in step if
+// strokeWidth stays one word and its patch keeps ascending word order.
+test('an animated strokeWidth costs no extra word and stays ordered', () => {
+  const props = { x: 0, y: 0, width: 1, height: 1, opacity: sharedValue(0.5) }
+  const staticScene = compile([node(NodeType.Rect, props)])
+  const animated = compile([
+    node(NodeType.Rect, { ...props, strokeWidth: sharedValue(6) }),
+  ])
+  const patchStart = staticScene.used[2]!
+  expect(animated.used[2]).toBe(patchStart)
+  expect(staticScene.used[patchStart]).toBe(1)
+  expect(animated.used[patchStart]).toBe(2)
+  expect(animated.used[patchStart + 1]).toBe(RECT_STROKE_WIDTH_WORD)
+  expect(animated.used[patchStart + 3]).toBe(RECT_ALPHA_WORD)
 })

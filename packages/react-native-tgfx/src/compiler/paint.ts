@@ -9,7 +9,7 @@ export interface PaintInput {
   color?: Color
   /** `'fill'` (default) or `'stroke'`. */
   style?: 'fill' | 'stroke'
-  strokeWidth?: number
+  strokeWidth?: number | MaybeSharedValue<number>
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
   /** Kept unresolved so an animated opacity can stay a live alpha slot. */
@@ -188,7 +188,7 @@ export function writePaint(
 
   w.push(resolveColor(resolveValue(color as Color | undefined)))
   w.push((forceStroke || style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0))
-  w.push(resolveNumber(strokeWidth, 1))
+  w.pushAnim(strokeWidth, 1)
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])
   w.pushAnim(alpha, 1)
@@ -209,7 +209,7 @@ export function pickPaintInput(props: Record<string, unknown>): PaintInput {
     out.style = props.style as PaintInput['style']
   }
   if (props.strokeWidth !== undefined) {
-    out.strokeWidth = resolveNumber(props.strokeWidth, 1)
+    out.strokeWidth = props.strokeWidth as PaintInput['strokeWidth']
   }
   if (props.strokeCap !== undefined) {
     out.strokeCap = props.strokeCap as PaintInput['strokeCap']

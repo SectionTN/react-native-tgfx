@@ -31,6 +31,10 @@ class Typeface;
 
 namespace tgfxrn {
 
+/// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
+/// Lives here so the reader and the C++ test harness cannot drift apart.
+inline constexpr double kSceneVersion = 4;
+
 /// Cursor over the binary draw program (defined in TgfxScene.cpp).
 struct SceneReader;
 
@@ -60,8 +64,9 @@ struct PaintCmd {
   tgfx::Paint cached;
 
   /// True when a per-frame value feeds the paint, so `cached` is not the paint.
+  /// strokeWidth only reaches the paint on a stroke, so a fill keeps its cache.
   bool animated() const {
-    return alpha.slot >= 0 || strokeWidth.slot >= 0;
+    return alpha.slot >= 0 || (stroke && strokeWidth.slot >= 0);
   }
 };
 

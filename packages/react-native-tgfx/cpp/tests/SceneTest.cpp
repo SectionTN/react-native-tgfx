@@ -33,7 +33,6 @@ int failures = 0;
 
 constexpr int kWidth = 64;
 constexpr int kHeight = 64;
-constexpr double kSceneVersion = 3;
 
 /// Mirrors src/compiler/writer.ts: header, node stream, then the patch table.
 struct Writer {
@@ -54,10 +53,11 @@ struct Writer {
   }
 
   void pushPaint(uint32_t color, bool stroke, double strokeWidth = 1,
-                 double alpha = 1, int alphaSlot = -1) {
+                 double alpha = 1, int alphaSlot = -1,
+                 int strokeWidthSlot = -1) {
     push(color);
     push((stroke ? 1 : 0) | 2);
-    push(strokeWidth);
+    pushAnim(strokeWidth, strokeWidthSlot);
     push(0);
     push(0);
     pushAnim(alpha, alphaSlot);
@@ -70,7 +70,7 @@ struct Writer {
     for (double patch : patches) {
       words.push_back(patch);
     }
-    words[0] = kSceneVersion;
+    words[0] = tgfxrn::kSceneVersion;
     words[1] = static_cast<double>(words.size());
     words[2] = static_cast<double>(patchStart);
     return words;
@@ -164,6 +164,34 @@ void staticLineDrawsWhatTheRebuildDraws() {
   CHECK(cached == rebuilt);
 }
 
+/// A stroked rect whose strokeWidth is a slot must rebuild rather than reuse
+/// `cached`, and must actually track the slot from frame to frame.
+void animatedStrokeWidthDrawsWhatTheRebuildDraws() {
+  Writer literal;
+  literal.push(1);
+  literal.push(1);  // Rect
+  literal.pushAnim(8);
+  literal.pushAnim(8);
+  literal.pushAnim(40);
+  literal.pushAnim(40);
+  literal.pushPaint(0xffcc3366, true, 6);
+
+  Writer animated;
+  animated.push(1);
+  animated.push(1);
+  animated.pushAnim(8);
+  animated.pushAnim(8);
+  animated.pushAnim(40);
+  animated.pushAnim(40);
+  animated.pushPaint(0xffcc3366, true, 0, 1, -1, 0);
+
+  auto words = animated.finish();
+  auto cached = render(literal.finish(), {}, {});
+  CHECK(anyPixelSet(cached));
+  CHECK(cached == render(words, {}, {6}));
+  CHECK(cached != render(words, {}, {2}));
+}
+
 const std::vector<std::string> kTextStrings{"Wg", "Helvetica"};
 
 void writeText(Writer& w, double fontSize, int fontSizeSlot) {
@@ -243,6 +271,7 @@ int main() {
   }
   staticPaintDrawsWhatTheRebuildDraws();
   staticLineDrawsWhatTheRebuildDraws();
+  animatedStrokeWidthDrawsWhatTheRebuildDraws();
   staticTextDrawsWhatTheRebuildDraws();
   animatedFieldsStillAnimate();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
