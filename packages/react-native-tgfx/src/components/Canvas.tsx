@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { callback } from 'react-native-nitro-modules'
 import type { MaybeSharedValue } from '../compiler/values'
+import { packStringTable } from '../compiler/writer'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import type { CanvasProps } from '../types'
@@ -43,6 +44,8 @@ export function Canvas({
   const viewRef = useRef<TgfxViewRef | null>(null)
   const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
+  // The string table this view already holds, so commits send only the delta.
+  const sentStrings = useRef<string[]>([])
   const hybridRef = useRef<ReturnType<
     typeof callback<(ref: TgfxViewRef) => void>
   > | null>(null)
@@ -51,9 +54,12 @@ export function Canvas({
   if (hybridRef.current == null) {
     hybridRef.current = callback((ref: TgfxViewRef) => {
       viewRef.current = ref
+      sentStrings.current = []
       // Commits can land before the native view exists; flush the latest scene.
       if (scene.current != null) {
-        ref.setScene(scene.current.buffer, scene.current.strings)
+        const strings = scene.current.strings
+        ref.setScene(scene.current.buffer, packStringTable([], strings))
+        sentStrings.current = strings.slice()
       }
       setView(ref)
     })
@@ -65,7 +71,13 @@ export function Canvas({
     // React re-render plus a Fabric shadow-tree commit on every frame.
     rootRef.current = new TgfxRoot((buffer, strings, vals) => {
       scene.current = { buffer, strings }
-      viewRef.current?.setScene(buffer, strings)
+      if (viewRef.current != null) {
+        viewRef.current.setScene(
+          buffer,
+          packStringTable(sentStrings.current, strings)
+        )
+        sentStrings.current = strings.slice()
+      }
       // The Reanimated mapper must re-subscribe when the value set changes —
       // but only then, not on every reconciler commit.
       if (!sameValueSet(prevValues.current, vals)) {

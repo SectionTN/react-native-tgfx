@@ -9,7 +9,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface TgfxMetalView : UIView
 
-/// Update the binary draw-program and its string table.
+/// Update the binary draw-program. `strings` is a string-table delta, not a
+/// table: element 0 is the count of leading entries kept (cpp/SceneStrings.hpp).
 - (void)setScene:(const double*)words
            count:(NSInteger)count
          strings:(NSArray<NSString*>*)strings;

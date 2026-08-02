@@ -145,6 +145,10 @@
            count:(NSInteger)count
          strings:(NSArray<NSString*>*)strings {
   if (_renderer == nullptr || words == nullptr || count <= 0) {
+    // As on Android: this also drops the string-table delta, which JS has
+    // already committed to and cannot resend. Only reachable on a null/empty
+    // buffer, and the next delta warns in applyStringTable. Do not add a third
+    // early return above _renderer->setScene without routing the delta in.
     return;
   }
   std::vector<std::string> table;

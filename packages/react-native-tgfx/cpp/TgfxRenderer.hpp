@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include "SceneHash.hpp"
+#include "SceneStrings.hpp"
 #include "TgfxScene.hpp"
 
 namespace tgfx {
@@ -38,8 +40,9 @@ class TgfxRenderer {
   /// Stage a new binary draw-program. `words` belongs to the caller and is only
   /// valid for this call, so it is copied here; the (cheap) compile into the
   /// command list then happens on the render thread inside draw().
+  /// `packedStrings` is a string-table delta — see SceneStrings.hpp.
   void setScene(std::span<const double> words,
-                const std::vector<std::string>& strings);
+                const std::vector<std::string>& packedStrings);
 
   /// Drop the current program (a recycled view must not flash the old scene).
   /// Safe from any thread: the caches are dropped by the next draw().
@@ -75,7 +78,12 @@ class TgfxRenderer {
   std::shared_ptr<tgfx::Window> window_;
   std::shared_ptr<tgfx::Surface> surface_;
   std::vector<double> pendingScene_;
-  std::vector<std::string> pendingStrings_;
+  // The tables are shared, never copied: a commit that changes nothing but
+  // geometry must not re-copy the image payloads this delta exists to elide.
+  std::shared_ptr<const StringTable> pendingStrings_;
+  // The live string table, rebuilt from each commit's delta.
+  std::shared_ptr<const StringTable> strings_ = std::make_shared<StringTable>();
+  uint64_t stringsHash_ = hashStrings({});
   bool scenePending_ = false;
   bool cachesDirty_ = false;
   uint64_t sceneHash_ = 0;
@@ -83,7 +91,7 @@ class TgfxRenderer {
   // Render-thread buffers, refilled in place so no frame allocates under the lock.
   std::vector<double> drawValues_;
   std::vector<double> drawScene_;
-  std::vector<std::string> drawStrings_;
+  std::shared_ptr<const StringTable> drawStrings_;
   SceneRenderer scene_;
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};

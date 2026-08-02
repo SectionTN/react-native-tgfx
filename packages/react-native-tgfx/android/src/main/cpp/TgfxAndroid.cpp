@@ -125,6 +125,11 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
       env->GetDirectBufferAddress(sceneBuffer));
   auto bytes = env->GetDirectBufferCapacity(sceneBuffer);
   if (words == nullptr || bytes <= 0) {
+    // Returning here also drops the string-table delta, which JS has already
+    // committed to and cannot resend — the engine's table stays a commit behind
+    // for the life of the view. Only reachable on a null/empty buffer, and the
+    // next delta warns in applyStringTable, so it is left as is; do not add a
+    // third early return above renderer.setScene without routing the delta in.
     return;
   }
   std::vector<std::string> strings;

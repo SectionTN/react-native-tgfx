@@ -21,7 +21,28 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
  * patch table, so the engine knows which words to resolve against the live value
  * array each frame.
  */
-export const SCENE_VERSION = 4
+export const SCENE_VERSION = 5
+
+/**
+ * Encode a string table as a delta against the one the engine already holds:
+ * element 0 is the number of leading entries it keeps, the rest replaces
+ * everything after them. Entries carry the payloads that scale with content
+ * rather than node count — base64 image data, path data — and they are
+ * byte-identical across commits, so re-sending them costs a Nitro marshal, a
+ * UTF-8 conversion and a full hash scan per commit for nothing.
+ * Decoded by applyStringTable() in cpp/SceneStrings.hpp.
+ */
+export function packStringTable(prev: string[], next: string[]): string[] {
+  let kept = 0
+  while (kept < prev.length && kept < next.length && prev[kept] === next[kept]) {
+    kept++
+  }
+  const packed: string[] = [String(kept)]
+  for (let i = kept; i < next.length; i++) {
+    packed.push(next[i] as string)
+  }
+  return packed
+}
 
 export const Kind = {
   Group: 0,

@@ -8,30 +8,52 @@
 
 namespace tgfxrn {
 
-/// FNV-1a identity of a draw-program: the words plus the string table they index.
-inline uint64_t hashScene(std::span<const double> words,
-                          const std::vector<std::string>& strings) {
-  uint64_t hash = 14695981039346656037ULL;
-  auto mix = [&hash](const void* data, size_t size) {
-    const auto* bytes = static_cast<const unsigned char*>(data);
-    for (size_t i = 0; i < size; i++) {
-      hash = (hash ^ bytes[i]) * 1099511628211ULL;
-    }
-  };
-  auto mixSize = [&mix](size_t size) {
-    auto value = static_cast<uint64_t>(size);
-    mix(&value, sizeof(value));
-  };
+namespace scenehash {
+
+constexpr uint64_t kOffset = 14695981039346656037ULL;
+
+inline void mix(uint64_t& hash, const void* data, size_t size) {
+  const auto* bytes = static_cast<const unsigned char*>(data);
+  for (size_t i = 0; i < size; i++) {
+    hash = (hash ^ bytes[i]) * 1099511628211ULL;
+  }
+}
+
+inline void mixSize(uint64_t& hash, size_t size) {
+  auto value = static_cast<uint64_t>(size);
+  mix(hash, &value, sizeof(value));
+}
+
+}  // namespace scenehash
+
+/// FNV-1a identity of a draw-program's words.
+inline uint64_t hashWords(std::span<const double> words) {
+  uint64_t hash = scenehash::kOffset;
   // Length-prefixed so no word can absorb the count that follows it.
-  mixSize(words.size());
-  mix(words.data(), words.size() * sizeof(double));
-  // String indices are re-assigned per commit, so equal words can index a different table.
-  mixSize(strings.size());
+  scenehash::mixSize(hash, words.size());
+  scenehash::mix(hash, words.data(), words.size() * sizeof(double));
+  return hash;
+}
+
+/// FNV-1a identity of a string table. Kept across commits, so a table that did
+/// not change is never rescanned.
+inline uint64_t hashStrings(const std::vector<std::string>& strings) {
+  uint64_t hash = scenehash::kOffset;
+  scenehash::mixSize(hash, strings.size());
   for (const auto& string : strings) {
     // Length-prefixed: "ab","c" and "a","bc" must not collide.
-    mixSize(string.size());
-    mix(string.data(), string.size());
+    scenehash::mixSize(hash, string.size());
+    scenehash::mix(hash, string.data(), string.size());
   }
+  return hash;
+}
+
+/// Identity of a whole draw-program: the words plus the table they index. String
+/// indices are re-assigned per commit, so equal words can index a different table.
+inline uint64_t hashScene(uint64_t wordsHash, uint64_t stringsHash) {
+  uint64_t hash = scenehash::kOffset;
+  scenehash::mix(hash, &wordsHash, sizeof(wordsHash));
+  scenehash::mix(hash, &stringsHash, sizeof(stringsHash));
   return hash;
 }
 

@@ -33,7 +33,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 4;
+inline constexpr double kSceneVersion = 5;
 
 /// Cursor over the binary draw program (defined in TgfxScene.cpp).
 struct SceneReader;

@@ -35,9 +35,15 @@ export interface TgfxViewMethods extends HybridViewMethods {
   /**
    * Replace the draw program.
    *
-   * `scene` is the binary program (the buffer behind a `Float64Array`) and
-   * `strings` its string table — path data, text, image sources and shader
-   * source, which the program references by index.
+   * `scene` is the binary program (the buffer behind a `Float64Array`).
+   *
+   * `strings` is **not** the string table — it is a delta against the table this
+   * view already holds. Element 0 is the decimal count of leading entries the
+   * view keeps; elements 1..n replace everything after them. The program indexes
+   * the reconstructed table (path data, text, image sources, shader source), so
+   * a caller driving this directly must encode with `packStringTable` from
+   * `src/compiler/writer.ts` and track the table it last sent per view. Passing
+   * a bare table drops entry 0 and misindexes everything after it.
    *
    * A direct hybrid-object call rather than a view prop: the scene changes on
    * every reconciler commit, and a prop would push the whole program through a

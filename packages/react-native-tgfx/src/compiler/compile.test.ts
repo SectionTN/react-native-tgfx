@@ -203,7 +203,7 @@ test('a text-only change leaves the word buffer byte-identical', () => {
 
 // Golden encoding: paint-bearing children add paint but never enter the stream.
 const MIXED_GROUP_WORDS = [
-  4, 60, 57, 1, 0, 2, 2, 1.5707963267948966, 0, 3, 0.5, 0, 2, 0, 1, 4,
+  5, 60, 57, 1, 0, 2, 2, 1.5707963267948966, 0, 3, 0.5, 0, 2, 0, 1, 4,
   0.5235987755982988, 0, 1, 1, 0, 0, 1, 1, 4294901760, 3, 3, 0, 0, 1, 1, 1, 2,
   5, 2, 4294967295, 4278190080, 0, 1, 2, 3, 4, 5, 4294901760, 3, 3, 0, 0, 1, 1,
   1, 2, 5, 2, 4294967295, 4278190080, 0, 1, 10, 0,

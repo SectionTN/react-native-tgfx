@@ -31,7 +31,8 @@ int main() {
     ${CASES.join(',\n    ')}
   };
   for (const auto& item : cases) {
-    printf("%llu\\n", (unsigned long long)tgfxrn::hashScene(item.first, item.second));
+    printf("%llu\\n", (unsigned long long)tgfxrn::hashScene(
+        tgfxrn::hashWords(item.first), tgfxrn::hashStrings(item.second)));
   }
   return 0;
 }

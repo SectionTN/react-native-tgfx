@@ -5,6 +5,7 @@
 #include <span>
 
 #include "SceneHash.hpp"
+#include "SceneStrings.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageFilter.h"
@@ -36,7 +37,22 @@ void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
 }
 
 void TgfxRenderer::setScene(std::span<const double> words,
-                            const std::vector<std::string>& strings) {
+                            const std::vector<std::string>& packedStrings) {
+  {
+    // Ahead of the word checks: JS has already advanced its cursor and the delta
+    // carries no resync, so dropping one desyncs the table permanently.
+    //
+    // Taking the lock twice rather than once means (table, words) is not applied
+    // atomically, so this relies on callers serialising their setScene calls:
+    // Android holds the Kotlin lock in TgfxRenderTarget.withPtr across the whole
+    // JNI crossing, and TgfxMetalView only ever calls in from the JS thread. The
+    // split keeps the O(words) hash below off the mutex the render thread takes
+    // every frame in draw(); merge the two scopes if a concurrent caller appears.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (applyStringTable(strings_, packedStrings)) {
+      stringsHash_ = hashStrings(*strings_);
+    }
+  }
   // The writer reuses (and grows) one buffer, so only the leading `words[1]`
   // words belong to this program; the rest is stale capacity.
   if (words.size() < 2) {
@@ -47,17 +63,19 @@ void TgfxRenderer::setScene(std::span<const double> words,
     return;
   }
   words = words.first(used);
-  uint64_t hash = hashScene(words, strings);
+  uint64_t wordsHash = hashWords(words);
   {
     // A reconciler commit can produce an identical program (an unrelated state
     // change upstream); skipping it avoids a rebuild and a redundant frame.
     std::lock_guard<std::mutex> lock(mutex_);
+    uint64_t hash = hashScene(wordsHash, stringsHash_);
     if (hash == sceneHash_) {
       return;
     }
     sceneHash_ = hash;
     pendingScene_.assign(words.begin(), words.end());
-    pendingStrings_ = strings;
+    // A pointer copy: the payloads are never re-copied on an unchanged table.
+    pendingStrings_ = strings_;
     scenePending_ = true;
   }
   version_.fetch_add(1, std::memory_order_release);
@@ -67,11 +85,12 @@ void TgfxRenderer::clearScene() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     pendingScene_.clear();
-    pendingStrings_.clear();
+    pendingStrings_.reset();
     scenePending_ = false;
     sceneHash_ = 0;
     // The caches belong to the render thread, so draw() does the clearing.
     cachesDirty_ = true;
+    // `strings_` survives: the next commit's carry-over count is relative to it.
   }
   version_.fetch_add(1, std::memory_order_release);
 }
@@ -115,7 +134,7 @@ bool TgfxRenderer::draw() {
     cachesDirty_ = false;
     if (scenePending_) {
       drawScene_.swap(pendingScene_);
-      drawStrings_.swap(pendingStrings_);
+      drawStrings_ = std::move(pendingStrings_);
       scenePending_ = false;
       hasScene = true;
     }
@@ -127,13 +146,12 @@ bool TgfxRenderer::draw() {
   if (hasScene) {
     // Compiling here keeps image/typeface caches on one thread and keeps the
     // JS thread out of the engine entirely.
-    scene_.setScene(drawScene_, drawStrings_);
+    scene_.setScene(drawScene_, *drawStrings_);
   } else if (dropCaches) {
     // Nothing staged, so release the string table pinning the base64 payloads.
     drawScene_.clear();
     drawScene_.shrink_to_fit();
-    drawStrings_.clear();
-    drawStrings_.shrink_to_fit();
+    drawStrings_.reset();
   }
   if (window == nullptr) {
     return false;
