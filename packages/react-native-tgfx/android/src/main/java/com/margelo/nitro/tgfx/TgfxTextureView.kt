@@ -32,7 +32,7 @@ internal class TgfxTextureView(context: Context, private val target: TgfxRenderT
   }
 
   override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {
-    target.surfaceResized(width, height)
+    target.surfaceResized(width, height, resources.displayMetrics.density)
   }
 
   // Returning false keeps ownership of the SurfaceTexture, so it is released on

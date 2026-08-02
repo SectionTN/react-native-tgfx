@@ -127,11 +127,12 @@ internal class TgfxRenderTarget {
     }
   }
 
-  fun surfaceResized(width: Int, height: Int) {
+  fun surfaceResized(width: Int, height: Int, density: Float) {
     handler.post {
       val ptr = nativePtr
       if (ptr != 0L) {
         TgfxNative.surfaceChanged(ptr, width, height)
+        TgfxNative.setPixelRatio(ptr, density)
         TgfxNative.draw(ptr)
       }
     }
