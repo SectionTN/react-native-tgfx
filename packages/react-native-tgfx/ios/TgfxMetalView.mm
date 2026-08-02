@@ -6,11 +6,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
+#include "IdleGate.hpp"
 #include "TgfxRenderer.hpp"
 #include "tgfx/gpu/metal/MetalWindow.h"
 
@@ -20,7 +22,7 @@
   // GPU work runs here, not on the main thread: the display link only enqueues.
   dispatch_queue_t _renderQueue;
   std::atomic<bool> _drawPending;
-  std::atomic<int> _idleFrames;
+  tgfxrn::IdleGate _idleGate;
   std::atomic<bool> _windowBound;
   std::atomic<double> _drawableWidth;
   std::atomic<double> _drawableHeight;
@@ -52,7 +54,6 @@
   _renderer = std::make_unique<tgfxrn::TgfxRenderer>();
   _windowBound = false;
   _drawPending = false;
-  _idleFrames = 0;
   _drawableWidth = 0;
   _drawableHeight = 0;
   _renderQueue = dispatch_queue_create("tgfx.render", DISPATCH_QUEUE_SERIAL);
@@ -106,8 +107,11 @@
 // Main thread: hand the frame to the render queue and return immediately. A
 // frame still in flight is not queued twice, so a slow frame cannot pile up.
 - (void)render {
-  if (_idleFrames > 3) {
+  auto tick = _idleGate.tick(_drawPending.load(std::memory_order_acquire));
+  if (tick == tgfxrn::IdleGate::Tick::Pause) {
     _displayLink.paused = YES;
+  }
+  if (tick != tgfxrn::IdleGate::Tick::Draw) {
     return;
   }
   if (_drawPending.exchange(true)) {
@@ -115,15 +119,16 @@
   }
   dispatch_async(_renderQueue, ^{
     [self bindWindowIfNeeded];
-    bool didDraw = (self->_renderer != nullptr) && self->_renderer->draw();
-    self->_idleFrames = didDraw ? 0 : self->_idleFrames.load() + 1;
+    if (self->_renderer != nullptr) {
+      self->_renderer->draw();
+    }
     self->_drawPending = false;
   });
 }
 
 // Callable from any thread; the display link belongs to the main run loop.
 - (void)wakeUp {
-  _idleFrames = 0;
+  _idleGate.wake();
   if (_displayLink == nil) {
     return;
   }
