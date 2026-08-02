@@ -1,7 +1,7 @@
 {
   "name": "react-native-tgfx",
   "version": "0.0.1",
-  "description": "react-native-tgfx",
+  "description": "A declarative, Skia-style GPU 2D canvas for React Native, backed by Tencent's tgfx and built with Nitro Modules.",
   "main": "lib/index",
   "module": "lib/index",
   "types": "lib/index.d.ts",
@@ -43,14 +43,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mrousavy/nitro.git"
+    "url": "git+https://github.com/riteshshukla04/react-native-tgfx.git"
   },
-  "author": "Marc Rousavy <me@mrousavy.com> (https://github.com/mrousavy)",
+  "author": "Ritesh Shukla <riteshkumarshukla04@gmail.com> (https://github.com/riteshshukla04)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/mrousavy/nitro/issues"
+    "url": "https://github.com/riteshshukla04/react-native-tgfx/issues"
   },
-  "homepage": "https://nitro.margelo.com/docs/getting-started/how-to-build-a-nitro-module",
+  "homepage": "https://github.com/riteshshukla04/react-native-tgfx#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },

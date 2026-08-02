@@ -1,10 +1,23 @@
-import { beforeEach, describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { colorCacheTestHooks, resolveColor } from './colors'
+
+// The warning is __DEV__-gated, so the flag Metro injects has to exist here.
+;(globalThis as { __DEV__?: boolean }).__DEV__ = true
 
 const parsesDuring = (fn: () => void): number => {
   const before = colorCacheTestHooks.parses
   fn()
   return colorCacheTestHooks.parses - before
+}
+
+const warningsDuring = (fn: () => void): string[] => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    fn()
+    return warn.mock.calls.map((c) => String(c[0]))
+  } finally {
+    warn.mockRestore()
+  }
 }
 
 // Must exceed CACHE_LIMIT, or the retention path is never exercised.
@@ -57,7 +70,93 @@ describe('resolveColor', () => {
 
   it('does not return inherited Object properties for named lookups', () => {
     for (const key of ['constructor', '__proto__', 'toString', 'valueOf']) {
-      expect(typeof resolveColor(key)).toBe('number')
+      const warnings = warningsDuring(() => {
+        expect(resolveColor(key)).toBe(0xff000000)
+      })
+      expect(warnings).toHaveLength(1)
     }
+  })
+
+  it('resolves both spellings of every grey/gray name', () => {
+    for (const stem of ['', 'light', 'dark', 'dim', 'slate', 'darkslate']) {
+      expect(resolveColor(`${stem}grey`)).toBe(resolveColor(`${stem}gray`))
+      expect(resolveColor(`${stem}grey`)).not.toBe(0xff000000)
+    }
+    expect(resolveColor('lightslategrey')).toBe(resolveColor('lightslategray'))
+  })
+
+  it('resolves CSS names beyond the original short list', () => {
+    for (const name of ['rebeccapurple', 'seagreen', 'tomato', 'gainsboro']) {
+      expect(resolveColor(name)).not.toBe(0xff000000)
+    }
+  })
+
+  it('warns on an unknown name instead of silently going black', () => {
+    const warnings = warningsDuring(() => {
+      expect(resolveColor('nosuchcolor')).toBe(0xff000000)
+    })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('nosuchcolor')
+  })
+
+  it('warns on a malformed function or hex form', () => {
+    for (const bad of ['rgb(oops)', 'rgb(1, 2)', 'hsl(nope)', '#gggggg', '#12']) {
+      const warnings = warningsDuring(() => {
+        expect(resolveColor(bad)).toBe(0xff000000)
+      })
+      expect(warnings).toHaveLength(1)
+    }
+  })
+
+  it('warns once per distinct bad input, not once per resolve', () => {
+    const warnings = warningsDuring(() => {
+      for (let i = 0; i < 50; i += 1) {
+        resolveColor('rgb(oops)')
+      }
+    })
+    expect(warnings).toHaveLength(1)
+  })
+
+  it('still warns only once for a bad input after the cache is full', () => {
+    overflow()
+    const warnings = warningsDuring(() => {
+      resolveColor('rgb(nope)')
+      resolveColor('rgb(nope)')
+    })
+    expect(warnings).toHaveLength(1)
+  })
+
+  it('never warns for a supported color', () => {
+    const warnings = warningsDuring(() => {
+      for (const good of [
+        '#fff',
+        '#ff8800',
+        '#ff8800cc',
+        'rgb(1, 2, 3)',
+        'rgba(1, 2, 3, 0.5)',
+        'hsl(120, 50%, 50%)',
+        'darkgrey',
+      ]) {
+        resolveColor(good)
+      }
+    })
+    expect(warnings).toEqual([])
+  })
+
+  // 0 is a real color, so the failure check has to be `=== undefined`.
+  it('treats a zero-valued color as parsed, not as a failure', () => {
+    for (const zero of ['transparent', '#00000000', 'rgba(0, 0, 0, 0)']) {
+      const warnings = warningsDuring(() => {
+        expect(resolveColor(zero)).toBe(0x00000000)
+      })
+      expect(warnings).toEqual([])
+    }
+  })
+
+  it('leaves an undefined color as opaque black without warning', () => {
+    const warnings = warningsDuring(() => {
+      expect(resolveColor(undefined)).toBe(0xff000000)
+    })
+    expect(warnings).toEqual([])
   })
 })
