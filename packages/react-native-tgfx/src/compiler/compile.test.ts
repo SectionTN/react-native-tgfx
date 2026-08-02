@@ -484,3 +484,20 @@ test('a Fill carries a runtime shader like any other drawing', () => {
   expect(values).toEqual([t])
   expect(used[4]).toBe(Kind.Fill)
 })
+
+// The rewritten body calls TGFX_CHILD_0, which nothing native declares, so
+// encoding it would only fail later inside the GLSL compiler on device.
+test('a runtime shader declaring a child is rejected before it reaches the wire', () => {
+  expect(() =>
+    compile([
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+        node(NodeType.Shader, {
+          source: `
+uniform shader tex;
+half4 main(float2 p) { return tex.eval(p); }
+`,
+        }),
+      ]),
+    ])
+  ).toThrow(/not supported yet/)
+})

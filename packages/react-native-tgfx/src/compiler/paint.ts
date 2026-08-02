@@ -100,9 +100,16 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
   w.push(SHADER_KIND[g.kind])
   switch (g.kind) {
     case 'runtime': {
-      const { body, uniformNames, uniformSizes } = transpileShader(
+      const { body, uniformNames, uniformSizes, childNames } = transpileShader(
         g.source ?? ''
       )
+      // The body would carry a `TGFX_CHILD_n` call that no native code declares,
+      // so the GLSL would fail to compile on device. Fail loudly here instead.
+      if (childNames.length > 0) {
+        throw new Error(
+          `[tgfx] shader: 'uniform shader ${childNames[0]}' is not supported yet — there is no native child processor to bind it to`
+        )
+      }
       w.pushString(body)
       w.push(uniformNames.length)
       for (const name of uniformNames) {
