@@ -26,7 +26,8 @@ export {
 } from './components/Paint'
 
 export { useClock } from './hooks/useClock'
-export { useImage } from './hooks/useImage'
+export { useImage, useImageState } from './hooks/useImage'
+export type { ImageState } from './hooks/useImage'
 
 export { TgfxNativeView } from './views/TgfxNativeView'
 export type { TgfxViewRef } from './views/TgfxNativeView'

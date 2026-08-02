@@ -79,6 +79,7 @@ packed `0xAARRGGBB` number.
 
 ## Hooks
 
+- `useImageState(source)` — the same load as `useImage`, returning `{ data, error, loading }` so a slow load can be told from a failed one
 - `useImage(source)` — loads a `require()` asset, URL, `data:` URI, or base64
   string into the base64 bytes `Image` expects.
 
