@@ -157,7 +157,7 @@ interface CameraFrameProps {
   image: TgfxImage | null
   fit?: Fit               // default 'cover'
   sampling?: Sampling     // default 'linear'
-  rotation?: 0 | 90 | 180 | 270
+  rotation?: number       // clockwise degrees, rounded to a quarter turn
   mirror?: boolean
 }
 ```
@@ -167,9 +167,39 @@ the same `max(canvasWidth / frameWidth, canvasHeight / frameHeight)` centre-crop
 the old native-only path hardcoded — so it fills the surface and the overflowing
 axis runs off it. `fit="contain"` letterboxes instead.
 
+### What `image` actually is
+
+`image` is a **`TgfxImage` handle** — a small, stable reference to a GPU texture,
+not pixels. Nothing about the frame travels through JavaScript: the handle is an
+integer id that the draw program carries, and native resolves it to the live
+buffer as it draws.
+
+You get one from `imageFromNativeBuffer(pointer, format)` on the **first** frame,
+and every frame after that re-points the *same* handle with
+`image.setNativeBuffer(pointer, format)` — see [Getting the buffer](#getting-the-buffer),
+where `useCameraFrame()` returns exactly this value.
+
+That split is the reason the API looks the way it does:
+
+- **The id is stable, so the scene is committed once.** A new frame is one
+  pointer swap. It costs no React render, no reconciler commit and no program
+  recompile — which is why the JS thread is idle while the camera runs.
+- **`null` until the first frame arrives.** `imageFromNativeBuffer` needs a real
+  buffer, so there is nothing to hand `<CameraFrame>` before frame one. This is
+  the one place the handle crosses into React state, via `scheduleOnRN`.
+- **The handle does not own the buffer.** It takes its own reference for as long
+  as the draw needs it, so you still `release()` the `NativeBuffer` and
+  `dispose()` the `Frame` in your `finally`. A frame the renderer has not drawn
+  yet is *superseded* by the next one rather than queued behind it.
+
 `image` of `null` draws nothing at all, children included: there is no frame to
 place them against, and an overlay floating at the wrong scale is worse than an
-empty canvas.
+empty canvas. So `frameImage == null` is the loading state — render the `<Canvas>`
+anyway and it stays empty until the first frame lands.
+
+The same handle works anywhere a `TgfxImage` does. Passing it to an
+`<ImageShader>` is what lets a runtime shader sample the live frame — see
+[Sampling the frame in a shader](#sampling-the-frame-in-a-shader).
 
 ### Coordinates: children are in frame pixels
 
