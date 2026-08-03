@@ -4,9 +4,14 @@ description: Writing SkSL, the supported subset, and animating uniforms for free
 ---
 
 `<Shader>` takes SkSL source and a set of uniforms, and runs it per pixel on the
-GPU.
+GPU. A `<Shader>` is a paint child, so it needs a shape to paint — `<Fill>`
+covers the whole canvas and is the usual host.
+
+Here is the whole file, with nothing left out:
 
 ```tsx
+import { Canvas, Fill, Shader } from 'react-native-tgfx'
+
 const source = `
 uniform float2 uSize;
 half4 main(float2 pos) {
@@ -15,10 +20,25 @@ half4 main(float2 pos) {
 }
 `
 
-<Fill>
-  <Shader source={source} uniforms={{ uSize: [300, 140] }} />
-</Fill>
+export function Gradient() {
+  return (
+    <Canvas style={{ width: 300, height: 140 }}>
+      <Fill>
+        <Shader source={source} uniforms={{ uSize: [300, 140] }} />
+      </Fill>
+    </Canvas>
+  )
+}
 ```
+
+That paints a 300×140 gradient: red rising left to right, green rising top to
+bottom, a constant 0.6 of blue, fully opaque — so black-ish in the top-left
+corner through to yellow-white in the bottom-right.
+
+The `[300, 140]` passed to `uSize` is the canvas size in **layout points**,
+repeated because the shader has no way to ask how big the shape is. Keeping the
+two in sync is the caller's job; the section on
+[`pos` units](#the-contract) below is where that usually goes wrong.
 
 ## The contract
 
@@ -39,14 +59,25 @@ A uniform component may be a `SharedValue`. It becomes a slot, patched on the UI
 thread like any other animated value:
 
 ```tsx
-import { Fill, Shader, useClock } from 'react-native-tgfx'
+import { Canvas, Fill, Shader, useClock } from 'react-native-tgfx'
 
-function Animated({ width, height }: { width: number; height: number }) {
+const source = `
+uniform float2 uSize;
+uniform float uTime;
+half4 main(float2 pos) {
+  float2 uv = pos / uSize;
+  return half4(half(0.5 + 0.5 * sin(uTime + uv.x * 6.0)), half(uv.y), 0.6, 1.0);
+}
+`
+
+export function Pulse({ width, height }: { width: number; height: number }) {
   const t = useClock()
   return (
-    <Fill>
-      <Shader source={source} uniforms={{ uTime: t, uSize: [width, height] }} />
-    </Fill>
+    <Canvas style={{ width, height }}>
+      <Fill>
+        <Shader source={source} uniforms={{ uTime: t, uSize: [width, height] }} />
+      </Fill>
+    </Canvas>
   )
 }
 ```

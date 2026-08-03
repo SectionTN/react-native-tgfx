@@ -4,6 +4,8 @@ node_modules
 
 # JS
 lib/
+# ...but the docs site's lib/ is source, not build output.
+!/docs/lib/
 .expo/
 
 # iOS

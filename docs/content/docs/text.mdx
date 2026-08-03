@@ -1,0 +1,114 @@
+---
+title: Text
+description: Font props, paragraphs, TextPath, font registration and measurement.
+---
+
+`<Text>` lays out a paragraph and `<TextPath>` runs it along a path. Both are
+shapes, so they take every [paint prop](/docs/components#paint).
+
+```tsx
+import { Canvas, Text } from 'react-native-tgfx'
+
+function Label() {
+  return (
+    <Canvas style={{ width: 300, height: 140 }}>
+      <Text text="Hello" x={20} y={60} fontSize={28} color="#f5f7fa" />
+    </Canvas>
+  )
+}
+```
+
+## Font props
+
+Shared by `Text` and `TextPath`:
+
+| prop | what it does |
+| --- | --- |
+| `fontSize` | `Animated<number>`, default `14` |
+| `fontFamily` | a family registered with [`useFonts`](#usefonts), or one the platform knows |
+| `fontWeight` | `'normal' \| 'bold' \| 100…900`; picks the nearest face in the family, synthesising when none is close |
+| `fontStyle` | `'normal' \| 'italic'` |
+| `letterSpacing` | extra px between glyphs |
+
+## Paragraph props
+
+`Text` only:
+
+| prop | what it does |
+| --- | --- |
+| `width` | wrap width in px; without it, only `\n` breaks a line |
+| `textAlign` | `'left' \| 'center' \| 'right'`, inside `width` (or the widest line) |
+| `lineHeight` | baseline-to-baseline px; defaults to the font's own spacing |
+| `maxLines` | stop after this many lines; `0` is unlimited |
+| `ellipsis` | appended to the last line when `maxLines` truncates |
+
+`x`/`y` is the **first baseline**, not the top of the box — use
+[`measureText`](#measuretext) and its negative `ascent` to get the box.
+
+## TextPath
+
+`TextPath` places each glyph at its own advance along the path and rotates it to
+the tangent there, so the path is the baseline and there is no `x`/`y`. Wrapping
+and alignment do not apply.
+
+## Fallback and script support
+
+A codepoint the chosen face has no glyph for falls back to the platform's
+colour-emoji font, then to `.notdef` — a visible box rather than a silent gap,
+and a one-per-codepoint native warning either way.
+
+**Colour emoji render on iOS only.** On Android the fallback resolves — the
+glyph is found and its advance reserved — but the colour bitmap does not
+rasterise through tgfx's FreeType/GL path, so an emoji leaves a blank gap of the
+right width. Because the glyph *was* found, the missing-codepoint warning does
+not fire for it either. Tracked in
+[#144](https://github.com/riteshshukla04/react-native-tgfx/issues/144).
+
+Bidi reordering and complex-script shaping are **not** implemented: a run of
+Arabic or Devanagari lays out in logical order with unshaped glyphs. Tracked in
+[#143](https://github.com/riteshshukla04/react-native-tgfx/issues/143).
+
+Styled runs inside one paragraph, a `<Glyphs>` primitive and text-as-path are
+not exposed to JS either; those are tracked in
+[#145](https://github.com/riteshshukla04/react-native-tgfx/issues/145).
+
+## Hooks
+
+### useFonts
+
+```tsx
+const ready = useFonts({
+  'PT Serif': [
+    require('./PT_Serif-Web-Regular.ttf'),
+    require('./PT_Serif-Web-Bold.ttf'),
+  ],
+})
+```
+
+Registers font faces under a family name and reports when they are in. Weight
+and slant come from each font's own OS/2 table, so the faces of a family
+register identically and `fontWeight`/`fontStyle` pick between them.
+
+Registration is process-wide and permanent — faces are not dropped on unmount,
+because another canvas may still be drawing with them. `loadFont(source, family)`
+and `loadFonts(record)` are the promise forms for use outside a component.
+`registeredFontFamilies()` lists what is registered.
+
+A local file is opened natively; only a Metro-served or remote URI goes through
+`fetch`, and then as an `ArrayBuffer`. Text drawn before the faces land uses the
+platform fallback, so gate on the return value when that would be visible.
+
+Without any registration, `fontFamily` resolves through the platform: CoreText
+on iOS, and on Android a scan of the platform font directories that matches what
+the image actually installs — no hardcoded file names.
+
+### measureText
+
+```tsx
+const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
+```
+
+Runs the same layout the renderer does — same fallback chain, same wrapping — so
+a width measured here is the width drawn. Returns `{ width, height, ascent,
+descent, lineCount }`, relative to the first baseline: `ascent` is negative, and
+the box runs from `y + ascent` to `y + ascent + height`.

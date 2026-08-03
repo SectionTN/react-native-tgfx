@@ -63,6 +63,13 @@ output and take minutes.
 npx react-native run-android
 ```
 
+The vendored tgfx static library is built for `arm64-v8a` only, so a release
+build that includes `x86`/`x86_64` fails at link with `is incompatible with
+elf_i386`. Restrict the release variant's `abiFilters` to `arm64-v8a` until
+[#139](https://github.com/riteshshukla04/react-native-tgfx/issues/139) is fixed;
+that issue also tracks a `Couldn't determine Hermesc location` failure in the
+release bundle step.
+
 ### iOS
 
 iOS needs one manual step before `pod install`, because the podspec links a

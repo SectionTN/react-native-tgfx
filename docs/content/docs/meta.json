@@ -1,4 +1,16 @@
 {
   "title": "Docs",
-  "pages": ["index", "installation", "components", "animation", "shaders", "performance"]
+  "pages": [
+    "index",
+    "installation",
+    "components",
+    "text",
+    "images",
+    "effects",
+    "animation",
+    "shaders",
+    "camera",
+    "snapshots",
+    "performance"
+  ]
 }

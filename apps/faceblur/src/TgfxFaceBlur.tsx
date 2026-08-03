@@ -115,6 +115,8 @@ export function TgfxFaceBlur() {
       <TgfxNativeView
         style={StyleSheet.absoluteFill}
         hybridRef={hybridRef}
+        inHierarchy={false}
+        opaque={false}
       />
       {/* <Text style={styles.badge}>tgfx · MLKit · VisionCamera v5</Text> */}
     </View>

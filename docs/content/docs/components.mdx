@@ -1,7 +1,12 @@
 ---
 title: Components
-description: Every drawing primitive, its props and their exact types.
+description: The canvas, the shapes, paint, groups and gradients — the core drawing primitives.
 ---
+
+The drawing primitives and the paint that fills them. The larger topics live on
+their own pages: [text](/docs/text), [images](/docs/images),
+[blend modes and filters](/docs/effects), and
+[snapshots and export](/docs/snapshots).
 
 ## Canvas
 
@@ -33,68 +38,8 @@ behind it or be transformed.
 
 Children draw in document order — later siblings paint over earlier ones.
 
-### Reading pixels back
-
-A `ref` on `<Canvas>` gives a `CanvasHandle` with two async methods.
-
-```tsx
-import { useRef } from 'react'
-import { Canvas, type CanvasHandle } from 'react-native-tgfx'
-
-const canvas = useRef<CanvasHandle>(null)
-
-// Encoded bytes in a zero-copy ArrayBuffer — never a base64 string.
-const shot = await canvas.current.snapshot()
-// { data, width, height, format }
-
-// Encoded and written natively; the image bytes never enter JS.
-await canvas.current.save('/absolute/path/out.png')
-```
-
-Both take the same options:
-
-| option | type | default |
-| --- | --- | --- |
-| `format` | `'png' \| 'jpeg' \| 'webp' \| 'raw'` | `'png'` |
-| `quality` | `number` (1–100, JPEG/WEBP) | `100` |
-| `rect` | `{ x, y, width, height }` in logical px | whole canvas |
-| `scale` | `number` | `1` |
-
-The result is top-left origin, straight-alpha RGBA at the canvas's device pixel
-ratio times `scale`; `'raw'` returns tightly packed RGBA8888 rows instead of an
-encoded image. A `rect` is rounded to whole device pixels, so the `width` and
-`height` you get back are the ones that were read.
-
-The readback is issued on the render thread inside a frame it forces, collected
-on a later tick, and encoded on a worker — so the animation loop keeps its
-cadence and (on Android, where one render thread serves every canvas in the
-process) no other canvas stalls either. That snapshot frame does cost more than
-a plain one: it adds a flush and a GPU→buffer transfer, and the tick that
-collects the result waits briefly on the GPU queue before copying it out.
-
-`snapshot()` and `save()` reject rather than resolving a black frame when the
-canvas has no surface bound, is zero-sized, or is unmounted before the frame
-lands. `save()` needs an absolute path in a directory the app can write to —
-get one from `expo-file-system` or `react-native-fs`.
-
-### What a canvas pays for being readable
-
-Two costs are per-canvas and permanent, and both start at the *first*
-`snapshot()` or `save()` — a canvas you never read back pays neither.
-
-On iOS, a `CAMetalLayer` hands out framebuffer-only drawables, which cannot be
-read from at all. The first request flips `framebufferOnly` to `NO` and skips one
-frame while the surface is recreated, so the readback provably runs against a
-drawable acquired after the flip. From then on that canvas's drawables give up
-lossless compression, for the life of the view; it is not restored, because
-restoring it would put that surface recreation on every snapshot instead of on
-the first.
-
-On Android, `snapshot()` copies the encoded bytes once on the way into JS.
-Nitro's Kotlin `ArrayBuffer` cannot tell C++ when JS drops a buffer, so wrapping
-the native one would leak; iOS wraps it with no copy. It is one memcpy of
-already-compressed bytes on a worker thread, and `save()` never crosses into JS
-on either platform, so it is unaffected.
+A `ref` on `<Canvas>` gives a `CanvasHandle` for reading pixels back — see
+[snapshots and export](/docs/snapshots).
 
 ## Shapes
 
@@ -106,97 +51,18 @@ on either platform, so it is unaffected.
 | `Circle` | `cx`, `cy`, `r` |
 | `Line` | `x1`, `y1`, `x2`, `y2` |
 | `Path` | `path` — SVG path data, `string` |
-| `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` |
-| `Text` | `text`, `x`, `y`, plus the font and paragraph props below |
-| `TextPath` | `path`, `text`, `startOffset`, plus the font props below |
+| `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` — see [images](/docs/images#image) |
+| `Text` | `text`, `x`, `y`, plus the font and paragraph props — see [text](/docs/text) |
+| `TextPath` | `path`, `text`, `startOffset`, plus the font props — see [text](/docs/text) |
 | `Fill` | none of its own — covers the canvas |
 
 Every geometric prop above is `Animated<number>`, so it may be a plain number or
 a Reanimated `SharedValue`. The exceptions are `path`, `text` and `fontFamily`
 (plain `string` — there is no value slot for a string, so a `SharedValue` there
-would never animate), `image` (a native handle from `useImage`), and the
-`fit`/`sampling`/`rect` enums.
+would never animate), `image` (a native handle from
+[`useImage`](/docs/images#useimage)), and the `fit`/`sampling`/`rect` enums.
 
 `Text.fontSize` defaults to `14`. All of these take the paint props below.
-
-### Text
-
-Font props, shared by `Text` and `TextPath`:
-
-| prop | what it does |
-| --- | --- |
-| `fontSize` | `Animated<number>`, default `14` |
-| `fontFamily` | a family registered with [`useFonts`](#usefonts), or one the platform knows |
-| `fontWeight` | `'normal' \| 'bold' \| 100…900`; picks the nearest face in the family, synthesising when none is close |
-| `fontStyle` | `'normal' \| 'italic'` |
-| `letterSpacing` | extra px between glyphs |
-
-Paragraph props, `Text` only:
-
-| prop | what it does |
-| --- | --- |
-| `width` | wrap width in px; without it, only `\n` breaks a line |
-| `textAlign` | `'left' \| 'center' \| 'right'`, inside `width` (or the widest line) |
-| `lineHeight` | baseline-to-baseline px; defaults to the font's own spacing |
-| `maxLines` | stop after this many lines; `0` is unlimited |
-| `ellipsis` | appended to the last line when `maxLines` truncates |
-
-`x`/`y` is the **first baseline**, not the top of the box — use
-[`measureText`](#measuretext) and its negative `ascent` to get the box.
-
-`TextPath` places each glyph at its own advance along the path and rotates it to
-the tangent there, so the path is the baseline and there is no `x`/`y`. Wrapping
-and alignment do not apply.
-
-A codepoint the chosen face has no glyph for falls back to the platform's
-colour-emoji font, then to `.notdef` — a visible box rather than a silent gap,
-and a one-per-codepoint native warning either way.
-
-**Colour emoji render on iOS only.** On Android the fallback resolves — the
-glyph is found and its advance reserved — but the colour bitmap does not
-rasterise through tgfx's FreeType/GL path, so an emoji leaves a blank gap of the
-right width. Because the glyph *was* found, the missing-codepoint warning does
-not fire for it either. Tracked in
-[#144](https://github.com/riteshshukla04/react-native-tgfx/issues/144).
-
-Bidi reordering and complex-script shaping are **not** implemented: a run of
-Arabic or Devanagari lays out in logical order with unshaped glyphs.
-
-### Image
-
-`image` is a `TgfxImage` handle from [`useImage`](#useimage) — a small integer on
-the wire, never bytes.
-
-`fit` is the full Skia set, default `'contain'`:
-
-| fit | what it does |
-| --- | --- |
-| `'contain'` | scales down to fit inside the box, letterboxed |
-| `'cover'` | fills the box, cropping the source |
-| `'fill'` | stretches to the box, ignoring aspect ratio |
-| `'fitWidth'` | matches the box width, cropping vertically if needed |
-| `'fitHeight'` | matches the box height, cropping horizontally if needed |
-| `'none'` | native size, centred |
-| `'scaleDown'` | like `'fill'`, but never enlarges |
-
-As in Skia, `cover` crops the *source* rather than overflowing the destination,
-so nothing is ever drawn outside the box.
-
-`sampling` is `'nearest' | 'linear' | 'mipmap'`, default `'linear'`. Use
-`'mipmap'` when a large image is drawn into a much smaller box — it builds the
-mip chain, which `'linear'` alone does not.
-
-`rect` is a source sub-rect in image pixels, so a sprite sheet is drawn without
-slicing it in JS:
-
-```tsx
-<Image
-  x={0} y={0} width={60} height={60}
-  image={sheet}
-  rect={{ x: 32, y: 0, width: 32, height: 32 }}
-  sampling="nearest"
-/>
-```
 
 ### Line ignores `style`
 
@@ -303,7 +169,7 @@ Children of a shape or `<Paint>`. They draw nothing on their own.
 | `FractalNoise` | `freqX`, `freqY`, `octaves`, `seed` |
 | `Turbulence` | same props as `FractalNoise` |
 | `Shader` | `source`, `uniforms` — see [shaders](/docs/shaders) |
-| `ImageShader` | `image`, `tx`, `ty`, `sampling`, `rect`, `fit` |
+| `ImageShader` | `image`, `tx`, `ty`, `sampling`, `rect`, `fit` — see [images](/docs/images#imageshader) |
 
 `colors` is `Color[]` and `positions` is `number[]`. `SweepGradient`'s `start`
 and `end` are **degrees**, as in Skia, defaulting to a full 0–360 turn. Noise
@@ -311,29 +177,6 @@ defaults are `freqX` and `freqY` `0.05`, `octaves` `1`, `seed` `0`.
 
 Gradient geometry (`start`, `end`, `center`, `r`), `positions`, `colors` and all
 noise parameters are read once at commit and do not animate.
-
-### ImageShader
-
-An image as the paint source for any shape — textured fills, image-backed masks,
-tiled patterns:
-
-```tsx
-import { Circle, ImageShader, useImage } from 'react-native-tgfx'
-
-const photo = useImage(require('./cat.png'))
-
-photo != null && (
-  <Circle cx={60} cy={60} r={50}>
-    <ImageShader image={photo} rect={{ x: 10, y: 10, width: 100, height: 100 }} fit="cover" />
-  </Circle>
-)
-```
-
-`tx` and `ty` are `'clamp' | 'repeat' | 'mirror' | 'decal'`, both defaulting to
-`'clamp'` — the tile mode outside the image's own bounds. `sampling` is the same
-set as `<Image>`. `rect` is the destination rect the image is mapped into with
-`fit`; omit both to sample the image 1:1 in canvas space, which is what tiling
-usually wants.
 
 ```tsx
 import { LinearGradient, Rect } from 'react-native-tgfx'
@@ -347,336 +190,23 @@ import { LinearGradient, Rect } from 'react-native-tgfx'
 </Rect>
 ```
 
-## Blend modes
-
-`blendMode` is a paint prop, so it sits on a shape, on a `<Paint>`, or on a
-`<Group>` that passes it down. It decides how the drawing (src) composites onto
-what is already on the canvas (dst).
-
-```tsx
-import { Canvas, Circle, Paint } from 'react-native-tgfx'
-
-function Venn() {
-  return (
-    <Canvas style={{ width: 200, height: 140 }}>
-      <Circle cx={80} cy={70} r={45} color="#f2c088" />
-      <Circle cx={120} cy={70} r={45} color="#6aa9ff" blendMode="multiply" />
-      <Circle cx={100} cy={40} r={45}>
-        <Paint color="#e06c9f" blendMode="screen" />
-      </Circle>
-    </Canvas>
-  )
-}
-```
-
-The two amber and blue discs overlap in a darker olive where `multiply` keeps
-only what both have; the pink disc lightens whatever it crosses.
-
-The full set, in tgfx's own order — the Porter-Duff operators first, then the
-separable and non-separable modes:
-
-`'clear'`, `'src'`, `'dst'`, `'srcOver'` (the default), `'dstOver'`, `'srcIn'`,
-`'dstIn'`, `'srcOut'`, `'dstOut'`, `'srcATop'`, `'dstATop'`, `'xor'`,
-`'plusLighter'`, `'modulate'`, `'screen'`, `'overlay'`, `'darken'`, `'lighten'`,
-`'colorDodge'`, `'colorBurn'`, `'hardLight'`, `'softLight'`, `'difference'`,
-`'exclusion'`, `'multiply'`, `'hue'`, `'saturation'`, `'color'`, `'luminosity'`,
-`'plusDarker'`.
-
-A blend mode is one enum on the paint. It costs nothing per frame and does not
-change the drawing's bounds — writing `blendMode="srcOver"` explicitly produces
-a byte-identical draw program to omitting it.
-
-**iOS Simulator caveat.** The modes that cannot be expressed as fixed-function
-blending — `multiply`, `difference`, `colorDodge`, `luminosity` and the rest of
-the non-separable set — need the GPU to read back what is already on the canvas.
-On the iOS Simulator that read is unavailable and those drawings paint *nothing
-at all*. They render correctly on Android and on macOS Metal. The Porter-Duff
-modes and `screen` are fixed-function and work everywhere. Check an advanced mode
-on a physical iPhone before shipping it.
-
-## Filters
-
-Children of a shape or `<Paint>`, exactly like gradients. They draw nothing on
-their own, and a shape takes at most one colour filter and one image filter —
-the last one written wins, and a second of the same class warns in development.
-
-| component | props |
-| --- | --- |
-| `ColorMatrix` | `matrix` — 20 numbers, row-major 4x5 |
-| `BlendColor` | `color`, `mode` |
-| `Blur` | `blur`, or `blurX`/`blurY`, plus `tileMode` |
-| `DropShadow` | `dx`, `dy`, `blur` or `blurX`/`blurY`, `color`, `shadowOnly` |
-
-Every filter parameter is read once at commit and **does not animate**. Filters
-are built once, when the scene is compiled, and only applied per frame — an
-animated parameter would mean constructing a filter per frame for every filtered
-node, which is exactly what this engine's compile-once command list exists to
-avoid. Animate `opacity`, geometry or a `<Shader>` uniform instead.
-
-### ColorMatrix
-
-`R' = a*R + b*G + c*B + d*A + e` and so on per channel, then clamped to 0–1 —
-the same 4x5 matrix Skia's `ColorMatrix` takes. Anything that is not exactly 20
-numbers is treated as the identity.
-
-```tsx
-import { Canvas, ColorMatrix, Image, useImage } from 'react-native-tgfx'
-
-// Rec. 709 luma into every channel: a greyscale conversion.
-const GREYSCALE = [
-  0.213, 0.715, 0.072, 0, 0,
-  0.213, 0.715, 0.072, 0, 0,
-  0.213, 0.715, 0.072, 0, 0,
-  0, 0, 0, 1, 0,
-]
-
-function Greyed() {
-  const photo = useImage(require('./cat.png'))
-  if (photo == null) {
-    return null
-  }
-  return (
-    <Canvas style={{ width: 200, height: 200 }}>
-      <Image image={photo} x={0} y={0} width={200} height={200} fit="cover">
-        <ColorMatrix matrix={GREYSCALE} />
-      </Image>
-    </Canvas>
-  )
-}
-```
-
-The photo draws with all colour removed. Saturation, hue rotation and channel
-swaps are the same shape — only the numbers change. A colour matrix is one more
-stage in the fragment shader: no offscreen, no bounds change, and the cheapest
-of the filters here.
-
-### BlendColor
-
-Blends a constant colour into the drawing's own colours. `mode` is the same
-`BlendMode` set as above, defaulting to `'srcOver'`; `'src'` replaces the
-drawing's colour outright, which is the usual way to tint a monochrome sprite.
-
-```tsx
-import { BlendColor, Canvas, Path } from 'react-native-tgfx'
-
-function Tinted() {
-  return (
-    <Canvas style={{ width: 160, height: 160 }}>
-      <Path path="M20 80 L80 20 L140 80 L80 140 Z" color="#ffffff">
-        <BlendColor color="#e0533d" mode="src" />
-      </Path>
-    </Canvas>
-  )
-}
-```
-
-The white diamond comes out solid vermilion. Swap `mode` for `'multiply'` and it
-darkens the white instead of replacing it.
-
-### Blur
-
-A Gaussian blur, `blur` being the sigma. This is an **image** filter: the
-drawing goes through an offscreen layer and spreads *past its own geometry*, so
-it costs a render target per filtered drawing and is meaningfully more expensive
-than a colour matrix. `tileMode` is how the kernel samples outside the drawing —
-`'decal'` (the default) fades to transparent, `'clamp'` smears the edge pixel.
-
-```tsx
-import { Blur, Canvas, Circle, Fill } from 'react-native-tgfx'
-
-function Glow() {
-  return (
-    <Canvas style={{ width: 200, height: 200 }}>
-      <Fill color="#101725" />
-      <Circle cx={100} cy={100} r={40} color="#6aa9ff">
-        <Blur blur={12} />
-      </Circle>
-      <Circle cx={100} cy={100} r={40} color="#dceaff" />
-    </Canvas>
-  )
-}
-```
-
-A soft blue halo bleeding well outside the 40px radius, with a crisp pale disc
-on top of it. Use `blurX`/`blurY` for a directional blur — `blurX={16} blurY={0}`
-is a horizontal smear.
-
-### DropShadow
-
-A shadow under the drawing, offset by `dx`/`dy` and blurred by `blur`. Same
-offscreen cost as `<Blur>`. `shadowOnly` drops the content that cast it and
-keeps just the shadow.
-
-```tsx
-import { Canvas, DropShadow, RoundedRect } from 'react-native-tgfx'
-
-function Card() {
-  return (
-    <Canvas style={{ width: 220, height: 160 }}>
-      <RoundedRect x={30} y={25} width={160} height={100} r={16} color="#f5f7fa">
-        <DropShadow dx={0} dy={6} blur={8} color="rgba(0,0,0,0.45)" />
-      </RoundedRect>
-    </Canvas>
-  )
-}
-```
-
-An off-white card sitting above a soft shadow. With `blur={0}` the shadow is a
-hard offset copy.
-
-### Where a filter applies
-
-A filter on a `<Group>` (or on a `<Paint>` inside one) is inherited by every
-descendant and applied to **each of them separately** — the same way an
-inherited gradient works. It is not a single layer over the group, so two
-overlapping blurred children blur individually rather than as one shape. Put the
-filter on one drawing when that matters.
-
-### With a blend mode
-
-An image filter already draws through an offscreen layer, and a `blendMode` on
-the same paint composites that layer's **filtered** result onto the canvas — so
-a blurred glow that multiplies does what it says. The blend runs after the
-filter, never inside the layer, and it costs the same single offscreen the
-filter was already paying for.
-
-```tsx
-import { Blur, Canvas, Circle, Fill } from 'react-native-tgfx'
-
-function Glow() {
-  return (
-    <Canvas style={{ width: 200, height: 200 }}>
-      <Fill color="#f2c088" />
-      <Circle cx={100} cy={100} r={40} color="#6aa9ff" blendMode="multiply">
-        <Blur blur={12} />
-      </Circle>
-    </Canvas>
-  )
-}
-```
-
-A soft blue halo darkening the amber underneath it rather than covering it.
-
 ## Hooks
-
-### useImage
-
-```tsx
-const image: TgfxImage | null = useImage(require('./cat.png'))
-```
-
-Takes `number | string` — a `require()` asset, an `http(s)`, `file:`, `data:`,
-`asset:` or `content:` URI, or a raw base64 string. Returns a native image
-handle, or `null` until it is ready.
-
-The handle carries `width`, `height` and a `dispose()`. The draw program only
-ever carries its integer id, so a scene's string table does not grow with the
-image bytes on screen and a re-commit costs no hashing and no decode.
-
-A local file (`file:` URI, or a bundled asset that resolves to a path) is opened
-and decoded natively — its bytes never enter JS. A remote or Metro-served URI
-still goes through `fetch`, but as an `ArrayBuffer`; nothing is base64-encoded on
-the JS thread. Every path decodes on a background thread, so no frame waits on a
-decode.
-
-The handle is disposed when the source changes or the component unmounts.
-
-### useImageState
-
-```tsx
-const { data, error, loading } = useImageState(source)
-```
-
-Returns `ImageState`: `data: TgfxImage | null`, `error: Error | null`,
-`loading: boolean`. `data` is cleared the moment `source` changes, so a slow or
-failing load never leaves the previous image on screen.
-
-### imageFromNativeBuffer
-
-```tsx
-const frameImage = imageFromNativeBuffer(
-  frame.getNativeBuffer().pointer,
-  'bt601-limited'
-)
-```
-
-Wraps a platform hardware buffer — an `AHardwareBuffer*` on Android, a
-`CVPixelBufferRef` on iOS — as an image handle. Zero-copy and synchronous: the
-buffer is imported straight to a GPU texture through
-`tgfx::Image::MakeFrom(HardwareBufferRef, YUVColorSpace)`, with no decode and no
-CPU round trip.
-
-`format` is `PixelFormat`: `'rgba'` for a single-plane surface, or one of
-`'bt601-limited'` (the camera default), `'bt601-full'`, `'bt709-limited'`,
-`'bt709-full'`, `'bt2020-limited'`, `'bt2020-full'`, `'jpeg-full'`.
-
-For a stream of frames, keep the handle and call `image.setNativeBuffer(...)` per
-frame: the scene keeps referencing the same id, so nothing is re-committed and an
-undrawn frame is superseded by the next rather than queued behind it. Such a
-handle is not accounted against the decoded-pixel budget — the memory belongs to
-whoever produced the buffer.
-
-### setImageCacheLimit
-
-```tsx
-setImageCacheLimit(32 * 1024 * 1024)
-```
-
-Byte budget for decoded pixel buffers held between draws — a real LRU keyed on
-the handle, defaulting to 64 MB. An image the budget drops is re-decoded on next
-use, never lost. Decoded GPU textures are bounded separately by the tgfx context
-cache limit (192 MB).
-
-### useFonts
-
-```tsx
-const ready = useFonts({
-  'PT Serif': [
-    require('./PT_Serif-Web-Regular.ttf'),
-    require('./PT_Serif-Web-Bold.ttf'),
-  ],
-})
-```
-
-Registers font faces under a family name and reports when they are in. Weight
-and slant come from each font's own OS/2 table, so the faces of a family
-register identically and `fontWeight`/`fontStyle` pick between them.
-
-Registration is process-wide and permanent — faces are not dropped on unmount,
-because another canvas may still be drawing with them. `loadFont(source, family)`
-and `loadFonts(record)` are the promise forms for use outside a component.
-`registeredFontFamilies()` lists what is registered.
-
-A local file is opened natively; only a Metro-served or remote URI goes through
-`fetch`, and then as an `ArrayBuffer`. Text drawn before the faces land uses the
-platform fallback, so gate on the return value when that would be visible.
-
-Without any registration, `fontFamily` resolves through the platform: CoreText
-on iOS, and on Android a scan of the platform font directories that matches what
-the image actually installs — no hardcoded file names.
-
-### measureText
-
-```tsx
-const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
-```
-
-Runs the same layout the renderer does — same fallback chain, same wrapping — so
-a width measured here is the width drawn. Returns `{ width, height, ascent,
-descent, lineCount }`, relative to the first baseline: `ascent` is negative, and
-the box runs from `y + ascent` to `y + ascent + height`.
 
 ### useClock
 
 Returns a `SharedValue<number>` holding **seconds** since the first frame,
 written on the UI thread. See [animation](/docs/animation).
 
+The image and font hooks live with their subjects: [`useImage`, `useImageState`,
+`imageFromNativeBuffer` and `setImageCacheLimit`](/docs/images#hooks), and
+[`useFonts` and `measureText`](/docs/text#usefonts).
+
 ## Escape hatch
 
 `TgfxNativeView` is exported for callers who want to drive the native view
 directly — pushing a `scene` buffer and a values buffer themselves rather than
 going through `<Canvas>`. Its ref type is `TgfxViewRef`. Most code should not
-need it.
+need it. Drawing [camera frames](/docs/camera) is the one case that requires it.
 
 ## Types
 
@@ -705,3 +235,5 @@ The package exports its prop types alongside the components — `CanvasProps`,
   Indic scripts lay out in logical order with unshaped glyphs.
 - No styled runs inside one paragraph, no `Glyphs`, and no text-as-path exposed
   to JS.
+- The declarative tree is not drawn on a canvas driven by
+  [camera frames](/docs/camera).

@@ -1,0 +1,140 @@
+---
+title: Images
+description: Drawing images, using one as a paint source, and the handles they travel as.
+---
+
+An image reaches the scene as a `TgfxImage` **handle** — a small integer on the
+wire, never bytes. `<Image>` draws it; [`<ImageShader>`](#imageshader) uses it as
+a paint source for any other shape.
+
+## Image
+
+`image` is a `TgfxImage` handle from [`useImage`](#useimage) — a small integer on
+the wire, never bytes.
+
+`fit` is the full Skia set, default `'contain'`:
+
+| fit | what it does |
+| --- | --- |
+| `'contain'` | scales down to fit inside the box, letterboxed |
+| `'cover'` | fills the box, cropping the source |
+| `'fill'` | stretches to the box, ignoring aspect ratio |
+| `'fitWidth'` | matches the box width, cropping vertically if needed |
+| `'fitHeight'` | matches the box height, cropping horizontally if needed |
+| `'none'` | native size, centred |
+| `'scaleDown'` | like `'fill'`, but never enlarges |
+
+As in Skia, `cover` crops the *source* rather than overflowing the destination,
+so nothing is ever drawn outside the box.
+
+`sampling` is `'nearest' | 'linear' | 'mipmap'`, default `'linear'`. Use
+`'mipmap'` when a large image is drawn into a much smaller box — it builds the
+mip chain, which `'linear'` alone does not.
+
+`rect` is a source sub-rect in image pixels, so a sprite sheet is drawn without
+slicing it in JS:
+
+```tsx
+<Image
+  x={0} y={0} width={60} height={60}
+  image={sheet}
+  rect={{ x: 32, y: 0, width: 32, height: 32 }}
+  sampling="nearest"
+/>
+```
+
+## ImageShader
+
+An image as the paint source for any shape — textured fills, image-backed masks,
+tiled patterns:
+
+```tsx
+import { Circle, ImageShader, useImage } from 'react-native-tgfx'
+
+const photo = useImage(require('./cat.png'))
+
+photo != null && (
+  <Circle cx={60} cy={60} r={50}>
+    <ImageShader image={photo} rect={{ x: 10, y: 10, width: 100, height: 100 }} fit="cover" />
+  </Circle>
+)
+```
+
+`tx` and `ty` are `'clamp' | 'repeat' | 'mirror' | 'decal'`, both defaulting to
+`'clamp'` — the tile mode outside the image's own bounds. `sampling` is the same
+set as `<Image>`. `rect` is the destination rect the image is mapped into with
+`fit`; omit both to sample the image 1:1 in canvas space, which is what tiling
+usually wants.
+
+## Hooks
+
+### useImage
+
+```tsx
+const image: TgfxImage | null = useImage(require('./cat.png'))
+```
+
+Takes `number | string` — a `require()` asset, an `http(s)`, `file:`, `data:`,
+`asset:` or `content:` URI, or a raw base64 string. Returns a native image
+handle, or `null` until it is ready.
+
+The handle carries `width`, `height` and a `dispose()`. The draw program only
+ever carries its integer id, so a scene's string table does not grow with the
+image bytes on screen and a re-commit costs no hashing and no decode.
+
+A local file (`file:` URI, or a bundled asset that resolves to a path) is opened
+and decoded natively — its bytes never enter JS. A remote or Metro-served URI
+still goes through `fetch`, but as an `ArrayBuffer`; nothing is base64-encoded on
+the JS thread. Every path decodes on a background thread, so no frame waits on a
+decode.
+
+The handle is disposed when the source changes or the component unmounts.
+
+### useImageState
+
+```tsx
+const { data, error, loading } = useImageState(source)
+```
+
+Returns `ImageState`: `data: TgfxImage | null`, `error: Error | null`,
+`loading: boolean`. `data` is cleared the moment `source` changes, so a slow or
+failing load never leaves the previous image on screen.
+
+### imageFromNativeBuffer
+
+```tsx
+const frameImage = imageFromNativeBuffer(
+  frame.getNativeBuffer().pointer,
+  'bt601-limited'
+)
+```
+
+Wraps a platform hardware buffer — an `AHardwareBuffer*` on Android, a
+`CVPixelBufferRef` on iOS — as an image handle. Zero-copy and synchronous: the
+buffer is imported straight to a GPU texture through
+`tgfx::Image::MakeFrom(HardwareBufferRef, YUVColorSpace)`, with no decode and no
+CPU round trip.
+
+`format` is `PixelFormat`: `'rgba'` for a single-plane surface, or one of
+`'bt601-limited'` (the camera default), `'bt601-full'`, `'bt709-limited'`,
+`'bt709-full'`, `'bt2020-limited'`, `'bt2020-full'`, `'jpeg-full'`.
+
+For a stream of frames, keep the handle and call `image.setNativeBuffer(...)` per
+frame: the scene keeps referencing the same id, so nothing is re-committed and an
+undrawn frame is superseded by the next rather than queued behind it. Such a
+handle is not accounted against the decoded-pixel budget — the memory belongs to
+whoever produced the buffer.
+
+See [camera frames](/docs/camera) for where these buffers come from, and for the
+one path that puts a live preview on screen today.
+
+### setImageCacheLimit
+
+```tsx
+setImageCacheLimit(32 * 1024 * 1024)
+```
+
+Byte budget for decoded pixel buffers held between draws — a real LRU keyed on
+the handle, defaulting to 64 MB. An image the budget drops is re-decoded on next
+use, never lost. Decoded GPU textures are bounded separately by the tgfx context
+cache limit (192 MB).
