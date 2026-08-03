@@ -136,9 +136,14 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
       return
     }
     case 'runtime': {
-      const { body, uniformNames, uniformSizes, childNames } = transpileShader(
-        g.source ?? ''
-      )
+      const {
+        body,
+        preamble,
+        functionNames,
+        uniformNames,
+        uniformSizes,
+        childNames,
+      } = transpileShader(g.source ?? '')
       // The body would carry a `TGFX_CHILD_n` call that no native code declares,
       // so the GLSL would fail to compile on device. Fail loudly here instead.
       if (childNames.length > 0) {
@@ -147,6 +152,11 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
         )
       }
       w.pushString(body)
+      w.pushString(preamble)
+      w.push(functionNames.length)
+      for (const name of functionNames) {
+        w.pushString(name)
+      }
       w.push(uniformNames.length)
       for (const name of uniformNames) {
         const raw = g.uniforms?.[name]

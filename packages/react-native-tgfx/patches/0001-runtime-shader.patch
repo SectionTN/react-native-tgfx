@@ -1,5 +1,5 @@
 diff --git a/include/tgfx/core/Shader.h b/include/tgfx/core/Shader.h
-index dbb8682..586c697 100644
+index dbb8682..05431e1 100644
 --- a/include/tgfx/core/Shader.h
 +++ b/include/tgfx/core/Shader.h
 @@ -19,6 +19,8 @@
@@ -11,7 +11,7 @@ index dbb8682..586c697 100644
  #include "tgfx/core/BlendMode.h"
  #include "tgfx/core/Color.h"
  #include "tgfx/core/ColorFilter.h"
-@@ -29,6 +31,24 @@
+@@ -29,6 +31,35 @@
  #include "tgfx/core/TileMode.h"
  
  namespace tgfx {
@@ -31,12 +31,23 @@ index dbb8682..586c697 100644
 +struct RuntimeShaderSource {
 +  std::string body;
 +  std::vector<RuntimeShaderUniform> uniforms;
++  /**
++   * Declarations that must sit at file scope, emitted ahead of the entry point.
++   * GLSL ES has no nested functions, so a helper cannot live in `body`.
++   */
++  std::string preamble;
++  /**
++   * Names defined in `preamble`. Each is renamed to a per-processor mangled name
++   * in both `preamble` and `body`, so two runtime shaders in one program may
++   * declare a helper of the same name.
++   */
++  std::vector<std::string> functionNames;
 +};
 +
  class FragmentProcessor;
  
  /**
-@@ -137,6 +157,13 @@ class Shader {
+@@ -137,6 +168,14 @@ class Shader {
     * @param tileSize        If non-null and non-empty, the noise will tile seamlessly with the given
     *                        size.
     */
@@ -44,13 +55,14 @@ index dbb8682..586c697 100644
 +   * Returns a shader that runs the given source for every fragment. Returns
 +   * nullptr if the source is empty.
 +   */
-+  static std::shared_ptr<Shader> MakeRuntimeShader(std::string body,
-+                                                   std::vector<RuntimeShaderUniform> uniforms = {});
++  static std::shared_ptr<Shader> MakeRuntimeShader(
++      std::string body, std::vector<RuntimeShaderUniform> uniforms = {},
++      std::string preamble = {}, std::vector<std::string> functionNames = {});
 +
    static std::shared_ptr<Shader> MakeFractalNoise(float baseFrequencyX, float baseFrequencyY,
                                                    int numOctaves, float seed,
                                                    const ISize* tileSize = nullptr);
-@@ -196,7 +223,7 @@ class Shader {
+@@ -196,7 +235,7 @@ class Shader {
    std::shared_ptr<Shader> makeWithColorFilter(std::shared_ptr<ColorFilter> colorFilter) const;
  
   protected:
@@ -61,10 +73,10 @@ index dbb8682..586c697 100644
     * Returns the type of this shader.
 diff --git a/src/core/shaders/RuntimeShader.cpp b/src/core/shaders/RuntimeShader.cpp
 new file mode 100644
-index 0000000..0da89ed
+index 0000000..685d4ae
 --- /dev/null
 +++ b/src/core/shaders/RuntimeShader.cpp
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,42 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  A Shader that runs user-supplied fragment source.
@@ -77,13 +89,17 @@ index 0000000..0da89ed
 +
 +namespace tgfx {
 +std::shared_ptr<Shader> Shader::MakeRuntimeShader(std::string body,
-+                                                  std::vector<RuntimeShaderUniform> uniforms) {
++                                                  std::vector<RuntimeShaderUniform> uniforms,
++                                                  std::string preamble,
++                                                  std::vector<std::string> functionNames) {
 +  if (body.empty()) {
 +    return nullptr;
 +  }
 +  auto source = std::make_shared<RuntimeShaderSource>();
 +  source->body = std::move(body);
 +  source->uniforms = std::move(uniforms);
++  source->preamble = std::move(preamble);
++  source->functionNames = std::move(functionNames);
 +  auto shader = std::make_shared<RuntimeShader>(std::move(source));
 +  shader->weakThis = shader;
 +  return shader;
@@ -142,10 +158,10 @@ index 0000000..cb9d1a0
 +}  // namespace tgfx
 diff --git a/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.cpp b/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.cpp
 new file mode 100644
-index 0000000..488760f
+index 0000000..e7310d8
 --- /dev/null
 +++ b/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.cpp
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,135 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  GLSL backend for RuntimeShaderProcessor.
@@ -155,6 +171,7 @@ index 0000000..488760f
 +#include "GLSLRuntimeShaderProcessor.h"
 +
 +#include <array>
++#include <cctype>
 +
 +namespace tgfx {
 +PlacementPtr<RuntimeShaderProcessor> RuntimeShaderProcessor::Make(
@@ -196,6 +213,29 @@ index 0000000..488760f
 +  }
 +}
 +
++static bool IsWordChar(char c) {
++  return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
++}
++
++/// Replace whole-identifier occurrences of `from`, leaving `foobar` alone when
++/// renaming `foo`. GLSL has no string literals, so plain text scanning is safe.
++static void RenameIdentifier(std::string* text, const std::string& from, const std::string& to) {
++  if (from.empty()) {
++    return;
++  }
++  size_t pos = 0;
++  while ((pos = text->find(from, pos)) != std::string::npos) {
++    auto end = pos + from.size();
++    if ((pos > 0 && IsWordChar((*text)[pos - 1])) ||
++        (end < text->size() && IsWordChar((*text)[end]))) {
++      pos = end;
++      continue;
++    }
++    text->replace(pos, from.size(), to);
++    pos += to.size();
++  }
++}
++
 +void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
 +  auto fragBuilder = args.fragBuilder;
 +  auto uniformHandler = args.uniformHandler;
@@ -208,13 +248,25 @@ index 0000000..488760f
 +  // Emitted as a real function so the author can `return` from anywhere, and
 +  // mangled so several runtime shaders can coexist in one program.
 +  auto functionName = fragBuilder->getMangledFunctionName("tgfxRuntimeMain");
++  // The author's helpers must be emitted at file scope, not nested in the entry
++  // point, and mangled for the same reason the entry point is.
++  auto preamble = source->preamble;
++  auto body = source->body;
++  for (const auto& name : source->functionNames) {
++    auto mangled = fragBuilder->getMangledFunctionName(name.c_str());
++    RenameIdentifier(&preamble, name, mangled);
++    RenameIdentifier(&body, name, mangled);
++  }
++  if (!preamble.empty()) {
++    fragBuilder->addFunction(preamble);
++  }
 +  std::string function = "vec4 " + functionName + "(vec2 fragCoord) {\n";
 +  for (size_t i = 0; i < names.size(); i++) {
 +    const auto& uniform = source->uniforms[i];
 +    function += std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] +
 +                ";\n";
 +  }
-+  function += source->body + "\n}";
++  function += body + "\n}";
 +  fragBuilder->addFunction(function);
 +  const auto coordName = fragBuilder->emitPerspTextCoord((*args.transformedCoords)[0]);
 +  fragBuilder->codeAppendf("%s = %s(%s);", args.outputColor.c_str(), functionName.c_str(),
@@ -274,10 +326,10 @@ index 0000000..7290c43
 +}  // namespace tgfx
 diff --git a/src/gpu/processors/RuntimeShaderProcessor.cpp b/src/gpu/processors/RuntimeShaderProcessor.cpp
 new file mode 100644
-index 0000000..0c32693
+index 0000000..7bde1dc
 --- /dev/null
 +++ b/src/gpu/processors/RuntimeShaderProcessor.cpp
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,33 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  A fragment processor that runs user-supplied shader source.
@@ -296,6 +348,14 @@ index 0000000..0c32693
 +void RuntimeShaderProcessor::onComputeProcessorKey(BytesKey* bytesKey) const {
 +  // Two different shader sources must never share a compiled program.
 +  bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(source->body)));
++  // Two bodies can be identical while their helpers differ. functionNames only
++  // renames what the preamble already contains, but nothing here enforces that,
++  // so it is keyed rather than assumed.
++  bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(source->preamble)));
++  for (const auto& name : source->functionNames) {
++    bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(name)));
++  }
++  bytesKey->write(static_cast<uint32_t>(source->functionNames.size()));
 +  bytesKey->write(static_cast<uint32_t>(source->uniforms.size()));
 +  for (const auto& uniform : source->uniforms) {
 +    bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(uniform.name)));

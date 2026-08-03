@@ -70,16 +70,67 @@ The transpiler translates SkSL to GLSL ES. The gaps are deliberate:
 | `main` returning `half4`/`float4`/`vec4` | yes | position parameter optional |
 | scalar, vector, `int` and matrix uniforms | yes | up to `float4x4` |
 | loops with constant bounds | yes | passed through verbatim |
-| helper functions | **no** | the body is spliced into `main`, and GLSL ES has no nested functions |
+| declarations above `main` | yes | helpers, `const`, `struct` — see below |
+| declarations below `main` | **no** | throws at commit |
+| array uniforms | **no** | `uniform float w[5]` throws at commit |
 | `sample()` | **no** | no child shader support |
 | `uniform shader` | **no** | rejected at commit — see below |
 
-Helper functions bite most often. Inline the logic, or repeat it.
+`uniform shader`, an array uniform and anything declared after `main` all throw
+in JavaScript when the scene is encoded. A `sample()` call is spliced through
+untouched and fails later, in the GPU driver, at draw time — which usually
+surfaces as a shape that simply does not paint.
 
-Note the difference in how the last three fail. `uniform shader` throws in
-JavaScript when the scene is encoded. A helper function or a `sample()` call is
-spliced through untouched and fails later, in the GPU driver, at draw time —
-which usually surfaces as a shape that simply does not paint.
+When that happens the driver's message is logged under the tag `tgfx`, at ERROR
+level — logcat on Android, the Xcode console on iOS. The wording differs by
+backend: Android's OpenGL path says `Could not compile shader`, while iOS cross-
+compiles the GLSL first, so it says `GLSL to SPIR-V compilation error` and then
+`Metal pipeline creation error: vertex or fragment function is nil`.
+
+## Helper functions
+
+Declare them above `main` and call them as you would anywhere else:
+
+```tsx
+const source = `
+uniform float2 uOrigin;
+uniform float2 uSize;
+
+float sdCircle(float2 p, float r) {
+  return length(p) - r;
+}
+
+half4 main(float2 pos) {
+  float2 local = pos - uOrigin - uSize * 0.5;
+  float d = sdCircle(local, min(uSize.x, uSize.y) * 0.35);
+  float edge = 1.0 - smoothstep(-1.5, 1.5, d);
+  return half4(half3(0.15, 0.55, 0.95) * edge, edge);
+}
+`
+```
+
+<Owned by="native">
+GLSL ES has no nested functions, so a helper cannot ride inside the body the
+engine wraps in its entry point. The transpiler lifts *everything* above `main`
+into a separate *preamble* that native emits at file scope, ahead of the entry
+point, and renames each name declared there to one mangled per fragment
+processor. Two shaders drawn in one scene may therefore both declare a `tint`
+without colliding, and the compiled-program key covers the preamble as well as
+the body, so they never share a program either.
+</Owned>
+
+Everything above `main` moves together, which is what lets a helper read a
+top-level `const` or take a top-level `struct` — leaving those behind in the
+body would put them out of the helper's scope. Helpers may call each other, and
+a name is yours: the mangling is invisible to the source you write.
+
+Declare one name per statement (`const float A = 1.0, B = 2.0;` throws), and
+declare it *above* `main` — a helper written below the entry point throws rather
+than being silently dropped:
+
+```
+[tgfx] shader: declarations must come before main(), found after it: '...'
+```
 
 ## Child shaders are rejected, loudly
 

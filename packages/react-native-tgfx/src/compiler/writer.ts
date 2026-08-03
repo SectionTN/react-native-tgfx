@@ -28,7 +28,9 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // 8: images travel as an integer handle into the native ImageRegistry instead
 // of a base64 string-table entry, and carry a full paint, the extended fit set,
 // a sampling mode and an optional source rect. Adds the image shader kind.
-export const SCENE_VERSION = 8
+// 9: a runtime shader carries a preamble string and its function names after
+// the body, so an older reader would read them as the uniform count.
+export const SCENE_VERSION = 9
 
 /**
  * Encode a string table as a delta against the one the engine already holds:

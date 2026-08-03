@@ -10,10 +10,10 @@
  *    display density before drawing, so pass sizes straight through: scaling
  *    them by `PixelRatio.get()` makes every uniform too large by that factor
  *    and the effect only covers a fraction of the shape.
- * 2. Helper functions are not supported. The transpiler splices everything
- *    before `main` into `main`'s body, and GLSL ES has no nested functions, so
- *    a `float noise(vec2 p) {...}` above `main` fails to compile. Everything
- *    here is inlined, and loops carry constant bounds for the same reason.
+ * 2. Helper functions declared above `main` are supported: they are emitted at
+ *    file scope, not spliced into `main`, and their names are mangled natively
+ *    so two shaders may declare the same helper. Loops still need constant
+ *    bounds. See `sdCircleSource` and `helperCollisionSources` below.
  * 3. There is no `sample()` and no child shaders, so a shader cannot read the
  *    pixels behind it. A true backdrop blur is therefore not expressible — see
  *    `blurSource` below for what is.
@@ -192,5 +192,98 @@ export function CheckerReference({ x, y, width, height }: Box) {
         }}
       />
     </Rect>
+  );
+}
+
+/**
+ * The plainest helper-function shader there is: a signed distance function
+ * declared above `main` and called from it.
+ *
+ * Before helper support this compiled to a `float sdCircle(...)` nested inside
+ * the generated `tgfxRuntimeMain`, which GLSL ES rejects — the shape simply did
+ * not paint, with no JavaScript error. `RADIUS` is here on purpose: a top-level
+ * `const` has to be lifted alongside the helper, or the helper cannot see it.
+ */
+export const sdCircleSource = `
+uniform float2 uOrigin;
+uniform float2 uSize;
+
+const float RADIUS = 0.35;
+
+float sdCircle(float2 p, float r) {
+  return length(p) - r * RADIUS;
+}
+
+half4 main(float2 pos) {
+  float2 local = pos - uOrigin - uSize * 0.5;
+  float d = sdCircle(local, min(uSize.x, uSize.y));
+  float edge = 1.0 - smoothstep(-1.5, 1.5, d);
+  return half4(half3(0.15, 0.55, 0.95) * edge, edge);
+}
+`;
+
+/**
+ * Two shaders that each declare a helper called `tint`, meaning opposite
+ * things. Drawn side by side they must stay their own colour: the compiled
+ * program is keyed on the preamble as well as the body, and the helper name is
+ * mangled per processor.
+ */
+export const helperCollisionSources = [
+  `
+uniform float2 uOrigin;
+uniform float2 uSize;
+float tint(float v) { return v; }
+half4 main(float2 pos) {
+  float v = tint((pos.x - uOrigin.x) / uSize.x);
+  return half4(v, 0.25, 0.35, 1.0);
+}
+`,
+  `
+uniform float2 uOrigin;
+uniform float2 uSize;
+float tint(float v) { return 1.0 - v; }
+half4 main(float2 pos) {
+  float v = tint((pos.x - uOrigin.x) / uSize.x);
+  return half4(0.25, 0.35, v, 1.0);
+}
+`,
+] as const;
+
+/** A circle drawn by a signed distance function in a helper. */
+export function SdCirclePanel({ x, y, width, height }: Box) {
+  return (
+    <Rect x={x} y={y} width={width} height={height}>
+      <Shader
+        source={sdCircleSource}
+        uniforms={{ uOrigin: [x, y], uSize: [width, height] }}
+      />
+    </Rect>
+  );
+}
+
+/** The two same-named-helper shaders, side by side in one scene. */
+export function HelperCollisionPanels({ x, y, width, height }: Box) {
+  const half = width / 2 - 4;
+  return (
+    <>
+      {helperCollisionSources.map((source, index) => {
+        const left = x + index * (half + 8);
+        return (
+          <RoundedRect
+            key={source}
+            x={left}
+            y={y}
+            width={half}
+            height={height}
+            r={10}
+          >
+            <Shader
+              source={source}
+              uniforms={{ uOrigin: [left, y], uSize: [half, height] }}
+            />
+          </RoundedRect>
+        );
+      })}
+    </>
   );
 }

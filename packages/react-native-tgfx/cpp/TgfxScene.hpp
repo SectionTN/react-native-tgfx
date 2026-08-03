@@ -36,7 +36,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 8;
+inline constexpr double kSceneVersion = 9;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -63,6 +63,8 @@ struct AnimF {
 /// the source and the uniform names/sizes, never on the values.
 struct RuntimeShaderCmd {
   std::string body;
+  std::string preamble;
+  std::vector<std::string> functionNames;
   std::vector<tgfx::RuntimeShaderUniform> uniforms;
   /// One per float across `uniforms`, in order.
   std::vector<AnimF> slots;

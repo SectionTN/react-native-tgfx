@@ -316,7 +316,8 @@ std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
       value = slots[at++].resolve(values);
     }
   }
-  return tgfx::Shader::MakeRuntimeShader(body, std::move(resolved));
+  return tgfx::Shader::MakeRuntimeShader(body, std::move(resolved), preamble,
+                                         functionNames);
 }
 
 std::shared_ptr<tgfx::Shader> ImageShaderCmd::build(
@@ -382,6 +383,15 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
   }
   if (kind == 6) {
     std::string body = r.nextString();
+    // File-scope helpers: GLSL ES has no nested functions, so they cannot ride
+    // in the body that native wraps in tgfxRuntimeMain.
+    std::string preamble = r.nextString();
+    int functionCount = r.nextInt();
+    std::vector<std::string> functionNames;
+    functionNames.reserve(static_cast<size_t>(std::max(0, functionCount)));
+    for (int i = 0; i < functionCount && r.ok; i++) {
+      functionNames.push_back(r.nextString());
+    }
     int uniformCount = r.nextInt();
     std::vector<tgfx::RuntimeShaderUniform> uniforms;
     uniforms.reserve(static_cast<size_t>(std::max(0, uniformCount)));
@@ -409,11 +419,15 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
     if (animated && out != nullptr) {
       auto cmd = std::make_shared<RuntimeShaderCmd>();
       cmd->body = body;
+      cmd->preamble = preamble;
+      cmd->functionNames = functionNames;
       cmd->uniforms = uniforms;
       cmd->slots = std::move(slots);
       out->runtime = std::move(cmd);
     }
-    return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms));
+    return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms),
+                                           std::move(preamble),
+                                           std::move(functionNames));
   }
   if (kind == 7) {
     // <ImageShader>: an image as the paint source for any shape.

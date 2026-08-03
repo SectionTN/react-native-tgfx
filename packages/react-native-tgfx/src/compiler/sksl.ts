@@ -4,9 +4,10 @@
  * On Metal that GLSL is cross-compiled to MSL by tgfx, so one source works on
  * both platforms.
  *
- * Supported: `uniform` declarations, SkSL's `half*`/`float*` type spellings, and
- * a `main` taking the fragment position. Not supported: `sample()`, child
- * shaders, matrices beyond 4x4, and arrays.
+ * Supported: `uniform` declarations, SkSL's `half*`/`float*` type spellings,
+ * top-level declarations above `main` (helpers, `const`, `struct`), and a `main`
+ * taking the fragment position. Not supported: `sample()`, child shaders,
+ * matrices beyond 4x4, and array uniforms.
  *
  * `uniform shader` is parsed here and its `name.eval(coord)` rewritten to
  * `TGFX_CHILD_<index>(coord)`, but nothing native consumes that: tgfx's
@@ -20,6 +21,17 @@
 export interface TranspiledShader {
   /** GLSL statements forming the body of `vec4 main(vec2 <param>)`. */
   readonly body: string
+  /**
+   * Everything declared above `main`, emitted at file scope ahead of the entry
+   * point. GLSL ES has no nested functions, so a helper cannot ride in `body` —
+   * and a `const` a helper reads cannot be left behind there either.
+   */
+  readonly preamble: string
+  /**
+   * Names declared in `preamble`, in declaration order. Native mangles each one
+   * per processor so two shaders declaring the same name can share a program.
+   */
+  readonly functionNames: readonly string[]
   /** Uniform names in declaration order. */
   readonly uniformNames: readonly string[]
   /** Component count per uniform, keyed by name (1, 2, 3 or 4). */
@@ -68,7 +80,84 @@ function blockAt(src: string, open: number): string {
       }
     }
   }
-  throw new Error('[tgfx] shader: unbalanced braces in main()')
+  throw new Error('[tgfx] shader: unbalanced braces')
+}
+
+/** True when `src` holds a `,` outside any parentheses. */
+function hasBareComma(src: string): boolean {
+  let depth = 0
+  for (const c of src) {
+    if (c === '(') {
+      depth++
+    } else if (c === ')') {
+      depth--
+    } else if (c === ',' && depth === 0) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Cut the text above `main` into its top-level declarations, each ending at a
+ * `;` or at the `}` closing a block (plus the `;` a `struct` carries).
+ */
+function topLevelChunks(src: string): string[] {
+  const chunks: string[] = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]
+    if (c === '{') {
+      depth++
+      continue
+    }
+    if (c === '}') {
+      depth--
+    } else if (c !== ';') {
+      continue
+    }
+    // A `}` the `struct` grammar follows with `;` is closed by that `;`.
+    if (depth > 0 || (c === '}' && /^\s*;/.test(src.slice(i + 1)))) {
+      continue
+    }
+    chunks.push(src.slice(start, i + 1))
+    start = i + 1
+  }
+  if (src.slice(start).trim() !== '') {
+    throw new Error(
+      `[tgfx] shader: unterminated declaration above main(): '${src.slice(start).trim()}'`
+    )
+  }
+  return chunks
+}
+
+/**
+ * The name a top-level declaration introduces. Every one of them is emitted at
+ * file scope and so has to be mangled natively, or two shaders sharing a
+ * program collide on it.
+ */
+function declaredName(chunk: string): string {
+  const struct = /\bstruct\s+(\w+)/.exec(chunk)
+  if (struct != null) {
+    return struct[1] as string
+  }
+  const paren = chunk.indexOf('(')
+  const assign = chunk.indexOf('=')
+  const declarator =
+    /^\s*(?:const\s+)?\w+\s+(\w+)\s*(?:\[[^\]]*\])?\s*(?:\(|=|;)/.exec(chunk)
+  if (declarator == null) {
+    throw new Error(
+      `[tgfx] shader: unsupported declaration above main(): '${chunk.trim()}'`
+    )
+  }
+  // `float a = 1.0, b = 2.0;` would leave `b` unmangled and silently colliding.
+  if ((paren < 0 || assign < paren) && hasBareComma(chunk)) {
+    throw new Error(
+      `[tgfx] shader: declare one name per statement above main(): '${chunk.trim()}'`
+    )
+  }
+  return declarator[1] as string
 }
 
 // The source is a stable string prop, so the parse is done once per distinct
@@ -125,23 +214,53 @@ function transpile(source: string): TranspiledShader {
   const open = signature.index + signature[0].length - 1
   const body = blockAt(withoutUniforms, open)
   const before = withoutUniforms.slice(0, signature.index)
+  const after = withoutUniforms.slice(open + body.length + 2)
+  // Only what precedes `main` is lifted, so a helper below it would be dropped
+  // and the body would call something no one declares.
+  if (after.trim() !== '') {
+    throw new Error(
+      `[tgfx] shader: declarations must come before main(), found after it: '${after.trim()}'`
+    )
+  }
 
   const param = /\b(?:half2|float2|vec2)\s+(\w+)/.exec(signature[1] ?? '')
   const bind = param != null ? `vec2 ${param[1]} = fragCoord;\n` : ''
 
-  let glsl = toGlslTypes(`${before}\n${bind}${body}`).trim()
+  // A declaration the uniform pass could not consume — an array, or any shape
+  // its regex misses — would otherwise be emitted verbatim and fail in the
+  // driver at draw time with nothing pointing back here.
+  if (/\buniform\b/.test(before)) {
+    throw new Error(
+      '[tgfx] shader: unsupported uniform declaration — only scalar, vector and square-matrix uniforms are supported, not arrays'
+    )
+  }
+  // Everything above `main` goes to file scope, where GLSL ES needs it: a
+  // helper emitted there cannot see a `const` left behind in the body.
+  const chunks = topLevelChunks(before)
+  const names = chunks.map(declaredName)
+
+  let glsl = toGlslTypes(`${bind}${body}`).trim()
+  let functions = toGlslTypes(chunks.join('')).trim()
   // `name.eval(coord)` -> `TGFX_CHILD_0(coord)`. Done after the type rewrite so
   // a child named like a type spelling cannot be mangled.
   childNames.forEach((name, index) => {
     const call = new RegExp(`\\b${name}\\s*\\.\\s*eval\\s*\\(`, 'g')
     glsl = glsl.replace(call, `TGFX_CHILD_${index}(`)
+    functions = functions.replace(call, `TGFX_CHILD_${index}(`)
   })
   for (const name of childNames) {
-    if (new RegExp(`\\b${name}\\b`).test(glsl)) {
+    if (new RegExp(`\\b${name}\\b`).test(glsl + functions)) {
       throw new Error(
         `[tgfx] shader: child '${name}' may only be used as '${name}.eval(coord)'`
       )
     }
   }
-  return { body: glsl, uniformNames, uniformSizes, childNames }
+  return {
+    body: glsl,
+    preamble: functions,
+    functionNames: names,
+    uniformNames,
+    uniformSizes,
+    childNames,
+  }
 }

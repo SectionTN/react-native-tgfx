@@ -78,7 +78,10 @@ struct Writer {
   };
 
   /// A paint whose shader is a runtime shader. Strings: 0 = body, then names.
-  void pushRuntimePaint(uint32_t color, const std::vector<Uniform>& uniforms) {
+  /// `preamble` and `functions` are string indices; the caller supplies an empty
+  /// entry for the preamble when the shader declares no helper.
+  void pushRuntimePaint(uint32_t color, const std::vector<Uniform>& uniforms, int preamble,
+                        const std::vector<int>& functions = {}) {
     push(color);
     push(2);
     pushAnim(1);
@@ -87,6 +90,11 @@ struct Writer {
     pushAnim(1);
     push(6);  // runtime shader
     push(0);  // body
+    push(preamble);
+    push(static_cast<double>(functions.size()));
+    for (int function : functions) {
+      push(function);
+    }
     push(static_cast<double>(uniforms.size()));
     for (const auto& uniform : uniforms) {
       push(uniform.name);
@@ -416,7 +424,7 @@ void animatedUniformDrawsWhatTheRebuildDraws() {
     w.pushAnim(8);
     w.pushAnim(40);
     w.pushAnim(40);
-    w.pushRuntimePaint(0xff000000, uniforms);
+    w.pushRuntimePaint(0xff000000, uniforms, 4);
     return w.finish();
   };
 
@@ -434,6 +442,48 @@ void animatedUniformDrawsWhatTheRebuildDraws() {
   auto withDropped = slotted;
   withDropped.insert(withDropped.begin(), {4, {{0.9, 0}, {0.9, -1}}});
   CHECK(render(write(withDropped), strings, {0.0, 0.6}) == baked);
+}
+
+/// A helper declared by the author has to reach the shader at file scope: GLSL
+/// ES has no nested functions, so splicing it into the body is a driver compile
+/// error and an unpainted shape.
+///
+/// Two shaders whose helpers share a name are drawn in one scene, with the SAME
+/// body -- so only the preamble tells the two programs apart. The body hash in
+/// onComputeProcessorKey cannot carry this; drop the preamble from that key and
+/// the second draw reuses the first's program and paints the wrong value.
+void aHelperFunctionCompilesAndDoesNotCollide() {
+  const std::vector<std::string> strings = {
+      "return vec4(tint(uLevel), 0.0, 0.0, 1.0);",  // 0: the only body
+      "uLevel",                                     // 1
+      "float tint(float v) { return v; }",          // 2: identity preamble
+      "tint",                                       // 3
+      "float tint(float v) { return 1.0 - v; }",    // 4: inverting preamble
+      "",                                           // 5: no preamble
+  };
+  const std::vector<Writer::Uniform> uniforms = {{1, {{0.75, -1}}}};
+
+  auto draw = [&](int preamble, const std::vector<int>& functions) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushRuntimePaint(0xff000000, uniforms, preamble, functions);
+    return render(w.finish(), strings, {});
+  };
+
+  // Emitting the helper at file scope at all: without it the body calls an
+  // undeclared tint, the driver rejects the program and nothing paints.
+  auto identity = draw(2, {3});
+  CHECK(anyPixelSet(identity));
+  // uLevel is 0.75, so this draws red 0.75 and the next draws red 0.25 through
+  // a helper of the same name -- one body, two programs.
+  auto inverted = draw(4, {3});
+  CHECK(anyPixelSet(inverted));
+  CHECK(identity != inverted);
 }
 
 /// A Fill must cover the whole surface, not just where a rect would have been,
@@ -471,13 +521,13 @@ void fillCoversTheWholeCanvas() {
   // A Fill must carry a shader and an animated alpha like any other drawing,
   // so dropping either on this kind alone has to fail.
   const std::vector<std::string> strings = {
-      "return vec4(uLevel, 0.0, 0.0, 1.0);", "uLevel"};
+      "return vec4(uLevel, 0.0, 0.0, 1.0);", "uLevel", ""};
   const std::vector<Writer::Uniform> uniforms = {{1, {{0, 0}}}};
 
   Writer shaded;
   shaded.push(1);
   shaded.push(9);
-  shaded.pushRuntimePaint(0xff000000, uniforms);
+  shaded.pushRuntimePaint(0xff000000, uniforms, 2);
   // finish() appends a patch table, so it must be called once per writer.
   auto shadedWords = shaded.finish();
   auto shadedPixels = render(shadedWords, strings, {0.75});
@@ -824,6 +874,7 @@ int main() {
   staticTextDrawsWhatTheRebuildDraws();
   animatedFieldsStillAnimate();
   animatedUniformDrawsWhatTheRebuildDraws();
+  aHelperFunctionCompilesAndDoesNotCollide();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
