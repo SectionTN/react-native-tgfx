@@ -4,6 +4,7 @@ export type RendererId =
   | 'thor-gpu'
   | 'tgfx'
   | 'tgfx-animated'
+  | 'tgfx-images'
 
 export type Shape =
   | {

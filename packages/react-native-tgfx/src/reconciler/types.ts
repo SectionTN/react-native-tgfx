@@ -22,6 +22,7 @@ export const NodeType = {
   FractalNoise: 'tgfx_fractalnoise',
   Turbulence: 'tgfx_turbulence',
   Shader: 'tgfx_shader',
+  ImageShader: 'tgfx_imageshader',
   Fill: 'tgfx_fill',
 } as const
 

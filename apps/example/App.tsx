@@ -21,7 +21,7 @@ import {
   Text,
   useImage,
 } from 'react-native-tgfx';
-import { sampleImageBase64 } from './src/sampleImage';
+import { ImageSection } from './src/imageExamples';
 import {
   BarChart,
   CircleField,
@@ -40,7 +40,7 @@ import {
 
 function Demo() {
   const insets = useSafeAreaInsets();
-  const img = useImage(sampleImageBase64);
+  const img = useImage(require('./src/assets/sample.png'));
 
   return (
     <ScrollView
@@ -176,6 +176,8 @@ function Demo() {
         <CheckerReference x={0} y={0} width={168} height={120} />
         <BlurPanel x={182} y={0} width={168} height={120} radius={3} />
       </Section>
+
+      <ImageSection />
 
       <ShaderScreenSection />
 

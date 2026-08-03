@@ -35,6 +35,19 @@ export function rejectReason({
   if (config.objectCount !== objects) {
     return `objectCount ${config.objectCount} != ${objects}`
   }
+  // A renderer id proves which component mounted, not that it drew anything: an
+  // earlier run of this same benchmark published a full set of frame timings for
+  // a scene with no visible content. The bitmap scene therefore has to report
+  // what it actually had in hand.
+  if (renderer === 'tgfx-images') {
+    const proof = result.backendProof
+    if (!(proof?.textures >= 1)) {
+      return `tgfx-images drew ${proof?.textures} textures`
+    }
+    if (!(proof.imageNodes >= objects * 0.5)) {
+      return `tgfx-images drew ${proof.imageNodes} image nodes for ${objects} objects`
+    }
+  }
   const low = duration * 1000 - 100
   const high = duration * 1000 + 300
   if (!(native.wallTimeMs >= low && native.wallTimeMs <= high)) {

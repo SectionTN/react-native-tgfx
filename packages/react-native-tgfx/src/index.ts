@@ -17,6 +17,7 @@ export {
 export {
   DiamondGradient,
   FractalNoise,
+  ImageShader,
   LinearGradient,
   Paint,
   RadialGradient,
@@ -26,8 +27,14 @@ export {
 } from './components/Paint'
 
 export { useClock } from './hooks/useClock'
-export { useImage, useImageState } from './hooks/useImage'
+export {
+  imageFromNativeBuffer,
+  setImageCacheLimit,
+  useImage,
+  useImageState,
+} from './hooks/useImage'
 export type { ImageState } from './hooks/useImage'
+export type { PixelFormat } from './specs/TgfxImage.nitro'
 
 export { TgfxNativeView } from './views/TgfxNativeView'
 export type { TgfxViewRef } from './views/TgfxNativeView'
@@ -37,8 +44,10 @@ export type {
   CanvasProps,
   CircleProps,
   Color,
+  Fit,
   GroupProps,
   ImageProps,
+  ImageShaderProps,
   LinearGradientProps,
   LineProps,
   NoiseProps,
@@ -49,10 +58,14 @@ export type {
   RadialGradientProps,
   RectProps,
   RoundedRectProps,
+  Sampling,
   ShaderProps,
+  SrcRect,
   SweepGradientProps,
   SharedValueLike,
   TextProps,
+  TgfxImage,
+  TileMode,
   Transform,
   TransformOp,
   Vector,

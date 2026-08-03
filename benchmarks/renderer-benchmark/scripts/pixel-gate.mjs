@@ -23,6 +23,7 @@ const labels = {
   // Reproducible because the frozen stage leaves its frame callback inactive,
   // so every node sits on the same phase-0 position tgfx draws.
   'tgfx-animated': 'Tgfx Animated',
+  'tgfx-images': 'Tgfx Images',
 }
 
 const arg = (name, fallback) =>

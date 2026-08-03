@@ -25,15 +25,19 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // but a reader that walks them with a plain read leaves the patch cursor
 // stranded, freezing every animated field after them.
 // 7: adds the Fill kind, which an older reader would not draw.
-export const SCENE_VERSION = 7
+// 8: images travel as an integer handle into the native ImageRegistry instead
+// of a base64 string-table entry, and carry a full paint, the extended fit set,
+// a sampling mode and an optional source rect. Adds the image shader kind.
+export const SCENE_VERSION = 8
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
  * element 0 is the number of leading entries it keeps, the rest replaces
  * everything after them. Entries carry the payloads that scale with content
- * rather than node count — base64 image data, path data — and they are
+ * rather than node count — path data, text, shader source — and they are
  * byte-identical across commits, so re-sending them costs a Nitro marshal, a
- * UTF-8 conversion and a full hash scan per commit for nothing.
+ * UTF-8 conversion and a full hash scan per commit for nothing. Images are not
+ * among them: they travel as an integer handle.
  * Decoded by applyStringTable() in cpp/SceneStrings.hpp.
  */
 export function packStringTable(prev: string[], next: string[]): string[] {

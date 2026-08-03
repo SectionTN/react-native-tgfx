@@ -1,13 +1,50 @@
-import { expect, mock, test } from 'bun:test'
+import { beforeEach, expect, test } from 'bun:test'
 import React from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
+import { nativeMocks } from '../testing/nativeMocks'
 
-let assetUri: { uri: string } | null = { uri: 'https://example.test/a.png' }
-mock.module('react-native', () => ({
-  Image: { resolveAssetSource: () => assetUri },
-}))
+const DEFAULT_ASSET = { uri: 'https://example.test/a.png' }
+
+/** Every call the hook made into the native factory, in order. */
+interface Made {
+  via: 'fromFile' | 'fromBytes' | 'fromBase64'
+  arg: string
+  handle: FakeImage
+}
+let made: Made[] = []
+let nextHandle = 1
+
+class FakeImage {
+  handle = nextHandle++
+  width = 16
+  height = 9
+  disposed = false
+  dispose(): void {
+    this.disposed = true
+  }
+}
+
+function record(via: Made['via'], arg: string): FakeImage {
+  const handle = new FakeImage()
+  made.push({ via, arg, handle })
+  return handle
+}
+
+nativeMocks.hybridObject = () => ({
+  fromFile: async (path: string) => record('fromFile', path),
+  fromBytes: async (bytes: ArrayBuffer) =>
+    record('fromBytes', new TextDecoder().decode(bytes)),
+  fromBase64: async (data: string) => record('fromBase64', data),
+  setCacheLimit: () => {},
+  cachedBytes: 0,
+})
 
 const { useImageState } = require('./useImage') as typeof import('./useImage')
+
+beforeEach(() => {
+  made = []
+  nativeMocks.assetSource = DEFAULT_ASSET
+})
 
 function reply(body: string, ok = true, status = 200) {
   return {
@@ -36,15 +73,61 @@ async function mount(source: string) {
         tree.update(<Probe src={next} />)
       })
     },
+    async unmount() {
+      await act(async () => {
+        tree.unmount()
+      })
+    },
   }
 }
 
-test('a successful load reports data and stops loading', async () => {
+test('a successful load reports a handle and stops loading', async () => {
   globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
   const probe = await mount('https://example.test/a.png')
-  expect(probe.state.data).toBe('aGk=')
+  expect(probe.state.data).toBe(made[0]!.handle as never)
   expect(probe.state.error).toBeNull()
   expect(probe.state.loading).toBe(false)
+})
+
+// The point of the refactor: bytes reach native without a base64 round trip.
+test('a remote source hands the raw bytes to the factory, never base64', async () => {
+  globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
+  await mount('https://example.test/a.png')
+  expect(made).toHaveLength(1)
+  expect(made[0]!.via).toBe('fromBytes')
+  expect(made[0]!.arg).toBe('hi')
+})
+
+test('a local file is opened natively, so its bytes never enter JS', async () => {
+  let fetched = false
+  globalThis.fetch = (async () => {
+    fetched = true
+    return reply('hi')
+  }) as unknown as typeof fetch
+  await mount('file:///tmp/pic.png')
+  expect(fetched).toBe(false)
+  expect(made[0]!.via).toBe('fromFile')
+  expect(made[0]!.arg).toBe('file:///tmp/pic.png')
+})
+
+test('a bundled asset resolving to a bare path is opened as a file', async () => {
+  nativeMocks.assetSource = { uri: '/var/app/assets/pic.png' }
+  await mount(1 as unknown as string)
+  expect(made[0]!.via).toBe('fromFile')
+  expect(made[0]!.arg).toBe('/var/app/assets/pic.png')
+})
+
+// A JPEG payload starts "/9j/", so a leading slash cannot mean "path" here.
+test('a raw base64 source goes to the base64 path even when it starts with /', async () => {
+  await mount('/9j/4AAQSkZJRg==')
+  expect(made[0]!.via).toBe('fromBase64')
+  expect(made[0]!.arg).toBe('/9j/4AAQSkZJRg==')
+})
+
+test('a data: URI is decoded from its payload, not its whole URI', async () => {
+  await mount('data:image/png;base64,aGk=')
+  expect(made[0]!.via).toBe('fromBase64')
+  expect(made[0]!.arg).toBe('aGk=')
 })
 
 test('a 404 is a failure, and its body is never decoded as an image', async () => {
@@ -54,12 +137,13 @@ test('a 404 is a failure, and its body is never decoded as an image', async () =
   expect(probe.state.data).toBeNull()
   expect(probe.state.error?.message).toMatch(/HTTP 404/)
   expect(probe.state.loading).toBe(false)
+  expect(made).toHaveLength(0)
 })
 
 test('a failing new source clears the previous image rather than keeping it', async () => {
   globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
   const probe = await mount('https://example.test/a.png')
-  expect(probe.state.data).toBe('aGk=')
+  expect(probe.state.data).not.toBeNull()
 
   globalThis.fetch = (async () =>
     reply('nope', false, 500)) as unknown as typeof fetch
@@ -68,16 +152,10 @@ test('a failing new source clears the previous image rather than keeping it', as
   expect(probe.state.error?.message).toMatch(/HTTP 500/)
 })
 
-test('a raw base64 source is passed through', async () => {
-  const probe = await mount('aGk=')
-  expect(probe.state.data).toBe('aGk=')
-  expect(probe.state.loading).toBe(false)
-})
-
 test('a slow new source clears the old image immediately, not when it settles', async () => {
   globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
   const probe = await mount('https://example.test/a.png')
-  expect(probe.state.data).toBe('aGk=')
+  expect(probe.state.data).not.toBeNull()
 
   // Never settles: the old bytes must not stay on screen while it is in flight.
   globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
@@ -86,10 +164,29 @@ test('a slow new source clears the old image immediately, not when it settles', 
   expect(probe.state.loading).toBe(true)
 })
 
+// Decoded pixels are native memory; waiting for a GC to release them is how a
+// long-lived list ends up holding every image it ever scrolled past.
+test('a replaced source disposes the handle it replaces', async () => {
+  globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
+  const probe = await mount('https://example.test/a.png')
+  const first = made[0]!.handle
+  expect(first.disposed).toBe(false)
+
+  await probe.setSource('https://example.test/b.png')
+  expect(first.disposed).toBe(true)
+  expect(made[1]!.handle.disposed).toBe(false)
+})
+
+test('unmounting disposes the handle', async () => {
+  globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
+  const probe = await mount('https://example.test/a.png')
+  await probe.unmount()
+  expect(made[0]!.handle.disposed).toBe(true)
+})
+
 test('an unresolvable asset is an error, not a silent freeze', async () => {
-  assetUri = null
+  nativeMocks.assetSource = null
   const probe = await mount(1 as unknown as string)
-  assetUri = { uri: 'https://example.test/a.png' }
   expect(probe.state.data).toBeNull()
   expect(probe.state.error?.message).toMatch(/could not resolve asset source/)
   expect(probe.state.loading).toBe(false)
@@ -108,13 +205,17 @@ test('a slow old source cannot overwrite the result of a newer one', async () =>
   expect(probe.state.data).toBeNull()
 
   await probe.setSource('https://example.test/new.png')
-  expect(probe.state.data).toBe('bmV3')
+  const current = probe.state.data
+  expect(current).not.toBeNull()
 
-  // The old fetch lands last; its cleanup already ran, so it must not write.
+  // The old fetch lands last; its cleanup already ran, so it must not write —
+  // and the handle it built must be released rather than leaked.
   await act(async () => {
     releaseOld(reply('old'))
   })
-  expect(probe.state.data).toBe('bmV3')
+  expect(probe.state.data).toBe(current as never)
+  const stale = made.find((m) => m.arg === 'old')
+  expect(stale?.handle.disposed).toBe(true)
 })
 
 test('a failed source recovers when a working one replaces it', async () => {
@@ -125,7 +226,7 @@ test('a failed source recovers when a working one replaces it', async () => {
 
   globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
   await probe.setSource('https://example.test/a.png')
-  expect(probe.state.data).toBe('aGk=')
+  expect(probe.state.data).not.toBeNull()
   expect(probe.state.error).toBeNull()
 })
 
@@ -133,7 +234,7 @@ test('the pending state cannot be poisoned by a caller', async () => {
   globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
   const probe = await mount('https://example.test/slow.png')
   expect(() => {
-    ;(probe.state as { data: string | null }).data = 'POISON'
+    ;(probe.state as { data: unknown }).data = 'POISON'
   }).toThrow()
   const second = await mount('https://example.test/other.png')
   expect(second.state.data).toBeNull()

@@ -10,11 +10,29 @@
 #include <utility>
 #include <vector>
 
+#include "Log.hpp"
 #include "TgfxRenderer.hpp"
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
 #include "tgfx/platform/HardwareBuffer.h"
 
 namespace {
+
+// Captured in setWakeTarget(): a wake can originate on the camera producer's
+// thread or on the image registry's decode worker, neither of which is a Java
+// thread, so the JVM has to be reachable from any of them.
+JavaVM* gVm = nullptr;
+
+JNIEnv* wakeEnv() {
+  JNIEnv* env = nullptr;
+  if (gVm == nullptr) {
+    return nullptr;
+  }
+  if (gVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_OK) {
+    return env;
+  }
+  // As a daemon, so a thread we do not own is not required to detach at exit.
+  return gVm->AttachCurrentThreadAsDaemon(&env, nullptr) == JNI_OK ? env : nullptr;
+}
 
 struct HardwareBufferReleaser {
   void operator()(AHardwareBuffer* buffer) const {
@@ -36,6 +54,11 @@ struct PendingCameraFrame {
 struct AndroidTgfxView {
   tgfxrn::TgfxRenderer renderer;
   ANativeWindow* nativeWindow = nullptr;
+
+  // The TgfxRenderTarget to post a draw on, for a change no staging call
+  // announced. Global, because the wake does not come from a Java thread.
+  jobject wakeTarget = nullptr;
+  jmethodID requestRender = nullptr;
 
   // Single slot: an undrawn frame is superseded by the next, never queued behind it.
   std::mutex frameMutex;
@@ -244,9 +267,44 @@ Java_com_margelo_nitro_tgfx_TgfxNative_draw(JNIEnv*, jobject, jlong ptr) {
 }
 
 JNIEXPORT void JNICALL
-Java_com_margelo_nitro_tgfx_TgfxNative_destroy(JNIEnv*, jobject, jlong ptr) {
+Java_com_margelo_nitro_tgfx_TgfxNative_setWakeTarget(JNIEnv* env, jobject, jlong ptr,
+                                                     jobject target) {
+  auto* view = asView(ptr);
+  if (view == nullptr || target == nullptr) {
+    return;
+  }
+  env->GetJavaVM(&gVm);
+  view->wakeTarget = env->NewGlobalRef(target);
+  jclass cls = env->GetObjectClass(target);
+  view->requestRender = env->GetMethodID(cls, "requestRender", "()V");
+  env->DeleteLocalRef(cls);
+  if (view->requestRender == nullptr) {
+    // A pending NoSuchMethodError would abort the next JNI call instead.
+    env->ExceptionClear();
+    TGFXRN_LOGW("TgfxRenderTarget.requestRender() not found; a swapped hardware "
+                "buffer will not schedule a draw");
+    return;
+  }
+  // Only posts a runnable, so it is safe to run under the registry's listener
+  // lock and from whichever thread changed the image.
+  view->renderer.setWakeCallback([view] {
+    JNIEnv* wake = wakeEnv();
+    if (wake != nullptr) {
+      wake->CallVoidMethod(view->wakeTarget, view->requestRender);
+    }
+  });
+}
+
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_destroy(JNIEnv* env, jobject, jlong ptr) {
   auto* view = asView(ptr);
   if (view != nullptr) {
+    // Before the global ref goes: the callback reads it.
+    view->renderer.setWakeCallback(nullptr);
+    if (view->wakeTarget != nullptr) {
+      env->DeleteGlobalRef(view->wakeTarget);
+      view->wakeTarget = nullptr;
+    }
     view->releaseWindow();
     delete view;
   }

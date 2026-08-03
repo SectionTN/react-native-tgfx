@@ -22,6 +22,12 @@
         "language": "kotlin",
         "implementationClassName": "HybridTgfxView"
       }
+    },
+    "TgfxImageFactory": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTgfxImageFactory"
+      }
     }
   },
   "ignorePaths": [

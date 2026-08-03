@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "ImageRegistry.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/EncodedFormat.h"
@@ -96,6 +97,46 @@ struct Writer {
     }
   }
 
+  /// An image node: geometry, the registry handle, fit/sampling, an optional
+  /// source rect, then a full paint. Mirrors writeDrawing() in compile.ts.
+  void pushImage(int32_t handle, double x, double y, double w, double h,
+                 int fit = 0, int sampling = 1, const double* srcRect = nullptr) {
+    push(7);
+    pushAnim(x);
+    pushAnim(y);
+    pushAnim(w);
+    pushAnim(h);
+    push(handle);
+    push(fit);
+    push(sampling);
+    if (srcRect == nullptr) {
+      push(0);
+    } else {
+      push(1);
+      for (int i = 0; i < 4; i++) {
+        push(srcRect[i]);
+      }
+    }
+    pushPaint(0xffffffff, false);
+  }
+
+  /// A paint whose shader is an <ImageShader> with no fit rect.
+  void pushImageShaderPaint(int32_t handle, int tileX, int tileY,
+                            int sampling = 1) {
+    push(0xffffffff);
+    push(2);
+    pushAnim(1);
+    push(0);
+    push(0);
+    pushAnim(1);
+    push(7);  // image shader
+    push(handle);
+    push(tileX);
+    push(tileY);
+    push(sampling);
+    push(0);  // no fit rect
+  }
+
   std::vector<double> finish() {
     auto patchStart = words.size();
     words.push_back(static_cast<double>(patches.size() / 2));
@@ -116,12 +157,10 @@ tgfx::Device* device() {
 
 using Pixels = std::vector<uint8_t>;
 
-/// Compile `words` and draw one frame against `values`, returning the pixels.
-Pixels render(const std::vector<double>& words,
-              const std::vector<std::string>& strings,
-              const std::vector<double>& values) {
-  tgfxrn::SceneRenderer renderer;
-  renderer.setScene(words, strings);
+/// Draw one frame of `renderer`'s already-compiled program against `values`.
+/// Separate from render() so a test can prove what a *second* frame does
+/// without recompiling the scene between them.
+Pixels drawFrame(tgfxrn::SceneRenderer& renderer, const std::vector<double>& values) {
   auto* context = device()->lockContext();
   auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
   auto* canvas = surface->getCanvas();
@@ -133,6 +172,15 @@ Pixels render(const std::vector<double>& words,
   surface->readPixels(info, pixels.data());
   device()->unlock();
   return pixels;
+}
+
+/// Compile `words` and draw one frame against `values`, returning the pixels.
+Pixels render(const std::vector<double>& words,
+              const std::vector<std::string>& strings,
+              const std::vector<double>& values) {
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(words, strings);
+  return drawFrame(renderer, values);
 }
 
 bool anyPixelSet(const Pixels& pixels) {
@@ -151,38 +199,39 @@ std::array<uint8_t, 4> cellColor(int index) {
           static_cast<uint8_t>(60 + index * 3), 255};
 }
 
-std::string base64Encode(const std::string& bytes) {
-  static const char* table =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  std::string out;
-  for (size_t i = 0; i < bytes.size(); i += 3) {
-    size_t n = std::min<size_t>(3, bytes.size() - i);
-    uint32_t chunk = 0;
-    for (size_t j = 0; j < 3; j++) {
-      chunk = (chunk << 8) | (j < n ? static_cast<uint8_t>(bytes[i + j]) : 0u);
-    }
-    for (size_t j = 0; j < 4; j++) {
-      out += (j <= n) ? table[(chunk >> (18 - 6 * j)) & 63] : '=';
-    }
-  }
-  return out;
-}
-
-/// The payload the JS side would send for a solid 2x2 image of `rgba`.
-std::string imagePayload(const std::array<uint8_t, 4>& rgba) {
-  std::array<uint8_t, 16> pixels{};
-  for (int i = 0; i < 4; i++) {
-    std::copy(rgba.begin(), rgba.end(), pixels.begin() + i * 4);
-  }
-  auto info = tgfx::ImageInfo::Make(2, 2, tgfx::ColorType::RGBA_8888,
+/// Encode `pixels` as a PNG and register it, the way the TgfxImage hybrid
+/// object does from a background thread. Returns the handle the program carries.
+tgfxrn::ImageHandle registerPixels(int width, int height,
+                                   const std::vector<uint8_t>& pixels) {
+  auto info = tgfx::ImageInfo::Make(width, height, tgfx::ColorType::RGBA_8888,
                                     tgfx::AlphaType::Premultiplied);
   tgfx::Pixmap pixmap(info, pixels.data());
   auto data = tgfx::ImageCodec::Encode(pixmap, tgfx::EncodedFormat::PNG, 100);
   if (data == nullptr) {
-    return "";
+    return {};
   }
-  return base64Encode(
-      std::string(reinterpret_cast<const char*>(data->data()), data->size()));
+  return tgfxrn::ImageRegistry::instance().add(
+      tgfx::ImageCodec::MakeFrom(std::move(data)));
+}
+
+/// A solid image of `rgba`.
+tgfxrn::ImageHandle registerSolid(const std::array<uint8_t, 4>& rgba,
+                                  int width = 2, int height = 2) {
+  std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
+  for (size_t i = 0; i < pixels.size(); i += 4) {
+    std::copy(rgba.begin(), rgba.end(), pixels.begin() + static_cast<long>(i));
+  }
+  return registerPixels(width, height, pixels);
+}
+
+/// The pixel at (x, y) as RGB.
+std::array<uint8_t, 3> pixelAt(const Pixels& pixels, int x, int y) {
+  size_t at = (static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4;
+  return {pixels[at], pixels[at + 1], pixels[at + 2]};
+}
+
+bool opaqueAt(const Pixels& pixels, int x, int y) {
+  return pixels[(static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4 + 3] > 0;
 }
 
 /// A rect whose paint alpha is a literal, versus the same alpha as a slot.
@@ -444,77 +493,324 @@ void fillCoversTheWholeCanvas() {
   CHECK(render(faded.finish(), {}, {0.5}) != filled);
 }
 
-/// The image cache is keyed by a hash of the payload and holds 32 entries, so a
-/// scene with more images than that evicts mid-compile. Every image must still
-/// be the one its own payload decoded to.
-void everyImageDrawsItsOwnPayload() {
+/// Images are addressed by an integer handle, so more of them on screen than
+/// any cache bound must still each draw their own pixels.
+void everyImageDrawsItsOwnHandle() {
   constexpr int kCount = 40;
   constexpr int kCell = 8;
-  std::vector<std::string> strings;
   Writer w;
   w.push(kCount);
   for (int i = 0; i < kCount; i++) {
-    strings.push_back(imagePayload(cellColor(i)));
-    w.push(7);  // Image
-    w.pushAnim((i % kCell) * kCell);
-    w.pushAnim((i / kCell) * kCell);
-    w.pushAnim(kCell);
-    w.pushAnim(kCell);
-    w.push(i);
-    w.push(0);  // fit: stretch to the rect
-    w.pushAnim(1);
+    auto image = registerSolid(cellColor(i));
+    CHECK(image.handle != 0 && image.width == 2 && image.height == 2);
+    w.pushImage(image.handle, (i % kCell) * kCell, (i / kCell) * kCell, kCell,
+                kCell);
   }
-  CHECK(!strings[0].empty());
-  auto pixels = render(w.finish(), strings, {});
+  auto pixels = render(w.finish(), {}, {});
   for (int i = 0; i < kCount; i++) {
     auto color = cellColor(i);
-    size_t at = (static_cast<size_t>((i / kCell) * kCell + kCell / 2) * kWidth +
-                 (i % kCell) * kCell + kCell / 2) *
-                4;
-    CHECK(pixels[at] == color[0] && pixels[at + 1] == color[1] &&
-          pixels[at + 2] == color[2]);
+    auto got = pixelAt(pixels, (i % kCell) * kCell + kCell / 2,
+                       (i / kCell) * kCell + kCell / 2);
+    CHECK(got[0] == color[0] && got[1] == color[1] && got[2] == color[2]);
   }
 }
 
-/// Eviction drops the single oldest entry, so a scene whose images are all
-/// still resident re-decodes none of them; a wholesale flush re-decodes all 32.
-/// Nothing about that is visible in the pixels, so it is counted instead.
-void aResidentSceneIsNotReDecoded() {
-  constexpr int kBound = 32;
-  std::vector<std::string> strings;
-  for (int i = 0; i < kBound * 2 + 1; i++) {
-    strings.push_back(imagePayload(cellColor(i)));
-  }
-  CHECK(!strings[0].empty());
+/// Re-committing a scene whose images have not changed must cost no decode at
+/// all: the handle is an integer lookup, not a hash of the payload.
+void reCommittingAnImageSceneDecodesNothing() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto image = registerSolid(cellColor(3));
+  size_t before = registry.decodeCount();
+
   tgfxrn::SceneRenderer renderer;
-  auto compile = [&](int from, int to) {
+  for (int i = 0; i < 5; i++) {
     Writer w;
-    w.push(to - from);
-    for (int i = from; i < to; i++) {
-      w.push(7);  // Image
-      w.pushAnim(0);
-      w.pushAnim(0);
-      w.pushAnim(8);
-      w.pushAnim(8);
-      w.push(i);
-      w.push(0);
-      w.pushAnim(1);
-    }
-    renderer.setScene(w.finish(), strings);
+    w.push(1);
+    // A different geometry each time, so the scene really is recompiled.
+    w.pushImage(image.handle, i, 0, 8, 8);
+    renderer.setScene(w.finish(), {});
+  }
+  CHECK(registry.decodeCount() == before);
+}
+
+/// The decoded-pixel budget is bytes with a real LRU, not a count with FIFO:
+/// a hit has to refresh recency, or the image most likely to still be on screen
+/// is the one evicted. Invisible in the pixels, so it is counted instead.
+void theByteBudgetEvictsLeastRecentlyUsed() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  size_t restore = registry.cacheLimit();
+  // 32x32 RGBA is 4096 B; a budget of three of them.
+  auto a = registerSolid(cellColor(1), 32, 32);
+  auto b = registerSolid(cellColor(2), 32, 32);
+  auto c = registerSolid(cellColor(3), 32, 32);
+  auto d = registerSolid(cellColor(4), 32, 32);
+  CHECK(d.handle != 0);
+  // Registration order is recency order, so this drops A, the oldest.
+  registry.setCacheLimit(3 * 32 * 32 * 4);
+  CHECK(registry.cachedBytes() <= 3 * 32 * 32 * 4);
+  size_t decodes = registry.decodeCount();
+
+  // acquire() is called on the render thread, so an evicted entry must come
+  // back empty — a node skips a frame — rather than decoding inline.
+  CHECK(registry.acquire(a.handle) == nullptr);
+  CHECK(registry.decodeCount() == decodes);
+  registry.waitForDecodes();
+  CHECK(registry.decodeCount() == decodes + 1);
+  CHECK(registry.acquire(a.handle) != nullptr);
+  // A came back at the head, so B is now the least recently used one.
+  CHECK(registry.acquire(b.handle) == nullptr);
+
+  // A hit on C refreshes its recency, so bringing B back evicts D instead.
+  CHECK(registry.acquire(c.handle) != nullptr);
+  registry.waitForDecodes();
+  CHECK(registry.decodeCount() == decodes + 2);
+  CHECK(registry.acquire(c.handle) != nullptr);
+  CHECK(registry.acquire(d.handle) == nullptr);
+
+  registry.waitForDecodes();
+  registry.setCacheLimit(restore);
+}
+
+
+/// `fit` follows Skia (Flutter's BoxFit): cover crops the source rather than
+/// overflowing the destination, and contain letterboxes inside it.
+void fitModesLetterboxAndCrop() {
+  // 4x2, so twice as wide as it is tall, drawn into a 32x32 box at the origin.
+  auto image = registerSolid(cellColor(7), 4, 2);
+  auto draw = [&](int fit) {
+    Writer w;
+    w.push(1);
+    w.pushImage(image.handle, 0, 0, 32, 32, fit);
+    return render(w.finish(), {}, {});
   };
 
-  compile(0, kBound);
-  CHECK(renderer.decodeCount() == kBound);
-  // One image past the bound: only that one decodes, and only image 0 leaves.
-  compile(0, kBound + 1);
-  CHECK(renderer.decodeCount() == kBound + 1);
-  // Everything except image 0 is still cached, so this subset decodes nothing.
-  compile(1, kBound + 1);
-  CHECK(renderer.decodeCount() == kBound + 1);
-  // The bound still holds: a full turnover really does drop the originals.
-  compile(kBound + 1, kBound * 2 + 1);
-  compile(1, kBound + 1);
-  CHECK(renderer.decodeCount() == kBound * 3 + 1);
+  auto contain = draw(1);
+  CHECK(opaqueAt(contain, 16, 16));   // the letterboxed band
+  CHECK(!opaqueAt(contain, 16, 2));   // above it, untouched
+  CHECK(!opaqueAt(contain, 16, 30));
+
+  auto cover = draw(2);
+  CHECK(opaqueAt(cover, 16, 2));      // fills the box
+  CHECK(opaqueAt(cover, 16, 30));
+  CHECK(!opaqueAt(cover, 40, 16));    // but never past it
+
+  auto fill = draw(0);
+  CHECK(opaqueAt(fill, 1, 1) && opaqueAt(fill, 30, 30));
+
+  // `none` draws at native size, centred: 4x2 in the middle of the box.
+  auto none = draw(5);
+  CHECK(opaqueAt(none, 16, 16));
+  CHECK(!opaqueAt(none, 16, 4));
+}
+
+/// A source rect picks one sprite out of a sheet without slicing it in JS.
+void aSourceRectPicksOneSprite() {
+  // Two side-by-side pixels: left is cellColor(1), right is cellColor(9).
+  auto left = cellColor(1);
+  auto right = cellColor(9);
+  std::vector<uint8_t> pixels(8);
+  std::copy(left.begin(), left.end(), pixels.begin());
+  std::copy(right.begin(), right.end(), pixels.begin() + 4);
+  auto image = registerPixels(2, 1, pixels);
+  CHECK(image.handle != 0);
+
+  const double rightHalf[4] = {1, 0, 1, 1};
+  Writer w;
+  w.push(1);
+  w.pushImage(image.handle, 0, 0, 32, 32, 0, 0, rightHalf);
+  auto got = pixelAt(render(w.finish(), {}, {}), 16, 16);
+  CHECK(got[0] == right[0] && got[1] == right[1] && got[2] == right[2]);
+}
+
+/// <ImageShader>: an image as the paint source, tiled across a shape.
+void anImageShaderTilesAcrossAShape() {
+  // A 2x1 image, two different colours, repeated across a 32x32 rect.
+  auto left = cellColor(2);
+  auto right = cellColor(20);
+  std::vector<uint8_t> pixels(8);
+  std::copy(left.begin(), left.end(), pixels.begin());
+  std::copy(right.begin(), right.end(), pixels.begin() + 4);
+  auto image = registerPixels(2, 1, pixels);
+
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushImageShaderPaint(image.handle, 1, 1, 0);  // repeat/repeat, nearest
+  auto drawn = render(w.finish(), {}, {});
+
+  auto at0 = pixelAt(drawn, 0, 0);
+  auto at1 = pixelAt(drawn, 1, 0);
+  auto at2 = pixelAt(drawn, 2, 0);
+  CHECK(at0[0] == left[0] && at0[1] == left[1]);
+  CHECK(at1[0] == right[0] && at1[1] == right[1]);
+  // The third column proves it repeated rather than clamped.
+  CHECK(at2[0] == at0[0] && at2[1] == at0[1]);
+  // Mirror puts the *right* colour next to itself at the seam instead.
+  Writer m;
+  m.push(1);
+  m.push(1);
+  m.pushAnim(0);
+  m.pushAnim(0);
+  m.pushAnim(32);
+  m.pushAnim(32);
+  m.pushImageShaderPaint(image.handle, 2, 1, 0);
+  auto mirrored = render(m.finish(), {}, {});
+  auto m2 = pixelAt(mirrored, 2, 0);
+  CHECK(m2[0] == right[0] && m2[1] == right[1]);
+}
+
+/// A hardware-buffer handle (the camera path, #132) is registered rather than
+/// decoded: it stays out of the byte budget, and a new frame replaces the image
+/// behind the same id. The scene is compiled ONCE here, so what the second frame
+/// draws is decided entirely by the draw path re-reading the handle.
+void anExternalHandleIsReplacedInPlaceAndNotBudgeted() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  // Stands in for the imported buffer: registry-side semantics are the same
+  // whichever tgfx::Image the import produced.
+  auto first = registerSolid(cellColor(11), 32, 32);
+  auto second = registerSolid(cellColor(29), 32, 32);
+  auto frameA = registry.acquire(first.handle);
+  auto frameB = registry.acquire(second.handle);
+  CHECK(frameA != nullptr && frameB != nullptr);
+
+  size_t bytesBefore = registry.cachedBytes();
+  auto external = registry.addExternal(frameA);
+  CHECK(external.handle != 0 && external.width == 32);
+  // Not the producer's memory to budget.
+  CHECK(registry.cachedBytes() == bytesBefore);
+
+  Writer w;
+  w.push(1);
+  w.pushImage(external.handle, 0, 0, 32, 32);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  uint64_t epochBefore = registry.epoch();
+
+  auto expectedFirst = cellColor(11);
+  auto before = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(before[0] == expectedFirst[0] && before[1] == expectedFirst[1]);
+
+  // The next frame: same handle id, same compiled program, new pixels.
+  CHECK(registry.replaceExternal(external.handle, frameB));
+  // A swap with no commit behind it still has to wake the render loop.
+  CHECK(registry.epoch() != epochBefore);
+  // ...and the registry lets go of the previous buffer there and then, rather
+  // than starving the producer's pool until the scene is next recompiled. Two
+  // references left: this test's local and the decoded entry it came from.
+  CHECK(frameA.use_count() == 2);
+
+  auto expectedSecond = cellColor(29);
+  auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
+
+  // A decoded asset handle is not replaceable this way.
+  CHECK(!registry.replaceExternal(first.handle, frameA));
+  registry.remove(external.handle);
+}
+
+/// The same per-frame contract for <ImageShader>, whose shader is otherwise
+/// built once at setScene and would freeze on the first camera frame.
+void anExternalHandleAlsoDrivesAnImageShaderPerFrame() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto first = registerSolid(cellColor(13), 32, 32);
+  auto second = registerSolid(cellColor(31), 32, 32);
+  auto external = registry.addExternal(registry.acquire(first.handle));
+  CHECK(external.handle != 0);
+
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushImageShaderPaint(external.handle, 0, 0);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+
+  auto expectedFirst = cellColor(13);
+  auto before = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(before[0] == expectedFirst[0] && before[1] == expectedFirst[1]);
+
+  CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
+  auto expectedSecond = cellColor(31);
+  auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
+  registry.remove(external.handle);
+}
+
+/// An asset the byte budget dropped *before* the scene compiled has nothing to
+/// cache at setScene. Its re-decode lands afterwards, and the already-compiled
+/// program has to be able to reach it — otherwise the fix for "never decode on
+/// the render thread" trades a stall for a permanently blank tile, which is
+/// worse than what it replaced. Counting decodes cannot see this; only a frame can.
+void anImageEvictedBeforeCompileComesBackWhenItsDecodeLands() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  size_t restore = registry.cacheLimit();
+  auto victim = registerSolid(cellColor(17), 32, 32);
+  auto keep = registerSolid(cellColor(23), 32, 32);
+  CHECK(keep.handle != 0);
+  // Room for one, so `victim` — registered first, so least recently used — goes.
+  registry.setCacheLimit(32 * 32 * 4);
+  size_t decodes = registry.decodeCount();
+
+  Writer w;
+  w.push(1);
+  w.pushImage(victim.handle, 0, 0, 32, 32);
+  tgfxrn::SceneRenderer renderer;
+  // Nothing has acquired `victim` since the eviction, so this compile is
+  // guaranteed to be the one that finds it empty and schedules the re-decode.
+  renderer.setScene(w.finish(), {});
+
+  registry.setCacheLimit(restore);
+  registry.waitForDecodes();
+  // The compile really did fail to resolve it: the re-decode it scheduled ran.
+  CHECK(registry.decodeCount() == decodes + 1);
+  CHECK(registry.acquire(victim.handle) != nullptr);
+
+  // Same renderer, same program, no re-commit: the pixels are back, so the
+  // frame must show them.
+  auto expected = cellColor(17);
+  auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(after[0] == expected[0] && after[1] == expected[1]);
+}
+
+/// Every epoch bump has to reach the platform render loops. Both are
+/// push-driven — Android posts one draw per staging call, iOS pauses its display
+/// link after a few idle ticks — so a swap that only moves the epoch schedules
+/// no frame at all and a static scene fed by setNativeBuffer freezes.
+void aBufferSwapSchedulesADraw() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  int wakes = 0;
+  auto token = registry.addWakeListener([&wakes] { wakes++; });
+
+  auto first = registerSolid(cellColor(11), 32, 32);
+  auto second = registerSolid(cellColor(29), 32, 32);
+  auto external = registry.addExternal(registry.acquire(first.handle));
+  int before = wakes;
+  CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
+  CHECK(wakes == before + 1);
+
+  // And a disposed handle, so a view still drawing it is told to stop.
+  registry.remove(external.handle);
+  CHECK(wakes == before + 2);
+  registry.removeWakeListener(token);
+  registry.replaceExternal(external.handle, registry.acquire(first.handle));
+  CHECK(wakes == before + 2);
+}
+
+/// A handle JS has disposed must draw nothing, not somebody else's bitmap.
+void aDisposedHandleDrawsNothing() {
+  auto image = registerSolid(cellColor(5));
+  tgfxrn::ImageRegistry::instance().remove(image.handle);
+  Writer w;
+  w.push(1);
+  w.pushImage(image.handle, 0, 0, 32, 32);
+  CHECK(!anyPixelSet(render(w.finish(), {}, {})));
 }
 
 int main() {
@@ -529,8 +825,17 @@ int main() {
   animatedFieldsStillAnimate();
   animatedUniformDrawsWhatTheRebuildDraws();
   fillCoversTheWholeCanvas();
-  everyImageDrawsItsOwnPayload();
-  aResidentSceneIsNotReDecoded();
+  everyImageDrawsItsOwnHandle();
+  reCommittingAnImageSceneDecodesNothing();
+  theByteBudgetEvictsLeastRecentlyUsed();
+  fitModesLetterboxAndCrop();
+  aSourceRectPicksOneSprite();
+  anImageShaderTilesAcrossAShape();
+  anExternalHandleIsReplacedInPlaceAndNotBudgeted();
+  anExternalHandleAlsoDrivesAnImageShaderPerFrame();
+  anImageEvictedBeforeCompileComesBackWhenItsDecodeLands();
+  aBufferSwapSchedulesADraw();
+  aDisposedHandleDrawsNothing();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

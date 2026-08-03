@@ -24,7 +24,21 @@
 namespace tgfxrn {
 
 TgfxRenderer::~TgfxRenderer() {
+  // Before the window: a wake landing mid-teardown would schedule a draw on a
+  // view that is going away.
+  setWakeCallback(nullptr);
   releaseWindow();
+}
+
+void TgfxRenderer::setWakeCallback(std::function<void()> wake) {
+  auto& registry = ImageRegistry::instance();
+  if (wakeToken_ != 0) {
+    registry.removeWakeListener(wakeToken_);
+    wakeToken_ = 0;
+  }
+  if (wake != nullptr) {
+    wakeToken_ = registry.addWakeListener(std::move(wake));
+  }
 }
 
 void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
@@ -33,6 +47,7 @@ void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
     window_ = std::move(window);
     surface_ = nullptr;
     surfaceDirty_ = false;
+    cacheLimitApplied_ = false;
   }
   version_.fetch_add(1, std::memory_order_release);
 }
@@ -121,7 +136,14 @@ void TgfxRenderer::setPixelRatio(float ratio) {
 
 bool TgfxRenderer::draw() {
   TGFXRN_TRACE("tgfx.draw");
-  uint64_t version = version_.load(std::memory_order_acquire);
+  // The registry epoch moves when the image behind a live handle changes: a
+  // hardware buffer swapped for the next camera frame, or an evicted image that
+  // finished re-decoding. Both have to redraw without a commit from JS.
+  // ponytail: one process-wide counter, so a swap wakes every bound view. Views
+  // that draw no images redraw one frame they did not need; per-handle
+  // subscriptions if that ever shows up in a trace.
+  uint64_t version = version_.load(std::memory_order_acquire) +
+                     ImageRegistry::instance().epoch();
   if (version == drawnVersion_) {
     return false;
   }
@@ -166,6 +188,17 @@ bool TgfxRenderer::draw() {
   auto* context = device->lockContext();
   if (context == nullptr) {
     return false;
+  }
+  // A decoded image is resident twice — CPU pixels under the registry's LRU and
+  // a GPU texture here — so both are held to the one number setImageCacheLimit()
+  // moves, rather than to a constant only one of them can see. Tracked by value,
+  // not by context identity: a destroyed context can be replaced by a new one at
+  // the same address.
+  size_t cacheLimit = ImageRegistry::instance().cacheLimit();
+  if (!cacheLimitApplied_ || appliedCacheLimit_ != cacheLimit) {
+    context->setCacheLimit(cacheLimit);
+    appliedCacheLimit_ = cacheLimit;
+    cacheLimitApplied_ = true;
   }
 
   if (surfaceDirty_.exchange(false)) {
@@ -308,6 +341,7 @@ void TgfxRenderer::releaseWindow() {
   std::lock_guard<std::mutex> lock(mutex_);
   surface_ = nullptr;
   window_ = nullptr;
+  cacheLimitApplied_ = false;
 }
 
 }  // namespace tgfxrn

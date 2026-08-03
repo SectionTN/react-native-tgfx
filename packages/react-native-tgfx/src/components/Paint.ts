@@ -1,6 +1,7 @@
 import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
+  ImageShaderProps,
   LinearGradientProps,
   NoiseProps,
   PaintComponentProps,
@@ -43,3 +44,10 @@ export const Shader = NodeType.Shader as unknown as FC<ShaderProps>
 
 /** Perlin turbulence shader — like fractal noise but with sharper patterns. */
 export const Turbulence = NodeType.Turbulence as unknown as FC<NoiseProps>
+
+/**
+ * An image as a paint source: textured fills, image-backed masks, tiled
+ * patterns. Use it wherever a gradient goes — inside a shape or a `<Paint>`.
+ */
+export const ImageShader =
+  NodeType.ImageShader as unknown as FC<ImageShaderProps>

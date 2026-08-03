@@ -65,7 +65,7 @@ tgfx ──► Metal (iOS) / OpenGL (Android) ──► GPU
 | `Circle` | `cx`, `cy`, `r` |
 | `Line` | `x1`, `y1`, `x2`, `y2` |
 | `Path` | `path` (SVG path data) |
-| `Image` | `x`, `y`, `width`, `height`, `image` (base64), `fit` |
+| `Image` | `x`, `y`, `width`, `height`, `image` (a `useImage` handle), `fit`, `sampling`, `rect` |
 | `Text` | `x`, `y`, `text`, `fontSize`, `fontFamily` |
 | `Paint` | paint as a child of a shape/group |
 | `LinearGradient` / `RadialGradient` | shader as a child of a shape/`Paint` |
@@ -81,7 +81,11 @@ packed `0xAARRGGBB` number.
 
 - `useImageState(source)` — the same load as `useImage`, returning `{ data, error, loading }` so a slow load can be told from a failed one
 - `useImage(source)` — loads a `require()` asset, URL, `data:` URI, or base64
-  string into the base64 bytes `Image` expects.
+  string into a native `TgfxImage` handle. Local files are decoded natively and
+  their bytes never enter JS; nothing is base64-encoded on the JS thread.
+- `setImageCacheLimit(bytes)` — byte budget for decoded images (64 MB). A
+  decoded image is resident twice, as CPU pixels and as the GPU texture uploaded
+  from them, so this is applied to both the pixel cache and tgfx's context cache.
 
 ## Requirements
 

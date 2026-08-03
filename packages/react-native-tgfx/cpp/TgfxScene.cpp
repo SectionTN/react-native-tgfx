@@ -4,12 +4,11 @@
 #include <cmath>
 #include <iterator>
 
-#include "Base64.hpp"
+#include "ImageRegistry.hpp"
 #include "Log.hpp"
 #include "SvgPath.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
-#include "tgfx/core/Data.h"
 #include "tgfx/core/Font.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/Paint.h"
@@ -19,6 +18,7 @@
 #include "tgfx/core/SamplingOptions.h"
 #include "tgfx/core/Shader.h"
 #include "tgfx/core/Stroke.h"
+#include "tgfx/core/TileMode.h"
 #include "tgfx/core/Typeface.h"
 
 namespace tgfxrn {
@@ -83,6 +83,131 @@ constexpr int kMaxNodeDepth = 256;
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill
 };
+
+/// Sampling codes, mirrored from src/compiler/writer.ts.
+tgfx::SamplingOptions samplingOf(int code) {
+  switch (code) {
+    case 0:
+      return tgfx::SamplingOptions(tgfx::FilterMode::Nearest, tgfx::MipmapMode::None);
+    case 2:
+      // Mipmaps also need Image::makeMipmapped(); the filter alone does nothing.
+      return tgfx::SamplingOptions(tgfx::FilterMode::Linear, tgfx::MipmapMode::Linear);
+    default:
+      return tgfx::SamplingOptions(tgfx::FilterMode::Linear, tgfx::MipmapMode::None);
+  }
+}
+
+tgfx::TileMode tileModeOf(int code) {
+  switch (code) {
+    case 1: return tgfx::TileMode::Repeat;
+    case 2: return tgfx::TileMode::Mirror;
+    case 3: return tgfx::TileMode::Decal;
+    default: return tgfx::TileMode::Clamp;
+  }
+}
+
+/// The source and destination rects `fit` implies, centered in their bounds.
+///
+/// This is Flutter's applyBoxFit + inscribe, which is what Skia's `<Image fit>`
+/// and `<ImageShader fit>` implement — so `cover` crops the *source* instead of
+/// overflowing the destination, and no clip is needed to contain it.
+struct FitRects {
+  tgfx::Rect src;
+  tgfx::Rect dst;
+};
+
+tgfx::Rect inscribe(float w, float h, const tgfx::Rect& bounds) {
+  return tgfx::Rect::MakeXYWH(bounds.left + (bounds.width() - w) / 2,
+                              bounds.top + (bounds.height() - h) / 2, w, h);
+}
+
+FitRects fitRects(Fit fit, const tgfx::Rect& source, const tgfx::Rect& dest) {
+  float iw = source.width(), ih = source.height();
+  float ow = dest.width(), oh = dest.height();
+  if (iw <= 0 || ih <= 0 || ow <= 0 || oh <= 0) {
+    return {source, dest};
+  }
+  // "Wider" in the Flutter sense: output aspect exceeds input aspect.
+  bool wider = ow / oh > iw / ih;
+  float sw = iw, sh = ih, dw = ow, dh = oh;
+  switch (fit) {
+    case Fit::Fill:
+      break;
+    case Fit::Contain:
+      if (wider) {
+        dw = iw * oh / ih;
+      } else {
+        dh = ih * ow / iw;
+      }
+      break;
+    case Fit::Cover:
+      if (wider) {
+        sh = iw * oh / ow;
+      } else {
+        sw = ih * ow / oh;
+      }
+      break;
+    case Fit::FitWidth:
+      if (wider) {
+        sh = iw * oh / ow;  // like cover
+      } else {
+        dh = ih * ow / iw;  // like contain
+      }
+      break;
+    case Fit::FitHeight:
+      if (wider) {
+        dw = iw * oh / ih;  // like contain
+      } else {
+        sw = ih * ow / oh;  // like cover
+      }
+      break;
+    case Fit::None:
+      sw = dw = std::min(iw, ow);
+      sh = dh = std::min(ih, oh);
+      break;
+    case Fit::ScaleDown:
+      // Fill, clamped so the image is never drawn larger than it is.
+      if (dh > ih) {
+        dw = ih * (iw / ih);
+        dh = ih;
+      }
+      if (dw > iw) {
+        dh = iw / (iw / ih);
+        dw = iw;
+      }
+      break;
+  }
+  return {inscribe(sw, sh, source), inscribe(dw, dh, dest)};
+}
+
+/// The registry image for `handle`, mipmapped when the sampling asks for it.
+/// `external` reports a hardware-buffer handle, whose image the caller must
+/// re-resolve every frame instead of caching.
+///
+/// Never decodes: the registry schedules that off-thread and moves its epoch
+/// when it lands, so this is safe to call from a render thread.
+std::shared_ptr<tgfx::Image> resolveImage(int handle,
+                                          const tgfx::SamplingOptions& sampling,
+                                          bool* external = nullptr) {
+  // An integer lookup into the registry, not a hash of the payload: a re-commit
+  // of an unchanged scene costs nothing here, and a hash collision cannot draw
+  // somebody else's bitmap.
+  auto image = ImageRegistry::instance().acquire(handle, external);
+  if (image == nullptr) {
+    if (handle != 0) {
+      TGFXRN_LOGW("image handle %d has no pixels (disposed, or re-decoding)", handle);
+    }
+    return nullptr;
+  }
+  if (sampling.mipmapMode != tgfx::MipmapMode::None) {
+    // The sampling options alone are ignored unless the image carries mipmaps.
+    auto mipmapped = image->makeMipmapped(true);
+    if (mipmapped != nullptr) {
+      return mipmapped;
+    }
+  }
+  return image;
+}
 
 tgfx::Color colorFromPacked(uint32_t c) {
   uint8_t a = (c >> 24) & 0xff;
@@ -154,6 +279,9 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
   paint.setColor(color);
   if (pc.runtime != nullptr) {
     paint.setShader(pc.runtime->build(v));
+  } else if (pc.imageShader != nullptr) {
+    paint.setShader(pc.imageShader->build(
+        resolveImage(pc.imageShader->handle, pc.imageShader->sampling)));
   } else if (pc.shader != nullptr) {
     paint.setShader(pc.shader);
   }
@@ -191,34 +319,27 @@ std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
   return tgfx::Shader::MakeRuntimeShader(body, std::move(resolved));
 }
 
-std::shared_ptr<tgfx::Image> SceneRenderer::getImage(const std::string& base64) {
-  size_t key = std::hash<std::string>{}(base64);
-  auto it = imageCache_.find(key);
-  if (it != imageCache_.end()) {
-    return it->second;
-  }
-  decodeCount_++;
-  auto bytes = base64Decode(base64);
-  std::shared_ptr<tgfx::Image> image;
-  if (!bytes.empty()) {
-    auto data = tgfx::Data::MakeWithCopy(bytes.data(), bytes.size());
-    if (data == nullptr) {
-      // Out of memory, not a broken payload: retry instead of caching a failure.
-      return nullptr;
-    }
-    image = tgfx::Image::MakeFromEncoded(std::move(data));
-  }
+std::shared_ptr<tgfx::Shader> ImageShaderCmd::build(
+    const std::shared_ptr<tgfx::Image>& image) const {
   if (image == nullptr) {
-    TGFXRN_LOGW("failed to decode image (%zu base64 chars)", base64.size());
+    return nullptr;
   }
-  // Bound the cache so a long-lived view doesn't accumulate every image shown.
-  if (imageCacheOrder_.size() >= 32) {
-    imageCache_.erase(imageCacheOrder_.front());
-    imageCacheOrder_.pop_front();
+  auto shader = tgfx::Shader::MakeImageShader(image, tileX, tileY, sampling);
+  if (shader == nullptr || !hasRect) {
+    return shader;
   }
-  imageCacheOrder_.push_back(key);
-  imageCache_[key] = image;
-  return image;
+  // The shader samples in image space, so `fit`/`rect` become its matrix.
+  auto bounds = tgfx::Rect::MakeWH(static_cast<float>(image->width()),
+                                   static_cast<float>(image->height()));
+  auto fitted = fitRects(fit, bounds, rect);
+  if (fitted.src.width() <= 0 || fitted.src.height() <= 0) {
+    return shader;
+  }
+  auto matrix = tgfx::Matrix::MakeTrans(-fitted.src.left, -fitted.src.top);
+  matrix.postScale(fitted.dst.width() / fitted.src.width(),
+                   fitted.dst.height() / fitted.src.height());
+  matrix.postTranslate(fitted.dst.left, fitted.dst.top);
+  return shader->makeWithMatrix(matrix);
 }
 
 std::shared_ptr<tgfx::Typeface> SceneRenderer::getTypeface(
@@ -251,13 +372,10 @@ std::shared_ptr<tgfx::Typeface> SceneRenderer::getTypeface(
 void SceneRenderer::clearCaches() {
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = nullptr;
-  imageCache_.clear();
-  imageCacheOrder_.clear();
   typefaceCache_.clear();
 }
 
-std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(
-    SceneReader& r, std::shared_ptr<RuntimeShaderCmd>* runtimeOut) {
+std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd* out) {
   int kind = r.nextInt();
   if (kind < 0) {
     return nullptr;
@@ -288,14 +406,41 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(
         }
       }
     }
-    if (animated && runtimeOut != nullptr) {
+    if (animated && out != nullptr) {
       auto cmd = std::make_shared<RuntimeShaderCmd>();
       cmd->body = body;
       cmd->uniforms = uniforms;
       cmd->slots = std::move(slots);
-      *runtimeOut = std::move(cmd);
+      out->runtime = std::move(cmd);
     }
     return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms));
+  }
+  if (kind == 7) {
+    // <ImageShader>: an image as the paint source for any shape.
+    ImageShaderCmd cmd;
+    cmd.handle = r.nextInt();
+    cmd.tileX = tileModeOf(r.nextInt());
+    cmd.tileY = tileModeOf(r.nextInt());
+    cmd.sampling = samplingOf(r.nextInt());
+    cmd.hasRect = r.nextInt() != 0;
+    if (cmd.hasRect) {
+      float x = static_cast<float>(r.next());
+      float y = static_cast<float>(r.next());
+      float w = static_cast<float>(r.next());
+      float h = static_cast<float>(r.next());
+      cmd.rect = tgfx::Rect::MakeXYWH(x, y, w, h);
+      cmd.fit = static_cast<Fit>(r.nextInt());
+    }
+    bool external = false;
+    auto image = resolveImage(cmd.handle, cmd.sampling, &external);
+    if ((external || image == nullptr) && cmd.handle != 0 && out != nullptr) {
+      // Baking the shader here would freeze whatever the registry happened to
+      // hold at compile time: the first camera frame for a hardware buffer, and
+      // nothing at all for an asset the byte budget had dropped.
+      out->imageShader = std::make_shared<ImageShaderCmd>(cmd);
+      return nullptr;
+    }
+    return cmd.build(image);
   }
   if (kind == 4 || kind == 5) {
     float fx = static_cast<float>(r.next());
@@ -350,7 +495,7 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.cap = r.nextInt();
   paint.join = r.nextInt();
   paint.alpha = r.nextAnim();
-  paint.shader = readShader(r, &paint.runtime);
+  paint.shader = readShader(r, &paint);
   applyPaint(paint, {}, paint.cached);
 }
 
@@ -444,17 +589,35 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.path = parseSvgPath(r.nextString());
       break;
     case KImage: {
-      // Images draw with the default paint, so only the alpha is carried.
       cmd.kind = DrawCmd::Image;
       cmd.x = r.nextAnim();
       cmd.y = r.nextAnim();
       cmd.w = r.nextAnim();
       cmd.h = r.nextAnim();
-      cmd.image = getImage(r.nextString());
-      cmd.fit = r.nextInt();
-      cmd.paint.alpha = r.nextAnim();
-      applyPaint(cmd.paint, {}, cmd.paint.cached);
-      return r.ok;
+      int handle = r.nextInt();
+      cmd.fit = static_cast<Fit>(r.nextInt());
+      cmd.sampling = samplingOf(r.nextInt());
+      if (r.nextInt() != 0) {
+        float sx = static_cast<float>(r.next());
+        float sy = static_cast<float>(r.next());
+        float sw = static_cast<float>(r.next());
+        float sh = static_cast<float>(r.next());
+        cmd.srcRect = tgfx::Rect::MakeXYWH(sx, sy, sw, sh);
+      }
+      // The handle is always carried: `cmd.image` is only a cache of what the
+      // registry could give us at compile time, and it is empty in two cases
+      // that both have to keep drawing — a hardware buffer, whose image changes
+      // between frames, and an asset the byte budget had dropped, whose
+      // re-decode lands later.
+      cmd.imageHandle = handle;
+      bool external = false;
+      cmd.image = resolveImage(handle, cmd.sampling, &external);
+      if (external) {
+        // Caching it would pin the producer's buffer and freeze the first frame
+        // on screen; the draw path re-resolves the handle instead.
+        cmd.image = nullptr;
+      }
+      break;
     }
     case KText: {
       cmd.kind = DrawCmd::Text;
@@ -587,33 +750,26 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       canvas->drawPath(cmd.path, *p);
       break;
     case DrawCmd::Image: {
-      if (cmd.image == nullptr || cmd.image->width() <= 0) {
+      // An image resolved at setScene is used straight from the cache and costs
+      // nothing. The two that could not be cached — a hardware buffer, and an
+      // asset evicted before the scene compiled — are resolved here, per frame,
+      // because for both the answer changes with no re-commit behind it.
+      std::shared_ptr<tgfx::Image> live;
+      if (cmd.image == nullptr && cmd.imageHandle != 0) {
+        live = resolveImage(cmd.imageHandle, cmd.sampling);
+      }
+      const auto& image = cmd.image != nullptr ? cmd.image : live;
+      if (image == nullptr || image->width() <= 0) {
         break;
       }
-      float x = cmd.x.resolve(v), y = cmd.y.resolve(v);
-      float w = cmd.w.resolve(v), h = cmd.h.resolve(v);
-      tgfx::SamplingOptions sampling(tgfx::FilterMode::Linear);
-      if (cmd.fit == 0) {
-        canvas->drawImageRect(cmd.image, tgfx::Rect::MakeXYWH(x, y, w, h),
-                              sampling, p);
-      } else {
-        float iw = static_cast<float>(cmd.image->width());
-        float ih = static_cast<float>(cmd.image->height());
-        float scale =
-            (cmd.fit == 2) ? std::max(w / iw, h / ih) : std::min(w / iw, h / ih);
-        float sw = iw * scale, sh = ih * scale;
-        float dx = x + (w - sw) / 2, dy = y + (h - sh) / 2;
-        bool clip = (cmd.fit == 2);
-        if (clip) {
-          canvas->save();
-          canvas->clipRect(tgfx::Rect::MakeXYWH(x, y, w, h));
-        }
-        canvas->drawImageRect(cmd.image, tgfx::Rect::MakeXYWH(dx, dy, sw, sh),
-                              sampling, p);
-        if (clip) {
-          canvas->restore();
-        }
-      }
+      // `fit` crops the source rather than overflowing the destination, so this
+      // needs no clip and no save/restore even for cover.
+      auto source = cmd.srcRect.isEmpty()
+                        ? tgfx::Rect::MakeWH(static_cast<float>(image->width()),
+                                             static_cast<float>(image->height()))
+                        : cmd.srcRect;
+      auto fitted = fitRects(cmd.fit, source, rectOf(cmd, v));
+      canvas->drawImageRect(image, fitted.src, fitted.dst, cmd.sampling, p);
       break;
     }
     case DrawCmd::Text:

@@ -11,13 +11,26 @@ import {
   Paint,
   Path,
   Rect,
+  useImage,
 } from 'react-native-tgfx';
 
 const CANVAS_ID = 'tgfx-harness-canvas';
 
-// 8x8 opaque red PNG, so <Image> needs no asset pipeline.
+// 8x8 opaque red PNG, so <Image> needs no asset pipeline. The base64 path is
+// still supported; it is just no longer how bytes reach the engine.
 const RED_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR4nGP4z8DwHx9mGBkKAMLXf4EvceABAAAAAElFTkSuQmCC';
+
+/// <Image> takes a native handle, so the base64 goes through useImage first.
+function RedImage(props: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
+  const image = useImage(RED_PNG);
+  return image == null ? null : <Image {...props} image={image} fit="fill" />;
+}
 
 /**
  * `composite="texture"` puts the canvas in the view hierarchy: the harness
@@ -154,14 +167,7 @@ describe('tgfx rendering', () => {
           <Rect x={20} y={20} width={160} height={60} />
         </Group>
         <Group opacity={0.4}>
-          <Image
-            x={20}
-            y={110}
-            width={160}
-            height={70}
-            image={RED_PNG}
-            fit="fill"
-          />
+          <RedImage x={20} y={110} width={160} height={70} />
         </Group>
       </Stage>,
     );

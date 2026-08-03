@@ -13,6 +13,13 @@ internal object TgfxNative {
   }
 
   external fun create(): Long
+
+  /**
+   * Give the native renderer a way to post a draw for a change no staging call
+   * made — a hardware buffer swapped behind an image handle, or an evicted
+   * image finishing its re-decode. [target] must expose `requestRender()`.
+   */
+  external fun setWakeTarget(ptr: Long, target: TgfxRenderTarget)
   external fun surfaceCreated(ptr: Long, surface: Surface)
   external fun surfaceChanged(ptr: Long, width: Int, height: Int)
   external fun surfaceDestroyed(ptr: Long)

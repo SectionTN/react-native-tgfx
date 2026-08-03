@@ -12,6 +12,10 @@ import { benchmarkMetrics } from './nativeMetrics'
 import { buildScene, summarizeFrames } from './scene'
 import { getSkiaBackendProof, SkiaRenderer } from './renderers/SkiaRenderer'
 import { TgfxAnimatedRenderer } from './renderers/TgfxAnimatedRenderer'
+import {
+  drawnBitmaps,
+  TgfxImagesRenderer,
+} from './renderers/TgfxImagesRenderer'
 import { TgfxRenderer } from './renderers/TgfxRenderer'
 import { ThorRenderer } from './renderers/ThorRenderer'
 import type {
@@ -27,6 +31,7 @@ const renderers: { id: RendererId; label: string }[] = [
   { id: 'thor-gpu', label: 'Thor GPU' },
   { id: 'tgfx', label: 'Tgfx GPU' },
   { id: 'tgfx-animated', label: 'Tgfx Animated' },
+  { id: 'tgfx-images', label: 'Tgfx Images' },
 ]
 
 const defaultConfig: BenchmarkConfig = {
@@ -79,6 +84,11 @@ function backendProof(renderer: RendererId): Record<string, string | number | bo
   if (renderer === 'thor-gpu') {
     return { requestedBackend: 'gpu', engine: 'ThorVG GlCanvas GLES3' }
   }
+  if (renderer === 'tgfx-images') {
+    // Measured, not asserted: zeros here mean nothing was drawn, and the gate
+    // rejects the run rather than publishing numbers for an empty scene.
+    return { engine: 'tgfx', backend: 'gpu', scene: 'bitmaps', ...drawnBitmaps }
+  }
   if (renderer === 'tgfx-animated') {
     return { requestedBackend: 'gpu', engine: 'TGFX OpenGL ES', driver: 'reanimated UI thread' }
   }
@@ -103,6 +113,9 @@ function Renderer({
   }
   if (config.renderer === 'tgfx') {
     return <TgfxRenderer width={width} height={height} shapes={shapes} />
+  }
+  if (config.renderer === 'tgfx-images') {
+    return <TgfxImagesRenderer width={width} height={height} shapes={shapes} />
   }
   if (config.renderer === 'tgfx-animated') {
     return (

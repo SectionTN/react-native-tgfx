@@ -58,6 +58,48 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 
 ---
 
+## ✅ Done — native image handles (this branch)
+
+- ✅ **`TgfxImage` handle instead of base64.** A Nitro HybridObject backed by a
+  process-wide `ImageRegistry`; the draw program carries an integer id, so the
+  string table no longer scales with image bytes and a re-commit does no hashing
+  and no decode. `useImage` keeps its signature and returns the handle.
+- ✅ **No native → JS → native round trip.** A local file (a `file:` URI, or a
+  bundled asset resolving to a path) is opened and decoded natively. A remote or
+  Metro-served URI still uses `fetch`, but hands over the `ArrayBuffer` — the
+  hand-rolled JS base64 encoder is gone.
+- ✅ **Decode off the render thread — on every path.** `ImageCodec::makeBuffer()`
+  runs on Nitro's thread pool and the promise resolves only once the pixels
+  exist. `ImageRegistry::acquire()` never decodes at all: an entry the byte
+  budget dropped comes back empty, the re-decode goes to the registry's own
+  worker, and the node skips frames until it lands. No frame waits on a decode,
+  including after an eviction.
+- ✅ **Byte-bounded LRU + `dispose()`.** Keyed on the handle (an integer, so no
+  unverified-hash collision can draw the wrong bitmap), 64 MB of decoded pixels
+  by default, recency refreshed on a hit. Replaces the 32-entry FIFO.
+- ✅ **A GPU texture budget.** `Context::setCacheLimit` was never called, leaving
+  tgfx's 512 MB default. A decoded image is resident twice — CPU pixels the
+  `BufferImage` holds for the Image's life, and the texture uploaded from them —
+  so `setImageCacheLimit()` now sets both, and there is one number rather than
+  a CPU budget and an unrelated GPU constant.
+- ✅ **Skia parity for `<Image>`** — the full seven-mode `fit` set (Flutter's
+  `BoxFit`, so `cover` crops the source rather than overflowing), `sampling`
+  including real mipmaps via `makeMipmapped`, a source `rect` for sprite sheets,
+  and a full paint (it used to carry only alpha).
+- ✅ **`<ImageShader>`** — an image as a paint source for any shape, with
+  `clamp`/`repeat`/`mirror`/`decal` tiling and a `fit` rect.
+- ✅ **Hardware-buffer source.** `imageFromNativeBuffer()` imports an
+  `AHardwareBuffer*` / `CVPixelBufferRef` straight to a GPU texture, YUV-aware
+  and synchronous, and `setNativeBuffer()` re-points an existing handle per
+  frame. The draw path resolves an external handle every frame rather than
+  caching the image at compile time, so the swap needs no re-commit, does not
+  pin the producer's previous buffer, and moves the registry epoch the render
+  loop's dirty check folds in — a new frame with no commit behind it still
+  draws. Held outside the decoded-pixel budget, so a 16 ms frame is not treated
+  as a long-lived asset. This is what #132 replaces `drawCameraFrame` with.
+
+---
+
 ## Build & packaging
 
 - 🔴 **iOS device build + universal xcframework.** The tgfx static lib is built
@@ -89,9 +131,23 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 - 🟠 **Full animated-prop coverage.** Value slots cover geometry, opacity, and
   transform ops (rotate/scale/translate). Add slots for colors, strokeWidth,
   gradient stops/endpoints, path data, fontSize, and text.
-- 🟠 **Native image handles.** Images travel as base64 in the scene JSON (bloat +
-  per-image decode). Expose an `SkImage`-like HybridObject with native decode /
-  zero-copy / texture caching; make `useImage` use it.
+- 🟠 **Native `<ImageSVG>`.** SVG *documents* are not parsed, only single path
+  data strings. Needs tgfx's SVG module (`TGFX_BUILD_SVG`, currently off).
+- 🟠 **Colour and image filters on `<Image>`.** The scene graph has no
+  `ColorFilter`/`BlendMode` node at all, so blend-mode tint, matrix colour
+  filters, blur and drop shadow are unavailable. `<Image>` now carries a full
+  paint, so the wire format has room for them.
+- 🔴 **Camera frames as scene inputs (#132).** `drawCameraFrame` is still a
+  bespoke path beside the scene. The image handle can now represent the frame
+  (see above); what is left is an `<Image>`/`<ImageShader>` node driven by it and
+  retiring `TgfxRenderer::drawCameraFrame`.
+- 🟠 **Native asset loading on Android.** A `require()`d asset in a release build
+  resolves to a bare drawable-resource name, and `asset://` / `content://` URIs
+  need the JNI `AssetManager`/`ContentResolver`. Both still go through JS
+  `fetch`. iOS release assets and any `file:` URI already load natively.
+- 🟠 **`<ImageShader transform>`.** Skia's `ImageShader` takes a transform on top
+  of `fit`/`rect`; here the only way to move one is a `<Group>`, which moves the
+  shape too.
 - 🟠 **Group layer + opacity.** Group opacity currently multiplies into child
   alpha (not a real `saveLayer`); add `<Group layer>`, `clip`, and `zIndex`.
 - 🟠 **More tgfx surface:** blend modes, color/image filters, blur, shadows,
@@ -152,5 +208,5 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 1. Dirty-driven redraw.
 2. iOS device build + universal xcframework.
 3. Bootstrap script for tgfx deps (clone → build).
-4. Native image handles (drop base64-in-JSON).
+4. Colour/image filters on `<Image>` (the paint is now carried; the filters are not).
 5. Unit tests + CI.

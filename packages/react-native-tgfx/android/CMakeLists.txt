@@ -57,6 +57,8 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/TgfxScene.cpp
         ../cpp/SvgPath.cpp
         ../cpp/TgfxRenderer.cpp
+        ../cpp/ImageRegistry.cpp
+        ../cpp/HybridTgfxImageFactory.cpp
 )
 
 # Add Nitrogen specs :)

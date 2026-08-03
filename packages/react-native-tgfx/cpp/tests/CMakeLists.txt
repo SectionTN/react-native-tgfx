@@ -12,6 +12,6 @@ set(TGFX_BUILD_PDF OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
 
-add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp)
+add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../ImageRegistry.cpp)
 target_include_directories(SceneTest PRIVATE ".." "${TGFX_DIR}/include")
 target_link_libraries(SceneTest tgfx)

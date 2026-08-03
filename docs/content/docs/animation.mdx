@@ -54,14 +54,16 @@ These resolve through a slot and animate:
 - `Group` transform operands
 - shader uniform components
 
-Everything else is read once at commit. Several of those props are still *typed*
-`Animated<…>`, so they accept a `SharedValue` without complaint and then never
-move:
+Everything else is read once at commit. `color` is still *typed* `Animated<…>`,
+so it accepts a `SharedValue` without complaint and then never moves. `text`,
+`path` and `Image`'s `image` used to have the same problem and are now typed as
+what they are, so passing a `SharedValue` is a type error rather than a silent
+freeze.
 
 | prop | why it freezes |
 | --- | --- |
 | `color` | packed to a single integer at compile time |
-| `Image`'s `image` | interned into the string table |
+| `Image`'s `image` | a native handle, resolved once |
 | `text` | interned into the string table |
 | `path` | parsed once into a native path object |
 | `fontFamily` | plain `string`, resolved once |

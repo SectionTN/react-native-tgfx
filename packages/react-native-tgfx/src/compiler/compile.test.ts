@@ -11,6 +11,9 @@ const sharedValue = (value: number) => ({
   _isReanimatedSharedValue: true as const,
 })
 
+/** Stands in for a native TgfxImage: the compiler only reads `.handle`. */
+const handle = (id: number) => ({ handle: id })
+
 function compile(roots: Node[]) {
   const writer = new SceneWriter()
   const result = compileScene(roots, writer)
@@ -154,30 +157,104 @@ test('inherits <Paint opacity> from a group into its children', () => {
   expect(used[17]).toBeCloseTo(0.25)
 })
 
+// An image node: kind x y w h handle fit sampling srcFlag, then a full paint.
+const IMAGE_WORDS = 9 + 7
+const ALPHA_AT = 3 + 1 + 3 + 14
+
 test('writes an alpha word for images so they inherit group opacity', () => {
-  const { used } = compile([
+  const { used, strings } = compile([
     node(NodeType.Group, { opacity: 0.5 }, [
-      node(NodeType.Image, { x: 0, y: 0, width: 1, height: 1, image: 'a' }),
+      node(NodeType.Image, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        image: handle(9),
+      }),
     ]),
   ])
-  // header(3) rootCount group(kind ops children) image(kind x y w h src fit
-  // alpha) + patch table (count only)
-  expect(used.length).toBe(3 + 1 + 3 + 8 + 1)
+  // The whole point of the handle: no image payload in the string table.
+  expect(strings).toEqual([])
+  expect(used.length).toBe(3 + 1 + 3 + IMAGE_WORDS + 1)
+  expect(used[12]).toBe(9) // the native handle, not a string index
   expect(used[13]).toBe(1) // fit: contain
-  expect(used[14]).toBeCloseTo(0.5)
+  expect(used[14]).toBe(1) // sampling: linear
+  expect(used[15]).toBe(0) // no source rect
+  expect(used[ALPHA_AT]).toBeCloseTo(0.5)
 })
 
 test('patches the image alpha word when the group opacity is animated', () => {
   const fade = sharedValue(0.4)
   const { used, values } = compile([
     node(NodeType.Group, { opacity: fade }, [
-      node(NodeType.Image, { x: 0, y: 0, width: 1, height: 1, image: 'a' }),
+      node(NodeType.Image, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        image: handle(1),
+      }),
     ]),
   ])
   expect(values).toEqual([fade])
   const patchStart = used[2]!
-  expect(patchStart).toBe(15) // the alpha word is the image node's last
-  expect(used[patchStart + 1]).toBe(14)
+  expect(used[patchStart + 1]).toBe(ALPHA_AT)
+})
+
+test('encodes the full fit and sampling sets, and a source rect', () => {
+  const { used } = compile([
+    node(NodeType.Image, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      image: handle(4),
+      fit: 'scaleDown',
+      sampling: 'mipmap',
+      rect: { x: 8, y: 16, width: 32, height: 64 },
+    }),
+  ])
+  expect(Array.from(used.subarray(9, 17))).toEqual([4, 6, 2, 1, 8, 16, 32, 64])
+})
+
+test('a disposed handle compiles to 0 rather than throwing mid-commit', () => {
+  const dead = {
+    get handle(): number {
+      throw new Error('disposed')
+    },
+  }
+  const { used } = compile([
+    node(NodeType.Image, { x: 0, y: 0, width: 1, height: 1, image: dead }),
+  ])
+  expect(used[9]).toBe(0)
+})
+
+test('an <ImageShader> child becomes the shape shader, with tiling', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.ImageShader, {
+        image: handle(3),
+        tx: 'repeat',
+        ty: 'mirror',
+        sampling: 'nearest',
+      }),
+    ]),
+  ])
+  // kind x y w h + color flags sw cap join alpha, then the shader.
+  expect(Array.from(used.subarray(15, 21))).toEqual([7, 3, 1, 2, 0, 0])
+})
+
+test('an <ImageShader> rect adds the fit that maps the image into it', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.ImageShader, {
+        image: handle(3),
+        rect: { x: 1, y: 2, width: 30, height: 40 },
+        fit: 'cover',
+      }),
+    ]),
+  ])
+  expect(Array.from(used.subarray(19, 26))).toEqual([1, 1, 1, 2, 30, 40, 2])
 })
 
 // The invariant the native dedupe key rests on: strings are indices, so the

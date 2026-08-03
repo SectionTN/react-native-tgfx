@@ -1,0 +1,278 @@
+[
+  {
+    "tag": "images-before2",
+    "rep": 1,
+    "renderer": "tgfx-images",
+    "platform": "android-device",
+    "gate": "android-full",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx-images",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "engine": "tgfx",
+        "backend": "gpu",
+        "scene": "bitmaps",
+        "textures": 4,
+        "texturePixels": 0,
+        "imageNodes": 400
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 52.29358434541374,
+        "frameCount": 786,
+        "missedFrames": 653,
+        "p50Ms": 18.530077010393143,
+        "p90Ms": 23.06419199705124,
+        "p95Ms": 25.31861498951912,
+        "p99Ms": 29.42969298362732,
+        "maxMs": 38.020923018455505
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 35.1,
+          "batteryTemperatureStartC": 35.1,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 8044,
+          "startJavaHeapKb": 8624,
+          "peakNativeHeapKb": 50403,
+          "endNativeHeapKb": 49780,
+          "peakJavaHeapKb": 9520,
+          "peakPssKb": 149172,
+          "endPssKb": 145649,
+          "startNativeHeapKb": 50205,
+          "startPssKb": 139879
+        },
+        "processCpuTimeMs": 36395,
+        "mainThread": {
+          "p99Ms": 33.224298,
+          "p95Ms": 22.176862,
+          "missedFrames": 560,
+          "p90Ms": 22.165293,
+          "maxMs": 44.305348,
+          "p50Ms": 22.145434,
+          "frameCount": 797,
+          "fps": 53.02256949672042
+        },
+        "wallTimeMs": 15031.334912,
+        "processCpuPercent": 242.12753034292845
+      },
+      "startedAtEpochMs": 1785758144320,
+      "completedAtEpochMs": 1785758159369
+    },
+    "gfxInfo": {
+      "totalFrames": 1052,
+      "jankyPercent": 49.05,
+      "p95Ms": 42,
+      "p99Ms": 48,
+      "missedVsync": 346
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 37.9,
+      "batteryC": 34.2
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 39.9,
+      "batteryC": 34.2
+    }
+  },
+  {
+    "tag": "images-before2",
+    "rep": 2,
+    "renderer": "tgfx-images",
+    "platform": "android-device",
+    "gate": "android-full",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx-images",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "engine": "tgfx",
+        "backend": "gpu",
+        "scene": "bitmaps",
+        "textures": 4,
+        "texturePixels": 0,
+        "imageNodes": 400
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 52.13006936195512,
+        "frameCount": 783,
+        "missedFrames": 672,
+        "p50Ms": 18.524152994155884,
+        "p90Ms": 23.271038979291916,
+        "p95Ms": 24.848114997148514,
+        "p99Ms": 26.24311602115631,
+        "maxMs": 28.11734601855278
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 34,
+          "batteryTemperatureStartC": 34,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 8264,
+          "startJavaHeapKb": 8680,
+          "peakNativeHeapKb": 50345,
+          "endNativeHeapKb": 49762,
+          "peakJavaHeapKb": 9548,
+          "peakPssKb": 149756,
+          "endPssKb": 149756,
+          "startNativeHeapKb": 49994,
+          "startPssKb": 141051
+        },
+        "processCpuTimeMs": 36161,
+        "mainThread": {
+          "p99Ms": 33.226455,
+          "p95Ms": 22.188471,
+          "missedFrames": 573,
+          "p90Ms": 22.167034,
+          "maxMs": 33.231541,
+          "p50Ms": 22.143652,
+          "frameCount": 785,
+          "fps": 52.19721854908807
+        },
+        "wallTimeMs": 15039.115528,
+        "processCpuPercent": 240.44632101319408
+      },
+      "startedAtEpochMs": 1785758386929,
+      "completedAtEpochMs": 1785758401991
+    },
+    "gfxInfo": {
+      "totalFrames": 1061,
+      "jankyPercent": 49.58,
+      "p95Ms": 42,
+      "p99Ms": 46,
+      "missedVsync": 363
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 37.7,
+      "batteryC": 33.9
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 39.5,
+      "batteryC": 34
+    }
+  },
+  {
+    "tag": "images-before2",
+    "rep": 3,
+    "renderer": "tgfx-images",
+    "platform": "android-device",
+    "gate": "android-full",
+    "result": {
+      "schemaVersion": 1,
+      "config": {
+        "renderer": "tgfx-images",
+        "objectCount": 400,
+        "mainThreadPressureMs": 15,
+        "warmupSeconds": 5,
+        "durationSeconds": 15,
+        "seed": 20260729
+      },
+      "backendProof": {
+        "engine": "tgfx",
+        "backend": "gpu",
+        "scene": "bitmaps",
+        "textures": 4,
+        "texturePixels": 0,
+        "imageNodes": 400
+      },
+      "viewport": {
+        "width": 384,
+        "height": 856
+      },
+      "js": {
+        "fps": 52.39306279175236,
+        "frameCount": 787,
+        "missedFrames": 657,
+        "p50Ms": 18.569231003522873,
+        "p90Ms": 22.714269012212753,
+        "p95Ms": 25.30715399980545,
+        "p99Ms": 26.840231001377106,
+        "maxMs": 30.924385011196136
+      },
+      "native": {
+        "device": {
+          "thermalStatusEnd": 1,
+          "thermalStatusStart": 1,
+          "batteryTemperatureEndC": 34,
+          "batteryTemperatureStartC": 34,
+          "refreshRateHz": 90
+        },
+        "memory": {
+          "endJavaHeapKb": 7412,
+          "startJavaHeapKb": 8276,
+          "peakNativeHeapKb": 50394,
+          "endNativeHeapKb": 49370,
+          "peakJavaHeapKb": 9652,
+          "peakPssKb": 152707,
+          "endPssKb": 150535,
+          "startNativeHeapKb": 49934,
+          "startPssKb": 142374
+        },
+        "processCpuTimeMs": 36544,
+        "mainThread": {
+          "p99Ms": 33.225981,
+          "p95Ms": 22.184294,
+          "missedFrames": 565,
+          "p90Ms": 22.165886,
+          "maxMs": 33.235146,
+          "p50Ms": 22.144658,
+          "frameCount": 792,
+          "fps": 52.6625828321354
+        },
+        "wallTimeMs": 15039.140836,
+        "processCpuPercent": 242.99260442140857
+      },
+      "startedAtEpochMs": 1785758455484,
+      "completedAtEpochMs": 1785758470540
+    },
+    "gfxInfo": {
+      "totalFrames": 1014,
+      "jankyPercent": 51.18,
+      "p95Ms": 42,
+      "p99Ms": 44,
+      "missedVsync": 336
+    },
+    "thermalBefore": {
+      "status": 1,
+      "skinC": 38.6,
+      "batteryC": 34
+    },
+    "thermalAfter": {
+      "status": 1,
+      "skinC": 39.7,
+      "batteryC": 34.2
+    }
+  }
+]

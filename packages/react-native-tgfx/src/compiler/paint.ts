@@ -1,4 +1,14 @@
 import { resolveColor, type Color } from './colors'
+import {
+  fitCode,
+  imageHandle,
+  samplingCode,
+  tileCode,
+  type Fit,
+  type Sampling,
+  type SrcRect,
+  type TileMode,
+} from './image'
 import { transpileShader } from './sksl'
 import type { UniformValue } from '../types'
 import type { Vector } from './transform'
@@ -28,6 +38,14 @@ export interface GradientInput {
     | 'fractalNoise'
     | 'turbulence'
     | 'runtime'
+    | 'image'
+  /** Image shader: the native handle plus how it tiles and fits. */
+  image?: unknown
+  tx?: TileMode
+  ty?: TileMode
+  sampling?: Sampling
+  fit?: Fit
+  rect?: SrcRect
   start?: Vector
   end?: Vector
   center?: Vector
@@ -58,6 +76,7 @@ const SHADER_KIND = {
   fractalNoise: 4,
   turbulence: 5,
   runtime: 6,
+  image: 7,
 } as const
 
 const NO_SHADER = -1
@@ -99,6 +118,23 @@ function writeStops(w: SceneWriter, g: GradientInput): void {
 function writeGradient(w: SceneWriter, g: GradientInput): void {
   w.push(SHADER_KIND[g.kind])
   switch (g.kind) {
+    case 'image': {
+      w.push(imageHandle(g.image))
+      w.push(tileCode(g.tx))
+      w.push(tileCode(g.ty))
+      w.push(samplingCode(g.sampling))
+      if (g.rect == null) {
+        w.push(0)
+        return
+      }
+      w.push(1)
+      w.push(resolveNumber(g.rect.x))
+      w.push(resolveNumber(g.rect.y))
+      w.push(resolveNumber(g.rect.width))
+      w.push(resolveNumber(g.rect.height))
+      w.push(fitCode(g.fit))
+      return
+    }
     case 'runtime': {
       const { body, uniformNames, uniformSizes, childNames } = transpileShader(
         g.source ?? ''

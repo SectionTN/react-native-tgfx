@@ -33,6 +33,8 @@ target_sources(
   # Autolinking Setup
   ../nitrogen/generated/android/NitroTgfxOnLoad.cpp
   # Shared Nitrogen C++ sources
+  ../nitrogen/generated/shared/c++/HybridTgfxImageSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxImageFactorySpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridTgfxViewComponent.cpp
   # Android-specific Nitrogen C++ sources

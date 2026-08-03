@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react'
 import type { Color } from './compiler/colors'
+import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
+import type { TgfxImage } from './specs/TgfxImage.nitro'
 
 export type { Color } from './compiler/colors'
+export type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 export type { Transform, TransformOp, Vector } from './compiler/transform'
+export type { PixelFormat, TgfxImage } from './specs/TgfxImage.nitro'
 
 /**
  * A value that may be a plain value or a Reanimated `SharedValue` (anything with
@@ -67,24 +71,52 @@ export interface LineProps extends PaintProps {
 }
 
 export interface PathProps extends PaintProps {
-  /** SVG path data string. */
-  path: Animated<string>
+  /**
+   * SVG path data. Read once per commit: there is no path value slot, so a
+   * SharedValue here would never animate.
+   */
+  path: string
 }
 
-export interface ImageProps {
+export interface ImageProps extends PaintProps {
   x: Animated<number>
   y: Animated<number>
   width: Animated<number>
   height: Animated<number>
-  /** Base64-encoded (PNG/JPEG/WebP) image bytes — see `useImage`. */
-  image: Animated<string>
-  fit?: 'fill' | 'contain' | 'cover'
+  /** A native image handle from `useImage`. `null` draws nothing. */
+  image: TgfxImage | null
+  /** Defaults to `'contain'`. Same semantics as Skia's `fit`. */
+  fit?: Fit
+  /** Defaults to `'linear'`. Use `'mipmap'` for large images in small boxes. */
+  sampling?: Sampling
+  /** Source sub-rect, in image pixels — for sprite sheets. */
+  rect?: SrcRect
+}
+
+/**
+ * An image as the paint source for any shape: put it inside a `<Paint>` or
+ * directly under the shape, the way a gradient goes.
+ */
+export interface ImageShaderProps {
+  image: TgfxImage | null
+  /** How the image repeats outside its bounds. Both default to `'clamp'`. */
+  tx?: TileMode
+  ty?: TileMode
+  sampling?: Sampling
+  /** Destination rect the image is fitted into; omit to sample 1:1. */
+  rect?: SrcRect
+  /** How the image fits `rect`. Ignored without one. Defaults to `'contain'`. */
+  fit?: Fit
 }
 
 export interface TextProps extends PaintProps {
   x: Animated<number>
   y: Animated<number>
-  text: Animated<string>
+  /**
+   * Read once per commit: there is no text value slot, so a SharedValue here
+   * would never animate.
+   */
+  text: string
   fontSize?: Animated<number>
   fontFamily?: string
 }

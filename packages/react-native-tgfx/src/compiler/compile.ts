@@ -1,6 +1,16 @@
 import { NodeType, type Node } from '../reconciler/types'
 import type { Color } from './colors'
 import {
+  fitCode,
+  imageHandle,
+  samplingCode,
+  writeSrcRect,
+  type Fit,
+  type Sampling,
+  type SrcRect,
+  type TileMode,
+} from './image'
+import {
   mergePaint,
   NO_PAINT_PROPS,
   pickPaintInput,
@@ -119,6 +129,18 @@ function extractGradient(node: Node): GradientInput | undefined {
       endAngle: resolveNumber(p.end, 360),
       colors: (p.colors as Color[]) ?? [],
       positions: p.positions as number[] | undefined,
+    }
+  }
+  if (node.type === NodeType.ImageShader) {
+    return {
+      kind: 'image',
+      colors: [],
+      image: p.image,
+      tx: p.tx as TileMode | undefined,
+      ty: p.ty as TileMode | undefined,
+      sampling: p.sampling as Sampling | undefined,
+      fit: p.fit as Fit | undefined,
+      rect: p.rect as SrcRect | undefined,
     }
   }
   if (node.type === NodeType.Shader) {
@@ -242,13 +264,13 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
-      w.pushString(String(resolveValue(p.image) ?? ''))
-      w.push(
-        { fill: 0, contain: 1, cover: 2 }[(p.fit as string) ?? 'contain'] ?? 1
-      )
-      // Images draw with the default paint, so only the alpha is carried.
-      w.pushAnim(alpha, 1)
-      return
+      // An integer, not a payload: the string table no longer scales with the
+      // bytes on screen and a re-commit rehashes nothing.
+      w.push(imageHandle(p.image))
+      w.push(fitCode(p.fit))
+      w.push(samplingCode(p.sampling))
+      writeSrcRect(w, p.rect)
+      break
     case Kind.Text:
       w.pushAnim(p.x)
       w.pushAnim(p.y)

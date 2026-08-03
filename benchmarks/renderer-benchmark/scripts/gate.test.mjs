@@ -33,6 +33,37 @@ const withResult = (options, patch) => {
 }
 
 describe('rejectReason', () => {
+  const images = (proof) =>
+    withResult(
+      { renderer: 'tgfx-images' },
+      {
+        config: { renderer: 'tgfx-images' },
+        backendProof: proof,
+      }
+    )
+
+  test('the bitmap scene has to have had bitmaps to draw', () => {
+    expect(
+      rejectReason(
+        images({ textures: 4, texturePixels: 262144, imageNodes: 400 })
+      )
+    ).toBeNull()
+    // The failure this exists for: a full set of timings for an empty scene.
+    expect(
+      rejectReason(images({ textures: 0, texturePixels: 0, imageNodes: 0 }))
+    ).toMatch(/drew 0 textures/)
+    expect(rejectReason(images(undefined))).toMatch(/drew undefined textures/)
+    // The before side cannot report decoded dimensions — the base64 transport
+    // never exposed them to JS — so the count and the node census are what both
+    // sides are held to.
+    expect(
+      rejectReason(images({ textures: 4, imageNodes: 400 }))
+    ).toBeNull()
+    expect(
+      rejectReason(images({ textures: 4, texturePixels: 262144, imageNodes: 3 }))
+    ).toMatch(/3 image nodes/)
+  })
+
   test('accepts a clean run on both platforms', () => {
     expect(rejectReason(good())).toBeNull()
     expect(rejectReason(good({ platform: 'ios', thermalAfter: undefined }))).toBeNull()

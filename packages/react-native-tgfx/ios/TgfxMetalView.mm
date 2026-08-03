@@ -52,6 +52,12 @@
 
 - (void)commonInit {
   _renderer = std::make_unique<tgfxrn::TgfxRenderer>();
+  // The display link pauses itself after a few idle ticks, so a change nobody
+  // committed — the next camera frame behind a hardware-buffer handle, or an
+  // evicted image finishing its re-decode — has to unpause it or it is never
+  // drawn. Weak, because the renderer is owned by the view.
+  __weak __typeof(self) weakSelf = self;
+  _renderer->setWakeCallback([weakSelf] { [weakSelf wakeUp]; });
   _windowBound = false;
   _drawPending = false;
   _drawableWidth = 0;

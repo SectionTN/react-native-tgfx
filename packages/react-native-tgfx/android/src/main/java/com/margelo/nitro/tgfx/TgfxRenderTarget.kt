@@ -49,6 +49,12 @@ internal class TgfxRenderTarget {
   @Volatile private var nativePtr: Long = TgfxNative.create()
   private val handler = TgfxRenderThread.handler
 
+  init {
+    // After `handler` and before anything can draw: the native side posts
+    // through requestRender() for changes that arrive without a staging call.
+    withPtr { TgfxNative.setWakeTarget(it, this) }
+  }
+
   private inline fun withPtr(body: (Long) -> Unit) = synchronized(lock) {
     val ptr = nativePtr
     if (ptr != 0L) {

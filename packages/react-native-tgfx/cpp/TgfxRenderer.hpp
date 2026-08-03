@@ -8,6 +8,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -15,11 +16,13 @@
 #include <string>
 #include <vector>
 
+#include "ImageRegistry.hpp"
 #include "SceneHash.hpp"
 #include "SceneStrings.hpp"
 #include "TgfxScene.hpp"
 
 namespace tgfx {
+class Context;
 class Window;
 class Surface;
 }  // namespace tgfx
@@ -62,6 +65,13 @@ class TgfxRenderer {
   /// is created. Defaults to 1.0 (no scaling).
   void setPixelRatio(float ratio);
 
+  /// How this view's platform loop schedules a draw. Both loops are push-driven,
+  /// so a change nothing committed — a hardware buffer swapped for the next
+  /// camera frame, an evicted image finishing its re-decode — has to be pushed
+  /// too, or draw() is simply never called to notice it. Called from any thread;
+  /// it must only schedule, never draw inline. Released with the renderer.
+  void setWakeCallback(std::function<void()> wake);
+
   /// Render one frame. Returns false when nothing changed or no window is bound.
   bool draw();
 
@@ -93,12 +103,18 @@ class TgfxRenderer {
   std::vector<double> drawScene_;
   std::shared_ptr<const StringTable> drawStrings_;
   SceneRenderer scene_;
+  // The GPU cache limit currently applied, so it is set once rather than per
+  // frame. Cleared with the window, which is what invalidates the context.
+  size_t appliedCacheLimit_ = 0;
+  bool cacheLimitApplied_ = false;
   std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};
   std::atomic<float> pixelRatio_{1.0f};
   std::atomic<bool> opaque_{false};
   std::atomic<uint64_t> version_{1};
   uint64_t drawnVersion_{0};
+  /// Registration in the image registry's wake list, dropped in the destructor.
+  uint64_t wakeToken_ = 0;
 };
 
 }  // namespace tgfxrn

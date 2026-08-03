@@ -1,6 +1,7 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
 import React, { StrictMode, useEffect } from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
+import { nativeMocks } from '../testing/nativeMocks'
 ;(
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true
@@ -24,10 +25,7 @@ mock.module('react-native-reanimated', () => ({
   startMapper: () => 0,
   stopMapper: () => {},
 }))
-mock.module('react-native-nitro-modules', () => ({
-  callback: (fn: unknown) => fn,
-  getHostComponent: () => FakeView,
-}))
+nativeMocks.hostComponent = FakeView as never
 
 // Synchronous: a top-level await lets another test file's mock.module land first.
 const { Canvas } = require('./Canvas') as typeof import('./Canvas')
