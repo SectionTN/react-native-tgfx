@@ -104,13 +104,13 @@ The transpiler translates SkSL to GLSL ES. The gaps are deliberate:
 | declarations above `main` | yes | helpers, `const`, `struct` — see below |
 | declarations below `main` | **no** | throws at commit |
 | array uniforms | **no** | `uniform float w[5]` throws at commit |
-| `sample()` | **no** | no child shader support |
-| `uniform shader` | **no** | rejected at commit — see below |
+| `uniform shader` | yes | one shader child per declaration — see below |
+| `sample(child, coord)` | yes | the same thing as `child.eval(coord)` |
 
-`uniform shader`, an array uniform and anything declared after `main` all throw
-in JavaScript when the scene is encoded. A `sample()` call is spliced through
-untouched and fails later, in the GPU driver, at draw time — which usually
-surfaces as a shape that simply does not paint.
+An array uniform and anything declared after `main` throw in JavaScript when the
+scene is encoded, as does a `uniform shader` with no matching child. Anything the
+transpiler passes through that the GPU then rejects fails later, in the driver,
+at draw time — which usually surfaces as a shape that simply does not paint.
 
 When that happens the driver's message is logged under the tag `tgfx`, at ERROR
 level — logcat on Android, the Xcode console on iOS. The wording differs by
@@ -163,29 +163,130 @@ than being silently dropped:
 [tgfx] shader: declarations must come before main(), found after it: '...'
 ```
 
-## Child shaders are rejected, loudly
+## Child shaders
 
-SkSL found elsewhere often reads a source image through a child shader:
+A `uniform shader` is a slot for another shader. Declare one, pass a shader
+component as a child of `<Shader>`, and sample it with `child.eval(coord)` — or
+`sample(child, coord)`, which means exactly the same thing.
 
-```glsl
-uniform shader tex;
-half4 main(float2 xy) {
-  return tex.eval(xy);   // not supported
+Children are matched to declarations **by order**, not by name. One child per
+declaration, or the commit throws.
+
+Here is the whole file, with nothing left out. It reads a bundled image through a
+shader that pushes the red channel sideways, a chromatic-aberration split:
+
+```tsx
+import { Canvas, Fill, ImageShader, Shader, useImage } from 'react-native-tgfx'
+
+const source = `
+uniform shader img;
+uniform float uShift;
+
+half4 main(float2 pos) {
+  half4 base = img.eval(pos);
+  half4 red = img.eval(pos + float2(uShift, 0.0));
+  half4 blue = sample(img, pos - float2(uShift, 0.0));
+  return half4(red.r, base.g, blue.b, base.a);
+}
+`
+
+export function Aberration() {
+  const image = useImage(require('./photo.jpg'))
+  if (image == null) {
+    return null
+  }
+  return (
+    <Canvas style={{ width: 300, height: 200 }}>
+      <Fill>
+        <Shader source={source} uniforms={{ uShift: 4 }}>
+          <ImageShader
+            image={image}
+            fit="cover"
+            rect={{ x: 0, y: 0, width: 300, height: 200 }}
+          />
+        </Shader>
+      </Fill>
+    </Canvas>
+  )
 }
 ```
 
-This throws at compile time:
+`pos` is in layout points, the same units the shape is laid out in, and the child
+is sampled in that same space — so `img.eval(pos)` draws the child exactly where
+it would have drawn itself, and adding four to `pos.x` moves the sample four
+points to the right.
+
+A child is a shader, not an image slot: a gradient, a noise shader, or another
+`<Shader>` all work, and nest. Again in full:
+
+```tsx
+import { Canvas, Fill, LinearGradient, Shader } from 'react-native-tgfx'
+
+const banded = `
+uniform shader ramp;
+
+half4 main(float2 pos) {
+  half4 c = sample(ramp, pos);
+  float band = step(0.5, fract(pos.y / 12.0));
+  return half4(c.rgb * half(0.45 + 0.55 * band), c.a);
+}
+`
+
+export function Banded() {
+  return (
+    <Canvas style={{ width: 300, height: 200 }}>
+      <Fill>
+        <Shader source={banded}>
+          <LinearGradient
+            start={{ x: 0, y: 0 }}
+            end={{ x: 300, y: 0 }}
+            colors={['#2b6cff', '#ff3b6b']}
+          />
+        </Shader>
+      </Fill>
+    </Canvas>
+  )
+}
+```
+
+That paints the blue-to-red ramp across the canvas, dimmed to 45% in 6-point
+horizontal bands repeating every 12 points.
+
+Getting the count wrong throws in JavaScript at commit time rather than painting
+nothing on device:
 
 ```
-[tgfx] shader: 'uniform shader tex' is not supported yet — there is no native
-child processor to bind it to
+[tgfx] shader: the source declares 1 'uniform shader' (img) but 0 shader children
+were given — pass one shader child per declaration, in order
 ```
 
-The refusal is deliberate. The engine's runtime shader carries float uniforms
-only, with no sampler slot, so a body calling `tex.eval` would compile to GLSL
-referencing a function nothing defines — and fail on the device, at draw time,
-with a message pointing nowhere useful. Failing in JavaScript at commit time is
-the better trade.
+A child may only be used through `eval`/`sample`. Naming it anywhere else throws
+too, because there is no value behind the name to pass around.
+
+<Owned by="native">
+Each child becomes a fragment processor registered on the runtime shader's own
+processor, and the engine emits one wrapper function per child at file scope,
+ahead of your source, so `main` and your helpers can both call it. The name is
+mangled per child *and* per processor, so neither two children of one shader nor
+two shaders in one scene — nor a shader nested inside another — can collide.
+
+The bridge between your coordinates and the child's is a matrix uniform, uploaded
+per draw. It has to be: a texture child samples in normalised texture space, and
+the normalisation is only known once the texture is resolved. Nothing is
+recompiled for it, and nothing is copied — a child backed by an image samples that
+image's existing texture, including a multi-plane YUV hardware buffer, which is
+converted by the sampler inside the fragment shader rather than by a conversion
+pass.
+
+A child whose source cannot change between frames is built once, when the scene
+is committed, and costs nothing per frame. Only a child that genuinely moves —
+an image on a hardware-buffer handle — rebuilds, and only that shader rebuilds.
+
+One gap, in tgfx rather than here: a child backed by a **multi-plane YUV**
+hardware buffer only samples under the default `tx`/`ty` of `"clamp"`. Ask for
+`"repeat"`, `"mirror"` or `"decal"` on such a child and it paints transparent
+instead of tiling. An RGBA image child tiles under every mode.
+</Owned>
 
 ## Performance notes
 

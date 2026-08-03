@@ -25,13 +25,17 @@
 #include <vector>
 
 #include "FontRegistry.hpp"
+#include "ImageRegistry.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/Font.h"
+#include "tgfx/core/ImageCodec.h"
 #include "tgfx/core/ImageInfo.h"
 #include "tgfx/core/Paint.h"
+#include "tgfx/core/Pixmap.h"
 #include "tgfx/core/Surface.h"
+#include "tgfx/gpu/Context.h"
 #include "tgfx/gpu/Device.h"
 #include "tgfx/gpu/metal/MetalDevice.h"
 
@@ -153,6 +157,169 @@ size_t measure(bool filters, size_t* drawn) {
     best = std::min(best, frameAllocations(renderer, true, drawn));
   }
   return best;
+}
+
+// ---------------- child shaders ----------------
+//
+// The claim: a runtime shader whose `uniform shader` children are all settled
+// at setScene costs no more per frame than one with no children at all. Only a
+// child that genuinely moves between frames -- a hardware-buffer handle, the
+// camera path of #132 -- pays for a rebuild, and it is gated on exactly that.
+//
+// The GPU side is measured separately: a per-frame *heap* allocation would show
+// above, but a per-frame *texture* would not, and a texture per frame is what
+// "zero-copy" rules out. Context::memoryUsage() over N frames is the probe.
+
+constexpr int kShaderNodes = 50;
+
+/// One <Shader> per node over a rect, with an animated alpha so applyPaint runs
+/// every frame. `childHandle` of 0 writes no child; `animatedUniform` puts the
+/// shader's one uniform on a slot, which is the existing per-frame rebuild.
+/// `bare` drops the runtime shader entirely and paints the image directly, which
+/// is what a child costs when it is not a child.
+std::vector<double> childShaderScene(int32_t childHandle, bool animatedUniform,
+                                     bool bare = false) {
+  Writer w;
+  w.push(kShaderNodes);
+  for (int i = 0; i < kShaderNodes; i++) {
+    w.push(1);  // Rect
+    w.pushAnim((i * 7) % 200);
+    w.pushAnim((i * 13) % 200);
+    w.pushAnim(24);
+    w.pushAnim(24);
+    w.push(0xffffffff);
+    w.push(2);
+    w.pushAnim(1);
+    w.push(0);
+    w.push(0);
+    w.pushAnim(1, 0);  // animated alpha: applyPaint runs every frame
+    if (bare) {
+      w.push(7);  // <ImageShader> paint, no runtime shader above it
+      w.push(childHandle);
+      w.push(0);
+      w.push(0);
+      w.push(1);
+      w.push(0);
+      continue;
+    }
+    w.push(6);  // runtime shader
+    w.push(0);         // body
+    w.push(1);         // empty preamble
+    w.push(0);         // no functions
+    w.push(1);         // one uniform
+    w.push(2);         // "uLevel"
+    w.push(1);
+    w.pushAnim(0.5, animatedUniform ? 0 : -1);
+    if (childHandle == 0) {
+      w.push(0);  // no children
+    } else {
+      w.push(1);
+      w.push(7);  // <ImageShader> child
+      w.push(childHandle);
+      w.push(0);  // clamp
+      w.push(0);  // clamp
+      w.push(1);  // linear
+      w.push(0);  // no fit rect
+    }
+  }
+  return w.finish();
+}
+
+size_t measureShader(const std::vector<double>& words,
+                     const std::vector<std::string>& strings, size_t* drawn) {
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(words, strings);
+  for (int i = 0; i < 3; i++) {
+    frameAllocations(renderer, false, drawn);
+  }
+  size_t best = SIZE_MAX;
+  for (int i = 0; i < 5; i++) {
+    best = std::min(best, frameAllocations(renderer, true, drawn));
+  }
+  return best;
+}
+
+/// Bytes the tgfx resource cache holds after `frames` more draws of an
+/// already-compiled scene. A texture materialised per frame moves this; a
+/// sampler reading the texture that is already there does not.
+size_t gpuBytesAfter(tgfxrn::SceneRenderer& renderer, int frames, size_t* drawn) {
+  for (int i = 0; i < frames; i++) {
+    frameAllocations(renderer, false, drawn);
+  }
+  auto* context = device()->lockContext();
+  size_t bytes = context->memoryUsage();
+  device()->unlock();
+  return bytes;
+}
+
+/// A 4x4 solid image, registered the way the TgfxImage hybrid object does.
+tgfxrn::ImageHandle registerSolid() {
+  std::vector<uint8_t> pixels(4 * 4 * 4, 0);
+  for (size_t at = 0; at < pixels.size(); at += 4) {
+    pixels[at] = 40;
+    pixels[at + 1] = 160;
+    pixels[at + 2] = 220;
+    pixels[at + 3] = 255;
+  }
+  auto info = tgfx::ImageInfo::Make(4, 4, tgfx::ColorType::RGBA_8888,
+                                    tgfx::AlphaType::Premultiplied);
+  tgfx::Pixmap pixmap(info, pixels.data());
+  auto data = tgfx::ImageCodec::Encode(pixmap, tgfx::EncodedFormat::PNG, 100);
+  if (data == nullptr) {
+    return {};
+  }
+  return tgfxrn::ImageRegistry::instance().add(tgfx::ImageCodec::MakeFrom(std::move(data)));
+}
+
+bool reportChildShaders() {
+  const std::vector<std::string> strings = {"return TGFX_CHILD_0(fragCoord) * uLevel;", "",
+                                            "uLevel"};
+  const std::vector<std::string> childless = {"return vec4(uLevel, 0.2, 0.4, 1.0);", "",
+                                              "uLevel"};
+  auto image = registerSolid();
+  if (image.handle == 0) {
+    std::printf("could not register the bench image\n");
+    return false;
+  }
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto external = registry.addExternal(registry.acquire(image.handle));
+
+  size_t bareDrawn = 0;
+  size_t bare = measureShader(childShaderScene(image.handle, false, true), strings, &bareDrawn);
+  size_t noChildDrawn = 0, staticDrawn = 0, dynamicDrawn = 0, animatedDrawn = 0;
+  size_t noChild = measureShader(childShaderScene(0, false), childless, &noChildDrawn);
+  size_t staticChild = measureShader(childShaderScene(image.handle, false), strings, &staticDrawn);
+  size_t dynamicChild =
+      measureShader(childShaderScene(external.handle, false), strings, &dynamicDrawn);
+  size_t animated = measureShader(childShaderScene(image.handle, true), strings, &animatedDrawn);
+  if (bareDrawn == 0 || noChildDrawn == 0 || staticDrawn == 0 || dynamicDrawn == 0 ||
+      animatedDrawn == 0) {
+    std::printf("nothing was drawn (%zu / %zu / %zu / %zu / %zu opaque pixels)\n", bareDrawn,
+                noChildDrawn, staticDrawn, dynamicDrawn, animatedDrawn);
+    return false;
+  }
+  std::printf("%d animated-alpha nodes, allocations during render():\n", kShaderNodes);
+  std::printf("  <ImageShader>, no shader     %zu  (%.2f per node)\n", bare,
+              double(bare) / kShaderNodes);
+  std::printf("  <Shader>, no child           %zu  (%.2f per node)\n", noChild,
+              double(noChild) / kShaderNodes);
+  std::printf("  static <ImageShader> child   %zu  (%.2f per node)\n", staticChild,
+              double(staticChild) / kShaderNodes);
+  std::printf("  hardware-buffer child        %zu  (%.2f per node)\n", dynamicChild,
+              double(dynamicChild) / kShaderNodes);
+  std::printf("  animated uniform             %zu  (%.2f per node)\n", animated,
+              double(animated) / kShaderNodes);
+
+  // The GPU probe, on the child that resolves per frame: the texture behind the
+  // handle is imported once, and sampling it as a child must not upload another.
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(childShaderScene(external.handle, false), strings);
+  size_t warm = gpuBytesAfter(renderer, 5, &dynamicDrawn);
+  size_t later = gpuBytesAfter(renderer, 60, &dynamicDrawn);
+  std::printf("  GPU bytes after 5 frames %zu, after 65 %zu%s\n", warm, later,
+              later > warm ? "  <-- GREW" : "");
+  registry.remove(external.handle);
+  return dynamicDrawn != 0 && later <= warm;
 }
 
 // ---------------- text ----------------
@@ -312,6 +479,10 @@ int main() {
   std::printf("  colour matrix + blend %zu  (%.2f per node)\n", filtered,
               double(filtered) / kNodes);
   std::printf("  filters built at compile: %zu\n", tgfxrn::filterBuildCount());
+  std::printf("\n");
+  if (!reportChildShaders()) {
+    return 1;
+  }
   std::printf("\n");
   return reportText() ? 0 : 1;
 }

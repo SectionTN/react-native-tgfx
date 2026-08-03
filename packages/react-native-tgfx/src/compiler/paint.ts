@@ -76,6 +76,8 @@ export interface GradientInput {
   /** Runtime shader source (SkSL subset) and its uniform values. */
   source?: string
   uniforms?: Record<string, UniformValue>
+  /** One shader per `uniform shader` the source declares, in declaration order. */
+  children?: GradientInput[]
 }
 
 const CAPS = { butt: 0, round: 1, square: 2 } as const
@@ -157,11 +159,18 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
         uniformSizes,
         childNames,
       } = transpileShader(g.source ?? '')
-      // The body would carry a `TGFX_CHILD_n` call that no native code declares,
-      // so the GLSL would fail to compile on device. Fail loudly here instead.
-      if (childNames.length > 0) {
+      const children = g.children ?? []
+      // A missing child leaves `TGFX_CHILD_n` bound to nothing, and the node
+      // would silently not paint. Fail here, where the source is in view.
+      if (children.length !== childNames.length) {
         throw new Error(
-          `[tgfx] shader: 'uniform shader ${childNames[0]}' is not supported yet — there is no native child processor to bind it to`
+          `[tgfx] shader: the source declares ${
+            childNames.length
+          } 'uniform shader' (${childNames.join(', ') || 'none'}) but ${
+            children.length
+          } shader ${
+            children.length === 1 ? 'child was' : 'children were'
+          } given — pass one shader child per declaration, in order`
         )
       }
       w.pushString(body)
@@ -182,6 +191,10 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
         for (let i = 0; i < size; i++) {
           w.pushAnim(values[i] ?? 0)
         }
+      }
+      w.push(children.length)
+      for (const child of children) {
+        writeGradient(w, child)
       }
       return
     }

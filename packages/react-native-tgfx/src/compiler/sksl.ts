@@ -4,17 +4,15 @@
  * On Metal that GLSL is cross-compiled to MSL by tgfx, so one source works on
  * both platforms.
  *
- * Supported: `uniform` declarations, SkSL's `half*`/`float*` type spellings,
- * top-level declarations above `main` (helpers, `const`, `struct`), and a `main`
- * taking the fragment position. Not supported: `sample()`, child shaders,
+ * Supported: `uniform` declarations including `uniform shader`, SkSL's
+ * `half*`/`float*` type spellings, top-level declarations above `main` (helpers,
+ * `const`, `struct`), and a `main` taking the fragment position. Not supported:
  * matrices beyond 4x4, and array uniforms.
  *
- * `uniform shader` is parsed here and its `name.eval(coord)` rewritten to
- * `TGFX_CHILD_<index>(coord)`, but nothing native consumes that: tgfx's
- * `RuntimeShaderSource` is a body plus scalar uniforms with no child slot at
- * all. So a source declaring a child is rejected at encode time in `paint.ts`,
- * and this half of the transpiler is groundwork for the PR that adds the native
- * child processor. Sources that declare no child transpile exactly as before.
+ * A `uniform shader` becomes a child slot: `name.eval(coord)` and the equivalent
+ * `sample(name, coord)` are both rewritten to `TGFX_CHILD_<index>(coord)`, which
+ * native emits as a function wrapping the child fragment processor bound to that
+ * index. `paint.ts` writes one shader payload per slot, in declaration order.
  */
 
 /** Cached and shared between callers, so every field is read-only. */
@@ -241,17 +239,23 @@ function transpile(source: string): TranspiledShader {
 
   let glsl = toGlslTypes(`${bind}${body}`).trim()
   let functions = toGlslTypes(chunks.join('')).trim()
-  // `name.eval(coord)` -> `TGFX_CHILD_0(coord)`. Done after the type rewrite so
-  // a child named like a type spelling cannot be mangled.
+  // `name.eval(coord)` and its Skia-flavoured spelling `sample(name, coord)`
+  // both become `TGFX_CHILD_0(coord)`. Done after the type rewrite so a child
+  // named like a type spelling cannot be mangled.
   childNames.forEach((name, index) => {
-    const call = new RegExp(`\\b${name}\\s*\\.\\s*eval\\s*\\(`, 'g')
-    glsl = glsl.replace(call, `TGFX_CHILD_${index}(`)
-    functions = functions.replace(call, `TGFX_CHILD_${index}(`)
+    const calls = [
+      new RegExp(`\\b${name}\\s*\\.\\s*eval\\s*\\(`, 'g'),
+      new RegExp(`\\bsample\\s*\\(\\s*${name}\\s*,\\s*`, 'g'),
+    ]
+    for (const call of calls) {
+      glsl = glsl.replace(call, `TGFX_CHILD_${index}(`)
+      functions = functions.replace(call, `TGFX_CHILD_${index}(`)
+    }
   })
   for (const name of childNames) {
     if (new RegExp(`\\b${name}\\b`).test(glsl + functions)) {
       throw new Error(
-        `[tgfx] shader: child '${name}' may only be used as '${name}.eval(coord)'`
+        `[tgfx] shader: child '${name}' may only be used as '${name}.eval(coord)' or 'sample(${name}, coord)'`
       )
     }
   }

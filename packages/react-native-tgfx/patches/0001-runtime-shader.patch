@@ -1,5 +1,5 @@
 diff --git a/include/tgfx/core/Shader.h b/include/tgfx/core/Shader.h
-index dbb8682..05431e1 100644
+index dbb86828..b5083475 100644
 --- a/include/tgfx/core/Shader.h
 +++ b/include/tgfx/core/Shader.h
 @@ -19,6 +19,8 @@
@@ -11,10 +11,12 @@ index dbb8682..05431e1 100644
  #include "tgfx/core/BlendMode.h"
  #include "tgfx/core/Color.h"
  #include "tgfx/core/ColorFilter.h"
-@@ -29,6 +31,35 @@
+@@ -29,6 +31,43 @@
  #include "tgfx/core/TileMode.h"
  
  namespace tgfx {
++class Shader;
++
 +/**
 + * A uniform for a runtime shader: a name and 1-4 float components.
 + */
@@ -42,12 +44,18 @@ index dbb8682..05431e1 100644
 +   * declare a helper of the same name.
 +   */
 +  std::vector<std::string> functionNames;
++  /**
++   * The `uniform shader` children, in declaration order. `body` samples child i
++   * by calling TGFX_CHILD_<i>(coord), where coord is in the runtime shader's own
++   * local space — the same space `fragCoord` is in.
++   */
++  std::vector<std::shared_ptr<Shader>> children;
 +};
 +
  class FragmentProcessor;
  
  /**
-@@ -137,6 +168,14 @@ class Shader {
+@@ -137,6 +176,15 @@ class Shader {
     * @param tileSize        If non-null and non-empty, the noise will tile seamlessly with the given
     *                        size.
     */
@@ -56,13 +64,14 @@ index dbb8682..05431e1 100644
 +   * nullptr if the source is empty.
 +   */
 +  static std::shared_ptr<Shader> MakeRuntimeShader(
-+      std::string body, std::vector<RuntimeShaderUniform> uniforms = {},
-+      std::string preamble = {}, std::vector<std::string> functionNames = {});
++      std::string body, std::vector<RuntimeShaderUniform> uniforms = {}, std::string preamble = {},
++      std::vector<std::string> functionNames = {},
++      std::vector<std::shared_ptr<Shader>> children = {});
 +
    static std::shared_ptr<Shader> MakeFractalNoise(float baseFrequencyX, float baseFrequencyY,
                                                    int numOctaves, float seed,
                                                    const ISize* tileSize = nullptr);
-@@ -196,7 +235,7 @@ class Shader {
+@@ -196,7 +244,7 @@ class Shader {
    std::shared_ptr<Shader> makeWithColorFilter(std::shared_ptr<ColorFilter> colorFilter) const;
  
   protected:
@@ -73,10 +82,10 @@ index dbb8682..05431e1 100644
     * Returns the type of this shader.
 diff --git a/src/core/shaders/RuntimeShader.cpp b/src/core/shaders/RuntimeShader.cpp
 new file mode 100644
-index 0000000..685d4ae
+index 00000000..d9f7a78c
 --- /dev/null
 +++ b/src/core/shaders/RuntimeShader.cpp
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,51 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  A Shader that runs user-supplied fragment source.
@@ -91,15 +100,24 @@ index 0000000..685d4ae
 +std::shared_ptr<Shader> Shader::MakeRuntimeShader(std::string body,
 +                                                  std::vector<RuntimeShaderUniform> uniforms,
 +                                                  std::string preamble,
-+                                                  std::vector<std::string> functionNames) {
++                                                  std::vector<std::string> functionNames,
++                                                  std::vector<std::shared_ptr<Shader>> children) {
 +  if (body.empty()) {
 +    return nullptr;
++  }
++  for (const auto& child : children) {
++    // A null child leaves TGFX_CHILD_<i> undefined, so the program would not
++    // compile. Refusing the shader here fails where the caller can see it.
++    if (child == nullptr) {
++      return nullptr;
++    }
 +  }
 +  auto source = std::make_shared<RuntimeShaderSource>();
 +  source->body = std::move(body);
 +  source->uniforms = std::move(uniforms);
 +  source->preamble = std::move(preamble);
 +  source->functionNames = std::move(functionNames);
++  source->children = std::move(children);
 +  auto shader = std::make_shared<RuntimeShader>(std::move(source));
 +  shader->weakThis = shader;
 +  return shader;
@@ -114,14 +132,14 @@ index 0000000..685d4ae
 +}
 +
 +PlacementPtr<FragmentProcessor> RuntimeShader::asFragmentProcessor(
-+    const FPArgs& args, const Matrix* uvMatrix, const std::shared_ptr<ColorSpace>&) const {
-+  return RuntimeShaderProcessor::Make(args.context->drawingAllocator(),
-+                                      uvMatrix ? *uvMatrix : Matrix::I(), source);
++    const FPArgs& args, const Matrix* uvMatrix,
++    const std::shared_ptr<ColorSpace>& dstColorSpace) const {
++  return RuntimeShaderProcessor::Make(args, uvMatrix, source, dstColorSpace);
 +}
 +}  // namespace tgfx
 diff --git a/src/core/shaders/RuntimeShader.h b/src/core/shaders/RuntimeShader.h
 new file mode 100644
-index 0000000..cb9d1a0
+index 00000000..cb9d1a04
 --- /dev/null
 +++ b/src/core/shaders/RuntimeShader.h
 @@ -0,0 +1,31 @@
@@ -156,12 +174,63 @@ index 0000000..cb9d1a0
 +  std::shared_ptr<RuntimeShaderSource> source;
 +};
 +}  // namespace tgfx
+diff --git a/src/gpu/ShaderBuilder.cpp b/src/gpu/ShaderBuilder.cpp
+index 1e0dc637..7a14dd73 100644
+--- a/src/gpu/ShaderBuilder.cpp
++++ b/src/gpu/ShaderBuilder.cpp
+@@ -81,6 +81,21 @@ void ShaderBuilder::addFunction(const std::string& str) {
+   shaderStrings[Type::Functions] += str;
+ }
+ 
++size_t ShaderBuilder::codeMark() const {
++  return shaderStrings[Type::Code].size();
++}
++
++std::string ShaderBuilder::takeCodeSince(size_t mark) {
++  auto& code = shaderStrings[Type::Code];
++  if (mark >= code.size()) {
++    return "";
++  }
++  auto taken = code.substr(mark);
++  code.resize(mark);
++  atLineStart = code.empty() || code[code.size() - 1] == '\n';
++  return taken;
++}
++
+ std::string ShaderBuilder::getMangledFunctionName(const char* baseName) {
+   return programBuilder->nameVariable(baseName);
+ }
+diff --git a/src/gpu/ShaderBuilder.h b/src/gpu/ShaderBuilder.h
+index 7de5dc6b..58726481 100644
+--- a/src/gpu/ShaderBuilder.h
++++ b/src/gpu/ShaderBuilder.h
+@@ -69,6 +69,20 @@ class ShaderBuilder {
+ 
+   void addFunction(const std::string& str);
+ 
++  /**
++   * The current end of the code section, for takeCodeSince().
++   */
++  size_t codeMark() const;
++
++  /**
++   * Removes and returns everything appended to the code section since `mark`.
++   * Lets a processor lift statements a child emitted into a file-scope function,
++   * which is what a runtime shader's `child.eval(coord)` needs: the child is
++   * emitted once, as the body of a function the author's source may call from
++   * anywhere. GLSL ES has no nested functions, so there is no other way.
++   */
++  std::string takeCodeSince(size_t mark);
++
+   std::string getMangledFunctionName(const char* baseName);
+ 
+   /**
 diff --git a/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.cpp b/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.cpp
 new file mode 100644
-index 0000000..e7310d8
+index 00000000..b55c7c96
 --- /dev/null
 +++ b/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.cpp
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,210 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  GLSL backend for RuntimeShaderProcessor.
@@ -169,17 +238,30 @@ index 0000000..e7310d8
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +
 +#include "GLSLRuntimeShaderProcessor.h"
-+
 +#include <array>
 +#include <cctype>
++#include <string>
 +
 +namespace tgfx {
 +PlacementPtr<RuntimeShaderProcessor> RuntimeShaderProcessor::Make(
-+    BlockAllocator* allocator, Matrix matrix, std::shared_ptr<RuntimeShaderSource> source) {
++    const FPArgs& args, const Matrix* uvMatrix, std::shared_ptr<RuntimeShaderSource> source,
++    const std::shared_ptr<ColorSpace>& dstColorSpace) {
 +  if (source == nullptr) {
 +    return nullptr;
 +  }
-+  return allocator->make<GLSLRuntimeShaderProcessor>(matrix, std::move(source));
++  auto processor = args.context->drawingAllocator()->make<GLSLRuntimeShaderProcessor>(
++      uvMatrix ? *uvMatrix : Matrix::I(), source);
++  // Registered straight onto the processor, after its coord transform as
++  // registerChildProcessor() requires, so no intermediate vector is allocated on
++  // the draw path.
++  for (const auto& child : source->children) {
++    auto childProcessor = FragmentProcessor::Make(child, args, uvMatrix, dstColorSpace);
++    if (childProcessor == nullptr) {
++      return nullptr;
++    }
++    processor->registerChildProcessor(std::move(childProcessor));
++  }
++  return processor;
 +}
 +
 +GLSLRuntimeShaderProcessor::GLSLRuntimeShaderProcessor(Matrix matrix,
@@ -236,6 +318,27 @@ index 0000000..e7310d8
 +  }
 +}
 +
++/// The mat3 mapping a coordinate in the runtime shader's local space into the
++/// space child `index` samples in. One per child, uploaded by onSetData.
++static std::string ChildMatrixName(size_t index) {
++  return "ChildMatrix" + std::to_string(index);
++}
++
++/// The first coord transform in `processor`'s subtree, in pre-order: the one
++/// mapping local coordinates into the space the child samples in. Null when the
++/// child reads no coordinates at all, where the matrix goes unused.
++static const CoordTransform* FirstCoordTransform(const FragmentProcessor* processor) {
++  if (processor->numCoordTransforms() > 0) {
++    return processor->coordTransform(0);
++  }
++  for (size_t i = 0; i < processor->numChildProcessors(); i++) {
++    if (auto* found = FirstCoordTransform(processor->childProcessor(i))) {
++      return found;
++    }
++  }
++  return nullptr;
++}
++
 +void GLSLRuntimeShaderProcessor::emitCode(EmitArgs& args) const {
 +  auto fragBuilder = args.fragBuilder;
 +  auto uniformHandler = args.uniformHandler;
@@ -257,14 +360,39 @@ index 0000000..e7310d8
 +    RenameIdentifier(&preamble, name, mangled);
 +    RenameIdentifier(&body, name, mangled);
 +  }
++  // One wrapper per child, emitted ahead of the preamble and the entry point so
++  // both may call it. The child's own code goes in the wrapper's body: GLSL ES
++  // has no nested functions, and `child.eval(coord)` may appear anywhere.
++  for (size_t i = 0; i < numChildProcessors(); i++) {
++    auto matrixName = uniformHandler->addUniform(ChildMatrixName(i), UniformFormat::Float3x3,
++                                                 ShaderStage::Fragment);
++    // The index belongs in the base name: nameVariable() mangles per processor,
++    // not per call, so every child of one processor would otherwise be handed
++    // the same name and the second wrapper would redefine the first.
++    auto childName = fragBuilder->getMangledFunctionName(("tgfxChild" + std::to_string(i)).c_str());
++    std::string childColor = "tgfxChildColor";
++    auto mark = fragBuilder->codeMark();
++    emitChild(i, &childColor, args, [](std::string_view) { return std::string("tgfxChildCoord"); });
++    auto emitted = fragBuilder->takeCodeSince(mark);
++    std::string wrapper = "vec4 " + childName + "(highp vec2 tgfxLocalCoord) {\n";
++    wrapper +=
++        "highp vec3 tgfxChildHomogeneous = " + matrixName + " * vec3(tgfxLocalCoord, 1.0);\n";
++    wrapper += "highp vec2 tgfxChildCoord = tgfxChildHomogeneous.xy / tgfxChildHomogeneous.z;\n";
++    wrapper += emitted;
++    wrapper += "return " + childColor + ";\n}";
++    fragBuilder->addFunction(wrapper);
++    auto placeholder = "TGFX_CHILD_" + std::to_string(i);
++    RenameIdentifier(&preamble, placeholder, childName);
++    RenameIdentifier(&body, placeholder, childName);
++  }
 +  if (!preamble.empty()) {
 +    fragBuilder->addFunction(preamble);
 +  }
 +  std::string function = "vec4 " + functionName + "(vec2 fragCoord) {\n";
 +  for (size_t i = 0; i < names.size(); i++) {
 +    const auto& uniform = source->uniforms[i];
-+    function += std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] +
-+                ";\n";
++    function +=
++        std::string(TypeOf(uniform.values.size())) + " " + uniform.name + " = " + names[i] + ";\n";
 +  }
 +  function += body + "\n}";
 +  fragBuilder->addFunction(function);
@@ -274,6 +402,22 @@ index 0000000..e7310d8
 +}
 +
 +void GLSLRuntimeShaderProcessor::onSetData(UniformData*, UniformData* fragmentUniformData) const {
++  if (auto childCount = numChildProcessors(); childCount > 0) {
++    // A child was built against the same uvMatrix as this processor, so what
++    // maps one coordinate space to the other is whatever the child added on top
++    // — its own local matrix and, for a texture, the normalisation only known
++    // once the texture is resolved. Hence a uniform rather than a constant.
++    Matrix fromLocal = Matrix::I();
++    if (!coordTransform.getTotalMatrix().invert(&fromLocal)) {
++      fromLocal = Matrix::I();
++    }
++    for (size_t i = 0; i < childCount; i++) {
++      auto* transform = FirstCoordTransform(childProcessor(i));
++      auto matrix = transform != nullptr ? transform->getTotalMatrix() : Matrix::I();
++      matrix.preConcat(fromLocal);
++      fragmentUniformData->setData(ChildMatrixName(i), matrix);
++    }
++  }
 +  for (const auto& uniform : source->uniforms) {
 +    switch (uniform.values.size()) {
 +      case 2:
@@ -299,7 +443,7 @@ index 0000000..e7310d8
 +}  // namespace tgfx
 diff --git a/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.h b/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.h
 new file mode 100644
-index 0000000..7290c43
+index 00000000..7290c439
 --- /dev/null
 +++ b/src/gpu/glsl/processors/GLSLRuntimeShaderProcessor.h
 @@ -0,0 +1,21 @@
@@ -326,10 +470,10 @@ index 0000000..7290c43
 +}  // namespace tgfx
 diff --git a/src/gpu/processors/RuntimeShaderProcessor.cpp b/src/gpu/processors/RuntimeShaderProcessor.cpp
 new file mode 100644
-index 0000000..7bde1dc
+index 00000000..04b20200
 --- /dev/null
 +++ b/src/gpu/processors/RuntimeShaderProcessor.cpp
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,35 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  A fragment processor that runs user-supplied shader source.
@@ -356,6 +500,8 @@ index 0000000..7bde1dc
 +    bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(name)));
 +  }
 +  bytesKey->write(static_cast<uint32_t>(source->functionNames.size()));
++  // One wrapper function is emitted per child, so the count shapes the program.
++  bytesKey->write(static_cast<uint32_t>(numChildProcessors()));
 +  bytesKey->write(static_cast<uint32_t>(source->uniforms.size()));
 +  for (const auto& uniform : source->uniforms) {
 +    bytesKey->write(static_cast<uint32_t>(std::hash<std::string>{}(uniform.name)));
@@ -365,10 +511,10 @@ index 0000000..7bde1dc
 +}  // namespace tgfx
 diff --git a/src/gpu/processors/RuntimeShaderProcessor.h b/src/gpu/processors/RuntimeShaderProcessor.h
 new file mode 100644
-index 0000000..900682b
+index 00000000..a9a75bc9
 --- /dev/null
 +++ b/src/gpu/processors/RuntimeShaderProcessor.h
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,40 @@
 +/////////////////////////////////////////////////////////////////////////////////////////////////
 +//
 +//  A fragment processor that runs user-supplied shader source.
@@ -385,8 +531,14 @@ index 0000000..900682b
 +namespace tgfx {
 +class RuntimeShaderProcessor : public FragmentProcessor {
 + public:
-+  static PlacementPtr<RuntimeShaderProcessor> Make(BlockAllocator* allocator, Matrix matrix,
-+                                                   std::shared_ptr<RuntimeShaderSource> source);
++  /// Builds and registers one child processor per `source->children`, against
++  /// the same uvMatrix this processor gets, so the two coordinate spaces differ
++  /// only by what the child itself adds. Returns nullptr if a child cannot be
++  /// built: its wrapper function would be missing and the program would not
++  /// compile.
++  static PlacementPtr<RuntimeShaderProcessor> Make(
++      const FPArgs& args, const Matrix* uvMatrix, std::shared_ptr<RuntimeShaderSource> source,
++      const std::shared_ptr<ColorSpace>& dstColorSpace);
 +
 +  std::string name() const override {
 +    return "RuntimeShaderProcessor";

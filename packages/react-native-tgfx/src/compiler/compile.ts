@@ -147,11 +147,20 @@ function extractGradient(node: Node): GradientInput | undefined {
     }
   }
   if (node.type === NodeType.Shader) {
+    // Shader children of a <Shader> fill its `uniform shader` slots, in order.
+    const children: GradientInput[] = []
+    for (const child of node.children) {
+      const shader = extractGradient(child)
+      if (shader != null) {
+        children.push(shader)
+      }
+    }
     return {
       kind: 'runtime',
       colors: [],
       source: String(resolveValue(p.source) ?? ''),
       uniforms: (p.uniforms as Record<string, number | number[]>) ?? {},
+      children,
     }
   }
   if (

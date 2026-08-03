@@ -37,7 +37,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 11;
+inline constexpr double kSceneVersion = 12;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -64,20 +64,6 @@ struct AnimF {
   }
 };
 
-/// A runtime shader with at least one uniform on an animation slot, so the
-/// shader has to be rebuilt per frame. Cheap: tgfx keys the compiled program on
-/// the source and the uniform names/sizes, never on the values.
-struct RuntimeShaderCmd {
-  std::string body;
-  std::string preamble;
-  std::vector<std::string> functionNames;
-  std::vector<tgfx::RuntimeShaderUniform> uniforms;
-  /// One per float across `uniforms`, in order.
-  std::vector<AnimF> slots;
-
-  std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
-};
-
 /// An <ImageShader> whose handle is a hardware-buffer import. The image behind
 /// such a handle changes between frames with no re-commit, so the shader has to
 /// be rebuilt per frame from the handle rather than baked at setScene.
@@ -91,6 +77,43 @@ struct ImageShaderCmd {
   Fit fit = Fit::Contain;
 
   std::shared_ptr<tgfx::Shader> build(const std::shared_ptr<tgfx::Image>& image) const;
+};
+
+/// One `uniform shader` slot of a runtime shader. `shader` is a child settled at
+/// setScene — a gradient, a decoded image, another runtime shader. `image` is
+/// set instead when the child is an <ImageShader> whose handle resolves per
+/// frame (a hardware buffer, or an asset still decoding), which is how a camera
+/// frame reaches a runtime shader without a re-commit.
+struct RuntimeShaderCmd;
+
+struct ChildShaderCmd {
+  std::shared_ptr<tgfx::Shader> shader;
+  std::shared_ptr<ImageShaderCmd> image;
+  /// Set when the child is itself a runtime shader with an animated uniform.
+  std::shared_ptr<RuntimeShaderCmd> runtime;
+
+  bool dynamic() const {
+    return image != nullptr || runtime != nullptr;
+  }
+
+  std::shared_ptr<tgfx::Shader> resolve(std::span<const double> values) const;
+};
+
+/// A runtime shader with at least one uniform on an animation slot or one child
+/// that resolves per frame, so the shader has to be rebuilt per frame. Cheap:
+/// tgfx keys the compiled program on the source, the uniform names/sizes and the
+/// child count, never on uniform values or on which texture a child holds.
+struct RuntimeShaderCmd {
+  std::string body;
+  std::string preamble;
+  std::vector<std::string> functionNames;
+  std::vector<tgfx::RuntimeShaderUniform> uniforms;
+  /// One per float across `uniforms`, in order.
+  std::vector<AnimF> slots;
+  /// Empty for a childless shader, which is the common case.
+  std::vector<ChildShaderCmd> children;
+
+  std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
 };
 
 struct PaintCmd {
@@ -216,7 +239,10 @@ class SceneRenderer {
   /// Builds the paint's blend mode and filters, once.
   void readFilters(SceneReader& reader, PaintCmd& paint);
   /// Builds the paint's shader, or parks a per-frame one on `out`.
-  std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader, PaintCmd* out);
+  /// `depth` bounds child-shader nesting; a runtime shader's children are
+  /// shaders in their own right and may be runtime shaders themselves.
+  std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader, PaintCmd* out,
+                                           int depth = 0);
 
   void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
                tgfx::Paint& paint) const;

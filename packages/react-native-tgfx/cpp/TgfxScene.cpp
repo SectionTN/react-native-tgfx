@@ -331,6 +331,17 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
 
 }  // namespace
 
+std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
+    std::span<const double> values) const {
+  if (image != nullptr) {
+    return image->build(resolveImage(image->handle, image->sampling));
+  }
+  if (runtime != nullptr) {
+    return runtime->build(values);
+  }
+  return shader;
+}
+
 std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
     std::span<const double> values) const {
   auto resolved = uniforms;
@@ -340,8 +351,20 @@ std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
       value = slots[at++].resolve(values);
     }
   }
+  std::vector<std::shared_ptr<tgfx::Shader>> resolvedChildren;
+  resolvedChildren.reserve(children.size());
+  for (const auto& child : children) {
+    auto shader = child.resolve(values);
+    // A frame that has not arrived yet, or an asset still decoding: the shader
+    // cannot run without every child, so this node skips the frame.
+    if (shader == nullptr) {
+      return nullptr;
+    }
+    resolvedChildren.push_back(std::move(shader));
+  }
   return tgfx::Shader::MakeRuntimeShader(body, std::move(resolved), preamble,
-                                         functionNames);
+                                         functionNames,
+                                         std::move(resolvedChildren));
 }
 
 std::shared_ptr<tgfx::Shader> ImageShaderCmd::build(
@@ -398,7 +421,12 @@ void SceneRenderer::clearCaches() {
   program_ = nullptr;
 }
 
-std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd* out) {
+std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd* out,
+                                                        int depth) {
+  if (depth > kMaxNodeDepth) {
+    r.ok = false;
+    return nullptr;
+  }
   int kind = r.nextInt();
   if (kind < 0) {
     return nullptr;
@@ -438,18 +466,41 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
         }
       }
     }
-    if (animated && out != nullptr) {
+    // `uniform shader` children, each a shader payload in its own right.
+    int childCount = r.nextInt();
+    std::vector<ChildShaderCmd> children;
+    children.reserve(static_cast<size_t>(std::max(0, childCount)));
+    bool dynamicChild = false;
+    for (int i = 0; i < childCount && r.ok; i++) {
+      ChildShaderCmd child;
+      PaintCmd childPaint;
+      child.shader = readShader(r, &childPaint, depth + 1);
+      child.image = std::move(childPaint.imageShader);
+      child.runtime = std::move(childPaint.runtime);
+      dynamicChild = dynamicChild || child.dynamic();
+      children.push_back(std::move(child));
+    }
+    if ((animated || dynamicChild) && out != nullptr) {
       auto cmd = std::make_shared<RuntimeShaderCmd>();
       cmd->body = body;
       cmd->preamble = preamble;
       cmd->functionNames = functionNames;
       cmd->uniforms = uniforms;
       cmd->slots = std::move(slots);
+      cmd->children = std::move(children);
       out->runtime = std::move(cmd);
+      // Built per frame from the command instead, so nothing is baked here.
+      return nullptr;
+    }
+    std::vector<std::shared_ptr<tgfx::Shader>> staticChildren;
+    staticChildren.reserve(children.size());
+    for (auto& child : children) {
+      staticChildren.push_back(std::move(child.shader));
     }
     return tgfx::Shader::MakeRuntimeShader(std::move(body), std::move(uniforms),
                                            std::move(preamble),
-                                           std::move(functionNames));
+                                           std::move(functionNames),
+                                           std::move(staticChildren));
   }
   if (kind == 7) {
     // <ImageShader>: an image as the paint source for any shape.

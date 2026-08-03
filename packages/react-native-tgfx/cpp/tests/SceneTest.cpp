@@ -117,9 +117,11 @@ struct Writer {
 
   /// A paint whose shader is a runtime shader. Strings: 0 = body, then names.
   /// `preamble` and `functions` are string indices; the caller supplies an empty
-  /// entry for the preamble when the shader declares no helper.
+  /// entry for the preamble when the shader declares no helper. `children` holds
+  /// one shader payload per `uniform shader`, each starting with its kind.
   void pushRuntimePaint(uint32_t color, const std::vector<Uniform>& uniforms, int preamble,
-                        const std::vector<int>& functions = {}) {
+                        const std::vector<int>& functions = {},
+                        const std::vector<std::vector<double>>& children = {}) {
     push(color);
     push(2);
     pushAnim(1);
@@ -139,6 +141,12 @@ struct Writer {
       push(static_cast<double>(uniform.components.size()));
       for (const auto& [value, slot] : uniform.components) {
         pushAnim(value, slot);
+      }
+    }
+    push(static_cast<double>(children.size()));
+    for (const auto& child : children) {
+      for (double word : child) {
+        push(word);
       }
     }
   }
@@ -546,6 +554,201 @@ void aHelperFunctionCompilesAndDoesNotCollide() {
   CHECK(identity != inverted);
 }
 
+/// `uniform shader img; main(p) { return img.eval(p); }` must draw exactly what
+/// the child would have drawn on its own, and must honour the coordinate it is
+/// handed rather than the fragment's own.
+///
+/// The child's fragment processor samples in *its* space -- a texture's
+/// normalised space, only known once the texture resolves -- while the author's
+/// coordinate is in the runtime shader's local space. The wrapper bridges the
+/// two with an uploaded matrix, so a shifted coordinate landing on the wrong
+/// texel is what a wrong (or missing) bridge looks like.
+void aChildShaderSamplesWhereItIsAsked() {
+  // A 2x1 image, two very different colours, repeated across a 32x32 rect, so
+  // one texel of drift is a whole colour change rather than a rounding error.
+  auto left = cellColor(2);
+  auto right = cellColor(20);
+  std::vector<uint8_t> pixels(8);
+  std::copy(left.begin(), left.end(), pixels.begin());
+  std::copy(right.begin(), right.end(), pixels.begin() + 4);
+  auto image = registerPixels(2, 1, pixels);
+
+  // repeat/repeat, nearest: the same child both paths draw.
+  const std::vector<double> child = {7, static_cast<double>(image.handle), 1, 1, 0, 0};
+  const std::vector<std::string> strings = {
+      "return TGFX_CHILD_0(fragCoord);",                    // 0
+      "",                                                   // 1: no preamble
+      "return TGFX_CHILD_0(fragCoord + vec2(1.0, 0.0));",   // 2: shifted a texel
+  };
+
+  auto draw = [&](int body) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    w.pushRuntimePaint(0xffffffff, {}, 1, {}, {child});
+    // pushRuntimePaint writes string 0 as the body; swap it per case.
+    std::vector<std::string> table = strings;
+    table[0] = strings[static_cast<size_t>(body)];
+    return render(w.finish(), table, {});
+  };
+
+  auto sampled = draw(0);
+  CHECK(anyPixelSet(sampled));
+  auto at0 = pixelAt(sampled, 0, 0);
+  auto at1 = pixelAt(sampled, 1, 0);
+  auto at2 = pixelAt(sampled, 2, 0);
+  CHECK(at0[0] == left[0] && at0[1] == left[1]);
+  CHECK(at1[0] == right[0] && at1[1] == right[1]);
+  CHECK(at2[0] == left[0] && at2[1] == left[1]);
+
+  // The same child, sampled one texel to the right: every column shifts. A
+  // wrapper that ignored its argument would draw the block above again.
+  auto shifted = draw(2);
+  auto shifted0 = pixelAt(shifted, 0, 0);
+  CHECK(shifted0[0] == right[0] && shifted0[1] == right[1]);
+}
+
+/// A child is a shader, not an image slot: a gradient has to work as one.
+void aGradientChildShades() {
+  // Linear black -> white across the 32-wide rect.
+  const std::vector<double> child = {0, 0, 0, 32, 0, 2, 0xff000000, 0xffffffff, 0};
+  const std::vector<std::string> strings = {"return TGFX_CHILD_0(fragCoord);", ""};
+
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushRuntimePaint(0xffffffff, {}, 1, {}, {child});
+  auto drawn = render(w.finish(), strings, {});
+  CHECK(anyPixelSet(drawn));
+  // Dark at the left end, bright at the right: the child's own coordinate ramp
+  // reached it, which a child bound but never sampled would not show.
+  CHECK(pixelAt(drawn, 1, 16)[0] < 40);
+  CHECK(pixelAt(drawn, 30, 16)[0] > 200);
+}
+
+/// Two children on ONE shader, which is what `uniform shader a; uniform shader
+/// b;` already spells and what the encoder already writes. Both wrappers land at
+/// file scope in the same program, so their names have to differ per child and
+/// not merely per processor -- otherwise the second redefines the first, the
+/// driver rejects the whole program, and the shape paints nothing at all.
+///
+/// The body also samples child 0 twice, once at an offset, because the docs'
+/// headline example does exactly that.
+void twoChildrenOnOneShaderBothPaint() {
+  // Child 0: a 2x1 image, red on the left texel and green on the right.
+  auto left = cellColor(2);
+  auto right = cellColor(20);
+  std::vector<uint8_t> pixels(8);
+  std::copy(left.begin(), left.end(), pixels.begin());
+  std::copy(right.begin(), right.end(), pixels.begin() + 4);
+  auto image = registerPixels(2, 1, pixels);
+
+  const std::vector<std::vector<double>> children = {
+      // repeat/repeat, nearest
+      {7, static_cast<double>(image.handle), 1, 1, 0, 0},
+      // Child 1: a black -> white ramp across the 32-wide rect.
+      {0, 0, 0, 32, 0, 2, 0xff000000, 0xffffffff, 0},
+  };
+  // Child 0 twice (once shifted a texel) in the red and green channels, child 1
+  // in the blue: a wrapper bound to the wrong child shows up as a wrong channel.
+  const std::vector<std::string> strings{
+      "return vec4(TGFX_CHILD_0(fragCoord).r, "
+      "TGFX_CHILD_0(fragCoord + vec2(1.0, 0.0)).g, TGFX_CHILD_1(fragCoord).b, 1.0);",
+      ""};
+
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushRuntimePaint(0xffffffff, {}, 1, {}, children);
+  auto drawn = render(w.finish(), strings, {});
+  CHECK(anyPixelSet(drawn));
+  // Column 0 reads child 0 at texel 0 for red and texel 1 for green, and child 1
+  // near the dark end of its ramp for blue.
+  auto at0 = pixelAt(drawn, 0, 16);
+  CHECK(at0[0] == left[0]);
+  CHECK(at0[1] == right[1]);
+  CHECK(at0[2] < 40);
+  // The far end only differs in blue, which is the one channel child 1 drives.
+  auto at30 = pixelAt(drawn, 30, 16);
+  CHECK(at30[0] == left[0]);
+  CHECK(at30[2] > 200);
+}
+
+/// A child may itself be a runtime shader, which puts two runtime shader
+/// processors -- and so two child wrappers -- in one compiled program. The
+/// wrapper name has to be mangled per processor: two `vec4 tgfxChild(vec2)` at
+/// file scope is a redefinition, the driver rejects the program, and the shape
+/// does not paint at all.
+void aRuntimeShaderChildNestsInOneProgram() {
+  auto only = cellColor(7);
+  std::vector<uint8_t> onePixel(only.begin(), only.end());
+  auto image = registerPixels(1, 1, onePixel);
+
+  const std::vector<std::string> strings = {
+      "return TGFX_CHILD_0(fragCoord);",  // 0: both bodies
+      "",                                 // 1: no preamble
+  };
+  // The inner runtime shader, as a child payload: body, preamble, no functions,
+  // no uniforms, one child of its own.
+  const std::vector<double> inner = {6, 0, 1, 0, 0, 1,
+                                     7, static_cast<double>(image.handle), 0, 0, 0, 0};
+
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushRuntimePaint(0xffffffff, {}, 1, {}, {inner});
+  auto drawn = render(w.finish(), strings, {});
+  auto middle = pixelAt(drawn, 16, 16);
+  CHECK(middle[0] == only[0] && middle[1] == only[1]);
+}
+
+/// Two runtime shaders with children in one scene: the child indices and the
+/// mangled wrapper names are per processor, so neither may reach the other's
+/// child. One body, two children -- only the binding tells the draws apart.
+void twoShadersWithChildrenDoNotCollide() {
+  auto first = cellColor(3);
+  auto second = cellColor(30);
+  std::vector<uint8_t> onePixel(4);
+  std::copy(first.begin(), first.end(), onePixel.begin());
+  auto imageA = registerPixels(1, 1, onePixel);
+  std::copy(second.begin(), second.end(), onePixel.begin());
+  auto imageB = registerPixels(1, 1, onePixel);
+
+  const std::vector<std::string> strings = {"return TGFX_CHILD_0(fragCoord);", ""};
+  Writer w;
+  w.push(2);
+  for (auto handle : {imageA.handle, imageB.handle}) {
+    w.push(1);  // Rect
+    w.pushAnim(handle == imageA.handle ? 0 : 32);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    w.pushRuntimePaint(0xffffffff, {}, 1, {},
+                       {{7, static_cast<double>(handle), 0, 0, 0, 0}});
+  }
+  auto drawn = render(w.finish(), strings, {});
+  auto onLeft = pixelAt(drawn, 16, 16);
+  auto onRight = pixelAt(drawn, 48, 16);
+  CHECK(onLeft[0] == first[0] && onLeft[1] == first[1]);
+  CHECK(onRight[0] == second[0] && onRight[1] == second[1]);
+}
+
 /// A Fill must cover the whole surface, not just where a rect would have been,
 /// and must carry a shader like any other drawing.
 void fillCoversTheWholeCanvas() {
@@ -848,6 +1051,42 @@ void anExternalHandleAlsoDrivesAnImageShaderPerFrame() {
 
   CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
   auto expectedSecond = cellColor(31);
+  auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
+  registry.remove(external.handle);
+}
+
+/// The #132 seam: a runtime shader whose child is an <ImageShader> on an
+/// external (hardware-buffer) handle. The buffer is re-pointed from C++ with no
+/// re-commit, so the child cannot be baked at setScene -- and the compiled
+/// program stays the same one, because what a texture holds is not part of its
+/// key. One setScene, two frames, two different images.
+void anExternalHandleDrivesAChildShaderPerFrame() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto first = registerSolid(cellColor(11), 32, 32);
+  auto second = registerSolid(cellColor(27), 32, 32);
+  auto external = registry.addExternal(registry.acquire(first.handle));
+  CHECK(external.handle != 0);
+
+  const std::vector<std::string> strings = {"return TGFX_CHILD_0(fragCoord);", ""};
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushRuntimePaint(0xffffffff, {}, 1, {},
+                     {{7, static_cast<double>(external.handle), 0, 0, 0, 0}});
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+
+  auto expectedFirst = cellColor(11);
+  auto before = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(before[0] == expectedFirst[0] && before[1] == expectedFirst[1]);
+
+  CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
+  auto expectedSecond = cellColor(27);
   auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
   CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
   registry.remove(external.handle);
@@ -1614,6 +1853,11 @@ int main() {
   animatedFieldsStillAnimate();
   animatedUniformDrawsWhatTheRebuildDraws();
   aHelperFunctionCompilesAndDoesNotCollide();
+  aChildShaderSamplesWhereItIsAsked();
+  aGradientChildShades();
+  twoChildrenOnOneShaderBothPaint();
+  aRuntimeShaderChildNestsInOneProgram();
+  twoShadersWithChildrenDoNotCollide();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
@@ -1623,6 +1867,7 @@ int main() {
   anImageShaderTilesAcrossAShape();
   anExternalHandleIsReplacedInPlaceAndNotBudgeted();
   anExternalHandleAlsoDrivesAnImageShaderPerFrame();
+  anExternalHandleDrivesAChildShaderPerFrame();
   anImageEvictedBeforeCompileComesBackWhenItsDecodeLands();
   aBufferSwapSchedulesADraw();
   aDisposedHandleDrawsNothing();

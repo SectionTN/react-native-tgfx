@@ -58,6 +58,32 @@ half4 main(float2 p) { return tex . eval ( p ); }
   expect(t.body).toContain('TGFX_CHILD_0( p )')
 })
 
+// `sample(child, coord)` is the spelling most SkSL found elsewhere uses, and
+// Skia treats it as exactly `child.eval(coord)`.
+test('sample(child, coord) is the same thing as child.eval(coord)', () => {
+  const alias = transpileShader(`
+uniform shader tex;
+half4 main(float2 p) { return sample(tex, p); }
+`)
+  const method = transpileShader(`
+uniform shader tex;
+half4 main(float2 p) { return tex.eval(p); }
+`)
+  expect(alias.body).toBe(method.body)
+  expect(alias.body).toContain('TGFX_CHILD_0(p)')
+})
+
+test('sample() tolerates whitespace and reaches the preamble too', () => {
+  const t = transpileShader(`
+uniform shader a;
+uniform shader b;
+half4 tint(float2 p) { return sample( a , p ) * 0.5; }
+half4 main(float2 p) { return tint(p) + sample(b, p); }
+`)
+  expect(t.preamble).toContain('TGFX_CHILD_0(p )')
+  expect(t.body).toContain('TGFX_CHILD_1(p)')
+})
+
 test('a child used other than through eval is rejected, not silently emitted', () => {
   expect(() =>
     transpileShader(`

@@ -624,21 +624,49 @@ test('a Fill carries a runtime shader like any other drawing', () => {
   expect(used[4]).toBe(Kind.Fill)
 })
 
-// The rewritten body calls TGFX_CHILD_0, which nothing native declares, so
-// encoding it would only fail later inside the GLSL compiler on device.
-test('a runtime shader declaring a child is rejected before it reaches the wire', () => {
+const CHILD_SOURCE = `
+uniform shader tex;
+half4 main(float2 p) { return tex.eval(p); }
+`
+
+test('a shader child of a <Shader> is written after its uniforms', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Shader, { source: CHILD_SOURCE }, [
+        node(NodeType.ImageShader, { image: { handle: 77 } }),
+      ]),
+    ]),
+  ])
+  // header(3) + rootCount + kind + x,y,w,h + paint(6) puts the shader code at
+  // 15: kind 6, body, preamble, 0 functions, 0 uniforms, then the child count
+  // and one nested shader payload. A count written anywhere else desyncs
+  // everything after it.
+  expect([...used.slice(15, 23)]).toEqual([6, 0, 1, 0, 0, 1, 7, 77])
+})
+
+// The rewritten body calls TGFX_CHILD_0. With no child bound, native has
+// nothing to emit for it and the shape would silently not paint.
+test('a child declaration with no shader child throws', () => {
   expect(() =>
     compile([
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
-        node(NodeType.Shader, {
-          source: `
-uniform shader tex;
-half4 main(float2 p) { return tex.eval(p); }
-`,
-        }),
+        node(NodeType.Shader, { source: CHILD_SOURCE }),
       ]),
     ])
-  ).toThrow(/not supported yet/)
+  ).toThrow(/declares 1 'uniform shader' \(tex\) but 0/)
+})
+
+test('more shader children than declarations throws', () => {
+  expect(() =>
+    compile([
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+        node(NodeType.Shader, { source: CHILD_SOURCE }, [
+          node(NodeType.ImageShader, { image: { handle: 1 } }),
+          node(NodeType.ImageShader, { image: { handle: 2 } }),
+        ]),
+      ]),
+    ])
+  ).toThrow(/but 2 shader children were given/)
 })
 
 // Filter block layout, mirrored by readFilters in cpp/TgfxScene.cpp: blend

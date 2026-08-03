@@ -39,6 +39,7 @@ import {
   BlurPanel,
   CheckerReference,
   CyberpunkPanel,
+  ChildShaderPanels,
   HelperCollisionPanels,
   SdCirclePanel,
 } from './src/shaderExamples';
@@ -189,6 +190,10 @@ function Demo() {
       <Section label="Runtime shader · helper function (sdCircle)" height={140}>
         <SdCirclePanel x={0} y={0} width={168} height={120} />
         <HelperCollisionPanels x={182} y={0} width={168} height={120} />
+      </Section>
+
+      <Section label="Runtime shader · child shaders (eval / sample)" height={140}>
+        <ChildShaderPanels x={0} y={0} width={350} height={120} />
       </Section>
 
       <ShaderScreenSection />

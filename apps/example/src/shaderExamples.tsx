@@ -14,11 +14,20 @@
  *    file scope, not spliced into `main`, and their names are mangled natively
  *    so two shaders may declare the same helper. Loops still need constant
  *    bounds. See `sdCircleSource` and `helperCollisionSources` below.
- * 3. There is no `sample()` and no child shaders, so a shader cannot read the
- *    pixels behind it. A true backdrop blur is therefore not expressible — see
- *    `blurSource` below for what is.
+ * 3. A `uniform shader` is a child slot: pass a shader component as a child of
+ *    `<Shader>` and sample it with `name.eval(coord)` or `sample(name, coord)`.
+ *    See `ChildShaderPanels` below. What is *not* expressible is reading the
+ *    pixels already on the canvas, so a true backdrop blur still is not — see
+ *    `blurSource` for what is.
  */
-import { Rect, RoundedRect, Shader } from 'react-native-tgfx';
+import {
+  ImageShader,
+  LinearGradient,
+  Rect,
+  RoundedRect,
+  Shader,
+  useImage,
+} from 'react-native-tgfx';
 
 /**
  * A real separable-kernel blur — of a procedurally generated pattern, not of
@@ -258,6 +267,116 @@ export function SdCirclePanel({ x, y, width, height }: Box) {
         uniforms={{ uOrigin: [x, y], uSize: [width, height] }}
       />
     </Rect>
+  );
+}
+
+/**
+ * Child shaders. A `uniform shader` is a slot another shader fills, sampled
+ * with `name.eval(coord)` or the equivalent `sample(name, coord)`. Children are
+ * matched to declarations by order, and a child is a shader in its own right —
+ * an image, a gradient, or another `<Shader>`.
+ */
+export const chromaticSource = `
+uniform shader img;
+uniform float uShift;
+
+half4 main(float2 pos) {
+  half4 base = img.eval(pos);
+  half4 red = img.eval(pos + float2(uShift, 0.0));
+  // sample(child, coord) is the same call, spelled the way Skia spells it.
+  half4 blue = sample(img, pos - float2(uShift, 0.0));
+  return half4(red.r, base.g, blue.b, base.a);
+}
+`;
+
+/** No shift at all, so the child is drawn exactly where it would draw itself. */
+export const passthroughSource = `
+uniform shader src;
+half4 main(float2 pos) { return src.eval(pos); }
+`;
+
+/** A gradient child, banded: children are not image-only. */
+export const bandedSource = `
+uniform shader ramp;
+uniform float2 uOrigin;
+
+half4 main(float2 pos) {
+  half4 c = sample(ramp, pos);
+  float band = step(0.5, fract((pos.y - uOrigin.y) / 12.0));
+  return half4(c.rgb * half(0.45 + 0.55 * band), c.a);
+}
+`;
+
+/**
+ * Two children on one shader, mixed by a diagonal wipe. Each wrapper is emitted
+ * at file scope, so the two have to be named apart or the second redefines the
+ * first, the driver rejects the program and the shape paints nothing.
+ */
+export const twoChildSource = `
+uniform shader img;
+uniform shader ramp;
+uniform float2 uOrigin;
+uniform float2 uSize;
+
+half4 main(float2 pos) {
+  float2 uv = (pos - uOrigin) / uSize;
+  return uv.x + uv.y < 1.0 ? img.eval(pos) : sample(ramp, pos);
+}
+`;
+
+const childSample = require('./assets/sample.png');
+
+/**
+ * Four panels in one scene, which is the point: two runtime shaders with
+ * children must not reach each other's child, and `eval` and `sample` must
+ * agree. Left to right — the image drawn straight through a child, the same
+ * child with the channels pulled apart, a gradient child banded, and one shader
+ * holding two children at once.
+ */
+export function ChildShaderPanels({ x, y, width, height }: Box) {
+  const img = useImage(childSample);
+  const cell = (width - 24) / 4;
+  const left = [x, x + cell + 8, x + 2 * (cell + 8), x + 3 * (cell + 8)];
+  if (img == null) {
+    return null;
+  }
+  // The child samples in the same space `pos` is in, so its rect is the panel's.
+  const rect = (at: number) => ({ x: at, y, width: cell, height });
+  return (
+    <>
+      <Rect x={left[0]} y={y} width={cell} height={height}>
+        <Shader source={passthroughSource}>
+          <ImageShader image={img} fit="cover" rect={rect(left[0]!)} />
+        </Shader>
+      </Rect>
+      <Rect x={left[1]} y={y} width={cell} height={height}>
+        <Shader source={chromaticSource} uniforms={{ uShift: 5 }}>
+          <ImageShader image={img} fit="cover" rect={rect(left[1]!)} />
+        </Shader>
+      </Rect>
+      <Rect x={left[2]} y={y} width={cell} height={height}>
+        <Shader source={bandedSource} uniforms={{ uOrigin: [0, y] }}>
+          <LinearGradient
+            start={{ x: left[2]!, y: 0 }}
+            end={{ x: left[2]! + cell, y: 0 }}
+            colors={['#2b6cff', '#ff3b6b']}
+          />
+        </Shader>
+      </Rect>
+      <Rect x={left[3]} y={y} width={cell} height={height}>
+        <Shader
+          source={twoChildSource}
+          uniforms={{ uOrigin: [left[3]!, y], uSize: [cell, height] }}
+        >
+          <ImageShader image={img} fit="cover" rect={rect(left[3]!)} />
+          <LinearGradient
+            start={{ x: left[3]!, y: 0 }}
+            end={{ x: left[3]! + cell, y: 0 }}
+            colors={['#2b6cff', '#ff3b6b']}
+          />
+        </Shader>
+      </Rect>
+    </>
   );
 }
 

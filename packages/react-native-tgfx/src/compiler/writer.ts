@@ -36,7 +36,9 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // 11: text carries a weight/style/spacing block and a paragraph block (wrap
 // width, alignment, line height, maxLines, ellipsis) an older reader would walk
 // straight past into the paint. Adds the text-path kind.
-export const SCENE_VERSION = 11
+// 12: a runtime shader carries a child count and that many nested shader
+// payloads after its uniforms, which an older reader would take for a paint.
+export const SCENE_VERSION = 12
 
 /**
  * Encode a string table as a delta against the one the engine already holds:

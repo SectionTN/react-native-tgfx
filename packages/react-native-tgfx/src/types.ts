@@ -296,6 +296,11 @@ export interface ShaderProps {
   /** SkSL source with a `vec4 main(vec2 pos)` entry point. */
   source: string
   uniforms?: Record<string, UniformValue>
+  /**
+   * One shader component per `uniform shader` the source declares, matched by
+   * order. Sample them as `name.eval(coord)` or `sample(name, coord)`.
+   */
+  children?: ReactNode
 }
 
 /**
