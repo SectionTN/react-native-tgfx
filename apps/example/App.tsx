@@ -21,6 +21,7 @@ import {
   Text,
   useImage,
 } from 'react-native-tgfx';
+import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
 import {
   BarChart,
@@ -180,6 +181,7 @@ function Demo() {
         <BlurPanel x={182} y={0} width={168} height={120} radius={3} />
       </Section>
 
+      <FilterSection />
       <ImageSection />
       <Section label="Runtime shader · helper function (sdCircle)" height={140}>
         <SdCirclePanel x={0} y={0} width={168} height={120} />

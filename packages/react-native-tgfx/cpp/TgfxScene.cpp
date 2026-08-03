@@ -1,6 +1,8 @@
 #include "TgfxScene.hpp"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cmath>
 #include <iterator>
 
@@ -9,8 +11,10 @@
 #include "SvgPath.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
+#include "tgfx/core/ColorFilter.h"
 #include "tgfx/core/Font.h"
 #include "tgfx/core/Image.h"
+#include "tgfx/core/ImageFilter.h"
 #include "tgfx/core/Paint.h"
 #include "tgfx/core/Point.h"
 #include "tgfx/core/RRect.h"
@@ -76,8 +80,12 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; DrawCmd is 504 B, so 256 deep is ~129 KB of stack.
+/// Bounds readNode and so drawCmd too; DrawCmd is 544 B, so 256 deep is ~139 KB of stack.
 constexpr int kMaxNodeDepth = 256;
+
+/// Every colour/image filter ever constructed. Only readFilters touches it, and
+/// readFilters only runs at setScene — see filterBuildCount().
+std::atomic<size_t> gFilterBuilds{0};
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
@@ -95,6 +103,16 @@ tgfx::SamplingOptions samplingOf(int code) {
     default:
       return tgfx::SamplingOptions(tgfx::FilterMode::Linear, tgfx::MipmapMode::None);
   }
+}
+
+/// Blend modes travel as the index into tgfx's own enum; BLEND_MODES in
+/// src/compiler/filters.ts is the same list in the same order.
+tgfx::BlendMode blendModeOf(int code) {
+  constexpr int kLast = static_cast<int>(tgfx::BlendMode::PlusDarker);
+  if (code < 0 || code > kLast) {
+    return tgfx::BlendMode::SrcOver;
+  }
+  return static_cast<tgfx::BlendMode>(code);
 }
 
 tgfx::TileMode tileModeOf(int code) {
@@ -303,6 +321,11 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
   }
   paint.setAntiAlias(pc.antiAlias);
   paint.setAlpha(color.alpha * pc.alpha.resolve(v));
+  // Built at setScene; this is a store and two shared_ptr copies, never a
+  // filter construction. A null filter copies without touching a refcount.
+  paint.setBlendMode(pc.blend);
+  paint.setColorFilter(pc.colorFilter);
+  paint.setImageFilter(pc.imageFilter);
 }
 
 }  // namespace
@@ -500,6 +523,55 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
              : tgfx::Shader::MakeRadialGradient(center, radius, colors, positions);
 }
 
+size_t filterBuildCount() {
+  return gFilterBuilds.load(std::memory_order_relaxed);
+}
+
+void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
+  paint.blend = blendModeOf(r.nextInt());
+  int colorKind = r.nextInt();
+  if (colorKind == 0) {
+    std::array<float, 20> matrix{};
+    for (auto& value : matrix) {
+      value = static_cast<float>(r.next());
+    }
+    paint.colorFilter = tgfx::ColorFilter::Matrix(matrix);
+    gFilterBuilds++;
+  } else if (colorKind == 1) {
+    auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
+    paint.colorFilter = tgfx::ColorFilter::Blend(color, blendModeOf(r.nextInt()));
+    gFilterBuilds++;
+  }
+  int imageKind = r.nextInt();
+  if (imageKind == 0) {
+    float blurX = static_cast<float>(r.next());
+    float blurY = static_cast<float>(r.next());
+    paint.imageFilter = tgfx::ImageFilter::Blur(blurX, blurY, tileModeOf(r.nextInt()));
+    gFilterBuilds++;
+  } else if (imageKind == 1) {
+    float dx = static_cast<float>(r.next());
+    float dy = static_cast<float>(r.next());
+    float blurX = static_cast<float>(r.next());
+    float blurY = static_cast<float>(r.next());
+    auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
+    paint.imageFilter =
+        r.nextInt() != 0
+            ? tgfx::ImageFilter::DropShadowOnly(dx, dy, blurX, blurY, color)
+            : tgfx::ImageFilter::DropShadow(dx, dy, blurX, blurY, color);
+    gFilterBuilds++;
+  }
+  if (paint.imageFilter != nullptr && paint.blend != tgfx::BlendMode::SrcOver) {
+    // tgfx would take this layer itself and composite it back SrcOver, losing
+    // the blend mode. Taking it here, with both on the layer paint, costs the
+    // same one saveLayer per draw and gets the order right.
+    paint.layer = std::make_shared<tgfx::Paint>();
+    paint.layer->setBlendMode(paint.blend);
+    paint.layer->setImageFilter(std::move(paint.imageFilter));
+    paint.blend = tgfx::BlendMode::SrcOver;
+    paint.imageFilter = nullptr;
+  }
+}
+
 void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.color = static_cast<uint32_t>(r.next());
   int flags = r.nextInt();
@@ -509,6 +581,11 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.cap = r.nextInt();
   paint.join = r.nextInt();
   paint.alpha = r.nextAnim();
+  // Bit 4: the paint carries a filter block. Unset is the common case and
+  // costs no words at all.
+  if ((flags & 4) != 0) {
+    readFilters(r, paint);
+  }
   paint.shader = readShader(r, &paint);
   applyPaint(paint, {}, paint.cached);
 }
@@ -729,6 +806,11 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     applyPaint(cmd.paint, v, paint);
     p = &paint;
   }
+  // Replaces the layer tgfx would otherwise take for the image filter alone;
+  // see PaintCmd::layer. Not an extra offscreen, the same one.
+  if (cmd.paint.layer != nullptr) {
+    canvas->saveLayer(cmd.paint.layer.get());
+  }
 
   switch (cmd.kind) {
     case DrawCmd::Fill:
@@ -800,6 +882,10 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       break;
     default:
       break;
+  }
+
+  if (cmd.paint.layer != nullptr) {
+    canvas->restore();
   }
 }
 

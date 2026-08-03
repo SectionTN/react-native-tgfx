@@ -15,7 +15,11 @@ export {
   Text,
 } from './components/drawings'
 export {
+  BlendColor,
+  Blur,
+  ColorMatrix,
   DiamondGradient,
+  DropShadow,
   FractalNoise,
   ImageShader,
   LinearGradient,
@@ -41,10 +45,15 @@ export type { TgfxViewRef } from './views/TgfxNativeView'
 
 export type {
   Animated,
+  BlendColorProps,
+  BlendMode,
+  BlurProps,
   CanvasHandle,
   CanvasProps,
   CircleProps,
   Color,
+  ColorMatrixProps,
+  DropShadowProps,
   Fit,
   GroupProps,
   ImageProps,

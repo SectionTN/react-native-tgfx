@@ -23,6 +23,10 @@ export const NodeType = {
   Turbulence: 'tgfx_turbulence',
   Shader: 'tgfx_shader',
   ImageShader: 'tgfx_imageshader',
+  ColorMatrix: 'tgfx_colormatrix',
+  BlendColor: 'tgfx_blendcolor',
+  Blur: 'tgfx_blur',
+  DropShadow: 'tgfx_dropshadow',
   Fill: 'tgfx_fill',
 } as const
 

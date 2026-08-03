@@ -30,7 +30,10 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // a sampling mode and an optional source rect. Adds the image shader kind.
 // 9: a runtime shader carries a preamble string and its function names after
 // the body, so an older reader would read them as the uniform count.
-export const SCENE_VERSION = 9
+// 10: a paint whose flags carry bit 4 writes a filter block (blend mode, colour
+// filter, image filter) between the alpha and the shader. Unfiltered paints are
+// byte-identical to 9, but an older reader would take the block for a shader.
+export const SCENE_VERSION = 10
 
 /**
  * Encode a string table as a delta against the one the engine already holds:

@@ -1,5 +1,12 @@
 import { resolveColor, type Color } from './colors'
 import {
+  hasFilters,
+  writeFilters,
+  type BlendMode,
+  type ColorFilterInput,
+  type ImageFilterInput,
+} from './filters'
+import {
   fitCode,
   imageHandle,
   samplingCode,
@@ -26,7 +33,13 @@ export interface PaintInput {
   /** Kept unresolved so an animated opacity can stay a live alpha slot. */
   opacity?: number | MaybeSharedValue<number>
   antiAlias?: boolean
+  /** How this drawing composites onto what is already there. */
+  blendMode?: BlendMode
   gradient?: GradientInput
+  /** Set by a `<ColorMatrix>` / `<BlendColor>` child; never a prop. */
+  colorFilter?: ColorFilterInput
+  /** Set by a `<Blur>` / `<DropShadow>` child; never a prop. */
+  imageFilter?: ImageFilterInput
 }
 
 export interface GradientInput {
@@ -237,15 +250,27 @@ export function writePaint(
     props.antiAlias !== undefined ? props.antiAlias : inherited.antiAlias
   const gradient =
     props.gradient !== undefined ? props.gradient : inherited.gradient
+  const blendMode =
+    props.blendMode !== undefined ? props.blendMode : inherited.blendMode
+  // Filters only ever reach a paint through its children, so `inherited` — the
+  // merged paint the caller built for such a node — is their only source.
+  const { colorFilter, imageFilter } = inherited
+  const filtered = hasFilters(blendMode, colorFilter, imageFilter)
 
   w.push(resolveColor(resolveValue(color as Color | undefined)))
   w.push(
-    (forceStroke || style === 'stroke' ? 1 : 0) | (antiAlias !== false ? 2 : 0)
+    (forceStroke || style === 'stroke' ? 1 : 0) |
+      (antiAlias !== false ? 2 : 0) |
+      (filtered ? 4 : 0)
   )
   w.pushAnim(strokeWidth, 1)
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])
   w.pushAnim(alpha, 1)
+  // Skipped entirely when unused: an unfiltered paint costs no extra words.
+  if (filtered) {
+    writeFilters(w, blendMode, colorFilter, imageFilter)
+  }
   if (gradient == null) {
     w.push(NO_SHADER)
     return
@@ -276,6 +301,9 @@ export function pickPaintInput(props: Record<string, unknown>): PaintInput {
   }
   if (props.antiAlias !== undefined) {
     out.antiAlias = Boolean(props.antiAlias)
+  }
+  if (props.blendMode !== undefined) {
+    out.blendMode = props.blendMode as BlendMode
   }
   return out
 }

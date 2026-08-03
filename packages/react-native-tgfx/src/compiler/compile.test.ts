@@ -578,3 +578,185 @@ half4 main(float2 p) { return tex.eval(p); }
     ])
   ).toThrow(/not supported yet/)
 })
+
+// Filter block layout, mirrored by readFilters in cpp/TgfxScene.cpp: blend
+// mode, then the colour and image filter, each a kind code (-1 = none).
+const RECT_FLAGS_WORD = 10
+const RECT_FILTERS_WORD = 15
+
+test('an unfiltered paint writes no filter block and no flag bit', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+  ])
+  expect(used[RECT_FLAGS_WORD]! & 4).toBe(0)
+  // The word after alpha is the shader code, not a blend mode.
+  expect(used[RECT_FILTERS_WORD]).toBe(-1)
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+})
+
+test('an explicit srcOver blend mode is not written either', () => {
+  const { used } = compile([
+    node(NodeType.Rect, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      blendMode: 'srcOver',
+    }),
+  ])
+  expect(used[RECT_FLAGS_WORD]! & 4).toBe(0)
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+})
+
+test('writes a blend mode as its tgfx enum index', () => {
+  const { used } = compile([
+    node(NodeType.Rect, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      blendMode: 'multiply',
+    }),
+  ])
+  expect(used[RECT_FLAGS_WORD]! & 4).toBe(4)
+  // blend, no colour filter, no image filter, then the shader code.
+  expect(
+    Array.from(used.subarray(RECT_FILTERS_WORD, RECT_FILTERS_WORD + 4))
+  ).toEqual([24, -1, -1, -1])
+})
+
+test('writes a <ColorMatrix> child as 20 matrix words', () => {
+  const matrix = Array.from({ length: 20 }, (_, i) => i)
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.ColorMatrix, { matrix }),
+    ]),
+  ])
+  expect(used[RECT_FLAGS_WORD]! & 4).toBe(4)
+  expect(used[RECT_FILTERS_WORD]).toBe(3) // srcOver
+  expect(used[RECT_FILTERS_WORD + 1]).toBe(0) // matrix kind
+  expect(
+    Array.from(used.subarray(RECT_FILTERS_WORD + 2, RECT_FILTERS_WORD + 22))
+  ).toEqual(matrix)
+  expect(used[RECT_FILTERS_WORD + 22]).toBe(-1) // no image filter
+})
+
+test('a <ColorMatrix> that is not 20 numbers falls back to the identity', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.ColorMatrix, { matrix: [1, 2, 3] }),
+    ]),
+  ])
+  expect(
+    Array.from(used.subarray(RECT_FILTERS_WORD + 2, RECT_FILTERS_WORD + 22))
+  ).toEqual([1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0])
+})
+
+test('writes a <BlendColor> child as a packed colour and a mode', () => {
+  const { used } = compile([
+    node(NodeType.Circle, { cx: 0, cy: 0, r: 1 }, [
+      node(NodeType.BlendColor, { color: '#ff0000', mode: 'screen' }),
+    ]),
+  ])
+  // Circle has one geometry word fewer than Rect.
+  const at = RECT_FILTERS_WORD - 1
+  expect(Array.from(used.subarray(at, at + 5))).toEqual([
+    3, 1, 0xffff0000, 14, -1,
+  ])
+})
+
+test('writes a <Blur> child as sigmas and a tile mode, decal by default', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Blur, { blur: 4 }),
+    ]),
+  ])
+  expect(
+    Array.from(used.subarray(RECT_FILTERS_WORD, RECT_FILTERS_WORD + 6))
+  ).toEqual([3, -1, 0, 4, 4, 3])
+})
+
+test('a per-axis <Blur> overrides the shared sigma', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Blur, { blur: 4, blurY: 9, tileMode: 'clamp' }),
+    ]),
+  ])
+  expect(
+    Array.from(used.subarray(RECT_FILTERS_WORD + 2, RECT_FILTERS_WORD + 6))
+  ).toEqual([0, 4, 9, 0])
+})
+
+test('writes a <DropShadow> child with its offset, colour and shadowOnly flag', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.DropShadow, {
+        dx: 3,
+        dy: 4,
+        blur: 2,
+        color: 'black',
+        shadowOnly: true,
+      }),
+    ]),
+  ])
+  expect(
+    Array.from(used.subarray(RECT_FILTERS_WORD, RECT_FILTERS_WORD + 9))
+  ).toEqual([3, -1, 1, 3, 4, 2, 2, 0xff000000, 1])
+})
+
+test('inherits a filter from a <Group> into every descendant', () => {
+  const { used } = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.Paint, { blendMode: 'multiply' }, [
+        node(NodeType.Blur, { blur: 2 }),
+      ]),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  // group(kind, opCount, childCount) then two rects of kind + 4 geometry +
+  // 6 paint head + 6 filter + 1 shader words.
+  const first = 3 + 1 + 3 + 5 + 6
+  const second = first + 6 + 1 + 11
+  expect(Array.from(used.subarray(first, first + 4))).toEqual([24, -1, 0, 2])
+  expect(Array.from(used.subarray(second, second + 4))).toEqual([24, -1, 0, 2])
+})
+
+test('two filters of the same class on one paint warn in development', () => {
+  ;(globalThis as { __DEV__?: boolean }).__DEV__ = true
+  const warn = console.warn
+  const messages: string[] = []
+  console.warn = (message: string) => messages.push(message)
+  try {
+    compile([
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+        node(NodeType.Blur, { blur: 2 }),
+        node(NodeType.Blur, { blur: 7 }),
+      ]),
+    ])
+    // One of each class together is the supported case, and must stay quiet.
+    compile([
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+        node(NodeType.Blur, { blur: 2 }),
+        node(NodeType.ColorMatrix, { matrix: new Array(20).fill(0) }),
+      ]),
+    ])
+  } finally {
+    console.warn = warn
+  }
+  expect(messages.length).toBe(1)
+  expect(messages[0]).toContain('two image filters')
+})
+
+test('a filter on the node itself overrides the one it inherits', () => {
+  const { used } = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.Paint, {}, [node(NodeType.Blur, { blur: 2 })]),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+        node(NodeType.Blur, { blur: 7 }),
+      ]),
+    ]),
+  ])
+  const at = 3 + 1 + 3 + 5 + 6
+  expect(Array.from(used.subarray(at, at + 6))).toEqual([3, -1, 0, 7, 7, 3])
+})

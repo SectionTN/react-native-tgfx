@@ -1,10 +1,12 @@
 import type { ReactNode, Ref } from 'react'
 import type { Color } from './compiler/colors'
+import type { BlendMode } from './compiler/filters'
 import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
 import type { TgfxImage } from './specs/TgfxImage.nitro'
 
 export type { Color } from './compiler/colors'
+export type { BlendMode } from './compiler/filters'
 export type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 export type { Transform, TransformOp, Vector } from './compiler/transform'
 export type { PixelFormat, TgfxImage } from './specs/TgfxImage.nitro'
@@ -28,6 +30,8 @@ export interface PaintProps {
   /** Paint-wide alpha multiplier in [0, 1]; only one per chain can animate. */
   opacity?: Animated<number>
   antiAlias?: boolean
+  /** How this drawing composites onto what is already there. `'srcOver'` by default. */
+  blendMode?: BlendMode
   children?: ReactNode
 }
 
@@ -229,6 +233,41 @@ export interface ShaderProps {
   /** SkSL source with a `vec4 main(vec2 pos)` entry point. */
   source: string
   uniforms?: Record<string, UniformValue>
+}
+
+/**
+ * A 4x5 row-major colour matrix, applied as
+ * `R' = a*R + b*G + c*B + d*A + e` (and so on per channel), then clamped.
+ * Anything but exactly 20 numbers is treated as the identity.
+ */
+export interface ColorMatrixProps {
+  matrix: number[]
+}
+
+export interface BlendColorProps {
+  color: Color
+  /** How `color` (src) blends with the drawing (dst). Defaults to `'srcOver'`. */
+  mode?: BlendMode
+}
+
+export interface BlurProps {
+  /** Gaussian sigma for both axes; `blurX`/`blurY` override it per axis. */
+  blur?: number
+  blurX?: number
+  blurY?: number
+  /** How the kernel samples outside the drawing. Defaults to `'decal'`. */
+  tileMode?: TileMode
+}
+
+export interface DropShadowProps {
+  dx?: number
+  dy?: number
+  blur?: number
+  blurX?: number
+  blurY?: number
+  color?: Color
+  /** Draw only the shadow, dropping the content that cast it. */
+  shadowOnly?: boolean
 }
 
 export interface NoiseProps {

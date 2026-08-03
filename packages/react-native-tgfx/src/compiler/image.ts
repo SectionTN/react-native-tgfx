@@ -61,8 +61,8 @@ export function samplingCode(sampling: unknown): number {
   return SAMPLING_CODE[sampling as Sampling] ?? SAMPLING_CODE.linear
 }
 
-export function tileCode(tile: unknown): number {
-  return TILE_CODE[tile as TileMode] ?? TILE_CODE.clamp
+export function tileCode(tile: unknown, fallback: TileMode = 'clamp'): number {
+  return TILE_CODE[tile as TileMode] ?? TILE_CODE[fallback]
 }
 
 // `.handle` is a JSI property getter dispatching into C++, and a commit reads

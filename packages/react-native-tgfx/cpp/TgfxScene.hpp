@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "tgfx/core/BlendMode.h"
 #include "tgfx/core/Font.h"
 #include "tgfx/core/Matrix.h"
 #include "tgfx/core/Paint.h"
@@ -27,7 +28,9 @@
 
 namespace tgfx {
 class Canvas;
+class ColorFilter;
 class Image;
+class ImageFilter;
 class Shader;
 class Typeface;
 }  // namespace tgfx
@@ -36,7 +39,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 9;
+inline constexpr double kSceneVersion = 10;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -44,6 +47,11 @@ enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown 
 
 /// Cursor over the binary draw program (defined in TgfxScene.cpp).
 struct SceneReader;
+
+/// How many colour/image filters have been constructed since process start.
+/// Filters are built at setScene and only there, so this must not move while
+/// frames are drawn — which is what cpp/tests/SceneTest.cpp asserts.
+size_t filterBuildCount();
 
 /// A float that is either a literal or an animated slot (slot < 0 => literal).
 struct AnimF {
@@ -101,6 +109,16 @@ struct PaintCmd {
   /// Set only for an <ImageShader> on a hardware-buffer handle, which resolves
   /// per frame; otherwise the shader above stands.
   std::shared_ptr<ImageShaderCmd> imageShader;
+  /// Filters and blend mode, all built once by setScene: their inputs are
+  /// literals, so nothing here is ever rebuilt on the render thread.
+  tgfx::BlendMode blend = tgfx::BlendMode::SrcOver;
+  std::shared_ptr<tgfx::ColorFilter> colorFilter;
+  std::shared_ptr<tgfx::ImageFilter> imageFilter;
+  /// Set when a blend mode meets an image filter, which tgfx cannot honour on
+  /// one paint: its implicit layer carries only the filter and comes back
+  /// SrcOver. This paint takes that layer instead, carrying both, and `blend`
+  /// and `imageFilter` above are cleared so the draw inside it is plain.
+  std::shared_ptr<tgfx::Paint> layer;
   /// The whole paint resolved against its literals, built once by setScene.
   tgfx::Paint cached;
 
@@ -177,6 +195,8 @@ class SceneRenderer {
 
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
   void readPaint(SceneReader& reader, PaintCmd& paint);
+  /// Builds the paint's blend mode and filters, once.
+  void readFilters(SceneReader& reader, PaintCmd& paint);
   /// Builds the paint's shader, or parks a per-frame one on `out`.
   std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader, PaintCmd* out);
 

@@ -71,6 +71,35 @@ struct Writer {
     push(-1);
   }
 
+  /// A paint's filter block: blend mode, then the colour and image filter,
+  /// each a kind code (-1 for none) followed by its own words.
+  struct Filters {
+    int blend = 3;  // SrcOver
+    std::vector<double> colorFilter{-1};
+    std::vector<double> imageFilter{-1};
+  };
+
+  /// The same paint as pushPaint, with flag bit 4 and the filter block set.
+  /// `alphaSlot >= 0` puts the paint on the per-frame path, so applyPaint runs
+  /// every frame rather than the compiled `cached` paint being handed over.
+  void pushFilteredPaint(uint32_t color, const Filters& filters,
+                         int alphaSlot = -1, double strokeWidth = 1) {
+    push(color);
+    push(2 | 4);
+    pushAnim(strokeWidth);
+    push(0);
+    push(0);
+    pushAnim(1, alphaSlot);
+    push(filters.blend);
+    for (double word : filters.colorFilter) {
+      push(word);
+    }
+    for (double word : filters.imageFilter) {
+      push(word);
+    }
+    push(-1);  // no shader
+  }
+
   /// One uniform: its name's string index and a component per (value, slot).
   struct Uniform {
     int name;
@@ -853,6 +882,282 @@ void aBufferSwapSchedulesADraw() {
   CHECK(wakes == before + 2);
 }
 
+/// The blend mode has to reach the paint, so a drawing composites against what
+/// is already on the surface instead of replacing it.
+void aBlendModeCompositesAgainstWhatIsBelow() {
+  // Yellow under, magenta over. Multiply keeps only the channels both have: red.
+  auto scene = [](int blend) {
+    Writer w;
+    w.push(2);
+    w.push(1);  // Rect: the backdrop
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    w.pushPaint(0xffffff00, false);
+    w.push(1);  // Rect: drawn over it
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    if (blend < 0) {
+      w.pushPaint(0xffff00ff, false);
+    } else {
+      w.pushFilteredPaint(0xffff00ff, {blend, {-1}, {-1}});
+    }
+    return render(w.finish(), {}, {});
+  };
+
+  auto over = scene(-1);
+  auto multiply = scene(24);  // BlendMode::Multiply
+  CHECK(anyPixelSet(over));
+  auto plain = pixelAt(over, 16, 16);
+  CHECK(plain[0] == 255 && plain[1] == 0 && plain[2] == 255);
+  auto blended = pixelAt(multiply, 16, 16);
+  CHECK(blended[0] == 255 && blended[1] == 0 && blended[2] == 0);
+
+  // An explicit srcOver must be byte-identical to writing no filter block at
+  // all, or the flag bit is changing more than it claims to.
+  Writer srcOver;
+  srcOver.push(2);
+  srcOver.push(1);
+  srcOver.pushAnim(0);
+  srcOver.pushAnim(0);
+  srcOver.pushAnim(32);
+  srcOver.pushAnim(32);
+  srcOver.pushPaint(0xffffff00, false);
+  srcOver.push(1);
+  srcOver.pushAnim(0);
+  srcOver.pushAnim(0);
+  srcOver.pushAnim(32);
+  srcOver.pushAnim(32);
+  srcOver.pushFilteredPaint(0xffff00ff, {3, {-1}, {-1}});
+  CHECK(render(srcOver.finish(), {}, {}) == over);
+}
+
+/// A blend mode and an image filter on one paint must both survive. An image
+/// filter forces an offscreen layer, and a blend mode left on the inner draw
+/// composites against the empty layer instead of against the canvas — so this
+/// fails with the blurred rect coming back magenta rather than red.
+void aBlendModeSurvivesAnImageFilter() {
+  // Same yellow-under-magenta multiply as above, but blurred. Sigma is small
+  // enough that the centre pixel is the unblurred colour either way.
+  auto scene = [](double sigma) {
+    Writer w;
+    w.push(3);
+    w.push(1);  // Rect: the backdrop
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    w.pushPaint(0xffffff00, false);
+    w.push(1);  // Rect: multiplied over it
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    std::vector<double> blur{-1};
+    if (sigma > 0) {
+      blur = {0, sigma, sigma, 3};
+    }
+    w.pushFilteredPaint(0xffff00ff, {24, {-1}, blur});  // BlendMode::Multiply
+    w.push(1);  // Rect: an ordinary green one, drawn after the layered node
+    w.pushAnim(44);
+    w.pushAnim(44);
+    w.pushAnim(16);
+    w.pushAnim(16);
+    w.pushPaint(0xff00ff00, false);
+    return render(w.finish(), {}, {});
+  };
+
+  auto sharp = pixelAt(scene(0), 16, 16);
+  CHECK(sharp[0] == 255 && sharp[1] == 0 && sharp[2] == 0);
+  auto blurred = pixelAt(scene(0.5), 16, 16);
+  CHECK(blurred[0] == 255 && blurred[1] == 0 && blurred[2] == 0);
+  // The layer is still real: the blur has to reach past the rect's own edge.
+  CHECK(opaqueAt(scene(6), 34, 16));
+  // ...and it was closed again: the next node draws on the canvas, not into it.
+  auto after = pixelAt(scene(0.5), 52, 52);
+  CHECK(after[0] == 0 && after[1] == 255 && after[2] == 0);
+}
+
+/// A 4x5 colour matrix must transform the drawn colour, and the identity
+/// matrix must leave it exactly as an unfiltered paint drew it.
+void aColourMatrixTransformsTheDrawnColour() {
+  auto draw = [](const std::vector<double>& matrix) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    std::vector<double> filter{0};
+    filter.insert(filter.end(), matrix.begin(), matrix.end());
+    w.pushFilteredPaint(0xff2050c0, {3, filter, {-1}});
+    return render(w.finish(), {}, {});
+  };
+
+  Writer plain;
+  plain.push(1);
+  plain.push(1);
+  plain.pushAnim(0);
+  plain.pushAnim(0);
+  plain.pushAnim(32);
+  plain.pushAnim(32);
+  plain.pushPaint(0xff2050c0, false);
+  auto unfiltered = render(plain.finish(), {}, {});
+  CHECK(anyPixelSet(unfiltered));
+
+  const std::vector<double> identity = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+                                        0, 0, 1, 0, 0, 0, 0, 0, 1, 0};
+  CHECK(draw(identity) == unfiltered);
+
+  // R' = B, B' = R: a channel swap, so 0x2050c0 comes out as 0xc05020.
+  const std::vector<double> swap = {0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+                                    1, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+  auto swapped = pixelAt(draw(swap), 16, 16);
+  auto source = pixelAt(unfiltered, 16, 16);
+  CHECK(swapped[0] == source[2] && swapped[2] == source[0]);
+  CHECK(swapped[1] == source[1]);
+}
+
+/// A blend colour filter tints the drawing without touching what is under it.
+void aBlendColourFilterTints() {
+  auto draw = [](bool filtered) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    if (filtered) {
+      // Opaque red, src: replaces the paint's own colour entirely.
+      w.pushFilteredPaint(0xff2050c0, {3, {1, 0xffff0000, 1}, {-1}});
+    } else {
+      w.pushPaint(0xff2050c0, false);
+    }
+    return render(w.finish(), {}, {});
+  };
+  auto tinted = pixelAt(draw(true), 16, 16);
+  CHECK(tinted[0] == 255 && tinted[1] == 0 && tinted[2] == 0);
+  CHECK(draw(false) != draw(true));
+}
+
+/// A blur is an *image* filter: it grows the drawing past its own geometry.
+/// Nothing but a real offscreen layer paints outside the rect, so this is the
+/// observation that separates it from a colour filter.
+void aBlurSpreadsPastTheGeometry() {
+  auto draw = [](double sigma) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(20);
+    w.pushAnim(20);
+    w.pushAnim(24);
+    w.pushAnim(24);
+    if (sigma <= 0) {
+      w.pushPaint(0xff3366cc, false);
+    } else {
+      w.pushFilteredPaint(0xff3366cc, {3, {-1}, {0, sigma, sigma, 3}});
+    }
+    return render(w.finish(), {}, {});
+  };
+
+  auto sharp = draw(0);
+  CHECK(anyPixelSet(sharp));
+  // Four pixels outside the rect: untouched without the filter.
+  CHECK(!opaqueAt(sharp, 14, 32));
+  auto blurred = draw(6);
+  CHECK(opaqueAt(blurred, 14, 32));
+  // ...and the middle is still painted, so it is a blur and not a wipe.
+  CHECK(opaqueAt(blurred, 32, 32));
+}
+
+/// A drop shadow paints under the content that cast it, offset by dx/dy, and
+/// `shadowOnly` drops the content and keeps the shadow.
+void aDropShadowPaintsUnderItsContent() {
+  // A 16x16 rect at (24, 24); an unblurred black shadow 8px down and right, so
+  // the shadow covers (32, 32)-(48, 48) and the content covers (24, 24)-(40, 40).
+  auto draw = [](int only) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(24);
+    w.pushAnim(24);
+    w.pushAnim(16);
+    w.pushAnim(16);
+    if (only < 0) {
+      w.pushPaint(0xffffffff, false);
+    } else {
+      w.pushFilteredPaint(0xffffffff,
+                          {3,
+                           {-1},
+                           {1, 8, 8, 0, 0, 0xff000000,
+                            static_cast<double>(only)}});
+    }
+    return render(w.finish(), {}, {});
+  };
+
+  auto plain = draw(-1);
+  CHECK(!opaqueAt(plain, 44, 44));  // nothing past the rect without a filter
+
+  auto shadowed = draw(0);
+  auto shadow = pixelAt(shadowed, 44, 44);
+  CHECK(opaqueAt(shadowed, 44, 44));
+  CHECK(shadow[0] == 0 && shadow[1] == 0 && shadow[2] == 0);
+  // The content is still there, on top of its own shadow.
+  auto content = pixelAt(shadowed, 28, 28);
+  CHECK(content[0] == 255 && content[1] == 255 && content[2] == 255);
+
+  auto only = draw(1);
+  CHECK(opaqueAt(only, 44, 44));
+  // The content it was cast from is gone, so its uncovered corner is empty.
+  CHECK(!opaqueAt(only, 28, 28));
+}
+
+/// A filter must be built once, by setScene, and never again — otherwise every
+/// filtered node allocates a filter per frame, which is exactly what the
+/// compile-once command list exists to avoid. Counted rather than reasoned
+/// about: filterBuildCount() moves on every construction, wherever it happens.
+///
+/// Every paint here has an animated alpha, so applyPaint really does run once
+/// per node per frame. A test on static paints would pass without proving
+/// anything: their compiled paint is handed over untouched, so a filter built
+/// inside applyPaint would never be reached.
+void filtersAreBuiltOnceAndNeverOnTheDrawPath() {
+  constexpr int kNodes = 16;
+  Writer w;
+  w.push(kNodes);
+  for (int i = 0; i < kNodes; i++) {
+    w.push(1);  // Rect
+    w.pushAnim(i);
+    w.pushAnim(i);
+    w.pushAnim(8);
+    w.pushAnim(8);
+    // A colour filter and an image filter on every node: two builds each.
+    w.pushFilteredPaint(
+        0xff3366cc,
+        {24,
+         {0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0},
+         {0, 2, 2, 3}},
+        0);
+  }
+
+  size_t before = tgfxrn::filterBuildCount();
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  size_t afterCompile = tgfxrn::filterBuildCount();
+  CHECK(afterCompile == before + 2 * kNodes);
+
+  // Ten frames off one compile: the count must not move by one.
+  for (int frame = 0; frame < 10; frame++) {
+    CHECK(anyPixelSet(drawFrame(renderer, {1})));
+  }
+  CHECK(tgfxrn::filterBuildCount() == afterCompile);
+}
+
 /// A handle JS has disposed must draw nothing, not somebody else's bitmap.
 void aDisposedHandleDrawsNothing() {
   auto image = registerSolid(cellColor(5));
@@ -887,6 +1192,13 @@ int main() {
   anImageEvictedBeforeCompileComesBackWhenItsDecodeLands();
   aBufferSwapSchedulesADraw();
   aDisposedHandleDrawsNothing();
+  aBlendModeCompositesAgainstWhatIsBelow();
+  aBlendModeSurvivesAnImageFilter();
+  aColourMatrixTransformsTheDrawnColour();
+  aBlendColourFilterTints();
+  aBlurSpreadsPastTheGeometry();
+  aDropShadowPaintsUnderItsContent();
+  filtersAreBuiltOnceAndNeverOnTheDrawPath();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

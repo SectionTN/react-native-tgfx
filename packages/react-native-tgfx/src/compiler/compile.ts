@@ -1,5 +1,6 @@
 import { NodeType, type Node } from '../reconciler/types'
 import type { Color } from './colors'
+import type { BlendMode } from './filters'
 import {
   fitCode,
   imageHandle,
@@ -167,32 +168,99 @@ function extractGradient(node: Node): GradientInput | undefined {
   return undefined
 }
 
+/** What a `<ColorMatrix>` / `<BlendColor>` / `<Blur>` / `<DropShadow>` adds. */
+function extractFilter(node: Node): Partial<PaintInput> | undefined {
+  const p = node.props
+  switch (node.type) {
+    case NodeType.ColorMatrix:
+      return {
+        colorFilter: { kind: 'matrix', matrix: p.matrix as number[] },
+      }
+    case NodeType.BlendColor:
+      return {
+        colorFilter: {
+          kind: 'blend',
+          color: p.color as Color,
+          mode: p.mode as BlendMode,
+        },
+      }
+    case NodeType.Blur:
+      return {
+        imageFilter: {
+          kind: 'blur',
+          blur: p.blur as number,
+          blurX: p.blurX as number,
+          blurY: p.blurY as number,
+          tileMode: p.tileMode as TileMode,
+        },
+      }
+    case NodeType.DropShadow:
+      return {
+        imageFilter: {
+          kind: 'dropShadow',
+          dx: p.dx as number,
+          dy: p.dy as number,
+          blur: p.blur as number,
+          blurX: p.blurX as number,
+          blurY: p.blurY as number,
+          color: p.color as Color,
+          shadowOnly: p.shadowOnly as boolean,
+        },
+      }
+    default:
+      return undefined
+  }
+}
+
+/** What a paint-source child contributes, or undefined if it is not one. */
+function paintFromChild(child: Node): Partial<PaintInput> | undefined {
+  const gradient = extractGradient(child)
+  return gradient != null ? { gradient } : extractFilter(child)
+}
+
+/** Object.assign, warning in dev when a filter overwrites one of its own class. */
+function addPaintSource(
+  paint: Partial<PaintInput>,
+  contribution: Partial<PaintInput>
+): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    for (const key of ['colorFilter', 'imageFilter'] as const) {
+      if (contribution[key] != null && paint[key] != null) {
+        console.warn(
+          `[tgfx] two ${key === 'colorFilter' ? 'colour' : 'image'} filters on one paint; only the last one is drawn. A paint carries at most one of each class, and they do not compose.`
+        )
+      }
+    }
+  }
+  Object.assign(paint, contribution)
+}
+
 /**
- * Merge a node's `<Paint>` and gradient children into its own paint. Returns
- * null when it has none, which is the common case — the caller then reads the
- * node's props directly instead of allocating a merged paint per node.
+ * Merge a node's `<Paint>`, gradient and filter children into its own paint.
+ * Returns null when it has none, which is the common case — the caller then
+ * reads the node's props directly instead of allocating a merged paint per node.
  */
 function paintFromChildren(node: Node): PaintInput | null {
   let paint: PaintInput | null = null
   for (const child of node.children) {
-    // A drawable child never yields a gradient, so skip probing it.
+    // A drawable child never yields a paint source, so skip probing it.
     if (KIND_OF[child.type] !== undefined) {
       continue
     }
     if (child.type === NodeType.Paint) {
       const childPaint = pickPaintInput(child.props)
       for (const g of child.children) {
-        const grad = extractGradient(g)
-        if (grad != null) {
-          childPaint.gradient = grad
+        const contribution = paintFromChild(g)
+        if (contribution != null) {
+          addPaintSource(childPaint, contribution)
         }
       }
       paint = mergePaint(paint ?? pickPaintInput(node.props), childPaint)
     } else {
-      const grad = extractGradient(child)
-      if (grad != null) {
+      const contribution = paintFromChild(child)
+      if (contribution != null) {
         paint = paint ?? pickPaintInput(node.props)
-        paint.gradient = grad
+        addPaintSource(paint, contribution)
       }
     }
   }

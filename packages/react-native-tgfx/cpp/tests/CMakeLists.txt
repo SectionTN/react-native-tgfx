@@ -19,3 +19,7 @@ target_link_libraries(SceneTest tgfx)
 add_executable(SnapshotTest SnapshotTest.cpp)
 target_include_directories(SnapshotTest PRIVATE ".." "${TGFX_DIR}/include")
 target_link_libraries(SnapshotTest tgfx)
+
+add_executable(AllocBench AllocBench.cpp ../TgfxScene.cpp ../SvgPath.cpp ../ImageRegistry.cpp)
+target_include_directories(AllocBench PRIVATE ".." "${TGFX_DIR}/include")
+target_link_libraries(AllocBench tgfx)

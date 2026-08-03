@@ -1,6 +1,10 @@
 import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
+  BlendColorProps,
+  BlurProps,
+  ColorMatrixProps,
+  DropShadowProps,
   ImageShaderProps,
   LinearGradientProps,
   NoiseProps,
@@ -51,3 +55,23 @@ export const Turbulence = NodeType.Turbulence as unknown as FC<NoiseProps>
  */
 export const ImageShader =
   NodeType.ImageShader as unknown as FC<ImageShaderProps>
+
+/**
+ * A 4x5 colour matrix — saturation, hue rotation, greyscale, channel swaps.
+ * A paint child, like a gradient. Cheap: it is one more stage in the fragment
+ * shader, with no offscreen and no bounds change.
+ */
+export const ColorMatrix =
+  NodeType.ColorMatrix as unknown as FC<ColorMatrixProps>
+
+/** Blends a constant colour into the drawing's own colours — a tint. */
+export const BlendColor = NodeType.BlendColor as unknown as FC<BlendColorProps>
+
+/**
+ * Gaussian blur. An *image* filter: the drawing goes through an offscreen layer
+ * and grows past its geometry, so it costs a render target per drawing.
+ */
+export const Blur = NodeType.Blur as unknown as FC<BlurProps>
+
+/** Drop shadow under the drawing. Same offscreen cost as `<Blur>`. */
+export const DropShadow = NodeType.DropShadow as unknown as FC<DropShadowProps>
