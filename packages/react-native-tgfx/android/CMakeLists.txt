@@ -48,6 +48,16 @@ set(TGFX_BUILD_LAYERS OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_SVG OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_PDF OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
+# tgfx only declares its embedded codec options for desktop targets (its
+# CMakeLists gates them on `NOT ANDROID AND NOT OHOS`), because Android normally
+# decodes through android.graphics.Bitmap. There is no matching platform
+# *encoder* behind ImageCodec::Encode, so Canvas.snapshot()/save() need the
+# embedded ones turned on explicitly — otherwise Encode returns null at runtime.
+# Setting the cache entries here still works: the `if (TGFX_USE_*_ENCODE)`
+# checks read them whether or not `option()` declared them.
+set(TGFX_USE_PNG_ENCODE ON CACHE BOOL "" FORCE)
+set(TGFX_USE_JPEG_ENCODE ON CACHE BOOL "" FORCE)
+set(TGFX_USE_WEBP_ENCODE ON CACHE BOOL "" FORCE)
 add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
 
 # --- Our shared C++ engine + JNI bridge ---

@@ -31,6 +31,33 @@ export interface TgfxViewProps extends HybridViewProps {
   opaque: boolean
 }
 
+/**
+ * A fully-defaulted readback request. The JS `Canvas` handle fills every field
+ * before it reaches the bridge, so neither native side has to model absence —
+ * see `nativeOptions` in `src/components/Canvas.tsx` for the defaults.
+ *
+ * `x`/`y`/`width`/`height` are logical pixels (dp), matching scene
+ * coordinates; a `width` or `height` of 0 means "the whole canvas".
+ */
+export interface NativeSnapshotOptions {
+  /** `'png' | 'jpeg' | 'webp' | 'raw'`; anything else is treated as `'png'`. */
+  format: string
+  quality: number
+  x: number
+  y: number
+  width: number
+  height: number
+  scale: number
+}
+
+export interface NativeSnapshot {
+  /** Encoded image bytes, or straight-alpha RGBA8888 rows for `format: 'raw'`. */
+  data: ArrayBuffer
+  width: number
+  height: number
+  format: string
+}
+
 export interface TgfxViewMethods extends HybridViewMethods {
   /**
    * Replace the draw program.
@@ -83,6 +110,27 @@ export interface TgfxViewMethods extends HybridViewMethods {
     contours: number[],
     blurRadius: number
   ): void
+
+  /**
+   * Read the canvas back as pixels.
+   *
+   * The readback is issued on the render thread inside the frame it belongs to,
+   * so a snapshot forces one fresh frame and never blocks the display link: the
+   * GPU→CPU transfer is collected on a later tick, and the encode runs on a
+   * worker so the (process-wide, on Android) render thread goes straight back
+   * to drawing.
+   *
+   * Rejects rather than handing back a black frame when no window is bound, the
+   * surface is zero-sized, or the view is unmounted before the frame lands.
+   */
+  snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot>
+
+  /**
+   * The same readback, encoded and written to `path` natively — the image bytes
+   * never enter JS, which is the entire reason this is not `snapshot()` plus a
+   * file write.
+   */
+  save(path: string, options: NativeSnapshotOptions): Promise<void>
 }
 
 export type TgfxView = HybridView<TgfxViewProps, TgfxViewMethods>

@@ -62,10 +62,22 @@ internal class TgfxRenderTarget {
     }
   }
 
-  private val drawRunnable = Runnable {
-    val ptr = nativePtr
-    if (ptr != 0L) {
-      TgfxNative.draw(ptr)
+  private val drawRunnable = object : Runnable {
+    override fun run() {
+      val ptr = nativePtr
+      if (ptr != 0L) {
+        TgfxNative.draw(ptr)
+        // A readback needs the frame it was issued into to complete before the
+        // GPU→CPU transfer lands, so the loop keeps itself alive until it does.
+        // A zero-delay re-post is a spin in all but name, throttled only by the
+        // blocking buffer dequeue, on the thread every canvas shares — so what
+        // makes it safe is that it terminates: the native side treats a lost or
+        // replaced context as terminal for a readback rather than letting
+        // hasPendingSnapshot latch (see TgfxRenderer::setWindow).
+        if (TgfxNative.hasPendingSnapshot(ptr)) {
+          handler.post(this)
+        }
+      }
     }
   }
 
@@ -113,6 +125,41 @@ internal class TgfxRenderTarget {
       TgfxNative.stageCameraFrame(it, buffer, frameWidth, frameHeight, contours, blurRadius)
       handler.removeCallbacks(cameraRunnable)
       handler.post(cameraRunnable)
+    }
+  }
+
+  /**
+   * Stage a pixel readback. Runs inline: the native side only queues the request
+   * and the render thread picks it up on the frame it forces. [callback] arrives
+   * on a native worker thread once the request has reached the renderer — never
+   * on the render thread. The one exception is the already-released branch
+   * below, which never reaches native and answers on the calling (JS) thread.
+   */
+  fun snapshot(
+    options: NativeSnapshotOptions,
+    path: String,
+    callback: TgfxNative.SnapshotCallback
+  ) {
+    var staged = false
+    withPtr {
+      TgfxNative.snapshot(
+        it,
+        options.format,
+        options.quality.toInt(),
+        options.x.toFloat(),
+        options.y.toFloat(),
+        options.width.toFloat(),
+        options.height.toFloat(),
+        options.scale.toFloat(),
+        path,
+        callback
+      )
+      staged = true
+    }
+    if (staged) {
+      requestRender()
+    } else {
+      callback.onSnapshot(null, 0, 0, "[tgfx] snapshot: the canvas is no longer mounted")
     }
   }
 

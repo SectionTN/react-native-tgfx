@@ -41,6 +41,7 @@ export type { TgfxViewRef } from './views/TgfxNativeView'
 
 export type {
   Animated,
+  CanvasHandle,
   CanvasProps,
   CircleProps,
   Color,
@@ -63,6 +64,9 @@ export type {
   SrcRect,
   SweepGradientProps,
   SharedValueLike,
+  Snapshot,
+  SnapshotFormat,
+  SnapshotOptions,
   TextProps,
   TgfxImage,
   TileMode,

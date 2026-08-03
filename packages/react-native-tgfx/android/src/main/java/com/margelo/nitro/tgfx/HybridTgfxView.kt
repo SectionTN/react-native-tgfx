@@ -10,6 +10,7 @@ import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.facebook.react.uimanager.ThemedReactContext
 import com.margelo.nitro.core.ArrayBuffer
+import com.margelo.nitro.core.Promise
 import com.margelo.nitro.views.RecyclableView
 
 // A FrameLayout wrapper so React-Native style props such as backgroundColor
@@ -136,6 +137,37 @@ class HybridTgfxView(private val context: ThemedReactContext) :
       FloatArray(contours.size) { contours[it].toFloat() },
       blurRadius.toFloat()
     )
+  }
+
+  override fun snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot> {
+    val promise = Promise<NativeSnapshot>()
+    target.snapshot(options, "") { data, width, height, error ->
+      when {
+        error != null -> promise.reject(RuntimeException(error))
+        data == null ->
+          promise.reject(RuntimeException("[tgfx] snapshot: the readback produced no bytes"))
+        // The direct buffer is only valid for this call, and nothing on the
+        // Kotlin side can tell C++ when JS drops the ArrayBuffer, so the bytes
+        // are copied into a Nitro-owned one here rather than leaked.
+        else -> promise.resolve(
+          NativeSnapshot(
+            ArrayBuffer.copy(data),
+            width.toDouble(),
+            height.toDouble(),
+            options.format
+          )
+        )
+      }
+    }
+    return promise
+  }
+
+  override fun save(path: String, options: NativeSnapshotOptions): Promise<Unit> {
+    val promise = Promise<Unit>()
+    target.snapshot(options, path) { _, _, _, error ->
+      if (error != null) promise.reject(RuntimeException(error)) else promise.resolve(Unit)
+    }
+    return promise
   }
 
   override fun prepareForRecycle() {

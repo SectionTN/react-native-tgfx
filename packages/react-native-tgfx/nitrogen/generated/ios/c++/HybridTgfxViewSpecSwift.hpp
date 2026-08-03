@@ -14,11 +14,18 @@ namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 
 // Forward declaration of `ArrayBufferHolder` to properly resolve imports.
 namespace NitroModules { class ArrayBufferHolder; }
+// Forward declaration of `NativeSnapshot` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshot; }
+// Forward declaration of `NativeSnapshotOptions` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
 #include <vector>
+#include "NativeSnapshot.hpp"
+#include <NitroModules/Promise.hpp>
+#include "NativeSnapshotOptions.hpp"
 
 #include "NitroTgfx-Swift-Cxx-Umbrella.hpp"
 
@@ -104,6 +111,22 @@ namespace margelo::nitro::tgfx {
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+    }
+    inline std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) override {
+      auto __result = _swiftPart.snapshot(std::forward<decltype(options)>(options));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<void>> save(const std::string& path, const NativeSnapshotOptions& options) override {
+      auto __result = _swiftPart.save(path, std::forward<decltype(options)>(options));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
     }
 
   private:

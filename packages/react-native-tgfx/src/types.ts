@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import type { Color } from './compiler/colors'
 import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
@@ -121,9 +121,52 @@ export interface TextProps extends PaintProps {
   fontFamily?: string
 }
 
+export type SnapshotFormat = 'png' | 'jpeg' | 'webp' | 'raw'
+
+export interface SnapshotOptions {
+  /** Defaults to `'png'`. `'raw'` returns straight-alpha RGBA8888 rows. */
+  format?: SnapshotFormat
+  /** 1–100, for `'jpeg'` and `'webp'`. Defaults to 100. */
+  quality?: number
+  /** Crop, in the same logical pixels the scene is drawn in. Defaults to the whole canvas. */
+  rect?: { x: number; y: number; width: number; height: number }
+  /** Multiplier on the cropped region's device-pixel size. Defaults to 1. */
+  scale?: number
+}
+
+export interface Snapshot {
+  /** Encoded image bytes, or straight-alpha RGBA8888 rows for `format: 'raw'`. */
+  data: ArrayBuffer
+  /** Size in pixels, which is the logical size times the device pixel ratio times `scale`. */
+  width: number
+  height: number
+  format: SnapshotFormat
+}
+
+/** What a `ref` on `<Canvas>` gives you. */
+export interface CanvasHandle {
+  /**
+   * Read the canvas back into memory. Resolves with a zero-copy `ArrayBuffer` —
+   * never a base64 string.
+   *
+   * The readback is issued on the render thread inside a frame it forces, and
+   * the encode runs on a worker, so the animation loop keeps its cadence.
+   * Rejects (rather than resolving a black frame) if the canvas has no surface
+   * yet or is unmounted before the frame lands.
+   */
+  snapshot(options?: SnapshotOptions): Promise<Snapshot>
+  /**
+   * The same readback, encoded and written to `path` natively. The image bytes
+   * never enter JS, so a large canvas costs nothing on the JS heap.
+   */
+  save(path: string, options?: SnapshotOptions): Promise<void>
+}
+
 export interface CanvasProps {
   style?: object
   children?: ReactNode
+  /** Imperative pixel readback: see {@link CanvasHandle}. */
+  ref?: Ref<CanvasHandle>
   /**
    * How the canvas is composited on Android.
    *

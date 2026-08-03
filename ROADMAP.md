@@ -157,7 +157,9 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 - 🟡 **Text layout.** Only single-line `drawSimpleText`. Add multiline/paragraph,
   alignment, font weight/style, measurement, custom fonts from assets, emoji/RTL.
   Android relies on hardcoded `/system/fonts/*.ttf` (OEM-fragile).
-- 🟡 `makeImageSnapshot` for export/share; wide-gamut/P3 color handling.
+- ✅ Pixel readback: `<Canvas ref>` exposes `snapshot()` and `save(path)`.
+- 🟡 Wide-gamut/P3 colour handling, including on readback (snapshots come back
+  as sRGB straight-alpha RGBA8888).
 
 ## Animation / Reanimated
 

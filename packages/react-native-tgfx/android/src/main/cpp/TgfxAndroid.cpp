@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "Log.hpp"
+#include "Snapshot.hpp"
 #include "TgfxRenderer.hpp"
+#include "tgfx/core/Data.h"
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
 #include "tgfx/platform/HardwareBuffer.h"
 
@@ -76,6 +78,88 @@ struct AndroidTgfxView {
 AndroidTgfxView* asView(jlong ptr) {
   return reinterpret_cast<AndroidTgfxView*>(ptr);
 }
+
+std::string toString(JNIEnv* env, jstring value) {
+  if (value == nullptr) {
+    return "";
+  }
+  const char* chars = env->GetStringUTFChars(value, nullptr);
+  std::string result = chars != nullptr ? chars : "";
+  if (chars != nullptr) {
+    env->ReleaseStringUTFChars(value, chars);
+  }
+  return result;
+}
+
+/// Delivers a snapshot result to a `TgfxNative.SnapshotCallback`. The callback
+/// arrives on a native worker thread, so it attaches to the JVM for the one
+/// call; the buffer handed over is only valid for its duration, which is why
+/// the Kotlin side copies it into a Nitro-owned ArrayBuffer there and then.
+class SnapshotSink {
+ public:
+  SnapshotSink(JNIEnv* env, jobject callback) {
+    env->GetJavaVM(&vm_);
+    callback_ = env->NewGlobalRef(callback);
+  }
+
+  ~SnapshotSink() {
+    if (callback_ == nullptr) {
+      return;
+    }
+    withEnv([this](JNIEnv* env) { env->DeleteGlobalRef(callback_); });
+  }
+
+  SnapshotSink(const SnapshotSink&) = delete;
+  SnapshotSink& operator=(const SnapshotSink&) = delete;
+
+  void deliver(const std::shared_ptr<tgfx::Data>& data, int width, int height,
+               const std::string& error) {
+    withEnv([&](JNIEnv* env) {
+      jobject buffer =
+          data != nullptr
+              ? env->NewDirectByteBuffer(const_cast<void*>(data->data()),
+                                         static_cast<jlong>(data->size()))
+              : nullptr;
+      jstring message = error.empty() ? nullptr : env->NewStringUTF(error.c_str());
+      jclass type = env->GetObjectClass(callback_);
+      jmethodID method = env->GetMethodID(
+          type, "onSnapshot", "(Ljava/nio/ByteBuffer;IILjava/lang/String;)V");
+      if (method != nullptr) {
+        env->CallVoidMethod(callback_, method, buffer, width, height, message);
+      }
+      env->DeleteLocalRef(type);
+      if (buffer != nullptr) {
+        env->DeleteLocalRef(buffer);
+      }
+      if (message != nullptr) {
+        env->DeleteLocalRef(message);
+      }
+    });
+  }
+
+ private:
+  template <typename Body>
+  void withEnv(Body&& body) {
+    if (vm_ == nullptr) {
+      return;
+    }
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    if (vm_->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
+      if (vm_->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+        return;
+      }
+      attached = true;
+    }
+    body(env);
+    if (attached) {
+      vm_->DetachCurrentThread();
+    }
+  }
+
+  JavaVM* vm_ = nullptr;
+  jobject callback_ = nullptr;
+};
 
 }  // namespace
 
@@ -293,6 +377,43 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setWakeTarget(JNIEnv* env, jobject, jlong
       wake->CallVoidMethod(view->wakeTarget, view->requestRender);
     }
   });
+}
+
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_snapshot(
+    JNIEnv* env, jobject, jlong ptr, jstring format, jint quality, jfloat x,
+    jfloat y, jfloat width, jfloat height, jfloat scale, jstring path,
+    jobject callback) {
+  auto* view = asView(ptr);
+  if (callback == nullptr) {
+    return;
+  }
+  auto sink = std::make_shared<SnapshotSink>(env, callback);
+  if (view == nullptr) {
+    sink->deliver(nullptr, 0, 0, "[tgfx] snapshot: the canvas is no longer mounted");
+    return;
+  }
+  tgfxrn::SnapshotRequest request;
+  request.format = toString(env, format);
+  request.quality = quality;
+  request.x = x;
+  request.y = y;
+  request.width = width;
+  request.height = height;
+  request.scale = scale;
+  request.path = toString(env, path);
+  view->renderer.requestSnapshot(
+      request, [sink](std::shared_ptr<tgfx::Data> data, int w, int h,
+                      const std::string& error) {
+        sink->deliver(data, w, h, error);
+      });
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_hasPendingSnapshot(JNIEnv*, jobject,
+                                                          jlong ptr) {
+  auto* view = asView(ptr);
+  return view != nullptr && view->renderer.snapshotPending() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL

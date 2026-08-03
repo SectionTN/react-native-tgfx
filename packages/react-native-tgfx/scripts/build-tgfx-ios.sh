@@ -26,13 +26,20 @@ echo ">>> platform=$PLATFORM deployment=$DEPLOY"
 bash "$HERE/apply-tgfx-patches.sh"
 
 # 2) Configure (Metal backend, no OpenGL/Vulkan) via tgfx's iOS toolchain.
+# The encode options are forced on: tgfx only declares them for desktop targets
+# (`if (IOS OR WEB)` gives iOS webp *decode* and nothing else), because Apple
+# decoding goes through ImageIO — but nothing behind ImageCodec::Encode does, so
+# without these Canvas.snapshot()/save() would fail at runtime with a null
+# encode. The `if (TGFX_USE_*_ENCODE)` checks read the cache entry whether or
+# not `option()` declared it.
 cmake -S "$TGFX_DIR" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE="$TGFX_DIR/third_party/vendor_tools/ios.toolchain.cmake" \
   -DPLATFORM="$PLATFORM" \
   -DDEPLOYMENT_TARGET="$DEPLOY" \
   -DCMAKE_BUILD_TYPE=Release \
   -DTGFX_USE_METAL=ON -DTGFX_USE_OPENGL=OFF -DTGFX_USE_VULKAN=OFF -DTGFX_USE_WEBGPU=OFF \
-  -DTGFX_BUILD_LAYERS=OFF -DTGFX_BUILD_SVG=OFF -DTGFX_BUILD_PDF=OFF -DTGFX_BUILD_HELLO2D=OFF
+  -DTGFX_BUILD_LAYERS=OFF -DTGFX_BUILD_SVG=OFF -DTGFX_BUILD_PDF=OFF -DTGFX_BUILD_HELLO2D=OFF \
+  -DTGFX_USE_PNG_ENCODE=ON -DTGFX_USE_JPEG_ENCODE=ON -DTGFX_USE_WEBP_ENCODE=ON
 
 # 3) Build the tgfx static lib (pulls in the tgfx-vendor target).
 cmake --build "$BUILD_DIR" --target tgfx

@@ -13,11 +13,17 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-
+// Forward declaration of `NativeSnapshot` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshot; }
+// Forward declaration of `NativeSnapshotOptions` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 
 #include <NitroModules/ArrayBuffer.hpp>
 #include <string>
 #include <vector>
+#include "NativeSnapshot.hpp"
+#include <NitroModules/Promise.hpp>
+#include "NativeSnapshotOptions.hpp"
 
 namespace margelo::nitro::tgfx {
 
@@ -57,6 +63,8 @@ namespace margelo::nitro::tgfx {
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
       virtual void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) = 0;
+      virtual std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) = 0;
+      virtual std::shared_ptr<Promise<void>> save(const std::string& path, const NativeSnapshotOptions& options) = 0;
 
     protected:
       // Hybrid Setup

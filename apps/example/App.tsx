@@ -32,6 +32,7 @@ import {
   Wave,
 } from './src/customShapes';
 import { AnimatedSection } from './src/animatedExamples';
+import { SnapshotSection } from './src/snapshotExample';
 import {
   BlurPanel,
   CheckerReference,
@@ -193,6 +194,8 @@ function Demo() {
         </RNText>
         <AnimatedSection />
       </View>
+
+      <SnapshotSection />
     </ScrollView>
   );
 }

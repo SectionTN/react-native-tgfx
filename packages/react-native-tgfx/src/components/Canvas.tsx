@@ -1,14 +1,35 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { callback } from 'react-native-nitro-modules'
 import type { MaybeSharedValue } from '../compiler/values'
 import { packStringTable } from '../compiler/writer'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import { directNodes } from '../reconciler/directNodes'
-import type { CanvasProps } from '../types'
+import type { NativeSnapshotOptions } from '../specs/TgfxView.nitro'
+import type {
+  CanvasProps,
+  Snapshot,
+  SnapshotFormat,
+  SnapshotOptions,
+} from '../types'
 import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
 let warnedNoDriver = false
+
+/** Fill in every field, so neither native side has to model an absent option. */
+function nativeOptions(options: SnapshotOptions = {}): NativeSnapshotOptions {
+  const rect = options.rect
+  return {
+    format: options.format ?? 'png',
+    // Documented as 1–100; an out-of-range value reaches ImageCodec::Encode raw.
+    quality: Math.min(100, Math.max(1, Math.round(options.quality ?? 100))),
+    x: rect?.x ?? 0,
+    y: rect?.y ?? 0,
+    width: rect?.width ?? 0,
+    height: rect?.height ?? 0,
+    scale: options.scale ?? 1,
+  }
+}
 
 /** True when two SharedValue lists reference the same set in the same order. */
 function sameValueSet(
@@ -38,6 +59,7 @@ export function Canvas({
   style,
   composite = 'layer',
   opaque = false,
+  ref,
 }: CanvasProps): React.ReactElement {
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
   const [view, setView] = useState<TgfxViewRef | null>(null)
@@ -87,6 +109,28 @@ export function Canvas({
       }
     })
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      snapshot: async (options?: SnapshotOptions): Promise<Snapshot> => {
+        const view = viewRef.current
+        if (view == null) {
+          throw new Error('[tgfx] snapshot: the canvas is not mounted yet')
+        }
+        const snap = await view.snapshot(nativeOptions(options))
+        return { ...snap, format: snap.format as SnapshotFormat }
+      },
+      save: async (path: string, options?: SnapshotOptions): Promise<void> => {
+        const view = viewRef.current
+        if (view == null) {
+          throw new Error('[tgfx] save: the canvas is not mounted yet')
+        }
+        await view.save(path, nativeOptions(options))
+      },
+    }),
+    []
+  )
 
   useEffect(() => {
     const root = rootRef.current

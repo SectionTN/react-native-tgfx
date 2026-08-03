@@ -7,6 +7,17 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Result of a pixel readback. `bytes`/`token` are non-null only on success and
+/// only when no output path was given: `bytes` stays valid until the caller
+/// passes `token` to `TgfxSnapshotRelease`, which is what lets the pixels reach
+/// JS as a zero-copy ArrayBuffer. Called on a worker thread.
+typedef void (^TgfxSnapshotCompletion)(void* _Nullable bytes, NSInteger size,
+                                       void* _Nullable token, int width,
+                                       int height, NSString* _Nullable error);
+
+/// Release the buffer behind a completion's `bytes`. Safe with NULL.
+FOUNDATION_EXPORT void TgfxSnapshotRelease(void* _Nullable token);
+
 @interface TgfxMetalView : UIView
 
 /// Update the binary draw-program. `strings` is a string-table delta, not a
@@ -33,6 +44,17 @@ NS_ASSUME_NONNULL_BEGIN
                contours:(const float*)contours
                   count:(NSInteger)count
              blurRadius:(float)blurRadius;
+
+/// Read the canvas back. The readback is issued inside the next frame and
+/// collected on a later display-link tick, so this never stalls the render
+/// queue; `path` (or nil) selects between saving natively and handing the bytes
+/// back. `rect` is in points; a zero-sized rect means the whole canvas.
+- (void)snapshotWithFormat:(NSString*)format
+                   quality:(int)quality
+                      rect:(CGRect)rect
+                     scale:(float)scale
+                      path:(nullable NSString*)path
+                completion:(TgfxSnapshotCompletion)completion;
 
 /// Force an immediate repaint (normally the display link drives frames).
 - (void)requestRender;

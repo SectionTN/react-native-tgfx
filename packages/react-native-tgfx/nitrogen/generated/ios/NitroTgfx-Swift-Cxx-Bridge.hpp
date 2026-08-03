@@ -8,8 +8,12 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `ArrayBufferHolder` to properly resolve imports.
+namespace NitroModules { class ArrayBufferHolder; }
 // Forward declaration of `HybridTgfxViewSpec` to properly resolve imports.
 namespace margelo::nitro::tgfx { class HybridTgfxViewSpec; }
+// Forward declaration of `NativeSnapshot` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshot; }
 
 // Forward declarations of Swift defined types
 // Forward declaration of `HybridTgfxViewSpec_cxx` to properly resolve imports.
@@ -17,8 +21,14 @@ namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 
 // Include C++ defined types
 #include "HybridTgfxViewSpec.hpp"
+#include "NativeSnapshot.hpp"
+#include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/ArrayBufferHolder.hpp>
+#include <NitroModules/Promise.hpp>
+#include <NitroModules/PromiseHolder.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -51,6 +61,96 @@ namespace margelo::nitro::tgfx::bridge::swift {
     return vector;
   }
   
+  // pragma MARK: std::shared_ptr<Promise<NativeSnapshot>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<NativeSnapshot>>`.
+   */
+  using std__shared_ptr_Promise_NativeSnapshot__ = std::shared_ptr<Promise<NativeSnapshot>>;
+  inline std::shared_ptr<Promise<NativeSnapshot>> create_std__shared_ptr_Promise_NativeSnapshot__() noexcept {
+    return Promise<NativeSnapshot>::create();
+  }
+  inline PromiseHolder<NativeSnapshot> wrap_std__shared_ptr_Promise_NativeSnapshot__(std::shared_ptr<Promise<NativeSnapshot>> promise) noexcept {
+    return PromiseHolder<NativeSnapshot>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const NativeSnapshot& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const NativeSnapshot&)>`.
+   */
+  using Func_void_NativeSnapshot = std::function<void(const NativeSnapshot& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const NativeSnapshot& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_NativeSnapshot_Wrapper final {
+  public:
+    explicit Func_void_NativeSnapshot_Wrapper(std::function<void(const NativeSnapshot& /* result */)>&& func): _function(std::make_unique<std::function<void(const NativeSnapshot& /* result */)>>(std::move(func))) {}
+    inline void call(NativeSnapshot result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const NativeSnapshot& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_NativeSnapshot create_Func_void_NativeSnapshot(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_NativeSnapshot_Wrapper wrap_Func_void_NativeSnapshot(Func_void_NativeSnapshot value) noexcept {
+    return Func_void_NativeSnapshot_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  /**
+   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
+   */
+  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__exception_ptr_Wrapper final {
+  public:
+    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
+    inline void call(std::exception_ptr error) const noexcept {
+      _function->operator()(error);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
+    return Func_void_std__exception_ptr_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<void>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<void>>`.
+   */
+  using std__shared_ptr_Promise_void__ = std::shared_ptr<Promise<void>>;
+  inline std::shared_ptr<Promise<void>> create_std__shared_ptr_Promise_void__() noexcept {
+    return Promise<void>::create();
+  }
+  inline PromiseHolder<void> wrap_std__shared_ptr_Promise_void__(std::shared_ptr<Promise<void>> promise) noexcept {
+    return PromiseHolder<void>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void()>
+  /**
+   * Specialized version of `std::function<void()>`.
+   */
+  using Func_void = std::function<void()>;
+  /**
+   * Wrapper class for a `std::function<void()>`, this can be used from Swift.
+   */
+  class Func_void_Wrapper final {
+  public:
+    explicit Func_void_Wrapper(std::function<void()>&& func): _function(std::make_unique<std::function<void()>>(std::move(func))) {}
+    inline void call() const noexcept {
+      _function->operator()();
+    }
+  private:
+    std::unique_ptr<std::function<void()>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void create_Func_void(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_Wrapper wrap_Func_void(Func_void value) noexcept {
+    return Func_void_Wrapper(std::move(value));
+  }
+  
   // pragma MARK: std::shared_ptr<HybridTgfxViewSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridTgfxViewSpec>`.
@@ -70,6 +170,24 @@ namespace margelo::nitro::tgfx::bridge::swift {
   }
   inline Result_void_ create_Result_void_(const std::exception_ptr& error) noexcept {
     return Result<void>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<NativeSnapshot>>>
+  using Result_std__shared_ptr_Promise_NativeSnapshot___ = Result<std::shared_ptr<Promise<NativeSnapshot>>>;
+  inline Result_std__shared_ptr_Promise_NativeSnapshot___ create_Result_std__shared_ptr_Promise_NativeSnapshot___(const std::shared_ptr<Promise<NativeSnapshot>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<NativeSnapshot>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_NativeSnapshot___ create_Result_std__shared_ptr_Promise_NativeSnapshot___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<NativeSnapshot>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<void>>>
+  using Result_std__shared_ptr_Promise_void___ = Result<std::shared_ptr<Promise<void>>>;
+  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::shared_ptr<Promise<void>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<void>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<void>>>::withError(error);
   }
 
 } // namespace margelo::nitro::tgfx::bridge::swift

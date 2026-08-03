@@ -13,8 +13,15 @@
 #include <vector>
 
 #include "IdleGate.hpp"
+#include "Snapshot.hpp"
 #include "TgfxRenderer.hpp"
 #include "tgfx/gpu/metal/MetalWindow.h"
+
+// The completion's `token` is the encoded buffer's owning reference, handed to
+// Swift so ArrayBuffer.wrap can keep the bytes alive without a copy.
+void TgfxSnapshotRelease(void* token) {
+  delete static_cast<std::shared_ptr<tgfx::Data>*>(token);
+}
 
 @implementation TgfxMetalView {
   std::unique_ptr<tgfxrn::TgfxRenderer> _renderer;
@@ -24,6 +31,9 @@
   std::atomic<bool> _drawPending;
   tgfxrn::IdleGate _idleGate;
   std::atomic<bool> _windowBound;
+  // Set once the display link is gone: a snapshot staged after that would never
+  // get the frame it needs, so it is rejected instead of hanging.
+  std::atomic<bool> _released;
   std::atomic<double> _drawableWidth;
   std::atomic<double> _drawableHeight;
 }
@@ -59,6 +69,7 @@
   __weak __typeof(self) weakSelf = self;
   _renderer->setWakeCallback([weakSelf] { [weakSelf wakeUp]; });
   _windowBound = false;
+  _released = false;
   _drawPending = false;
   _drawableWidth = 0;
   _drawableHeight = 0;
@@ -125,10 +136,17 @@
   }
   dispatch_async(_renderQueue, ^{
     [self bindWindowIfNeeded];
+    bool snapshotPending = false;
     if (self->_renderer != nullptr) {
       self->_renderer->draw();
+      snapshotPending = self->_renderer->snapshotPending();
     }
     self->_drawPending = false;
+    // A GPU→CPU transfer needs another tick to land, and the idle gate would
+    // otherwise pause the link before it does.
+    if (snapshotPending) {
+      [self wakeUp];
+    }
   });
 }
 
@@ -214,6 +232,69 @@
   });
 }
 
+- (void)snapshotWithFormat:(NSString*)format
+                   quality:(int)quality
+                      rect:(CGRect)rect
+                     scale:(float)scale
+                      path:(NSString*)path
+                completion:(TgfxSnapshotCompletion)completion {
+  if (_renderer == nullptr || _released) {
+    completion(nullptr, 0, nullptr, 0, 0,
+               @"[tgfx] snapshot: the canvas is no longer mounted");
+    return;
+  }
+  tgfxrn::SnapshotRequest request;
+  request.format = format.UTF8String;
+  request.quality = quality;
+  request.x = static_cast<float>(rect.origin.x);
+  request.y = static_cast<float>(rect.origin.y);
+  request.width = static_cast<float>(rect.size.width);
+  request.height = static_cast<float>(rect.size.height);
+  request.scale = scale;
+  request.path = path != nil ? path.UTF8String : "";
+  auto deliver = [completion](std::shared_ptr<tgfx::Data> data, int width, int height,
+                              const std::string& error) {
+    if (!error.empty()) {
+      completion(nullptr, 0, nullptr, 0, 0, @(error.c_str()));
+      return;
+    }
+    if (data == nullptr) {
+      completion(nullptr, 0, nullptr, width, height, nil);
+      return;
+    }
+    // Ownership moves to the token; Swift releases it when the ArrayBuffer it
+    // wraps is collected.
+    auto* token = new std::shared_ptr<tgfx::Data>(std::move(data));
+    completion(const_cast<void*>((*token)->data()),
+               static_cast<NSInteger>((*token)->size()), token, width, height, nil);
+  };
+  // The surface tgfx renders into is the layer's drawable, and a CAMetalLayer
+  // hands out framebuffer-only drawables by default — blitting out of one is
+  // illegal and wedges the whole Metal device, not just this view, and it stays
+  // wedged across a relaunch. The property only binds to drawables acquired
+  // after it is set, and a frame already recording on the render queue can be
+  // holding an older one (a blur or backdrop materialises the render target
+  // mid-scene, well before the readback is issued). So the flip is paired with
+  // deferSnapshotsToNextSurface(): the request is held staged until a surface
+  // created after the flip exists, which is one extra surface recreation, once
+  // per canvas. Flipped once and left off — it costs the drawable's lossless
+  // compression on every later frame, but restoring it would put that surface
+  // recreation on every snapshot, and a canvas nobody reads back never pays.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (self->_renderer == nullptr || self->_released) {
+      deliver(nullptr, 0, 0, "[tgfx] snapshot: the canvas is no longer mounted");
+      return;
+    }
+    CAMetalLayer* layer = [self metalLayer];
+    if (layer.framebufferOnly) {
+      layer.framebufferOnly = NO;
+      self->_renderer->deferSnapshotsToNextSurface();
+    }
+    self->_renderer->requestSnapshot(request, deliver);
+    [self wakeUp];
+  });
+}
+
 - (void)requestRender {
   [self wakeUp];
 }
@@ -222,6 +303,7 @@
   [_displayLink invalidate];
   _displayLink = nil;
   _windowBound = false;
+  _released = true;
   if (_renderer == nullptr) {
     return;
   }

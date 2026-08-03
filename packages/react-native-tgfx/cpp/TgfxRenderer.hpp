@@ -14,17 +14,20 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ImageRegistry.hpp"
 #include "SceneHash.hpp"
 #include "SceneStrings.hpp"
+#include "Snapshot.hpp"
 #include "TgfxScene.hpp"
 
 namespace tgfx {
 class Context;
 class Window;
 class Surface;
+class SurfaceReadback;
 }  // namespace tgfx
 
 namespace tgfxrn {
@@ -81,10 +84,59 @@ class TgfxRenderer {
   void drawCameraFrame(void* hardwareBuffer, float frameWidth, float frameHeight,
                        const std::vector<float>& contours, float blurRadius);
 
+  /// Stage a pixel readback. `callback` runs on a worker thread once the frame
+  /// carrying the readback has been drawn and the GPU transfer has landed, or
+  /// immediately with an error if the canvas cannot be read. Safe from any
+  /// thread; the caller still has to kick the loop, as for setScene().
+  void requestSnapshot(const SnapshotRequest& request, SnapshotCallback callback);
+
+  /// Hold staged readbacks back until a surface created after this call exists.
+  /// iOS flips CAMetalLayer.framebufferOnly on the main thread and the property
+  /// only binds to drawables acquired afterwards, so a frame that was already
+  /// recording when it flipped can still be holding a framebuffer-only drawable.
+  void deferSnapshotsToNextSurface();
+
+  /// True while a snapshot still needs a frame. The display link would otherwise
+  /// idle out (IdleGate) or draw() would early-return before the readback lands,
+  /// so the platform loop re-posts itself while this holds.
+  bool snapshotPending() const {
+    return snapshotPending_.load(std::memory_order_acquire);
+  }
+
   /// Release the platform surface and window while preserving the current scene.
   void releaseWindow();
 
  private:
+  // Render thread only: a readback issued into a frame that has been submitted.
+  struct InFlightSnapshot {
+    std::shared_ptr<tgfx::SurfaceReadback> readback;
+    // A scaled snapshot reads from its own target; hold it until the copy lands.
+    std::shared_ptr<tgfx::Surface> scratch;
+    SnapshotRequest request;
+    SnapshotCallback callback;
+    bool flipY = false;
+  };
+
+  /// Issue the staged readbacks into the frame that is about to be flushed.
+  void startSnapshots(tgfx::Context* context);
+  /// Copy back whatever the GPU has finished, and hand it to an encode worker.
+  void collectSnapshots(tgfx::Context* context);
+  /// Detach everything staged or in flight. The entries come back with their GPU
+  /// handles intact, so the caller frees those first — on a locked context.
+  std::vector<InFlightSnapshot> takeSnapshots();
+  /// Drop the surface and the entries' GPU handles on a locked context.
+  void releaseGpuObjects(const std::shared_ptr<tgfx::Window>& window,
+                         std::vector<InFlightSnapshot>& entries);
+  static void dropGpuHandles(std::vector<InFlightSnapshot>& entries);
+  /// Reject `entries` on a worker — the callback contract, error paths included.
+  static void failSnapshots(std::vector<InFlightSnapshot> entries,
+                            const std::string& error);
+  static void deliverError(SnapshotCallback callback, std::string error);
+  /// takeSnapshots + releaseGpuObjects + failSnapshots, for a dead-window path.
+  void failSnapshots(const std::shared_ptr<tgfx::Window>& window,
+                     const std::string& error);
+  void updateSnapshotPending();
+
   std::shared_ptr<tgfx::Window> window_;
   std::shared_ptr<tgfx::Surface> surface_;
   std::vector<double> pendingScene_;
@@ -115,6 +167,13 @@ class TgfxRenderer {
   uint64_t drawnVersion_{0};
   /// Registration in the image registry's wake list, dropped in the destructor.
   uint64_t wakeToken_ = 0;
+  // Staged under mutex_ by any thread; everything below it is render-thread only.
+  std::vector<std::pair<SnapshotRequest, SnapshotCallback>> pendingSnapshots_;
+  std::vector<InFlightSnapshot> inFlightSnapshots_;
+  std::atomic<bool> snapshotPending_{false};
+  // A counter, not a flag: a surface created before the bump must not clear it.
+  std::atomic<uint64_t> snapshotBarrier_{0};
+  uint64_t surfaceBarrier_{0};
 };
 
 }  // namespace tgfxrn

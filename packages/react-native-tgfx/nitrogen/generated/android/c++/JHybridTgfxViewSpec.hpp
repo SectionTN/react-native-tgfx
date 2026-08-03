@@ -61,6 +61,8 @@ namespace margelo::nitro::tgfx {
     void invalidate() override;
     void setValues(const std::vector<double>& values) override;
     void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) override;
+    std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) override;
+    std::shared_ptr<Promise<void>> save(const std::string& path, const NativeSnapshotOptions& options) override;
 
   private:
     jni::global_ref<JHybridTgfxViewSpec::JavaPart> _javaPart;

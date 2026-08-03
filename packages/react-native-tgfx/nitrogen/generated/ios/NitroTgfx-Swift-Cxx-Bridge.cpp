@@ -14,6 +14,30 @@
 
 namespace margelo::nitro::tgfx::bridge::swift {
 
+  // pragma MARK: std::function<void(const NativeSnapshot& /* result */)>
+  Func_void_NativeSnapshot create_Func_void_NativeSnapshot(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = NitroTgfx::Func_void_NativeSnapshot::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const NativeSnapshot& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = NitroTgfx::Func_void_std__exception_ptr::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::exception_ptr& error) mutable -> void {
+      swiftClosure.call(error);
+    };
+  }
+  
+  // pragma MARK: std::function<void()>
+  Func_void create_Func_void(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = NitroTgfx::Func_void::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)]() mutable -> void {
+      swiftClosure.call();
+    };
+  }
+  
   // pragma MARK: std::shared_ptr<HybridTgfxViewSpec>
   std::shared_ptr<HybridTgfxViewSpec> create_std__shared_ptr_HybridTgfxViewSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     NitroTgfx::HybridTgfxViewSpec_cxx swiftPart = NitroTgfx::HybridTgfxViewSpec_cxx::fromUnsafe(swiftUnsafePointer);

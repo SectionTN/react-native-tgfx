@@ -11,6 +11,7 @@ import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.core.ArrayBuffer
+import com.margelo.nitro.core.Promise
 import com.margelo.nitro.core.HybridObject
 import com.margelo.nitro.views.HybridView
 
@@ -60,6 +61,14 @@ abstract class HybridTgfxViewSpec: HybridView() {
     val __result = drawCameraFrame(buffer.toULong(), frameWidth, frameHeight, contours, blurRadius)
     return __result
   }
+  
+  @DoNotStrip
+  @Keep
+  abstract fun snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun save(path: String, options: NativeSnapshotOptions): Promise<Unit>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

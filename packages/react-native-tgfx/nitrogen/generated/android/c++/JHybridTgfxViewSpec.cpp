@@ -7,12 +7,22 @@
 
 #include "JHybridTgfxViewSpec.hpp"
 
+// Forward declaration of `NativeSnapshot` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshot; }
+// Forward declaration of `NativeSnapshotOptions` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 
-
+#include "NativeSnapshot.hpp"
+#include <NitroModules/Promise.hpp>
+#include <NitroModules/JPromise.hpp>
+#include "JNativeSnapshot.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/JArrayBuffer.hpp>
 #include <string>
+#include <NitroModules/JUnit.hpp>
 #include <vector>
+#include "NativeSnapshotOptions.hpp"
+#include "JNativeSnapshotOptions.hpp"
 
 namespace margelo::nitro::tgfx {
 
@@ -98,6 +108,37 @@ namespace margelo::nitro::tgfx {
       __array->setRegion(0, __size, contours.data());
       return __array;
     }(), blurRadius);
+  }
+  std::shared_ptr<Promise<NativeSnapshot>> JHybridTgfxViewSpec::snapshot(const NativeSnapshotOptions& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JNativeSnapshotOptions> /* options */)>("snapshot");
+    auto __result = method(_javaPart, JNativeSnapshotOptions::fromCpp(options));
+    return [&]() {
+      auto __promise = Promise<NativeSnapshot>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JNativeSnapshot>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  std::shared_ptr<Promise<void>> JHybridTgfxViewSpec::save(const std::string& path, const NativeSnapshotOptions& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* path */, jni::alias_ref<JNativeSnapshotOptions> /* options */)>("save");
+    auto __result = method(_javaPart, jni::make_jstring(path), JNativeSnapshotOptions::fromCpp(options));
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
   }
 
 } // namespace margelo::nitro::tgfx

@@ -10,10 +10,17 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `HybridTgfxViewSpec` to properly resolve imports.
 namespace margelo::nitro::tgfx { class HybridTgfxViewSpec; }
+// Forward declaration of `NativeSnapshotOptions` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
+// Forward declaration of `NativeSnapshot` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct NativeSnapshot; }
 
 // Include C++ defined types
 #include "HybridTgfxViewSpec.hpp"
+#include "NativeSnapshot.hpp"
+#include "NativeSnapshotOptions.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
