@@ -1,0 +1,119 @@
+import { useEffect, useState } from 'react'
+import { NitroModules } from 'react-native-nitro-modules'
+import { fontStyleOf } from '../compiler/text'
+import type { TextMeasurement, TgfxFonts } from '../specs/TgfxFonts.nitro'
+import type { FontProps, ParagraphProps } from '../types'
+import { loadSource } from './source'
+
+/** The native font manager. Created once, on first use. */
+let manager: TgfxFonts | null = null
+function fonts(): TgfxFonts {
+  manager ??= NitroModules.createHybridObject<TgfxFonts>('TgfxFonts')
+  return manager
+}
+
+export type { TextMeasurement } from '../specs/TgfxFonts.nitro'
+
+/** A `require('./Font.ttf')` asset, a URI, or raw base64 font bytes. */
+export type FontSource = number | string
+
+/**
+ * Register one font face under `family`. Weight and slant come from the font's
+ * own OS/2 table, so a family's regular and bold faces register identically and
+ * `<Text fontWeight>` picks between them.
+ *
+ * Pass an empty `family` to file the face under the name inside the font.
+ * Resolves to the family name it was filed under.
+ *
+ * Registration is process-wide and permanent: the same face registered twice
+ * replaces itself rather than stacking.
+ */
+export function loadFont(
+  source: FontSource,
+  family: string = ''
+): Promise<string> {
+  const api = fonts()
+  return loadSource(source, {
+    fromFile: (path) => api.registerFromFile(path, family),
+    fromBytes: (bytes) => api.registerFromBytes(bytes, family),
+    fromBase64: (data) => api.registerFromBase64(data, family),
+  })
+}
+
+/** Register every face of every family. Resolves once all of them are in. */
+export function loadFonts(
+  families: Record<string, FontSource[]>
+): Promise<string[]> {
+  return Promise.all(
+    Object.entries(families).flatMap(([family, sources]) =>
+      sources.map((source) => loadFont(source, family))
+    )
+  )
+}
+
+/**
+ * Register fonts for the lifetime of a component and report when they are in.
+ *
+ * Renders once with `false`, then once more with `true`. Text drawn before the
+ * faces land uses the platform fallback, so gate on the return value when that
+ * would be visible:
+ *
+ * ```tsx
+ * const ready = useFonts({ Playfair: [require('./Playfair-Regular.ttf')] })
+ * return <Canvas>{ready && <Text fontFamily="Playfair" ... />}</Canvas>
+ * ```
+ *
+ * Faces are not unregistered on unmount: they are process-wide, cheap to keep,
+ * and another canvas may still be drawing with them.
+ */
+export function useFonts(families: Record<string, FontSource[]>): boolean {
+  const [ready, setReady] = useState(false)
+  // The record is almost always an object literal, so a new identity every
+  // render; the families and their sources are what actually identify it.
+  const key = JSON.stringify(families)
+
+  useEffect(() => {
+    let active = true
+    loadFonts(families)
+      .then(() => {
+        if (active) {
+          setReady(true)
+        }
+      })
+      .catch((e: unknown) => {
+        console.warn('[tgfx] useFonts failed to load:', e)
+      })
+    return () => {
+      active = false
+    }
+  }, [key])
+
+  return ready
+}
+
+/** Every family registered so far, in registration order. */
+export function registeredFontFamilies(): string[] {
+  return fonts().familyNames
+}
+
+/**
+ * Exactly the `<Text>` props that affect layout — derived from them, not
+ * re-listed, so a prop added to one cannot go missing from the other. Only
+ * `fontSize` narrows: there is nothing to animate against here.
+ */
+export type TextStyle = Omit<FontProps, 'fontSize'> &
+  ParagraphProps & { fontSize?: number }
+
+/**
+ * What `text` would occupy if `<Text>` drew it with these props — same layout,
+ * same fallback chain, so a width measured here is the width drawn.
+ *
+ * The result is relative to the first baseline: `ascent` is negative, and the
+ * box runs from `y + ascent` to `y + ascent + height`.
+ */
+export function measureText(
+  text: string,
+  style: TextStyle = {}
+): TextMeasurement {
+  return fonts().measureText(text, fontStyleOf(style))
+}

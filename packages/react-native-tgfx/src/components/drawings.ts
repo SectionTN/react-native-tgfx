@@ -9,6 +9,7 @@ import type {
   PathProps,
   RectProps,
   RoundedRectProps,
+  TextPathProps,
   TextProps,
 } from '../types'
 
@@ -34,8 +35,14 @@ export const Path = NodeType.Path as unknown as FC<PathProps>
 /** Bitmap image drawn into the destination rect with the given `fit`. */
 export const Image = NodeType.Image as unknown as FC<ImageProps>
 
-/** A run of text with its baseline at (`x`, `y`). */
+/**
+ * Text with its first baseline at (`x`, `y`). Breaks at `\n`, and wraps inside
+ * `width` when one is given.
+ */
 export const Text = NodeType.Text as unknown as FC<TextProps>
+
+/** Text laid along an SVG path, one glyph per tangent. */
+export const TextPath = NodeType.TextPath as unknown as FC<TextPathProps>
 
 /**
  * Fills the whole canvas, so a runtime shader does not need to be told the

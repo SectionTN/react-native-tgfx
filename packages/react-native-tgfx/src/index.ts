@@ -13,6 +13,7 @@ export {
   Rect,
   RoundedRect,
   Text,
+  TextPath,
 } from './components/drawings'
 export {
   BlendColor,
@@ -31,6 +32,14 @@ export {
 } from './components/Paint'
 
 export { useClock } from './hooks/useClock'
+export {
+  loadFont,
+  loadFonts,
+  measureText,
+  registeredFontFamilies,
+  useFonts,
+} from './hooks/useFonts'
+export type { FontSource, TextMeasurement, TextStyle } from './hooks/useFonts'
 export {
   imageFromNativeBuffer,
   setImageCacheLimit,
@@ -55,6 +64,8 @@ export type {
   ColorMatrixProps,
   DropShadowProps,
   Fit,
+  FontProps,
+  FontWeight,
   GroupProps,
   ImageProps,
   ImageShaderProps,
@@ -64,6 +75,7 @@ export type {
   OvalProps,
   PaintComponentProps,
   PaintProps,
+  ParagraphProps,
   PathProps,
   RadialGradientProps,
   RectProps,
@@ -76,6 +88,7 @@ export type {
   Snapshot,
   SnapshotFormat,
   SnapshotOptions,
+  TextPathProps,
   TextProps,
   TgfxImage,
   TileMode,

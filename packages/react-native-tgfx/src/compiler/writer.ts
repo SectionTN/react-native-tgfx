@@ -33,7 +33,10 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // 10: a paint whose flags carry bit 4 writes a filter block (blend mode, colour
 // filter, image filter) between the alpha and the shader. Unfiltered paints are
 // byte-identical to 9, but an older reader would take the block for a shader.
-export const SCENE_VERSION = 10
+// 11: text carries a weight/style/spacing block and a paragraph block (wrap
+// width, alignment, line height, maxLines, ellipsis) an older reader would walk
+// straight past into the paint. Adds the text-path kind.
+export const SCENE_VERSION = 11
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
@@ -72,6 +75,7 @@ export const Kind = {
   Image: 7,
   Text: 8,
   Fill: 9,
+  TextPath: 10,
 } as const
 
 const HEADER_WORDS = 3

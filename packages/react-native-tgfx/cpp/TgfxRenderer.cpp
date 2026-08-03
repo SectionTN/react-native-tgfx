@@ -6,6 +6,7 @@
 
 #include <span>
 
+#include "FontRegistry.hpp"
 #include "SceneHash.hpp"
 #include "SceneStrings.hpp"
 #include "tgfx/core/Canvas.h"
@@ -100,6 +101,9 @@ void TgfxRenderer::setScene(std::span<const double> words,
     // A reconciler commit can produce an identical program (an unrelated state
     // change upstream); skipping it avoids a rebuild and a redundant frame.
     std::lock_guard<std::mutex> lock(mutex_);
+    // The font epoch deliberately stays out of this hash: draw() recompiles on
+    // an epoch move from the buffers it already holds, which covers the commit
+    // that arrives after a load *and* the load that no commit follows.
     uint64_t hash = hashScene(wordsHash, stringsHash_);
     if (hash == sceneHash_) {
       return;
@@ -158,8 +162,13 @@ bool TgfxRenderer::draw() {
   // ponytail: one process-wide counter, so a swap wakes every bound view. Views
   // that draw no images redraw one frame they did not need; per-handle
   // subscriptions if that ever shows up in a trace.
+  // The font epoch moves when a typeface finishes loading. loadFont() and
+  // loadFonts() are promises with no state change behind them, so nothing else
+  // ever commits — without this a face registered over already-mounted <Text>
+  // would leave it in the platform fallback for the life of the process.
+  uint64_t fontEpoch = FontRegistry::instance().epoch();
   uint64_t version = version_.load(std::memory_order_acquire) +
-                     ImageRegistry::instance().epoch();
+                     ImageRegistry::instance().epoch() + fontEpoch;
   // A snapshot needs frames the scene does not: one to issue the readback into,
   // then however many ticks the GPU transfer takes to land.
   if (version == drawnVersion_ && !snapshotPending()) {
@@ -181,6 +190,13 @@ bool TgfxRenderer::draw() {
       hasScene = true;
     }
   }
+  // Waking the loop is not enough: a redraw replays a TextCmd whose layout was
+  // memoised against the typeface the old epoch resolved. Both buffers survive
+  // the swap above, so recompiling costs one parse of a program we still hold.
+  if (!hasScene && fontEpoch != compiledFontEpoch_ && drawStrings_ != nullptr) {
+    hasScene = true;
+  }
+  compiledFontEpoch_ = fontEpoch;
   // Ahead of the window check, so a recycled but unbound view still drops them.
   if (dropCaches) {
     scene_.clearCaches();

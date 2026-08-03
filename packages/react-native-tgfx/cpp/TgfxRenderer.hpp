@@ -149,6 +149,9 @@ class TgfxRenderer {
   bool scenePending_ = false;
   bool cachesDirty_ = false;
   uint64_t sceneHash_ = 0;
+  /// The FontRegistry epoch the current command list was compiled against, so a
+  /// face that lands later forces a recompile rather than only a redraw.
+  uint64_t compiledFontEpoch_ = 0;
   std::vector<double> values_;
   // Render-thread buffers, refilled in place so no frame allocates under the lock.
   std::vector<double> drawValues_;

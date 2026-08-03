@@ -23,6 +23,7 @@ import {
 } from 'react-native-tgfx';
 import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
+import { TextSection } from './src/textExamples';
 import {
   BarChart,
   CircleField,
@@ -132,6 +133,8 @@ function Demo() {
           <Text x={0} y={20} text="GPU 2D · Metal / OpenGL" fontSize={15} color="#4F8EF7" />
         </Group>
       </Section>
+
+      <TextSection />
 
       <Section label="Custom shapes (composed from primitives)" height={150}>
         <Star cx={42} cy={74} outerR={36} points={5} color="#FF9500" />

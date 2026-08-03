@@ -19,6 +19,7 @@ import {
   type GradientInput,
   type PaintInput,
 } from './paint'
+import { alignCode, writeFont } from './text'
 import { toRadians, type Transform, type Vector } from './transform'
 import {
   isSharedValue,
@@ -88,6 +89,7 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Path]: Kind.Path,
   [NodeType.Image]: Kind.Image,
   [NodeType.Text]: Kind.Text,
+  [NodeType.TextPath]: Kind.TextPath,
   [NodeType.Fill]: Kind.Fill,
 }
 
@@ -344,7 +346,19 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushString(String(resolveValue(p.text) ?? ''))
       w.pushAnim(p.fontSize, 14)
-      w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
+      writeFont(w, p)
+      w.push(resolveNumber(p.width, 0))
+      w.push(alignCode(p.textAlign))
+      w.push(resolveNumber(p.lineHeight, 0))
+      w.push(resolveNumber(p.maxLines, 0))
+      w.pushString(p.ellipsis != null ? String(p.ellipsis) : '')
+      break
+    case Kind.TextPath:
+      w.pushString(String(resolveValue(p.path) ?? ''))
+      w.pushString(String(resolveValue(p.text) ?? ''))
+      w.pushAnim(p.fontSize, 14)
+      writeFont(w, p)
+      w.push(resolveNumber(p.startOffset, 0))
       break
     default:
       break

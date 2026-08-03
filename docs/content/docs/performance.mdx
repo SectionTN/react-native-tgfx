@@ -65,6 +65,18 @@ render is a fresh cache key every time. Hoist it to a module constant.
 Each draw command has a single alpha slot. Nesting animated opacities freezes
 their product — the compiler warns, and the fix is to animate one of them.
 
+### Animate a transform, not `fontSize`
+
+Text lays out once and the result is memoised against the size, rounded to a
+quarter of a pixel. Static text is therefore much cheaper than it used to be —
+measured at 467 allocations per frame for 100 nodes, against 1114 for the old
+per-draw rebuild, and about half the record time.
+
+An animated `fontSize` re-runs that layout whenever it crosses a quantum, so
+past roughly **6 px/s at 60 Hz** it costs *more* than the old path — about 2.1×
+the allocations at 15 px/s and above. Scale a `<Group>` instead when you can.
+Numbers from `cpp/tests/AllocBench`.
+
 ### Don't fight the group matrix
 
 A `<Group>` whose transform has no animated operand gets its matrix folded at

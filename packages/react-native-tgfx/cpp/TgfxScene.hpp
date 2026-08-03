@@ -11,14 +11,12 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <span>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "TextLayout.hpp"
 #include "tgfx/core/BlendMode.h"
-#include "tgfx/core/Font.h"
 #include "tgfx/core/Matrix.h"
 #include "tgfx/core/Paint.h"
 #include "tgfx/core/Path.h"
@@ -39,7 +37,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 10;
+inline constexpr double kSceneVersion = 11;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -137,6 +135,29 @@ struct TransformOpCmd {
   AnimF b;
 };
 
+/// A <Text> or <TextPath>: everything the layout needs, plus the laid-out blob
+/// for the size it was last drawn at.
+///
+/// Held behind a shared_ptr so DrawCmd — which readNode recurses on, on the
+/// render thread's stack — does not carry a paragraph's worth of fields for
+/// every rect in the scene.
+struct TextCmd {
+  std::string text;
+  TextSpec spec;
+  /// <TextPath> only; `onPath` is what tells the two apart.
+  tgfx::Path path;
+  bool onPath = false;
+
+  /// The layout for the size last drawn, rebuilt only when that size changes.
+  /// Mutable because the program is shared as const, and touched only by the
+  /// render thread, which is the one thread that both compiles and draws.
+  const TextLayout& resolve(float size) const;
+
+ private:
+  mutable float layoutSize = -1;
+  mutable TextLayout layout;
+};
+
 struct DrawCmd {
   enum Kind { Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill };
   Kind kind = Group;
@@ -163,9 +184,8 @@ struct DrawCmd {
   tgfx::SamplingOptions sampling{tgfx::FilterMode::Linear, tgfx::MipmapMode::None};
   /// Source sub-rect, for sprite sheets; empty means the whole image.
   tgfx::Rect srcRect = tgfx::Rect::MakeEmpty();
-  // Text (font built once; absent when no typeface resolved)
-  std::string text;
-  std::optional<tgfx::Font> font;
+  // Text and TextPath; null for every other kind.
+  std::shared_ptr<TextCmd> text;
 };
 
 using Program = std::vector<DrawCmd>;
@@ -180,20 +200,18 @@ class SceneRenderer {
   /// Execute the compiled program, resolving slot placeholders against `values`.
   void render(tgfx::Canvas* canvas, std::span<const double> values);
 
-  /// Drop the program and the cached typefaces. Images belong to the process-
-  /// wide ImageRegistry, which is keyed on JS handle lifetime, not on the view.
+  /// Drop the program. Images and typefaces belong to the process-wide
+  /// ImageRegistry and FontRegistry, which are keyed on JS handle and font
+  /// lifetime, not on the view.
   void clearCaches();
 
  private:
   std::shared_ptr<const Program> program_;
   std::mutex programMutex_;
 
-  // Compile-time resource cache (accessed only on the scene-change thread).
-  std::unordered_map<std::string, std::shared_ptr<tgfx::Typeface>> typefaceCache_;
-
-  std::shared_ptr<tgfx::Typeface> getTypeface(const std::string& family);
-
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
+  /// Reads the family/weight/style/spacing block both text kinds share.
+  void readTextSpec(SceneReader& reader, TextSpec& spec);
   void readPaint(SceneReader& reader, PaintCmd& paint);
   /// Builds the paint's blend mode and filters, once.
   void readFilters(SceneReader& reader, PaintCmd& paint);

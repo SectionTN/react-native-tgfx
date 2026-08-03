@@ -28,6 +28,12 @@
         "language": "c++",
         "implementationClassName": "HybridTgfxImageFactory"
       }
+    },
+    "TgfxFonts": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTgfxFonts"
+      }
     }
   },
   "ignorePaths": [

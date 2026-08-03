@@ -12,6 +12,7 @@
 
 #include "HybridTgfxViewSpecSwift.hpp"
 #include "HybridTgfxImageFactory.hpp"
+#include "HybridTgfxFonts.hpp"
 
 @interface NitroTgfxAutolinking : NSObject
 @end
@@ -36,6 +37,15 @@
                     "The HybridObject \"HybridTgfxImageFactory\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridTgfxImageFactory>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TgfxFonts",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridTgfxFonts>,
+                    "The HybridObject \"HybridTgfxFonts\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridTgfxFonts>();
     }
   );
 }

@@ -113,7 +113,59 @@ export interface ImageShaderProps {
   fit?: Fit
 }
 
-export interface TextProps extends PaintProps {
+/** CSS font weights. `'normal'` is 400 and `'bold'` is 700. */
+export type FontWeight =
+  | 'normal'
+  | 'bold'
+  | 100
+  | 200
+  | 300
+  | 400
+  | 500
+  | 600
+  | 700
+  | 800
+  | 900
+
+/** Everything that selects a face and shapes its glyphs. */
+export interface FontProps {
+  fontSize?: Animated<number>
+  /**
+   * A family registered with `useFonts`/`loadFont`, or one the platform knows.
+   * Unregistered and unknown falls back to the platform's default text font.
+   */
+  fontFamily?: string
+  /** Picks the nearest face in the family; synthesised when none is close. */
+  fontWeight?: FontWeight
+  fontStyle?: 'normal' | 'italic'
+  /** Extra px between glyphs. */
+  letterSpacing?: number
+}
+
+/**
+ * How the lines of a paragraph are broken and placed.
+ *
+ * Declared apart from `<Text>` because `measureText` has to accept exactly this
+ * set: "a width measured here is the width drawn" only holds while the two lists
+ * are identical, and this is what keeps them from drifting.
+ */
+export interface ParagraphProps {
+  /**
+   * Wrap width in px. Without it, text is only broken at explicit `\n` — which
+   * is the cheap single-line path, unchanged.
+   */
+  width?: number
+  /** How lines sit inside `width` (or inside the widest line without one). */
+  textAlign?: 'left' | 'center' | 'right'
+  /** Baseline-to-baseline distance in px. Defaults to the font's own spacing. */
+  lineHeight?: number
+  /** Stop after this many lines. Omitted or 0 means unlimited. */
+  maxLines?: number
+  /** Appended to the last line when `maxLines` truncates. */
+  ellipsis?: string
+}
+
+export interface TextProps extends PaintProps, FontProps, ParagraphProps {
   x: Animated<number>
   y: Animated<number>
   /**
@@ -121,8 +173,19 @@ export interface TextProps extends PaintProps {
    * would never animate.
    */
   text: string
-  fontSize?: Animated<number>
-  fontFamily?: string
+}
+
+/**
+ * Text laid along an SVG path: each glyph is placed at its own advance along the
+ * curve and rotated to the tangent there. The path is the baseline, so there is
+ * no `x`/`y` — and no wrapping, since the path is the line.
+ */
+export interface TextPathProps extends PaintProps, FontProps {
+  /** SVG path data, read once per commit, exactly as `<Path>` reads it. */
+  path: string
+  text: string
+  /** Distance along the path where the first glyph starts. */
+  startOffset?: number
 }
 
 export type SnapshotFormat = 'png' | 'jpeg' | 'webp' | 'raw'

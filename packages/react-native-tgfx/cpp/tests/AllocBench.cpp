@@ -9,6 +9,10 @@
 // is that a filter costs nothing per frame: it is built once at setScene and
 // only applied afterwards.
 //
+// The second half measures <Text>: the memoised layout against the
+// drawSimpleText path it replaces, reported as a mean rather than a best-of-N
+// because the interesting case is a size that keeps crossing a quantum.
+//
 // Build and run: see cpp/tests/CMakeLists.txt, target AllocBench.
 #include <algorithm>
 #include <atomic>
@@ -16,11 +20,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <new>
+#include <span>
+#include <string>
 #include <vector>
 
+#include "FontRegistry.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
+#include "tgfx/core/Color.h"
+#include "tgfx/core/Font.h"
 #include "tgfx/core/ImageInfo.h"
+#include "tgfx/core/Paint.h"
 #include "tgfx/core/Surface.h"
 #include "tgfx/gpu/Device.h"
 #include "tgfx/gpu/metal/MetalDevice.h"
@@ -145,6 +155,138 @@ size_t measure(bool filters, size_t* drawn) {
   return best;
 }
 
+// ---------------- text ----------------
+//
+// The claim under test is different in kind from the filter one, so it is
+// measured differently: <Text> memoises its layout against a quarter-pixel
+// size, which makes a still size much cheaper than the drawSimpleText path it
+// replaces and a *moving* one more expensive. Best-of-N would hide that
+// entirely — it picks the frame that happened not to cross a quantum — so this
+// half reports the mean, over enough frames for the rate to matter.
+
+constexpr int kTextNodes = 100;
+constexpr int kTextFrames = 37;
+constexpr float kBaseSize = 18;
+
+/// One <Text> per node, all on animation slot 0. Mirrors the Kind.Text case of
+/// writeDrawing() in compile.ts.
+std::vector<double> textScene() {
+  Writer w;
+  w.push(kTextNodes);
+  for (int i = 0; i < kTextNodes; i++) {
+    w.push(8);  // Text
+    w.pushAnim(2);
+    w.pushAnim(12 + (i % 4) * 12);
+    w.push(0);            // "Benchmark"
+    w.pushAnim(kBaseSize, 0);
+    w.push(1);            // "Helvetica"
+    w.push(400);
+    w.push(0);            // upright
+    w.push(0);            // letterSpacing
+    w.push(0);            // no wrap
+    w.push(0);            // align left
+    w.push(0);            // natural line height
+    w.push(0);            // no maxLines
+    w.push(2);            // empty ellipsis
+    w.push(0xff000000);
+    w.push(2);
+    w.pushAnim(1);
+    w.push(0);
+    w.push(0);
+    w.pushAnim(1);
+    w.push(-1);  // no shader
+  }
+  return w.finish();
+}
+
+/// The pre-#142 draw path, reproduced: a Font held at size 1, copied and
+/// re-sized for every draw, rebuilding a TextBlob inside drawSimpleText.
+void drawOldPath(tgfx::Canvas* canvas, const tgfx::Font& base, const tgfx::Paint& paint,
+                 float size) {
+  for (int i = 0; i < kTextNodes; i++) {
+    tgfx::Font sized = base;
+    sized.setSize(size);
+    canvas->drawSimpleText("Benchmark", 2, 12 + static_cast<float>(i % 4) * 12, sized, paint);
+  }
+}
+
+/// Mean allocations per recorded frame, and the opaque pixels the last one drew.
+template <typename Draw>
+size_t meanAllocations(Draw&& draw, size_t* drawn) {
+  size_t total = 0;
+  for (int frame = 0; frame < kTextFrames; frame++) {
+    auto* context = device()->lockContext();
+    auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+    auto* canvas = surface->getCanvas();
+    canvas->clear();
+    gAllocs.store(0);
+    gCounting.store(true);
+    draw(canvas, frame);
+    gCounting.store(false);
+    total += gAllocs.load();
+    context->flushAndSubmit(true);
+    auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888);
+    std::vector<uint8_t> pixels(static_cast<size_t>(info.byteSize()));
+    surface->readPixels(info, pixels.data());
+    device()->unlock();
+    *drawn = 0;
+    for (size_t at = 3; at < pixels.size(); at += 4) {
+      if (pixels[at] != 0) {
+        (*drawn)++;
+      }
+    }
+  }
+  return total / kTextFrames;
+}
+
+/// Returns false when either side drew nothing, which would make the numbers
+/// the cost of drawing nothing.
+bool reportText() {
+  tgfxrn::FontRegistry::instance().clear();
+  auto match = tgfxrn::FontRegistry::instance().match("Helvetica", 400, false);
+  if (match.typeface == nullptr) {
+    std::printf("no typeface for the text bench\n");
+    return false;
+  }
+  tgfx::Font base(match.typeface, 1);
+  tgfx::Paint paint;
+  paint.setColor(tgfx::Color::Black());
+  auto words = textScene();
+  const std::vector<std::string> strings{"Benchmark", "Helvetica", ""};
+
+  std::printf("%d <Text> nodes, mean allocations per frame over %d frames:\n", kTextNodes,
+              kTextFrames);
+  std::printf("  fontSize          old (drawSimpleText)   new (memoised blob)\n");
+  for (float step : {0.0f, 0.05f, 0.10f, 0.25f, 1.00f}) {
+    size_t oldDrawn = 0, newDrawn = 0;
+    size_t oldAllocs = meanAllocations(
+        [&](tgfx::Canvas* canvas, int frame) {
+          drawOldPath(canvas, base, paint, kBaseSize + step * static_cast<float>(frame));
+        },
+        &oldDrawn);
+    tgfxrn::SceneRenderer renderer;
+    renderer.setScene(words, strings);
+    size_t newAllocs = meanAllocations(
+        [&](tgfx::Canvas* canvas, int frame) {
+          double size = kBaseSize + static_cast<double>(step) * frame;
+          renderer.render(canvas, std::span<const double>(&size, 1));
+        },
+        &newDrawn);
+    if (oldDrawn == 0 || newDrawn == 0) {
+      std::printf("nothing was drawn (%zu / %zu opaque pixels)\n", oldDrawn, newDrawn);
+      return false;
+    }
+    char label[32];
+    if (step == 0) {
+      std::snprintf(label, sizeof(label), "static");
+    } else {
+      std::snprintf(label, sizeof(label), "%.2f px/frame", static_cast<double>(step));
+    }
+    std::printf("  %-16s  %10zu             %10zu\n", label, oldAllocs, newAllocs);
+  }
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -170,5 +312,6 @@ int main() {
   std::printf("  colour matrix + blend %zu  (%.2f per node)\n", filtered,
               double(filtered) / kNodes);
   std::printf("  filters built at compile: %zu\n", tgfxrn::filterBuildCount());
-  return 0;
+  std::printf("\n");
+  return reportText() ? 0 : 1;
 }

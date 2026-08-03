@@ -182,8 +182,7 @@ void ImageRegistry::removeWakeListener(uint64_t token) {
   }
 }
 
-void ImageRegistry::bumpEpoch() {
-  epoch_.fetch_add(1, std::memory_order_release);
+void ImageRegistry::wakeAll() {
   // Invoked under the listener lock rather than through a copy: a wake only
   // posts work, there is normally one of them, and a per-frame camera swap
   // should not allocate to say so.
@@ -192,6 +191,11 @@ void ImageRegistry::bumpEpoch() {
     (void)token;
     wake();
   }
+}
+
+void ImageRegistry::bumpEpoch() {
+  epoch_.fetch_add(1, std::memory_order_release);
+  wakeAll();
 }
 
 void ImageRegistry::scheduleDecodeLocked(int32_t handle) {

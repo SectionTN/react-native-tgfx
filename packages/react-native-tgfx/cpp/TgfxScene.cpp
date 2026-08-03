@@ -6,13 +6,14 @@
 #include <cmath>
 #include <iterator>
 
+#include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
 #include "Log.hpp"
 #include "SvgPath.hpp"
+#include "TextLayout.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/ColorFilter.h"
-#include "tgfx/core/Font.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageFilter.h"
 #include "tgfx/core/Paint.h"
@@ -23,7 +24,7 @@
 #include "tgfx/core/Shader.h"
 #include "tgfx/core/Stroke.h"
 #include "tgfx/core/TileMode.h"
-#include "tgfx/core/Typeface.h"
+#include "tgfx/core/TextBlob.h"
 
 namespace tgfxrn {
 
@@ -89,7 +90,7 @@ std::atomic<size_t> gFilterBuilds{0};
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
-  KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill
+  KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill, KTextPath
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -366,37 +367,35 @@ std::shared_ptr<tgfx::Shader> ImageShaderCmd::build(
   return shader->makeWithMatrix(matrix);
 }
 
-std::shared_ptr<tgfx::Typeface> SceneRenderer::getTypeface(
-    const std::string& family) {
-  auto it = typefaceCache_.find(family);
-  if (it != typefaceCache_.end()) {
-    return it->second;
+void SceneRenderer::readTextSpec(SceneReader& r, TextSpec& spec) {
+  spec.family = r.nextString();
+  spec.weight = r.nextInt();
+  spec.italic = r.nextInt() != 0;
+  spec.letterSpacing = static_cast<float>(r.next());
+}
+
+const TextLayout& TextCmd::resolve(float size) const {
+  // Quantised, not exact. Typeface::getScalerContext takes a per-typeface global
+  // lock, keys its cache on the raw float, and never erases: a continuously
+  // animated size misses on every frame and grows that map for the life of the
+  // process. A quarter of a pixel is finer than the rasteriser's own grid and
+  // bounds the key space to four entries per pixel of range.
+  //
+  // It does not make an animated size cheap — past a quantum per frame this
+  // re-lays out as often as the old path rebuilt its blob, and costs more. See
+  // the measured table in TextLayout.hpp, and #145 for the fix.
+  size = std::round(size * 4) / 4;
+  if (size == layoutSize) {
+    return layout;
   }
-  std::shared_ptr<tgfx::Typeface> typeface;
-  const char* names[] = {"", "sans-serif", "Helvetica", "Arial", "Roboto"};
-  if (!family.empty()) {
-    typeface = tgfx::Typeface::MakeFromName(family, "");
-  }
-  for (size_t i = 0; typeface == nullptr && i < std::size(names); i++) {
-    typeface = tgfx::Typeface::MakeFromName(names[i], "");
-  }
-  const char* paths[] = {"/system/fonts/Roboto-Regular.ttf",
-                         "/system/fonts/NotoSans-Regular.ttf",
-                         "/system/fonts/DroidSans.ttf"};
-  for (size_t i = 0; typeface == nullptr && i < std::size(paths); i++) {
-    typeface = tgfx::Typeface::MakeFromPath(paths[i]);
-  }
-  if (typeface == nullptr) {
-    TGFXRN_LOGW("no typeface found for family '%s'", family.c_str());
-  }
-  typefaceCache_[family] = typeface;
-  return typeface;
+  layoutSize = size;
+  layout = onPath ? layoutTextOnPath(text, spec, size, path) : layoutText(text, spec, size);
+  return layout;
 }
 
 void SceneRenderer::clearCaches() {
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = nullptr;
-  typefaceCache_.clear();
 }
 
 std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd* out) {
@@ -714,14 +713,28 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.kind = DrawCmd::Text;
       cmd.x = r.nextAnim();
       cmd.y = r.nextAnim();
-      cmd.text = r.nextString();
+      cmd.text = std::make_shared<TextCmd>();
+      cmd.text->text = r.nextString();
       cmd.fontSize = r.nextAnim();
-      auto typeface = getTypeface(r.nextString());
-      if (typeface != nullptr) {
-        // An animated size writes a 0 literal, and a 0-sized font has no typeface.
-        float size = cmd.fontSize.slot >= 0 ? 1.0f : cmd.fontSize.literal;
-        cmd.font.emplace(std::move(typeface), size);
-      }
+      readTextSpec(r, cmd.text->spec);
+      auto& spec = cmd.text->spec;
+      spec.wrapWidth = static_cast<float>(r.next());
+      spec.align = static_cast<TextAlign>(std::clamp(r.nextInt(), 0, 2));
+      spec.lineHeight = static_cast<float>(r.next());
+      spec.maxLines = r.nextInt();
+      spec.ellipsis = r.nextString();
+      break;
+    }
+    case KTextPath: {
+      // Same command as Text; the path is the baseline, so there is no x/y.
+      cmd.kind = DrawCmd::Text;
+      cmd.text = std::make_shared<TextCmd>();
+      cmd.text->onPath = true;
+      cmd.text->path = parseSvgPath(r.nextString());
+      cmd.text->text = r.nextString();
+      cmd.fontSize = r.nextAnim();
+      readTextSpec(r, cmd.text->spec);
+      cmd.text->spec.startOffset = static_cast<float>(r.next());
       break;
     }
     default:
@@ -868,18 +881,21 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       canvas->drawImageRect(image, fitted.src, fitted.dst, cmd.sampling, p);
       break;
     }
-    case DrawCmd::Text:
-      if (cmd.font.has_value() && !cmd.text.empty()) {
-        float x = cmd.x.resolve(v), y = cmd.y.resolve(v);
-        if (cmd.fontSize.slot >= 0) {
-          tgfx::Font sized = *cmd.font;
-          sized.setSize(cmd.fontSize.resolve(v));
-          canvas->drawSimpleText(cmd.text, x, y, sized, *p);
-        } else {
-          canvas->drawSimpleText(cmd.text, x, y, *cmd.font, *p);
-        }
+    case DrawCmd::Text: {
+      if (cmd.text == nullptr) {
+        break;
       }
+      // The blob is laid out once per distinct (quantised) size and drawn by
+      // reference, so a static label costs a refcount bump per frame rather than
+      // the two vectors and the blob that drawSimpleText -> TextBlob::MakeFrom
+      // allocated on every single draw.
+      const auto& layout = cmd.text->resolve(cmd.fontSize.resolve(v));
+      if (layout.blob == nullptr) {
+        break;
+      }
+      canvas->drawTextBlob(layout.blob, cmd.x.resolve(v), cmd.y.resolve(v), *p);
       break;
+    }
     default:
       break;
   }

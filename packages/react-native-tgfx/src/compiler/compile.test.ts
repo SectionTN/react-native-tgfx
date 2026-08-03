@@ -278,6 +278,68 @@ test('a text-only change leaves the word buffer byte-identical', () => {
   expect(second.strings).not.toEqual(firstStrings)
 })
 
+test('a text node carries its font block and its paragraph block', () => {
+  const { used, strings } = compile([
+    node(NodeType.Text, {
+      x: 1,
+      y: 2,
+      text: 'hi',
+      fontSize: 16,
+      fontFamily: 'PT Serif',
+      fontWeight: 'bold',
+      fontStyle: 'italic',
+      letterSpacing: 1.5,
+      width: 120,
+      textAlign: 'center',
+      lineHeight: 22,
+      maxLines: 2,
+      ellipsis: '…',
+    }),
+  ])
+  expect(strings).toEqual(['hi', 'PT Serif', '…'])
+  // x y text size | family weight italic spacing | width align lh maxLines ell
+  expect(Array.from(used.subarray(5, 18))).toEqual([
+    1, 2, 0, 16, 1, 700, 1, 1.5, 120, 1, 22, 2, 2,
+  ])
+})
+
+test('an omitted font block defaults to normal, upright and unwrapped', () => {
+  const { used, strings } = compile([
+    node(NodeType.Text, { x: 0, y: 0, text: 'hi' }),
+  ])
+  // The family and the ellipsis are both the empty string, interned once.
+  expect(strings).toEqual(['hi', ''])
+  // size | family weight italic spacing | width align lh maxLines ellipsis
+  expect(Array.from(used.subarray(8, 18))).toEqual([
+    14, 1, 400, 0, 0, 0, 0, 0, 0, 1,
+  ])
+})
+
+test('a text path carries the path, the text and the font block', () => {
+  const { used, strings } = compile([
+    node(NodeType.TextPath, {
+      path: 'M0 0 L10 0',
+      text: 'hi',
+      fontSize: 12,
+      fontFamily: 'PT Serif',
+      startOffset: 4,
+    }),
+  ])
+  expect(strings).toEqual(['M0 0 L10 0', 'hi', 'PT Serif'])
+  expect(Array.from(used.subarray(3, 11))).toEqual([
+    1,
+    Kind.TextPath,
+    0,
+    1,
+    12,
+    2,
+    400,
+    0,
+  ])
+  expect(used[11]).toBe(0) // letterSpacing
+  expect(used[12]).toBe(4) // startOffset
+})
+
 // Golden encoding: paint-bearing children add paint but never enter the stream.
 // Word 0 is the version, which every bump would otherwise strand this golden on.
 const MIXED_GROUP_WORDS = [

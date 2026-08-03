@@ -5,17 +5,21 @@
 // pixels, because the invariant that matters is "the cached object draws what
 // the per-frame rebuild drew", and no cheaper observation proves that.
 //
-// Build and run: see cpp/tests/CMakeLists.txt.
+// Build and run: see cpp/tests/CMakeLists.txt. The allocation cost of text is
+// measured separately, in AllocBench.
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
+#include "TextLayout.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/EncodedFormat.h"
@@ -23,6 +27,7 @@
 #include "tgfx/core/ImageInfo.h"
 #include "tgfx/core/Pixmap.h"
 #include "tgfx/core/Surface.h"
+#include "tgfx/core/Typeface.h"
 #include "tgfx/gpu/Device.h"
 #include "tgfx/gpu/metal/MetalDevice.h"
 
@@ -40,6 +45,10 @@ int failures = 0;
 
 constexpr int kWidth = 64;
 constexpr int kHeight = 64;
+
+/// The example app's bundled fonts, so the font-manager tests run against real
+/// faces that live in this repo. Set by cpp/tests/CMakeLists.txt.
+constexpr const char* kFontDir = TGFXRN_TEST_FONT_DIR;
 
 /// Mirrors src/compiler/writer.ts: header, node stream, then the patch table.
 struct Writer {
@@ -351,17 +360,39 @@ void animatedStrokeWidthDrawsWhatTheRebuildDraws() {
   CHECK(cached != render(words, {}, {2}));
 }
 
-const std::vector<std::string> kTextStrings{"Wg", "Helvetica"};
+/// 0 the text, 1 the family, 2 an empty ellipsis, 3 a two-line text.
+const std::vector<std::string> kTextStrings{"Wg", "Helvetica", "", "Wg\nWg"};
 
-void writeText(Writer& w, double fontSize, int fontSizeSlot) {
-  w.push(1);
+/// A <Text> node body. Mirrors the Kind.Text case of writeDrawing() in
+/// compile.ts: geometry, text, size, the font block, then the paragraph block.
+/// The root count is the caller's, so several can be written into one program.
+void writeTextNode(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
+                   double wrapWidth = 0, int align = 0, double lineHeight = 0,
+                   int weight = 400, int italic = 0) {
   w.push(8);  // Text
   w.pushAnim(4);
   w.pushAnim(44);
-  w.push(0);  // text string index
+  w.push(textIndex);
   w.pushAnim(fontSize, fontSizeSlot);
   w.push(1);  // font family string index
+  w.push(weight);
+  w.push(italic);
+  w.push(0);  // letterSpacing
+  w.push(wrapWidth);
+  w.push(align);
+  w.push(lineHeight);
+  w.push(0);  // maxLines
+  w.push(2);  // ellipsis string index (empty)
   w.pushPaint(0xff000000, false);
+}
+
+/// One <Text> as a whole program.
+void writeText(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
+               double wrapWidth = 0, int align = 0, double lineHeight = 0, int weight = 400,
+               int italic = 0) {
+  w.push(1);
+  writeTextNode(w, fontSize, fontSizeSlot, textIndex, wrapWidth, align, lineHeight, weight,
+                italic);
 }
 
 /// A static font must draw what the per-frame font construction drew.
@@ -1158,6 +1189,409 @@ void filtersAreBuiltOnceAndNeverOnTheDrawPath() {
   CHECK(tgfxrn::filterBuildCount() == afterCompile);
 }
 
+// ---------------- text ----------------
+
+/// The rightmost column holding ink, or -1 when nothing was drawn.
+int rightmostInk(const Pixels& pixels) {
+  int rightmost = -1;
+  for (int y = 0; y < kHeight; y++) {
+    for (int x = 0; x < kWidth; x++) {
+      if (pixels[static_cast<size_t>((y * kWidth + x) * 4 + 3)] != 0) {
+        rightmost = std::max(rightmost, x);
+      }
+    }
+  }
+  return rightmost;
+}
+
+int inkRows(const Pixels& pixels) {
+  int rows = 0;
+  for (int y = 0; y < kHeight; y++) {
+    for (int x = 0; x < kWidth; x++) {
+      if (pixels[static_cast<size_t>((y * kWidth + x) * 4 + 3)] != 0) {
+        rows++;
+        break;
+      }
+    }
+  }
+  return rows;
+}
+
+/// The acceptance case the old code could not meet: an Android image with none
+/// of Roboto-Regular.ttf, NotoSans-Regular.ttf or DroidSans.ttf. Those three
+/// paths were the only resolution that could ever succeed there — MakeFromName
+/// is nullptr on FreeType — so such a device drew no text at all.
+void aFontIsFoundOnAnImageWithNoneOfTheOldHardcodedPaths() {
+  auto best = [](const std::vector<std::string>& files, const std::string& family, int weight,
+                 bool italic) {
+    auto ranked = tgfxrn::rankFontFiles(files, family, weight, italic);
+    return ranked.empty() ? -1 : ranked.front();
+  };
+  const std::vector<std::string> oemImage{
+      "/system/fonts/NotoColorEmoji.ttf",
+      "/system/fonts/SamsungOne-400.ttf",
+      "/system/fonts/SamsungOne-700.ttf",
+      "/system/fonts/SamsungSharpSans-Bold.ttf",
+  };
+  CHECK(best(oemImage, "", 400, false) >= 0);
+  // Never the emoji font: that is how a paragraph renders as blank boxes.
+  CHECK(best(oemImage, "", 400, false) != 0);
+  // Weight steers the choice inside what the image actually has.
+  CHECK(best(oemImage, "", 700, false) != best(oemImage, "", 400, false));
+
+  // An asked-for family beats every default, even an unstyled match.
+  const std::vector<std::string> withFamily{"/system/fonts/Roboto-Regular.ttf",
+                                            "/system/fonts/PlayfairDisplay-Regular.ttf"};
+  CHECK(best(withFamily, "Playfair Display", 400, false) == 1);
+  CHECK(best(withFamily, "playfair-display", 400, false) == 1);
+  // Nothing but an emoji font is still nothing.
+  CHECK(tgfxrn::rankFontFiles({"/system/fonts/NotoColorEmoji.ttf"}, "", 400, false).empty());
+
+  // Every plausible candidate is offered, best first, because a filename says
+  // nothing about coverage. On a real Samsung image the top-scoring bold face is
+  // NotoSansCham-Bold, which has no Latin at all — resolution has to be able to
+  // walk past it instead of giving up, which is what left bold text blank.
+  const std::vector<std::string> samsung{
+      "/system/fonts/DroidSans-Bold.ttf", "/system/fonts/NotoColorEmoji.ttf",
+      "/system/fonts/NotoSansCham-Bold.ttf", "/system/fonts/Roboto-Regular.ttf"};
+  auto ranked = tgfxrn::rankFontFiles(samsung, "", 700, false);
+  CHECK(ranked.size() >= 3);
+  CHECK(std::find(ranked.begin(), ranked.end(), 0) != ranked.end());
+  // The emoji font is still never offered.
+  CHECK(std::find(ranked.begin(), ranked.end(), 1) == ranked.end());
+
+  // A *named* family must not promote a special-purpose face either: "Noto"
+  // prefix-matches NotoColorEmoji, which would otherwise outrank every real
+  // text face and draw the paragraph as .notdef.
+  const std::vector<std::string> noto{"/system/fonts/NotoColorEmoji.ttf",
+                                      "/system/fonts/SamsungOne-400.ttf"};
+  CHECK(best(noto, "Noto", 400, false) == 1);
+  CHECK(tgfxrn::rankFontFiles(noto, "Noto", 400, false).size() == 1);
+  // Unless it is asked for by name, in which case it is the only answer.
+  CHECK(best(noto, "Noto Color Emoji", 400, false) == 0);
+}
+
+/// The path cache is shared with the fallback chain, which files the colour
+/// emoji face by path. A hit has to clear the same bar a fresh open does, or
+/// resolution returns a different face depending on whether an emoji was drawn
+/// first — the same input, two answers.
+void aCachedFaceStillHasToBeAbleToDrawText() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  // Warms files_ with whatever colour-emoji face this host has.
+  auto fallbacks = registry.fallbacks();
+  CHECK(!fallbacks.empty());
+  for (const auto& typeface : fallbacks) {
+    CHECK(typeface->getGlyphID('A') == 0);
+  }
+  // Every resolution after that still has to land on a face that can draw.
+  for (const char* family : {"", "Noto", "Apple Color Emoji", "No Such Family"}) {
+    auto match = registry.match(family, 400, false);
+    CHECK(match.typeface != nullptr);
+    if (match.typeface != nullptr) {
+      CHECK(match.typeface->getGlyphID('A') != 0);
+    }
+  }
+  registry.clear();
+}
+
+/// <Text> with no fontFamily at all has to resolve to something that can draw
+/// Latin. CoreText answers a descriptor naming no family with *a* font, and the
+/// one it picks has no Latin glyphs — every unstyled label renders blank.
+void theDefaultFamilyCanActuallyDrawText() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  auto fallback = registry.match("", 400, false);
+  CHECK(fallback.typeface != nullptr);
+  if (fallback.typeface != nullptr) {
+    CHECK(fallback.typeface->getGlyphID('A') != 0);
+    CHECK(fallback.typeface->getGlyphID('0') != 0);
+  }
+  // A family nothing has must land on the same drawable default.
+  auto unknown = registry.match("No Such Family At All", 400, false);
+  CHECK(unknown.typeface != nullptr && unknown.typeface->getGlyphID('A') != 0);
+
+  // And it has to reach the draw, not just the match.
+  Writer w;
+  writeText(w, 24, -1, 0);
+  CHECK(anyPixelSet(render(w.finish(), {"Wg", "", ""}, {})));
+}
+
+/// loadFont() is a bare promise: no state change, no commit, nothing else to
+/// wake the render loop. Registering a face has to schedule the draw itself, or
+/// text stays in the platform fallback for the life of the process.
+void aFontRegistrationSchedulesADraw() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  int wakes = 0;
+  auto token = tgfxrn::ImageRegistry::instance().addWakeListener([&] { wakes++; });
+  uint64_t before = registry.epoch();
+
+  registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Regular.ttf"),
+               "Wake Serif");
+  CHECK(wakes == 1);
+  CHECK(registry.epoch() > before);
+
+  // A registration that fails registers nothing and wakes nobody.
+  registry.add(nullptr, "Wake Serif");
+  CHECK(wakes == 1);
+
+  tgfxrn::ImageRegistry::instance().removeWakeListener(token);
+  registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Bold.ttf"),
+               "Wake Serif");
+  CHECK(wakes == 1);
+  registry.clear();
+}
+
+/// Why the wake alone is not enough: the layout is memoised per command, so a
+/// face that lands after the scene compiled is only picked up by recompiling
+/// the same program. Re-running setScene on identical words has to change what
+/// is drawn.
+void recompilingAfterARegistrationPicksUpTheNewFace() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  const std::vector<std::string> strings{"Wg", "Late Serif", ""};
+  Writer w;
+  writeText(w, 28, -1, 0);
+  auto words = w.finish();
+
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(words, strings);
+  auto fallback = drawFrame(renderer, {});
+  CHECK(anyPixelSet(fallback));
+
+  registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Bold.ttf"),
+               "Late Serif");
+  // A redraw alone replays the memoised layout — same pixels.
+  CHECK(drawFrame(renderer, {}) == fallback);
+  // The recompile is what re-resolves the typeface.
+  renderer.setScene(words, strings);
+  CHECK(drawFrame(renderer, {}) != fallback);
+  registry.clear();
+}
+
+/// The registered face has to win over the system one, and fontWeight has to
+/// pick between the faces of a family rather than "whatever loads".
+void aRegisteredFamilyMatchesByWeightAndStyle() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  auto regular = tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Regular.ttf");
+  auto bold = tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Bold.ttf");
+  auto italic = tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Italic.ttf");
+  CHECK(regular != nullptr && bold != nullptr && italic != nullptr);
+  if (regular == nullptr || bold == nullptr || italic == nullptr) {
+    return;
+  }
+  // The weight and slant come from the font's own OS/2 table, not the caller.
+  CHECK(tgfxrn::readFaceStyle(regular).weight == 400);
+  CHECK(tgfxrn::readFaceStyle(bold).weight >= 700);
+  CHECK(!tgfxrn::readFaceStyle(regular).italic);
+  CHECK(tgfxrn::readFaceStyle(italic).italic);
+
+  uint64_t before = registry.epoch();
+  CHECK(registry.add(regular, "Demo Serif") == "Demo Serif");
+  registry.add(bold, "Demo Serif");
+  registry.add(italic, "Demo Serif");
+  // The epoch has to move, or a scene committed before the load skips its
+  // recompile and keeps drawing in the fallback face forever.
+  CHECK(registry.epoch() > before);
+
+  CHECK(registry.match("Demo Serif", 400, false).typeface == regular);
+  CHECK(registry.match("Demo Serif", 700, false).typeface == bold);
+  CHECK(registry.match("Demo Serif", 500, false).typeface == regular);
+  CHECK(registry.match("Demo Serif", 400, true).typeface == italic);
+  // Folded: spelling the family differently must not miss it.
+  CHECK(registry.match("demoserif", 700, false).typeface == bold);
+  // A weight no face covers is synthesised rather than dropped.
+  auto black = registry.match("Demo Serif", 900, false);
+  CHECK(black.typeface == bold && black.fauxBold);
+  // An unregistered family still resolves to something drawable.
+  CHECK(registry.match("Nothing By This Name", 400, false).typeface != nullptr);
+  registry.clear();
+}
+
+/// The registered family has to reach the draw, and bold has to look different
+/// from regular — the whole point of fontWeight.
+void aRegisteredFontDrawsAndBoldDiffersFromRegular() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Regular.ttf"),
+               "Demo Serif");
+  registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Bold.ttf"),
+               "Demo Serif");
+  const std::vector<std::string> strings{"Wg", "Demo Serif", ""};
+
+  Writer regular;
+  writeText(regular, 28, -1, 0, 0, 0, 0, 400, 0);
+  Writer bold;
+  writeText(bold, 28, -1, 0, 0, 0, 0, 700, 0);
+  auto regularPixels = render(regular.finish(), strings, {});
+  auto boldPixels = render(bold.finish(), strings, {});
+  CHECK(anyPixelSet(regularPixels));
+  CHECK(regularPixels != boldPixels);
+
+  // And it is really the registered face: the system's Helvetica draws
+  // something else entirely.
+  Writer system;
+  writeText(system, 28, -1, 0, 0, 0, 0, 400, 0);
+  CHECK(render(system.finish(), {"Wg", "Helvetica", ""}, {}) != regularPixels);
+  registry.clear();
+}
+
+/// Wrapping, alignment and line height are the three things a single
+/// drawSimpleText call could not do at all.
+void aParagraphWrapsAlignsAndStacks() {
+  tgfxrn::FontRegistry::instance().clear();
+  const std::vector<std::string> strings{"one two three four", "Helvetica", ""};
+
+  Writer unwrapped;
+  writeText(unwrapped, 10, -1, 0, 0, 0, 0);
+  Writer wrapped;
+  writeText(wrapped, 10, -1, 0, 40, 0, 0);
+  auto flat = render(unwrapped.finish(), strings, {});
+  auto stacked = render(wrapped.finish(), strings, {});
+  CHECK(anyPixelSet(flat));
+  CHECK(inkRows(stacked) > inkRows(flat));
+  CHECK(rightmostInk(stacked) < rightmostInk(flat));
+
+  // Alignment moves the short lines, so it cannot be a no-op.
+  Writer right;
+  writeText(right, 10, -1, 0, 40, 2, 0);
+  CHECK(render(right.finish(), strings, {}) != stacked);
+
+  // A larger line height spreads the same lines further apart. Measured rather
+  // than drawn: at 24 px apart the later baselines fall off a 64 px canvas, so
+  // pixels would report the clip, not the spacing.
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  spec.wrapWidth = 40;
+  auto natural = tgfxrn::layoutText("one two three four", spec, 10);
+  spec.lineHeight = 24;
+  auto tall = tgfxrn::layoutText("one two three four", spec, 10);
+  CHECK(natural.metrics.lineCount == tall.metrics.lineCount);
+  CHECK(tall.metrics.height > natural.metrics.height);
+}
+
+/// An explicit \n has to break the line even with no wrap width.
+void anExplicitNewlineBreaksTheLine() {
+  tgfxrn::FontRegistry::instance().clear();
+  const std::vector<std::string> strings{"Wg", "Helvetica", "", "Wg\nWg"};
+  Writer single;
+  writeText(single, 12, -1, 0);
+  Writer two;
+  writeText(two, 12, -1, 3);
+  CHECK(inkRows(render(two.finish(), strings, {})) >
+        inkRows(render(single.finish(), strings, {})));
+}
+
+/// measureText has to describe the text that is actually drawn, or it is worse
+/// than no measurement at all.
+void theMeasuredWidthIsTheDrawnWidth() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  auto measured = tgfxrn::layoutText("Wg", spec, 24);
+  CHECK(measured.blob != nullptr);
+  CHECK(measured.metrics.width > 0);
+  CHECK(measured.metrics.lineCount == 1);
+
+  // Drawn from x = 0: every inked column has to fall inside the measured width,
+  // and the ink has to reach most of the way across it.
+  Writer w;
+  w.push(1);
+  w.push(8);
+  w.pushAnim(0);
+  w.pushAnim(40);
+  w.push(0);
+  w.pushAnim(24);
+  w.push(1);
+  w.push(400);
+  w.push(0);
+  w.push(0);
+  w.push(0);
+  w.push(0);
+  w.push(0);
+  w.push(0);
+  w.push(2);
+  w.pushPaint(0xff000000, false);
+  auto ink = rightmostInk(render(w.finish(), {"Wg", "Helvetica", ""}, {}));
+  CHECK(ink >= 0);
+  CHECK(static_cast<float>(ink) <= measured.metrics.width);
+  CHECK(static_cast<float>(ink) > measured.metrics.width * 0.7f);
+
+  // Wrapping reports the lines it produced.
+  spec.wrapWidth = 40;
+  auto wrapped = tgfxrn::layoutText("one two three four", spec, 12);
+  CHECK(wrapped.metrics.lineCount > 1);
+  CHECK(wrapped.metrics.width <= 40);
+  CHECK(wrapped.metrics.height > wrapped.metrics.descent - wrapped.metrics.ascent);
+
+  // maxLines truncates, and the ellipsis stays inside the box.
+  spec.maxLines = 1;
+  spec.ellipsis = "...";
+  auto clipped = tgfxrn::layoutText("one two three four", spec, 12);
+  CHECK(clipped.metrics.lineCount == 1);
+  CHECK(clipped.metrics.width <= 40);
+}
+
+/// The layout is cached by rounded size: two sizes inside one quarter-pixel
+/// share a blob, a real change builds a new one. Without that, an animated
+/// fontSize allocates a ScalerContext under a global lock on every frame and
+/// grows a map tgfx never erases.
+void theLayoutIsCachedByQuantisedSize() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextCmd cmd;
+  cmd.text = "Wg";
+  cmd.spec.family = "Helvetica";
+  auto at20 = cmd.resolve(20).blob;
+  CHECK(at20 != nullptr);
+  CHECK(cmd.resolve(20.1f).blob == at20);
+  CHECK(cmd.resolve(20).blob == at20);
+  CHECK(cmd.resolve(24).blob != at20);
+}
+
+/// A codepoint the primary face has no glyph for must reach a fallback. The old
+/// path dropped glyph 0 inside TextBlob::MakeFrom and left a blank gap with no
+/// warning, which is how emoji "worked".
+void anEmojiFallsBackInsteadOfVanishing() {
+  tgfxrn::FontRegistry::instance().clear();
+  const std::vector<std::string> strings{"\xF0\x9F\x98\x80", "Helvetica", ""};
+  Writer w;
+  writeText(w, 28, -1, 0);
+  auto pixels = render(w.finish(), strings, {});
+  // Not conditional: this host always has Apple Color Emoji, so an empty chain
+  // is a regression rather than an environment, and a skip here would be a test
+  // that cannot fail.
+  CHECK(!tgfxrn::FontRegistry::instance().fallbacks().empty());
+  CHECK(anyPixelSet(pixels));
+}
+
+/// <TextPath> has to bend the run: the same string on a curve cannot be the
+/// same pixels as the flat one.
+void textOnAPathFollowsTheCurve() {
+  tgfxrn::FontRegistry::instance().clear();
+  const std::vector<std::string> strings{"M4 40 q28 -32 56 0", "curve", "Helvetica"};
+  Writer w;
+  w.push(1);
+  w.push(10);  // TextPath
+  w.push(0);   // path
+  w.push(1);   // text
+  w.pushAnim(12);
+  w.push(2);  // family
+  w.push(400);
+  w.push(0);
+  w.push(0);
+  w.push(0);  // startOffset
+  w.pushPaint(0xff000000, false);
+  auto curved = render(w.finish(), strings, {});
+  CHECK(anyPixelSet(curved));
+
+  // The same string, same size, drawn flat.
+  Writer flat;
+  writeText(flat, 12, -1, 0);
+  CHECK(render(flat.finish(), {"curve", "Helvetica", ""}, {}) != curved);
+}
+
 /// A handle JS has disposed must draw nothing, not somebody else's bitmap.
 void aDisposedHandleDrawsNothing() {
   auto image = registerSolid(cellColor(5));
@@ -1199,6 +1633,19 @@ int main() {
   aBlurSpreadsPastTheGeometry();
   aDropShadowPaintsUnderItsContent();
   filtersAreBuiltOnceAndNeverOnTheDrawPath();
+  aFontIsFoundOnAnImageWithNoneOfTheOldHardcodedPaths();
+  theDefaultFamilyCanActuallyDrawText();
+  aCachedFaceStillHasToBeAbleToDrawText();
+  aFontRegistrationSchedulesADraw();
+  recompilingAfterARegistrationPicksUpTheNewFace();
+  aRegisteredFamilyMatchesByWeightAndStyle();
+  aRegisteredFontDrawsAndBoldDiffersFromRegular();
+  aParagraphWrapsAlignsAndStacks();
+  anExplicitNewlineBreaksTheLine();
+  theMeasuredWidthIsTheDrawnWidth();
+  theLayoutIsCachedByQuantisedSize();
+  anEmojiFallsBackInsteadOfVanishing();
+  textOnAPathFollowsTheCurve();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

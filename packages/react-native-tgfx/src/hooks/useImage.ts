@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Image as RNImage } from 'react-native'
 import { NitroModules, type UInt64 } from 'react-native-nitro-modules'
 import type {
   PixelFormat,
   TgfxImage,
   TgfxImageFactory,
 } from '../specs/TgfxImage.nitro'
+import { loadSource } from './source'
 
 /** The native image factory. Created once, on first use. */
 let factory: TgfxImageFactory | null = null
@@ -65,15 +65,6 @@ const PENDING: ImageState = Object.freeze({
   loading: true,
 })
 
-/** The `data:` payload, or null when the URI is not one. */
-function dataPayload(uri: string): string | null {
-  if (!uri.startsWith('data:')) {
-    return null
-  }
-  const comma = uri.indexOf(',')
-  return comma >= 0 ? uri.slice(comma + 1) : ''
-}
-
 /**
  * Load an image source into a native handle, with its loading and error state.
  *
@@ -98,42 +89,9 @@ export function useImageState(source: number | string): ImageState {
     let loaded: TgfxImage | null = null
 
     async function load(): Promise<void> {
-      let uri: string
-      // A bundled asset may resolve to a bare path, which is a file. A caller's
-      // own string never is: a JPEG's base64 starts "/9j/", so treating a
-      // leading slash as a path there would misroute every JPEG payload.
-      let bareIsPath = false
-      if (typeof source === 'number') {
-        const resolved = RNImage.resolveAssetSource(source)
-        if (resolved?.uri == null) {
-          throw new Error(`could not resolve asset source: ${String(source)}`)
-        }
-        uri = resolved.uri
-        bareIsPath = true
-      } else {
-        uri = source
-      }
-
-      const payload = dataPayload(uri)
-      if (payload != null) {
-        loaded = await images().fromBase64(payload)
-      } else if (
-        uri.startsWith('file:') ||
-        (bareIsPath && uri.startsWith('/'))
-      ) {
-        // The whole point of the handle: the bytes are read and decoded
-        // natively and never cross into JS.
-        loaded = await images().fromFile(uri)
-      } else if (/^(https?|content|asset):/.test(uri)) {
-        const res = await fetch(uri)
-        // A 404 body decodes to garbage rather than failing, so check first.
-        if (!res.ok) {
-          throw new Error(`${uri} returned HTTP ${res.status}`)
-        }
-        loaded = await images().fromBytes(await res.arrayBuffer())
-      } else {
-        loaded = await images().fromBase64(uri)
-      }
+      // The whole point of the handle: a local file's bytes are read and decoded
+      // natively and never cross into JS.
+      loaded = await loadSource(source, images())
 
       if (!active) {
         loaded.dispose()

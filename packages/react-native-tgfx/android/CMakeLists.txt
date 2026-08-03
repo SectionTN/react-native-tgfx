@@ -69,6 +69,9 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/TgfxRenderer.cpp
         ../cpp/ImageRegistry.cpp
         ../cpp/HybridTgfxImageFactory.cpp
+        ../cpp/FontRegistry.cpp
+        ../cpp/TextLayout.cpp
+        ../cpp/HybridTgfxFonts.cpp
 )
 
 # Add Nitrogen specs :)

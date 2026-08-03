@@ -53,7 +53,11 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 - ✅ **Stable Reanimated subscription** — re-subscribe only when the SharedValue
   set changes; Canvas dedupes scene/value state.
 - ✅ **Thread-safety** — immutable shared_ptr program under a mutex; documented model.
-- ✅ **Per-frame allocations** — one reused Paint; no std::function in the hot path.
+- ⚠️ **Per-frame allocations** — one reused Paint and no std::function in the hot
+  path, but the draw loop is *not* allocation-free: an animated `<Line>` builds a
+  Path per frame, `RuntimeShaderCmd::build` deep-copies its uniforms per frame,
+  and an animated `fontSize` re-lays out its text whenever the quantised size
+  moves. Text no longer rebuilds a TextBlob on every draw (#127).
 - ✅ **Bounded image cache** + error logging for parse/decode/font failures.
 
 ---

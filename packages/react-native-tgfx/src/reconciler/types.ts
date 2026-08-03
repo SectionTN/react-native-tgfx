@@ -14,6 +14,7 @@ export const NodeType = {
   Path: 'tgfx_path',
   Image: 'tgfx_image',
   Text: 'tgfx_text',
+  TextPath: 'tgfx_textpath',
   Paint: 'tgfx_paint',
   LinearGradient: 'tgfx_lineargradient',
   RadialGradient: 'tgfx_radialgradient',

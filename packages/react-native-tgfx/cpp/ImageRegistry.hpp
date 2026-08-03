@@ -108,6 +108,15 @@ class ImageRegistry {
   uint64_t addWakeListener(std::function<void()> wake);
   void removeWakeListener(uint64_t token);
 
+  /// Fire every listener without moving this registry's epoch, for a change
+  /// that is not about images at all.
+  ///
+  /// ponytail: the wake list is "schedule a draw on every bound render loop",
+  /// which is a renderer concern that happens to live here because images
+  /// needed it first. FontRegistry calls this when a typeface lands. Lift the
+  /// list into its own type if a third caller appears.
+  void wakeAll();
+
   void setCacheLimit(size_t bytes);
   size_t cacheLimit() const;
   size_t cachedBytes() const;

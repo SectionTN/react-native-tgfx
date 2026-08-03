@@ -107,7 +107,8 @@ on either platform, so it is unaffected.
 | `Line` | `x1`, `y1`, `x2`, `y2` |
 | `Path` | `path` — SVG path data, `string` |
 | `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` |
-| `Text` | `text`, `x`, `y`, `fontSize`, `fontFamily` |
+| `Text` | `text`, `x`, `y`, plus the font and paragraph props below |
+| `TextPath` | `path`, `text`, `startOffset`, plus the font props below |
 | `Fill` | none of its own — covers the canvas |
 
 Every geometric prop above is `Animated<number>`, so it may be a plain number or
@@ -117,6 +118,49 @@ would never animate), `image` (a native handle from `useImage`), and the
 `fit`/`sampling`/`rect` enums.
 
 `Text.fontSize` defaults to `14`. All of these take the paint props below.
+
+### Text
+
+Font props, shared by `Text` and `TextPath`:
+
+| prop | what it does |
+| --- | --- |
+| `fontSize` | `Animated<number>`, default `14` |
+| `fontFamily` | a family registered with [`useFonts`](#usefonts), or one the platform knows |
+| `fontWeight` | `'normal' \| 'bold' \| 100…900`; picks the nearest face in the family, synthesising when none is close |
+| `fontStyle` | `'normal' \| 'italic'` |
+| `letterSpacing` | extra px between glyphs |
+
+Paragraph props, `Text` only:
+
+| prop | what it does |
+| --- | --- |
+| `width` | wrap width in px; without it, only `\n` breaks a line |
+| `textAlign` | `'left' \| 'center' \| 'right'`, inside `width` (or the widest line) |
+| `lineHeight` | baseline-to-baseline px; defaults to the font's own spacing |
+| `maxLines` | stop after this many lines; `0` is unlimited |
+| `ellipsis` | appended to the last line when `maxLines` truncates |
+
+`x`/`y` is the **first baseline**, not the top of the box — use
+[`measureText`](#measuretext) and its negative `ascent` to get the box.
+
+`TextPath` places each glyph at its own advance along the path and rotates it to
+the tangent there, so the path is the baseline and there is no `x`/`y`. Wrapping
+and alignment do not apply.
+
+A codepoint the chosen face has no glyph for falls back to the platform's
+colour-emoji font, then to `.notdef` — a visible box rather than a silent gap,
+and a one-per-codepoint native warning either way.
+
+**Colour emoji render on iOS only.** On Android the fallback resolves — the
+glyph is found and its advance reserved — but the colour bitmap does not
+rasterise through tgfx's FreeType/GL path, so an emoji leaves a blank gap of the
+right width. Because the glyph *was* found, the missing-codepoint warning does
+not fire for it either. Tracked in
+[#144](https://github.com/riteshshukla04/react-native-tgfx/issues/144).
+
+Bidi reordering and complex-script shaping are **not** implemented: a run of
+Arabic or Devanagari lays out in logical order with unshaped glyphs.
 
 ### Image
 
@@ -583,6 +627,45 @@ the handle, defaulting to 64 MB. An image the budget drops is re-decoded on next
 use, never lost. Decoded GPU textures are bounded separately by the tgfx context
 cache limit (192 MB).
 
+### useFonts
+
+```tsx
+const ready = useFonts({
+  'PT Serif': [
+    require('./PT_Serif-Web-Regular.ttf'),
+    require('./PT_Serif-Web-Bold.ttf'),
+  ],
+})
+```
+
+Registers font faces under a family name and reports when they are in. Weight
+and slant come from each font's own OS/2 table, so the faces of a family
+register identically and `fontWeight`/`fontStyle` pick between them.
+
+Registration is process-wide and permanent — faces are not dropped on unmount,
+because another canvas may still be drawing with them. `loadFont(source, family)`
+and `loadFonts(record)` are the promise forms for use outside a component.
+`registeredFontFamilies()` lists what is registered.
+
+A local file is opened natively; only a Metro-served or remote URI goes through
+`fetch`, and then as an `ArrayBuffer`. Text drawn before the faces land uses the
+platform fallback, so gate on the return value when that would be visible.
+
+Without any registration, `fontFamily` resolves through the platform: CoreText
+on iOS, and on Android a scan of the platform font directories that matches what
+the image actually installs — no hardcoded file names.
+
+### measureText
+
+```tsx
+const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
+```
+
+Runs the same layout the renderer does — same fallback chain, same wrapping — so
+a width measured here is the width drawn. Returns `{ width, height, ascent,
+descent, lineCount }`, relative to the first baseline: `ascent` is negative, and
+the box runs from `y + ascent` to `y + ascent + height`.
+
 ### useClock
 
 Returns a `SharedValue<number>` holding **seconds** since the first frame,
@@ -600,8 +683,10 @@ need it.
 The package exports its prop types alongside the components — `CanvasProps`,
 `RectProps`, `CircleProps`, `PaintProps`, `GroupProps`, `ShaderProps`,
 `ImageState`, `ImageShaderProps`, `ColorMatrixProps`, `BlendColorProps`,
-`BlurProps`, `DropShadowProps`, `TgfxImage`, `CanvasHandle`, `Snapshot`,
-`SnapshotOptions`, `SnapshotFormat`, and the shared `Animated<T>`, `BlendMode`,
+`BlurProps`, `DropShadowProps`, `TextProps`, `TextPathProps`, `FontProps`,
+`ParagraphProps`, `FontWeight`, `TextStyle`, `TextMeasurement`, `TgfxImage`,
+`CanvasHandle`, `Snapshot`, `SnapshotOptions`, `SnapshotFormat`, and the shared
+`Animated<T>`, `BlendMode`,
 `Color`, `Fit`, `Sampling`, `SrcRect`, `TileMode`, `Vector`, `Transform` and
 `TransformOp`. `DiamondGradient` and `Turbulence` reuse `RadialGradientProps` and
 `NoiseProps` respectively.
@@ -616,3 +701,7 @@ The package exports its prop types alongside the components — `CanvasProps`,
   do not animate. See [animation](/docs/animation).
 - A filter on a `<Group>` applies per descendant, not to the group as one layer.
 - Blend modes that need a canvas read-back do not render on the iOS Simulator.
+- No bidi reordering or complex-script shaping in text: Arabic, Hebrew and the
+  Indic scripts lay out in logical order with unshaped glyphs.
+- No styled runs inside one paragraph, no `Glyphs`, and no text-as-path exposed
+  to JS.
