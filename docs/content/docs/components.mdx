@@ -206,7 +206,7 @@ The image and font hooks live with their subjects: [`useImage`, `useImageState`,
 `TgfxNativeView` is exported for callers who want to drive the native view
 directly — pushing a `scene` buffer and a values buffer themselves rather than
 going through `<Canvas>`. Its ref type is `TgfxViewRef`. Most code should not
-need it. Drawing [camera frames](/docs/camera) is the one case that requires it.
+need it.
 
 ## Types
 
@@ -214,6 +214,7 @@ The package exports its prop types alongside the components — `CanvasProps`,
 `RectProps`, `CircleProps`, `PaintProps`, `GroupProps`, `ShaderProps`,
 `ImageState`, `ImageShaderProps`, `ColorMatrixProps`, `BlendColorProps`,
 `BlurProps`, `DropShadowProps`, `TextProps`, `TextPathProps`, `FontProps`,
+`CameraFrameProps`,
 `ParagraphProps`, `FontWeight`, `TextStyle`, `TextMeasurement`, `TgfxImage`,
 `CanvasHandle`, `Snapshot`, `SnapshotOptions`, `SnapshotFormat`, and the shared
 `Animated<T>`, `BlendMode`,
@@ -235,5 +236,3 @@ The package exports its prop types alongside the components — `CanvasProps`,
   Indic scripts lay out in logical order with unshaped glyphs.
 - No styled runs inside one paragraph, no `Glyphs`, and no text-as-path exposed
   to JS.
-- The declarative tree is not drawn on a canvas driven by
-  [camera frames](/docs/camera).

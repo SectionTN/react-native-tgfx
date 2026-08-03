@@ -178,17 +178,6 @@ open class HybridTgfxViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func drawCameraFrame(buffer: UInt64, frameWidth: Double, frameHeight: Double, contours: bridge.std__vector_double_, blurRadius: Double) -> bridge.Result_void_ {
-    do {
-      try self.__implementation.drawCameraFrame(buffer: buffer, frameWidth: frameWidth, frameHeight: frameHeight, contours: contours.map({ __item in __item }), blurRadius: blurRadius)
-      return bridge.create_Result_void_()
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
   public final func snapshot(options: NativeSnapshotOptions) -> bridge.Result_std__shared_ptr_Promise_NativeSnapshot___ {
     do {
       let __result = try self.__implementation.snapshot(options: options)

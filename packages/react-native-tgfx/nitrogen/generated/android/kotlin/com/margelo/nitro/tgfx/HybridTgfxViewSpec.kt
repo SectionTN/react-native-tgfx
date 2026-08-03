@@ -53,15 +53,6 @@ abstract class HybridTgfxViewSpec: HybridView() {
   @Keep
   abstract fun setValues(values: DoubleArray): Unit
   
-  abstract fun drawCameraFrame(buffer: ULong, frameWidth: Double, frameHeight: Double, contours: DoubleArray, blurRadius: Double): Unit
-  
-  @DoNotStrip
-  @Keep
-  private fun drawCameraFrame_cxx(buffer: Long, frameWidth: Double, frameHeight: Double, contours: DoubleArray, blurRadius: Double): Unit {
-    val __result = drawCameraFrame(buffer.toULong(), frameWidth, frameHeight, contours, blurRadius)
-    return __result
-  }
-  
   @DoNotStrip
   @Keep
   abstract fun snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot>

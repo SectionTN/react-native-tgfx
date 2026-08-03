@@ -60,7 +60,6 @@ namespace margelo::nitro::tgfx {
     void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) override;
     void invalidate() override;
     void setValues(const std::vector<double>& values) override;
-    void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) override;
     std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) override;
     std::shared_ptr<Promise<void>> save(const std::string& path, const NativeSnapshotOptions& options) override;
 

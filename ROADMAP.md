@@ -100,7 +100,7 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   pin the producer's previous buffer, and moves the registry epoch the render
   loop's dirty check folds in — a new frame with no commit behind it still
   draws. Held outside the decoded-pixel budget, so a 16 ms frame is not treated
-  as a long-lived asset. This is what #132 replaces `drawCameraFrame` with.
+  as a long-lived asset. This is what `<CameraFrame>` (#132) draws.
 
 ---
 
@@ -141,10 +141,11 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   `ColorFilter`/`BlendMode` node at all, so blend-mode tint, matrix colour
   filters, blur and drop shadow are unavailable. `<Image>` now carries a full
   paint, so the wire format has room for them.
-- 🔴 **Camera frames as scene inputs (#132).** `drawCameraFrame` is still a
-  bespoke path beside the scene. The image handle can now represent the frame
-  (see above); what is left is an `<Image>`/`<ImageShader>` node driven by it and
-  retiring `TgfxRenderer::drawCameraFrame`.
+- ✅ **Camera frames as scene inputs (#132).** `<CameraFrame>` places a live
+  hardware-buffer handle over the canvas and draws the rest of the scene through
+  the same matrix, in frame-pixel coordinates, with `rotation`/`mirror` folded
+  into it. `drawCameraFrame` is gone from the spec, the renderer and both
+  platforms. Sampling the frame *inside a runtime shader* still needs #130.
 - 🟠 **Native asset loading on Android.** A `require()`d asset in a release build
   resolves to a bare drawable-resource name, and `asset://` / `content://` URIs
   need the JNI `AssetManager`/`ContentResolver`. Both still go through JS

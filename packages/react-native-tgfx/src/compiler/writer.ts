@@ -38,7 +38,10 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // straight past into the paint. Adds the text-path kind.
 // 12: a runtime shader carries a child count and that many nested shader
 // payloads after its uniforms, which an older reader would take for a paint.
-export const SCENE_VERSION = 12
+// 13: adds the camera-frame kind, which carries children like a group but
+// derives its transform from the live frame, so an older reader would take its
+// image handle for a node kind.
+export const SCENE_VERSION = 13
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
@@ -78,6 +81,7 @@ export const Kind = {
   Text: 8,
   Fill: 9,
   TextPath: 10,
+  CameraFrame: 11,
 } as const
 
 const HEADER_WORDS = 3

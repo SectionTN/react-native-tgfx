@@ -123,22 +123,6 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     target.setValues(values)
   }
 
-  override fun drawCameraFrame(
-    buffer: ULong,
-    frameWidth: Double,
-    frameHeight: Double,
-    contours: DoubleArray,
-    blurRadius: Double
-  ) {
-    target.drawCameraFrame(
-      buffer.toLong(),
-      frameWidth.toFloat(),
-      frameHeight.toFloat(),
-      FloatArray(contours.size) { contours[it].toFloat() },
-      blurRadius.toFloat()
-    )
-  }
-
   override fun snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot> {
     val promise = Promise<NativeSnapshot>()
     target.snapshot(options, "") { data, width, height, error ->

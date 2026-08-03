@@ -106,12 +106,6 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) override {
-      auto __result = _swiftPart.drawCameraFrame(std::forward<decltype(buffer)>(buffer), std::forward<decltype(frameWidth)>(frameWidth), std::forward<decltype(frameHeight)>(frameHeight), contours, std::forward<decltype(blurRadius)>(blurRadius));
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
     inline std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) override {
       auto __result = _swiftPart.snapshot(std::forward<decltype(options)>(options));
       if (__result.hasError()) [[unlikely]] {

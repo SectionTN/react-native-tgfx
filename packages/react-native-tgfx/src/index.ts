@@ -4,6 +4,7 @@
 export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'
 export {
+  CameraFrame,
   Circle,
   Fill,
   Image,
@@ -57,6 +58,7 @@ export type {
   BlendColorProps,
   BlendMode,
   BlurProps,
+  CameraFrameProps,
   CanvasHandle,
   CanvasProps,
   CircleProps,

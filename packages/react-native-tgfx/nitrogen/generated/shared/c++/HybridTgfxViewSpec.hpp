@@ -62,7 +62,6 @@ namespace margelo::nitro::tgfx {
       virtual void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) = 0;
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
-      virtual void drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) = 0;
       virtual std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) = 0;
       virtual std::shared_ptr<Promise<void>> save(const std::string& path, const NativeSnapshotOptions& options) = 0;
 

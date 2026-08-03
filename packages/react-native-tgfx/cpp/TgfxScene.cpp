@@ -23,6 +23,7 @@
 #include "tgfx/core/SamplingOptions.h"
 #include "tgfx/core/Shader.h"
 #include "tgfx/core/Stroke.h"
+#include "tgfx/core/Surface.h"
 #include "tgfx/core/TileMode.h"
 #include "tgfx/core/TextBlob.h"
 
@@ -90,7 +91,8 @@ std::atomic<size_t> gFilterBuilds{0};
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
-  KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill, KTextPath
+  KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
+  KTextPath, KCameraFrame
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -197,6 +199,63 @@ FitRects fitRects(Fit fit, const tgfx::Rect& source, const tgfx::Rect& dest) {
       break;
   }
   return {inscribe(sw, sh, source), inscribe(dw, dh, dest)};
+}
+
+/// Frame pixels to this node's own coordinates: un-mirror, counter-rotate, then
+/// fit the result over the whole canvas.
+///
+/// The one matrix a <CameraFrame> concats. The frame and every child are drawn
+/// through it, so an overlay expressed in frame pixels — a detector's contour,
+/// a box round a face — cannot drift from the image it marks up, whatever the
+/// surface size is. That is the property the native-only camera path had, kept
+/// now that the scene draws over the frame.
+tgfx::Matrix cameraMatrix(const DrawCmd& cmd, tgfx::Canvas* canvas, float w, float h) {
+  tgfx::Matrix m = tgfx::Matrix::I();
+  if (cmd.mirror) {
+    // The buffer's pixels are flipped along the vertical axis relative to the
+    // output (`frame.isMirrored`); a selfie draws the wrong way round without it.
+    m.postScale(-1, 1);
+    m.postTranslate(w, 0);
+  }
+  int turns = cmd.quarterTurns & 3;
+  if (turns != 0) {
+    m.postRotate(static_cast<float>(turns * 90));
+    // Rotation alone puts the frame in a negative quadrant; slide it back.
+    switch (turns) {
+      case 1: m.postTranslate(h, 0); break;
+      case 2: m.postTranslate(w, h); break;
+      default: m.postTranslate(0, w); break;
+    }
+  }
+  float ow = (turns & 1) != 0 ? h : w;
+  float oh = (turns & 1) != 0 ? w : h;
+
+  auto* surface = canvas->getSurface();
+  auto dest = surface != nullptr
+                  ? tgfx::Rect::MakeWH(static_cast<float>(surface->width()),
+                                       static_cast<float>(surface->height()))
+                  : tgfx::Rect::MakeWH(ow, oh);
+  // The surface is in device pixels; an enclosing <Group>'s transform and the
+  // view's pixel ratio are both in the canvas matrix, so inverting it is what
+  // gives the canvas rect in the coordinates this node's children write in.
+  tgfx::Matrix inverse;
+  if (canvas->getMatrix().invert(&inverse)) {
+    inverse.mapRect(&dest);
+  }
+  auto fitted = fitRects(cmd.fit, tgfx::Rect::MakeWH(ow, oh), dest);
+  if (fitted.src.width() <= 0 || fitted.src.height() <= 0) {
+    return m;
+  }
+  // Map the fitted source onto its destination and draw the *whole* frame
+  // through it: `cover` then overflows the canvas rather than being cropped
+  // into it, which is what puts the offscreen part offscreen instead of
+  // scaling it down. Same result as drawImageRect for the frame, but it is one
+  // matrix, so the children can share it.
+  m.postTranslate(-fitted.src.left, -fitted.src.top);
+  m.postScale(fitted.dst.width() / fitted.src.width(),
+              fitted.dst.height() / fitted.src.height());
+  m.postTranslate(fitted.dst.left, fitted.dst.top);
+  return m;
 }
 
 /// The registry image for `handle`, mipmapped when the sampling asks for it.
@@ -683,6 +742,27 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       // No geometry: it covers whatever the clip is at draw time.
       cmd.kind = DrawCmd::Fill;
       break;
+    case KCameraFrame: {
+      // Like a group, but the transform is derived at draw time from the frame
+      // the handle points at, which changes with no re-commit behind it.
+      cmd.kind = DrawCmd::CameraFrame;
+      cmd.imageHandle = r.nextInt();
+      cmd.fit = static_cast<Fit>(r.nextInt());
+      cmd.sampling = samplingOf(r.nextInt());
+      cmd.quarterTurns = r.nextInt();
+      cmd.mirror = r.nextInt() != 0;
+      readPaint(r, cmd.paint);
+      int childCount = r.nextInt();
+      cmd.children.reserve(static_cast<size_t>(std::max(0, childCount)));
+      for (int i = 0; i < childCount && r.ok; i++) {
+        DrawCmd child;
+        if (!readNode(r, child, depth + 1)) {
+          return false;
+        }
+        cmd.children.push_back(std::move(child));
+      }
+      return r.ok;
+    }
     case KRect:
       cmd.kind = DrawCmd::Rect;
       cmd.x = r.nextAnim();
@@ -860,6 +940,30 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     if (transformed) {
       canvas->restore();
     }
+    return;
+  }
+
+  if (cmd.kind == DrawCmd::CameraFrame) {
+    // Resolved every frame, never cached: the handle is a hardware-buffer
+    // import whose image the producer swaps between frames, and caching it here
+    // would pin the producer's buffer and freeze the first frame on screen.
+    auto image = resolveImage(cmd.imageHandle, cmd.sampling);
+    if (image == nullptr || image->width() <= 0 || image->height() <= 0) {
+      return;
+    }
+    canvas->save();
+    canvas->concat(cameraMatrix(cmd, canvas, static_cast<float>(image->width()),
+                                static_cast<float>(image->height())));
+    const tgfx::Paint* framePaint = &cmd.paint.cached;
+    if (cmd.paint.animated()) {
+      applyPaint(cmd.paint, v, paint);
+      framePaint = &paint;
+    }
+    canvas->drawImage(std::move(image), cmd.sampling, framePaint);
+    for (const auto& child : cmd.children) {
+      drawCmd(canvas, child, v, paint);
+    }
+    canvas->restore();
     return;
   }
 

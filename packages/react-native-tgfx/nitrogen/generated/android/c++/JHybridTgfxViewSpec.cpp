@@ -100,15 +100,6 @@ namespace margelo::nitro::tgfx {
       return __array;
     }());
   }
-  void JHybridTgfxViewSpec::drawCameraFrame(uint64_t buffer, double frameWidth, double frameHeight, const std::vector<double>& contours, double blurRadius) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jlong /* buffer */, double /* frameWidth */, double /* frameHeight */, jni::alias_ref<jni::JArrayDouble> /* contours */, double /* blurRadius */)>("drawCameraFrame_cxx");
-    method(_javaPart, buffer, frameWidth, frameHeight, [&]() {
-      size_t __size = contours.size();
-      jni::local_ref<jni::JArrayDouble> __array = jni::JArrayDouble::newArray(__size);
-      __array->setRegion(0, __size, contours.data());
-      return __array;
-    }(), blurRadius);
-  }
   std::shared_ptr<Promise<NativeSnapshot>> JHybridTgfxViewSpec::snapshot(const NativeSnapshotOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JNativeSnapshotOptions> /* options */)>("snapshot");
     auto __result = method(_javaPart, JNativeSnapshotOptions::fromCpp(options));

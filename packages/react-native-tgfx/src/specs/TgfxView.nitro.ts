@@ -2,7 +2,6 @@ import type {
   HybridView,
   HybridViewMethods,
   HybridViewProps,
-  UInt64,
 } from 'react-native-nitro-modules'
 
 /**
@@ -87,29 +86,6 @@ export interface TgfxViewMethods extends HybridViewMethods {
    * Reanimated worklet, so it runs natively on the UI thread.
    */
   setValues(values: number[]): void
-
-  /**
-   * Draw a camera frame, blurring the interior of each supplied contour.
-   *
-   * `buffer` is a platform hardware-buffer pointer (an `AHardwareBuffer*` on
-   * Android, a `CVPixelBufferRef` on iOS) — pass `frame.getNativeBuffer().pointer`.
-   * `contours` is a flat polygon list: for each shape, the point count followed
-   * by that many `x, y` pairs, in frame pixel coordinates.
-   *
-   * The frame and the contours are mapped with the same transform, so the blur
-   * cannot drift from the image.
-   *
-   * The buffer is retained for as long as the draw needs it, so the caller may
-   * release its own reference as soon as this returns. A frame the renderer has
-   * not drawn yet is superseded by the next one rather than queued behind it.
-   */
-  drawCameraFrame(
-    buffer: UInt64,
-    frameWidth: number,
-    frameHeight: number,
-    contours: number[],
-    blurRadius: number
-  ): void
 
   /**
    * Read the canvas back as pixels.

@@ -91,6 +91,13 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Text]: Kind.Text,
   [NodeType.TextPath]: Kind.TextPath,
   [NodeType.Fill]: Kind.Fill,
+  [NodeType.CameraFrame]: Kind.CameraFrame,
+}
+
+/** `rotation` in degrees to clockwise quarter turns, 0-3. */
+function quarterTurns(input: unknown): number {
+  const turns = Math.round(resolveNumber(input, 0) / 90)
+  return ((turns % 4) + 4) % 4
 }
 
 function vec(input: unknown): Vector | undefined {
@@ -478,6 +485,31 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   w.patch(childCountAt, writeNodes(w, node.children, childCtx))
 }
 
+/**
+ * A live camera frame plus everything drawn over it, in *frame pixels*.
+ *
+ * No geometry of its own: the frame covers the canvas, and the matrix that puts
+ * it there is derived natively from the frame the handle currently points at —
+ * which changes with no re-commit behind it, so it cannot be computed here.
+ * Children ride that same matrix, which is what keeps an overlay locked to the
+ * image it marks up.
+ */
+function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
+  const p = node.props
+  const local = localPaint(node)
+  const paint = mergePaint(ctx.paint, local)
+  const alpha = mulOpacity(ctx.opacity, local.opacity)
+  w.push(Kind.CameraFrame)
+  w.push(imageHandle(p.image))
+  w.push(fitCode(p.fit, 'cover'))
+  w.push(samplingCode(p.sampling))
+  w.push(quarterTurns(p.rotation))
+  w.push(p.mirror === true ? 1 : 0)
+  writePaint(w, NO_PAINT_PROPS, paint, alpha, false)
+  const childCountAt = w.reserve()
+  w.patch(childCountAt, writeNodes(w, node.children, { paint, opacity: alpha }))
+}
+
 /** Write a node list; returns how many nodes were actually written. */
 function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
   let count = 0
@@ -488,6 +520,8 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
     }
     if (kind === Kind.Group) {
       writeGroup(w, node, ctx)
+    } else if (kind === Kind.CameraFrame) {
+      writeCameraFrame(w, node, ctx)
     } else {
       writeDrawing(w, node, ctx, kind)
     }

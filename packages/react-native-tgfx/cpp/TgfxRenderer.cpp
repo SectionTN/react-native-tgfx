@@ -11,12 +11,7 @@
 #include "SceneStrings.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Image.h"
-#include "tgfx/core/ImageFilter.h"
 #include "Trace.hpp"
-#include "tgfx/core/Paint.h"
-#include "tgfx/core/Path.h"
-#include "tgfx/core/TileMode.h"
-#include "tgfx/platform/HardwareBuffer.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/Matrix.h"
 #include "tgfx/core/Rect.h"
@@ -498,83 +493,6 @@ void TgfxRenderer::failSnapshots(const std::shared_ptr<tgfx::Window>& window,
 void TgfxRenderer::deferSnapshotsToNextSurface() {
   snapshotBarrier_.fetch_add(1, std::memory_order_release);
   onResize();
-}
-
-void TgfxRenderer::drawCameraFrame(void* hardwareBuffer, float frameWidth, float frameHeight,
-                                   const std::vector<float>& contours, float blurRadius) {
-  if (hardwareBuffer == nullptr || frameWidth <= 0 || frameHeight <= 0) {
-    return;
-  }
-  std::shared_ptr<tgfx::Window> window;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    window = window_;
-  }
-  if (window == nullptr) {
-    return;
-  }
-  auto device = window->getDevice();
-  if (device == nullptr) {
-    return;
-  }
-  auto* context = device->lockContext();
-  if (context == nullptr) {
-    return;
-  }
-  auto image = tgfx::Image::MakeFrom(static_cast<tgfx::HardwareBufferRef>(hardwareBuffer),
-                                    tgfx::YUVColorSpace::BT601_LIMITED);
-  if (surfaceDirty_.exchange(false)) {
-    surface_ = nullptr;
-  }
-  if (surface_ == nullptr) {
-    surface_ = tgfx::Surface::MakeFrom(context, window);
-  }
-  if (image != nullptr && surface_ != nullptr) {
-    auto* canvas = surface_->getCanvas();
-    canvas->clear(tgfx::Color::Black());
-    auto surfaceWidth = static_cast<float>(surface_->width());
-    auto surfaceHeight = static_cast<float>(surface_->height());
-    // Center-crop the frame into the surface. Everything below is drawn through
-    // this same matrix, contours included.
-    float scale = std::max(surfaceWidth / frameWidth, surfaceHeight / frameHeight);
-    canvas->save();
-    canvas->translate((surfaceWidth - frameWidth * scale) * 0.5f,
-                      (surfaceHeight - frameHeight * scale) * 0.5f);
-    canvas->scale(scale, scale);
-    canvas->drawImage(image);
-
-    if (blurRadius > 0) {
-      tgfx::Paint blurPaint;
-      // Clamp, not the default Decal: Decal makes the blur transparent outside
-      // the source, so a large radius stops covering what it is meant to hide.
-      blurPaint.setImageFilter(
-          tgfx::ImageFilter::Blur(blurRadius, blurRadius, tgfx::TileMode::Clamp));
-      size_t i = 0;
-      while (i < contours.size()) {
-        auto count = static_cast<size_t>(contours[i++]);
-        if (count < 3 || i + count * 2 > contours.size()) {
-          break;
-        }
-        tgfx::Path path;
-        path.moveTo(contours[i], contours[i + 1]);
-        for (size_t p = 1; p < count; p++) {
-          path.lineTo(contours[i + p * 2], contours[i + p * 2 + 1]);
-        }
-        path.close();
-        i += count * 2;
-        canvas->save();
-        canvas->clipPath(path);
-        canvas->drawImage(image, &blurPaint);
-        canvas->restore();
-      }
-    }
-    canvas->restore();
-    auto recording = context->flush();
-    if (recording != nullptr) {
-      context->submit(std::move(recording));
-    }
-  }
-  device->unlock();
 }
 
 void TgfxRenderer::releaseWindow() {

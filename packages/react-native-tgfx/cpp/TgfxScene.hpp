@@ -37,7 +37,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 12;
+inline constexpr double kSceneVersion = 13;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -182,7 +182,9 @@ struct TextCmd {
 };
 
 struct DrawCmd {
-  enum Kind { Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill };
+  enum Kind {
+    Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame
+  };
   Kind kind = Group;
 
   AnimF x, y, w, h, rx, ry, cx, cy, r, x1, y1, x2, y2, fontSize;
@@ -207,6 +209,10 @@ struct DrawCmd {
   tgfx::SamplingOptions sampling{tgfx::FilterMode::Linear, tgfx::MipmapMode::None};
   /// Source sub-rect, for sprite sheets; empty means the whole image.
   tgfx::Rect srcRect = tgfx::Rect::MakeEmpty();
+  // CameraFrame: how the buffer's pixels are counter-rotated and un-mirrored
+  // before the fit. Quarter turns clockwise, 0-3.
+  int quarterTurns = 0;
+  bool mirror = false;
   // Text and TextPath; null for every other kind.
   std::shared_ptr<TextCmd> text;
 };

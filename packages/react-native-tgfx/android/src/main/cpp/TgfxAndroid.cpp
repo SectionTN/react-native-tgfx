@@ -4,7 +4,6 @@
 #include <jni.h>
 
 #include <memory>
-#include <mutex>
 #include <span>
 #include <string>
 #include <utility>
@@ -15,7 +14,6 @@
 #include "TgfxRenderer.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
-#include "tgfx/platform/HardwareBuffer.h"
 
 namespace {
 
@@ -36,21 +34,6 @@ JNIEnv* wakeEnv() {
   return gVm->AttachCurrentThreadAsDaemon(&env, nullptr) == JNI_OK ? env : nullptr;
 }
 
-struct HardwareBufferReleaser {
-  void operator()(AHardwareBuffer* buffer) const {
-    tgfx::HardwareBufferRelease(buffer);
-  }
-};
-
-// Owns its acquired buffer, so the buffer outlives the frame processor's reference.
-struct PendingCameraFrame {
-  std::unique_ptr<AHardwareBuffer, HardwareBufferReleaser> buffer;
-  float frameWidth = 0;
-  float frameHeight = 0;
-  float blurRadius = 0;
-  std::vector<float> contours;
-};
-
 // Owns the renderer plus the ANativeWindow reference acquired from the Surface,
 // so we can release the window only after the EGL window has been torn down.
 struct AndroidTgfxView {
@@ -61,10 +44,6 @@ struct AndroidTgfxView {
   // announced. Global, because the wake does not come from a Java thread.
   jobject wakeTarget = nullptr;
   jmethodID requestRender = nullptr;
-
-  // Single slot: an undrawn frame is superseded by the next, never queued behind it.
-  std::mutex frameMutex;
-  PendingCameraFrame pendingFrame;
 
   void releaseWindow() {
     renderer.releaseWindow();
@@ -291,54 +270,6 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
     env->GetDoubleArrayRegion(arr, 0, len, values.data());
   }
   view->renderer.setValues(values);
-}
-
-JNIEXPORT void JNICALL
-Java_com_margelo_nitro_tgfx_TgfxNative_stageCameraFrame(JNIEnv* env, jobject, jlong ptr,
-                                                       jlong buffer, jfloat frameWidth,
-                                                       jfloat frameHeight, jfloatArray contours,
-                                                       jfloat blurRadius) {
-  auto* view = asView(ptr);
-  if (view == nullptr || buffer == 0) {
-    return;
-  }
-  PendingCameraFrame frame;
-  // Acquired here, on the producer thread: the caller drops its reference as soon as this returns.
-  // Retain is a no-op below API 26, where no AHardwareBuffer can reach us in the first place.
-  frame.buffer.reset(tgfx::HardwareBufferRetain(reinterpret_cast<AHardwareBuffer*>(buffer)));
-  frame.frameWidth = frameWidth;
-  frame.frameHeight = frameHeight;
-  frame.blurRadius = blurRadius;
-  if (contours != nullptr) {
-    jsize len = env->GetArrayLength(contours);
-    frame.contours.resize(static_cast<size_t>(len));
-    if (len > 0) {
-      env->GetFloatArrayRegion(contours, 0, len, frame.contours.data());
-    }
-  }
-  {
-    std::lock_guard<std::mutex> guard(view->frameMutex);
-    std::swap(view->pendingFrame, frame);
-  }
-  // `frame` now holds the superseded frame, if any; released as it goes out of scope.
-}
-
-JNIEXPORT void JNICALL
-Java_com_margelo_nitro_tgfx_TgfxNative_drawCameraFrame(JNIEnv*, jobject, jlong ptr) {
-  auto* view = asView(ptr);
-  if (view == nullptr) {
-    return;
-  }
-  PendingCameraFrame frame;
-  {
-    std::lock_guard<std::mutex> guard(view->frameMutex);
-    std::swap(view->pendingFrame, frame);
-  }
-  if (frame.buffer == nullptr) {
-    return;
-  }
-  view->renderer.drawCameraFrame(frame.buffer.get(), frame.frameWidth, frame.frameHeight,
-                                 frame.contours, frame.blurRadius);
 }
 
 JNIEXPORT jboolean JNICALL

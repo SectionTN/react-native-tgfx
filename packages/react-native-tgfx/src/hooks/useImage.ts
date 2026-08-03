@@ -39,12 +39,35 @@ export function setImageCacheLimit(bytes: number): void {
  *
  * Such a handle is not accounted against the decoded-pixel budget: the memory
  * belongs to whoever produced the buffer.
+ *
+ * A worklet, so a camera frame processor can call it directly: the buffer is
+ * only alive for the duration of the callback, so the handle has to be made
+ * where the frame is, not hopped to the JS thread first.
+ *
+ * @remarks
+ * Unlike every other function here, this one does **not** share the memoised
+ * factory: a worklet gets its own copy of module state, so it builds a
+ * `TgfxImageFactory` per call. That is deliberate and cheap for the intended
+ * once-per-stream use, but it is not free — do not call it per frame. Use
+ * `image.setNativeBuffer(...)` for the second and every later buffer.
+ *
+ * @remarks
+ * **`buffer` is a raw pointer, and nothing here can check it.** It is only
+ * valid for as long as its producer says it is — for a VisionCamera frame, the
+ * body of the `onFrame` callback. Passing a stale or already-released pointer
+ * is a use-after-free that will not throw: it imports whatever memory is now at
+ * that address. Never store one, never let one outlive the callback it came
+ * from, and release the producer's own reference (`nativeBuffer.release()`)
+ * only after this call, or `setNativeBuffer`, has returned.
  */
 export function imageFromNativeBuffer(
   buffer: UInt64,
   format: PixelFormat = 'bt601-limited'
 ): TgfxImage {
-  return images().fromNativeBuffer(buffer, format)
+  'worklet'
+  return NitroModules.createHybridObject<TgfxImageFactory>(
+    'TgfxImageFactory'
+  ).fromNativeBuffer(buffer, format)
 }
 
 export interface ImageState {

@@ -125,8 +125,10 @@ undrawn frame is superseded by the next rather than queued behind it. Such a
 handle is not accounted against the decoded-pixel budget — the memory belongs to
 whoever produced the buffer.
 
-See [camera frames](/docs/camera) for where these buffers come from, and for the
-one path that puts a live preview on screen today.
+It is a worklet, so a VisionCamera frame processor can call it directly — the
+buffer is only alive for the duration of the callback. See
+[camera frames](/docs/camera) for where these buffers come from and how
+`<CameraFrame>` draws them.
 
 ### setImageCacheLimit
 

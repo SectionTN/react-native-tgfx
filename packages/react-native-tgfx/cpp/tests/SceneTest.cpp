@@ -174,6 +174,21 @@ struct Writer {
     pushPaint(0xffffffff, false);
   }
 
+  /// A <CameraFrame>: no geometry of its own, then a paint, then its children.
+  /// The caller pushes `childCount` nodes after this.
+  void pushCameraFrame(int32_t handle, int childCount, int fit = 2,
+                       int quarterTurns = 0, bool mirror = false,
+                       int sampling = 1) {
+    push(11);
+    push(handle);
+    push(fit);
+    push(sampling);
+    push(quarterTurns);
+    push(mirror ? 1 : 0);
+    pushPaint(0xffffffff, false);
+    push(childCount);
+  }
+
   /// A paint whose shader is an <ImageShader> with no fit rect.
   void pushImageShaderPaint(int32_t handle, int tileX, int tileY,
                             int sampling = 1) {
@@ -1092,6 +1107,181 @@ void anExternalHandleDrivesAChildShaderPerFrame() {
   registry.remove(external.handle);
 }
 
+/// <CameraFrame> (#132): the frame becomes an ordinary scene input, and the
+/// scene draws over it.
+///
+/// The property under test is the one the native-only camera path had and this
+/// must not lose: the frame and its children go through the *same* matrix, so
+/// an overlay in frame pixels cannot drift from the image. A 32x32 frame
+/// covering a 64x64 canvas is scaled 2x, so a 16x16 child at the frame's origin
+/// has to land on a 32x32 canvas quadrant — which is only true if it rode the
+/// frame's transform rather than being drawn in canvas coordinates.
+void aCameraFrameCoversTheCanvasAndItsChildrenRideItsTransform() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto frame = registerSolid(cellColor(7), 32, 32);
+  auto next = registerSolid(cellColor(23), 32, 32);
+  auto external = registry.addExternal(registry.acquire(frame.handle));
+  CHECK(external.handle != 0);
+
+  Writer w;
+  w.push(1);
+  w.pushCameraFrame(external.handle, 1);
+  w.push(1);  // Rect, in frame pixels
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(16);
+  w.pushAnim(16);
+  w.pushPaint(0xff0000ff, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+
+  auto first = cellColor(7);
+  auto pixels = drawFrame(renderer, {});
+  // The 16x16 child fills the top-left 32x32 of the canvas: same matrix.
+  auto overlay = pixelAt(pixels, 8, 8);
+  CHECK(overlay[0] == 0 && overlay[2] == 255);
+  CHECK(!(pixelAt(pixels, 40, 8)[2] == 255));
+  // ...and the frame covers everything the child does not.
+  auto uncovered = pixelAt(pixels, 48, 48);
+  CHECK(uncovered[0] == first[0] && uncovered[1] == first[1]);
+
+  // A new buffer behind the same handle, with no re-commit: the draw path has
+  // to re-read it, and the overlay must not move.
+  CHECK(registry.replaceExternal(external.handle, registry.acquire(next.handle)));
+  auto second = cellColor(23);
+  pixels = drawFrame(renderer, {});
+  auto swapped = pixelAt(pixels, 48, 48);
+  CHECK(swapped[0] == second[0] && swapped[1] == second[1]);
+  auto stillThere = pixelAt(pixels, 8, 8);
+  CHECK(stillThere[0] == 0 && stillThere[2] == 255);
+
+  registry.remove(external.handle);
+}
+
+/// Mirroring and rotation are part of that shared matrix, not a separate
+/// correction applied to the image alone — so they move the overlay with the
+/// frame. A selfie frame drawn un-mirrored is the "my face is the wrong way
+/// round" bug; an overlay that stays put while the frame flips is the drift the
+/// shared matrix exists to prevent.
+/// Which corner of the canvas a child at the frame's origin lands in, under one
+/// (rotation, mirror) pair. `frameW`/`frameH` size the frame; the child is a
+/// quarter of it, so the answer is a corner whatever the frame's aspect is.
+///
+/// Returned as {topLeft, topRight, bottomLeft, bottomRight}.
+std::array<bool, 4> cameraFrameChildCorner(int32_t handle, int frameW, int frameH,
+                                           int quarterTurns, bool mirror) {
+  Writer w;
+  w.push(1);
+  w.pushCameraFrame(handle, 1, 2, quarterTurns, mirror);
+  w.push(1);  // Rect, in frame pixels
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(frameW / 2);
+  w.pushAnim(frameH / 2);
+  w.pushPaint(0xff0000ff, false);
+  auto pixels = render(w.finish(), {}, {});
+  return {pixelAt(pixels, 8, 8)[2] == 255, pixelAt(pixels, 56, 8)[2] == 255,
+          pixelAt(pixels, 8, 56)[2] == 255, pixelAt(pixels, 56, 56)[2] == 255};
+}
+
+constexpr std::array<bool, 4> kTopLeft{true, false, false, false};
+constexpr std::array<bool, 4> kTopRight{false, true, false, false};
+constexpr std::array<bool, 4> kBottomLeft{false, false, true, false};
+constexpr std::array<bool, 4> kBottomRight{false, false, false, true};
+
+void aCameraFrameMirrorsAndRotatesItsChildrenWithTheFrame() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto frame = registerSolid(cellColor(7), 32, 32);
+  auto external = registry.addExternal(registry.acquire(frame.handle));
+
+  // The same 16x16 child at the frame's origin, under each transform.
+  auto quadrant = [&](int quarterTurns, bool mirror) {
+    return cameraFrameChildCorner(external.handle, 32, 32, quarterTurns, mirror);
+  };
+
+  CHECK(quadrant(0, false) == kTopLeft);
+  // Flipped along the vertical axis: top-left becomes top-right.
+  CHECK(quadrant(0, true) == kTopRight);
+  // A quarter turn clockwise carries it round the canvas.
+  CHECK(quadrant(1, false) == kTopRight);
+  CHECK(quadrant(2, false) == kBottomRight);
+  CHECK(quadrant(3, false) == kBottomLeft);
+  registry.remove(external.handle);
+}
+
+/// The same four turns on a frame that is **not square**, which is the only
+/// shape a camera actually produces.
+///
+/// A square frame cannot see this: with `w == h`, `postTranslate(h, 0)` and
+/// `postTranslate(0, w)` are the same call, and the `ow`/`oh` swap that feeds
+/// the fit is a no-op — so the rotation maths can be wrong in two independent
+/// places and every square case still passes. 32x16 separates them: an odd
+/// quarter turn makes the frame 16 wide and 32 tall, which changes the cover
+/// scale (max(64/16, 64/32) = 4, against 2 for the even turns) as well as the
+/// slide-back offset.
+void aCameraFrameRotatesANonSquareFrame() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto frame = registerSolid(cellColor(7), 32, 16);
+  auto external = registry.addExternal(registry.acquire(frame.handle));
+
+  auto quadrant = [&](int quarterTurns) {
+    return cameraFrameChildCorner(external.handle, 32, 16, quarterTurns, false);
+  };
+
+  CHECK(quadrant(0) == kTopLeft);
+  // turns=1: the 16x8 child maps to x in [8,16], y in [0,16] of the 16x32
+  // rotated frame; cover scale 4 and a -32 y offset put it at x in [32,64],
+  // y in [-32,32] — the top-right corner.
+  CHECK(quadrant(1) == kTopRight);
+  CHECK(quadrant(2) == kBottomRight);
+  CHECK(quadrant(3) == kBottomLeft);
+  // Mirroring is still a flip about the frame's own vertical axis, and the
+  // frame's width is 32 here where the rotated height is 16 — using the wrong
+  // one puts the child off-canvas rather than in the opposite corner.
+  CHECK(cameraFrameChildCorner(external.handle, 32, 16, 0, true) == kTopRight);
+  registry.remove(external.handle);
+}
+
+/// A non-square frame is centre-cropped by `cover` — it is scaled to fill the
+/// canvas and the overflowing axis runs off it, rather than being letterboxed.
+/// The old native-only path hardcoded exactly this (`max(sw/fw, sh/fh)`), so it
+/// is the behaviour a camera scene has to keep by default.
+void aCameraFrameCoverCropsTheOverflowingAxis() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  // 32x16: twice as wide as it is tall, on a square canvas.
+  auto wide = registerSolid(cellColor(7), 32, 16);
+  auto external = registry.addExternal(registry.acquire(wide.handle));
+
+  Writer w;
+  w.push(1);
+  w.pushCameraFrame(external.handle, 0);
+  auto pixels = render(w.finish(), {}, {});
+  // scale = max(64/32, 64/16) = 4, so the frame is 128x64: every corner covered.
+  auto expected = cellColor(7);
+  for (auto [x, y] : {std::pair{1, 1}, {62, 1}, {1, 62}, {62, 62}}) {
+    auto pixel = pixelAt(pixels, x, y);
+    CHECK(pixel[0] == expected[0] && pixel[1] == expected[1]);
+  }
+  registry.remove(external.handle);
+}
+
+/// A handle with no frame behind it yet draws nothing at all — children
+/// included. There is no frame to place them against, and an overlay floating
+/// over a black canvas at the wrong scale is worse than an empty one.
+void aCameraFrameWithNoFrameDrawsNothing() {
+  Writer w;
+  w.push(1);
+  w.pushCameraFrame(0, 1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(16);
+  w.pushAnim(16);
+  w.pushPaint(0xff0000ff, false);
+  auto pixels = render(w.finish(), {}, {});
+  CHECK(!opaqueAt(pixels, 8, 8));
+}
+
 /// An asset the byte budget dropped *before* the scene compiled has nothing to
 /// cache at setScene. Its re-decode lands afterwards, and the already-compiled
 /// program has to be able to reach it — otherwise the fix for "never decode on
@@ -1868,6 +2058,11 @@ int main() {
   anExternalHandleIsReplacedInPlaceAndNotBudgeted();
   anExternalHandleAlsoDrivesAnImageShaderPerFrame();
   anExternalHandleDrivesAChildShaderPerFrame();
+  aCameraFrameCoversTheCanvasAndItsChildrenRideItsTransform();
+  aCameraFrameMirrorsAndRotatesItsChildrenWithTheFrame();
+  aCameraFrameRotatesANonSquareFrame();
+  aCameraFrameCoverCropsTheOverflowingAxis();
+  aCameraFrameWithNoFrameDrawsNothing();
   anImageEvictedBeforeCompileComesBackWhenItsDecodeLands();
   aBufferSwapSchedulesADraw();
   aDisposedHandleDrawsNothing();

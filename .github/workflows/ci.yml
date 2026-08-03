@@ -78,8 +78,8 @@ jobs:
         run: |
           npm ci
           cd ios && pod install
-      # Compile only: this is the step that would have caught the missing
-      # drawCameraFrame implementation and the unwrapped baseAddress.
+      # Compile only: this is the step that would have caught the unwrapped
+      # baseAddress, and the only one that compiles the Swift and Obj-C++ at all.
       - name: Build
         working-directory: benchmarks/renderer-benchmark/ios
         run: |

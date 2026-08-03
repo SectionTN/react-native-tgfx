@@ -81,13 +81,6 @@ internal class TgfxRenderTarget {
     }
   }
 
-  private val cameraRunnable = Runnable {
-    val ptr = nativePtr
-    if (ptr != 0L) {
-      TgfxNative.drawCameraFrame(ptr)
-    }
-  }
-
   /**
    * Stage a draw program. The buffer belongs to JS and is only valid for this
    * call, so the native side copies it here, on the calling thread; the render
@@ -111,21 +104,6 @@ internal class TgfxRenderTarget {
   fun setValues(values: DoubleArray) {
     withPtr { TgfxNative.setValues(it, values) }
     requestRender()
-  }
-
-  /** Acquires on this thread and coalesces: a lagging render thread skips stale frames. */
-  fun drawCameraFrame(
-    buffer: Long,
-    frameWidth: Float,
-    frameHeight: Float,
-    contours: FloatArray,
-    blurRadius: Float
-  ) {
-    withPtr {
-      TgfxNative.stageCameraFrame(it, buffer, frameWidth, frameHeight, contours, blurRadius)
-      handler.removeCallbacks(cameraRunnable)
-      handler.post(cameraRunnable)
-    }
   }
 
   /**

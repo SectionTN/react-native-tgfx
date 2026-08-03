@@ -35,16 +35,6 @@ FOUNDATION_EXPORT void TgfxSnapshotRelease(void* _Nullable token);
 /// Update the live animation value slots (called per frame from a worklet).
 - (void)setValues:(const double*)values count:(int32_t)count;
 
-/// Draw a camera frame, blurring the interior of each contour. `buffer` is a
-/// `CVPixelBufferRef`; `contours` is a flat polygon list (point count, then that
-/// many x,y pairs, per shape) in frame pixel coordinates.
-- (void)drawCameraFrame:(void*)buffer
-             frameWidth:(float)frameWidth
-            frameHeight:(float)frameHeight
-               contours:(const float*)contours
-                  count:(NSInteger)count
-             blurRadius:(float)blurRadius;
-
 /// Read the canvas back. The readback is issued inside the next frame and
 /// collected on a later display-link tick, so this never stalls the render
 /// queue; `path` (or nil) selects between saving natively and handing the bytes

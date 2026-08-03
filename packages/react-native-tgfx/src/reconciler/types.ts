@@ -29,6 +29,7 @@ export const NodeType = {
   Blur: 'tgfx_blur',
   DropShadow: 'tgfx_dropshadow',
   Fill: 'tgfx_fill',
+  CameraFrame: 'tgfx_cameraframe',
 } as const
 
 export type NodeTypeName = (typeof NodeType)[keyof typeof NodeType]

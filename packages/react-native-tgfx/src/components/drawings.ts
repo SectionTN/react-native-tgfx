@@ -1,6 +1,7 @@
 import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
+  CameraFrameProps,
   CircleProps,
   ImageProps,
   LineProps,
@@ -52,3 +53,19 @@ export const TextPath = NodeType.TextPath as unknown as FC<TextPathProps>
  * `<Group>` moves the paint but not the area filled, as it does in Skia.
  */
 export const Fill = NodeType.Fill as unknown as FC<PaintComponentProps>
+
+/**
+ * A live camera frame, scaled to cover the canvas, with the scene drawn over it.
+ *
+ * Its children are laid out in **frame pixel** coordinates and share the one
+ * matrix that places the frame, so an overlay derived from the frame — a
+ * detector's box, a face contour — cannot drift from the image whatever the
+ * canvas size is. Pass detector output through unchanged; do not scale it.
+ *
+ * The frame arrives as a hardware-buffer handle
+ * (`imageFromNativeBuffer` + `image.setNativeBuffer`), which is imported
+ * straight to a GPU texture: the pixels are never copied, never encoded and
+ * never touched by the CPU.
+ */
+export const CameraFrame =
+  NodeType.CameraFrame as unknown as FC<CameraFrameProps>

@@ -29,7 +29,9 @@
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
+#include "tgfx/core/Data.h"
 #include "tgfx/core/Font.h"
+#include "tgfx/core/Image.h"
 #include "tgfx/core/ImageCodec.h"
 #include "tgfx/core/ImageInfo.h"
 #include "tgfx/core/Paint.h"
@@ -454,6 +456,151 @@ bool reportText() {
   return true;
 }
 
+// ---------------- camera frames ----------------
+//
+// #132's acceptance criterion: a camera scene must cost zero per-frame frame-
+// pixel allocations and zero encode/decode/conversion passes on the frame path.
+// "It looks smooth" is not evidence, so this measures the three things that
+// would each break that claim, over frames that really do swap the buffer:
+//
+//   1. decodes           — a frame that went through the codec path at all.
+//   2. GPU memory        — a new tgfx-owned texture per frame, i.e. a re-upload
+//                          or an intermediate conversion target.
+//   3. CPU allocations   — inside render(), which must not scale with pixels.
+//
+// What this is NOT, so the number is not over-read:
+//
+//   * The frames are plain RGBA images, not hardware buffers, which no host
+//     test can produce. So this covers the draw path — resolve, matrix, draw —
+//     and says nothing about the YUV import or the sampler-level conversion.
+//     Those are covered by the device probe in the PR, and by the emitted GLSL.
+//   * There is no <ImageShader> and no image filter here either; the shader
+//     path is anExternalHandleAlsoDrivesAnImageShaderPerFrame in SceneTest, and
+//     an image filter genuinely does take a save-layer offscreen.
+//   * Context::memoryUsage() counts tgfx-owned resources. A real 720x1280
+//     planar YUV buffer is ~1.38 MB — larger than the whole figure this prints
+//     — so an imported buffer is plainly not in that accounting. A flat reading
+//     proves "no per-frame intermediate", not "the import allocates nothing".
+
+constexpr int kCameraFrames = 60;
+constexpr int kOverlays = 8;
+
+std::shared_ptr<tgfx::Image> solidImage(int size, uint8_t value) {
+  auto info = tgfx::ImageInfo::Make(size, size, tgfx::ColorType::RGBA_8888,
+                                    tgfx::AlphaType::Premultiplied);
+  auto pixels = tgfx::Data::MakeWithCopy(
+      std::vector<uint8_t>(static_cast<size_t>(info.byteSize()), value).data(),
+      static_cast<size_t>(info.byteSize()));
+  return tgfx::Image::MakeFrom(info, std::move(pixels));
+}
+
+/// A <CameraFrame> with `kOverlays` children in frame pixels — the face-blur
+/// shape: a live frame with detector output composited over it.
+std::vector<double> cameraScene(int32_t handle) {
+  Writer w;
+  w.push(1);
+  w.push(11);  // CameraFrame
+  w.push(handle);
+  w.push(2);  // cover
+  w.push(1);  // linear
+  w.push(0);  // no rotation
+  w.push(0);  // not mirrored
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1, 0);  // animated alpha: the paint really is resolved per frame
+  w.push(-1);
+  w.push(kOverlays);
+  for (int i = 0; i < kOverlays; i++) {
+    w.push(1);  // Rect
+    w.pushAnim(8 + (i % 4) * 40);
+    w.pushAnim(8 + (i / 4) * 40);
+    w.pushAnim(32);
+    w.pushAnim(32);
+    w.push(0xff3366cc);
+    w.push(2);
+    w.pushAnim(1);
+    w.push(0);
+    w.push(0);
+    w.pushAnim(1, 0);
+    w.push(-1);
+  }
+  return w.finish();
+}
+
+bool reportCamera() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  // Two buffers swapped in rotation, as a real producer's pool would be.
+  std::shared_ptr<tgfx::Image> buffers[2] = {solidImage(kWidth, 90),
+                                             solidImage(kWidth, 200)};
+  if (buffers[0] == nullptr || buffers[1] == nullptr) {
+    std::printf("could not build the camera bench's frames\n");
+    return false;
+  }
+  auto external = registry.addExternal(buffers[0]);
+  if (external.handle == 0) {
+    std::printf("could not register an external frame\n");
+    return false;
+  }
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(cameraScene(external.handle), {});
+
+  size_t drawn = 0;
+  size_t decodesBefore = registry.decodeCount();
+  // Warm up: the first frames upload the two textures and grow tgfx's caches,
+  // which is a one-off, not a per-frame cost.
+  for (int i = 0; i < 4; i++) {
+    registry.replaceExternal(external.handle, buffers[i % 2]);
+    frameAllocations(renderer, false, &drawn);
+  }
+  auto* context = device()->lockContext();
+  size_t memoryBefore = context->memoryUsage();
+  device()->unlock();
+
+  size_t worst = 0;
+  size_t total = 0;
+  for (int i = 0; i < kCameraFrames; i++) {
+    registry.replaceExternal(external.handle, buffers[i % 2]);
+    size_t allocations = frameAllocations(renderer, true, &drawn);
+    worst = std::max(worst, allocations);
+    total += allocations;
+  }
+  context = device()->lockContext();
+  size_t memoryAfter = context->memoryUsage();
+  device()->unlock();
+  size_t decodes = registry.decodeCount() - decodesBefore;
+  registry.remove(external.handle);
+
+  if (drawn == 0) {
+    std::printf("nothing was drawn (%zu opaque pixels)\n", drawn);
+    return false;
+  }
+  std::printf("a <CameraFrame> + %d overlays, %d frames, buffer swapped each one:\n",
+              kOverlays, kCameraFrames);
+  std::printf("  opaque pixels drawn        %zu\n", drawn);
+  std::printf("  decodes on the frame path  %zu\n", decodes);
+  std::printf("  GPU bytes before / after   %zu / %zu  (delta %+lld)\n", memoryBefore,
+              memoryAfter, static_cast<long long>(memoryAfter) -
+                               static_cast<long long>(memoryBefore));
+  std::printf("  allocations per render()   mean %zu, worst %zu  (%d nodes)\n",
+              total / kCameraFrames, worst, kOverlays + 1);
+  std::printf("\n");
+  // The claims, asserted rather than eyeballed: no decode, and no texture per
+  // frame. A re-upload or a YUV->RGB pre-pass would show up as a growing cache.
+  if (decodes != 0) {
+    std::printf("FAIL: the frame path decoded %zu times\n", decodes);
+    return false;
+  }
+  if (memoryAfter > memoryBefore) {
+    std::printf("FAIL: GPU memory grew by %zu bytes over %d frames\n",
+                memoryAfter - memoryBefore, kCameraFrames);
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 int main() {
@@ -484,5 +631,8 @@ int main() {
     return 1;
   }
   std::printf("\n");
+  if (!reportCamera()) {
+    return 1;
+  }
   return reportText() ? 0 : 1;
 }

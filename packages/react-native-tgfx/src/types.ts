@@ -97,6 +97,34 @@ export interface ImageProps extends PaintProps {
   rect?: SrcRect
 }
 
+export interface CameraFrameProps extends PaintProps {
+  /**
+   * A hardware-buffer handle from `imageFromNativeBuffer`, re-pointed at each
+   * new frame with `image.setNativeBuffer(...)`. `null` draws nothing at all,
+   * children included — there is no frame to place them against.
+   */
+  image: TgfxImage | null
+  /**
+   * How the frame is scaled into the canvas. Defaults to `'cover'`, which fills
+   * the canvas and lets the overflowing axis run off it.
+   */
+  fit?: Fit
+  /** Defaults to `'linear'`. */
+  sampling?: Sampling
+  /**
+   * Clockwise degrees to rotate the buffer by so it is the right way up. This
+   * *counters* `frame.orientation`: a frame reporting `'right'` (pixels rotated
+   * +90° from upright) needs `270`.
+   *
+   * Rounded to the nearest quarter turn and wrapped, so `-90` and `270` are the
+   * same thing — a detector or camera API that reports signed degrees can be
+   * passed straight through.
+   */
+  rotation?: number
+  /** Flip the buffer horizontally. Pass `frame.isMirrored` straight through. */
+  mirror?: boolean
+}
+
 /**
  * An image as the paint source for any shape: put it inside a `<Paint>` or
  * directly under the shape, the way a gradient goes.

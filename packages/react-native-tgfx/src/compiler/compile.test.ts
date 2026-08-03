@@ -257,6 +257,51 @@ test('an <ImageShader> rect adds the fit that maps the image into it', () => {
   expect(Array.from(used.subarray(19, 26))).toEqual([1, 1, 1, 2, 30, 40, 2])
 })
 
+test('a <CameraFrame> carries no geometry, defaults to cover, and nests children', () => {
+  const { used } = compile([
+    node(NodeType.CameraFrame, { image: handle(5) }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  // rootCount kind handle fit sampling turns mirror + paint(7) + childCount.
+  expect(Array.from(used.subarray(3, 10))).toEqual([
+    1,
+    Kind.CameraFrame,
+    5,
+    2, // fit: cover, not the 'contain' every other image node defaults to
+    1, // sampling: linear
+    0, // no rotation
+    0, // not mirrored
+  ])
+  expect(used[17]).toBe(1) // one child
+  expect(used[18]).toBe(Kind.Rect)
+})
+
+test('a <CameraFrame> turns a rotation into clockwise quarter turns', () => {
+  const turns = (rotation: unknown) =>
+    compile([node(NodeType.CameraFrame, { image: handle(1), rotation })])
+      .used[8]
+  expect(turns(0)).toBe(0)
+  expect(turns(90)).toBe(1)
+  expect(turns(180)).toBe(2)
+  expect(turns(270)).toBe(3)
+  // A frame reporting orientation 'left' asks for -90; it must not wrap to -1.
+  expect(turns(-90)).toBe(3)
+  expect(turns(360)).toBe(0)
+  expect(turns(undefined)).toBe(0)
+})
+
+test('a <CameraFrame> child inherits its opacity, like a group', () => {
+  const { used } = compile([
+    node(NodeType.CameraFrame, { image: handle(1), opacity: 0.5 }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  // The frame's own alpha, then the child rect's.
+  expect(used[15]).toBeCloseTo(0.5)
+  expect(used[28]).toBeCloseTo(0.5)
+})
+
 // The invariant the native dedupe key rests on: strings are indices, so the
 // words alone cannot tell a content change apart. See cpp/SceneHash.hpp.
 test('a text-only change leaves the word buffer byte-identical', () => {

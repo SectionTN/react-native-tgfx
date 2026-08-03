@@ -208,30 +208,6 @@ void TgfxSnapshotRelease(void* token) {
   [self wakeUp];
 }
 
-- (void)drawCameraFrame:(void*)buffer
-             frameWidth:(float)frameWidth
-            frameHeight:(float)frameHeight
-               contours:(const float*)contours
-                  count:(NSInteger)count
-             blurRadius:(float)blurRadius {
-  if (_renderer == nullptr || buffer == nullptr) {
-    return;
-  }
-  // The frame processor releases its buffer as soon as this returns, so the
-  // pixel buffer is retained for the hop to the render queue. The contour list
-  // is the caller's memory too, so it is copied here.
-  auto pixelBuffer = CVPixelBufferRetain(static_cast<CVPixelBufferRef>(buffer));
-  std::vector<float> shapes(contours, contours + std::max<NSInteger>(count, 0));
-  dispatch_async(_renderQueue, ^{
-    [self bindWindowIfNeeded];
-    if (self->_renderer != nullptr) {
-      self->_renderer->drawCameraFrame(pixelBuffer, frameWidth, frameHeight, shapes,
-                                       blurRadius);
-    }
-    CVPixelBufferRelease(pixelBuffer);
-  });
-}
-
 - (void)snapshotWithFormat:(NSString*)format
                    quality:(int)quality
                       rect:(CGRect)rect

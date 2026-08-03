@@ -78,12 +78,6 @@ class TgfxRenderer {
   /// Render one frame. Returns false when nothing changed or no window is bound.
   bool draw();
 
-  /// Draw a camera frame, blurring the interior of each contour. `contours` is a
-  /// flat polygon list: point count, then that many x,y pairs, per shape.
-  /// The image and the contours share one transform so they cannot drift apart.
-  void drawCameraFrame(void* hardwareBuffer, float frameWidth, float frameHeight,
-                       const std::vector<float>& contours, float blurRadius);
-
   /// Stage a pixel readback. `callback` runs on a worker thread once the frame
   /// carrying the readback has been drawn and the GPU transfer has landed, or
   /// immediately with an error if the canvas cannot be read. Safe from any

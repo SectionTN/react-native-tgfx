@@ -1,6 +1,6 @@
 ---
 title: Camera frames
-description: Drawing a live camera stream, the built-in face blur, and why the scene is not drawn over it yet.
+description: Drawing a live camera stream as an ordinary scene input, with the rest of the scene composited over it.
 ---
 
 A camera frame reaches tgfx as a **platform hardware buffer** — an
@@ -8,12 +8,36 @@ A camera frame reaches tgfx as a **platform hardware buffer** — an
 straight to a GPU texture: no decode, no CPU round trip, and nothing copied on
 the way in.
 
-Today there is exactly one path that puts a live frame on screen, and it is not
-the declarative one:
-[`drawCameraFrame`](#drawcameraframe), a single native method that draws the
-frame and blurs the interior of a list of polygons. **The React tree is not
-drawn on a canvas driven this way** — see
-[what it cannot do](#the-scene-is-not-drawn-over-the-frame).
+A frame is an ordinary **scene input**. `<CameraFrame>` places it, and the rest
+of the React tree — `<Rect>`, `<Text>`, `<Image>`, `<Path>` — draws over it like
+it draws over anything else.
+
+<Owned by="js">
+**Upgrading?** `view.drawCameraFrame(pointer, w, h, contours, blurRadius)` is
+**removed**. It drew the frame and blurred a polygon list without ever replaying
+the scene, so no child of the React tree was drawn on a camera canvas. Replace
+it with `<CameraFrame image={handle}>` inside a normal `<Canvas>` and express
+the blur as scene children — [the example below](#a-complete-example) is the
+same face blur, rebuilt. Contours stay in frame pixels either way.
+</Owned>
+
+```tsx
+import { Canvas, CameraFrame, Rect, Text } from 'react-native-tgfx'
+import type { TgfxImage } from 'react-native-tgfx'
+
+export function Preview({ frame }: { frame: TgfxImage | null }) {
+  return (
+    <Canvas style={{ flex: 1 }} opaque={true}>
+      <CameraFrame image={frame}>
+        {/* In FRAME pixels: rides the frame's transform. */}
+        <Rect x={40} y={40} width={200} height={200} style="stroke" color="lime" />
+      </CameraFrame>
+      {/* In canvas points: outside, so mirroring never flips the glyphs. */}
+      <Text x={16} y={32} text="live" color="lime" fontSize={18} />
+    </Canvas>
+  )
+}
+```
 
 ## Getting the buffer
 
@@ -21,209 +45,316 @@ Frames come from [react-native-vision-camera](https://react-native-vision-camera
 v5's frame output. `frame.getNativeBuffer()` gives a buffer whose `.pointer` is
 the value tgfx wants.
 
-```tsx
-import type { Frame } from 'react-native-vision-camera'
-import type { TgfxViewRef } from 'react-native-tgfx'
+The first frame creates a handle; every frame after it re-points that same
+handle. Keeping the id is the whole trick: the scene is committed **once**, and
+a new frame costs one pointer swap rather than a React render, a reconciler
+commit and a program recompile.
 
-/** Draw one frame, unblurred. */
-function drawFrame(view: TgfxViewRef, frame: Frame): void {
-  const buffer = frame.getNativeBuffer()
-  try {
-    view.drawCameraFrame(buffer.pointer, frame.width, frame.height, [], 0)
-  } finally {
-    buffer.release()
-    frame.dispose()
-  }
+```tsx
+import { useCallback, useState } from 'react'
+import { useSharedValue } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
+import type { NativeBuffer } from 'react-native-vision-camera'
+import { useFrameOutput } from 'react-native-vision-camera'
+import {
+  imageFromNativeBuffer,
+  type PixelFormat,
+  type TgfxImage,
+} from 'react-native-tgfx'
+
+export function useCameraFrame(): {
+  frame: TgfxImage | null
+  frameOutput: ReturnType<typeof useFrameOutput>
+} {
+  const [frame, setFrame] = useState<TgfxImage | null>(null)
+  const image = useSharedValue<TgfxImage | null>(null)
+  const onFirstFrame = useCallback((handle: TgfxImage) => setFrame(handle), [])
+
+  const frameOutput = useFrameOutput({
+    pixelFormat: 'yuv',
+    dropFramesWhileBusy: true,
+    enablePhysicalBufferRotation: true,
+    onFrame(f) {
+      'worklet'
+      let buffer: NativeBuffer | null = null
+      try {
+        buffer = f.getNativeBuffer()
+        // Read the range off the frame; do not hardcode it. See below.
+        const format: PixelFormat = f.pixelFormat.endsWith('-full')
+          ? 'bt601-full'
+          : 'bt601-limited'
+        if (image.value == null) {
+          image.value = imageFromNativeBuffer(buffer.pointer, format)
+          scheduleOnRN(onFirstFrame, image.value)
+        } else {
+          image.value.setNativeBuffer(buffer.pointer, format)
+        }
+      } finally {
+        buffer?.release()
+        f.dispose()
+      }
+    },
+  })
+
+  return { frame, frameOutput }
 }
 ```
 
-Release it in a `finally`. The call retains the buffer itself before returning,
-on both platforms, so the producer's reference is free the moment the call comes
-back and a pooled capture slot goes back into rotation immediately.
+**Everything that can throw goes inside the `try`, `getNativeBuffer()` included.**
+A leaked `Frame` stalls VisionCamera's bounded pool, so the `frame.dispose()` in
+the `finally` has to be unconditional — which it is not if the acquisition sits
+one line above the `try`. The handle takes its own reference before
+`setNativeBuffer` returns, so the producer's slot goes back into rotation
+immediately.
+
+`buffer.pointer` is a **raw pointer**, valid only for the body of this callback.
+Never store one and never let one outlive the call: a stale pointer does not
+throw, it imports whatever memory is now at that address.
+[#149](https://github.com/riteshshukla04/react-native-tgfx/issues/149) tracks a
+`react-native-tgfx-vision-camera` that owns this lifetime so you do not have to.
 
 <Owned by="native">
-Holding the reference is not the same as owning the pixels. Both platforms
-retain the buffer, but tgfx samples the buffer's memory directly rather than
-copying it, so the *contents* must also stay unchanged until the frame has been
-drawn. A producer that recycles a fixed pool must not write into a slot it has
-handed over and not yet had superseded.
+Holding the reference is not the same as owning the pixels. tgfx samples the
+buffer's memory directly rather than copying it, so the *contents* must also
+stay unchanged until the frame has been drawn. A producer that recycles a fixed
+pool must not write into a slot it has handed over and not yet had superseded.
 </Owned>
 
 Android needs API 26 or newer for `AHardwareBuffer` to exist at all. Below it no
 buffer can reach this API in the first place.
 
-## `drawCameraFrame`
+## `pixelFormat` is a decision
 
-The method lives on the native view, not on `<Canvas>` — `CanvasHandle` only
-carries `snapshot()` and `save()`. So a camera canvas is rendered with
-[`TgfxNativeView`](/docs/components#escape-hatch) and a `hybridRef`:
+| format | what it does | use it? |
+| --- | --- | --- |
+| `'yuv'` | the native path; a 4K frame is ~12 MB | **yes** |
+| `'rgb'` | forces a YUV→RGB conversion on **every frame** | no |
+| `'native'` | no conversion, whatever the hardware produces | verify first |
+
+`'rgb'` is disqualified: it is a full-frame conversion per frame, which is
+exactly the copy this path exists to avoid.
+
+`'yuv'` is the right answer because the import is *typed*: the
+[`PixelFormat`](/docs/images#imagefromnativebuffer) you pass tells tgfx how the
+planes map to RGB, and the conversion then happens **inside the fragment
+shader** — one `texture()` per plane plus a colour-space `mat3`, with no
+intermediate RGBA texture anywhere.
+
+<Owned by="js">
+**Read the range off the frame; do not hardcode it.** `'yuv'` resolves to
+whichever YUV format is closest to the camera's native one, and the range varies
+by device: a Galaxy S22 reports `yuv-420-8-bit-full` — **full range** — so importing it as
+`'bt601-limited'` stretches the range and crushes the blacks. The suffix of
+`frame.pixelFormat` is the answer:
 
 ```ts
-import type { UInt64 } from 'react-native-nitro-modules'
-
-declare function drawCameraFrame(
-  buffer: UInt64,
-  frameWidth: number,
-  frameHeight: number,
-  contours: number[],
-  blurRadius: number
-): void
+const format: PixelFormat = frame.pixelFormat.endsWith('-full')
+  ? 'bt601-full'
+  : 'bt601-limited'
 ```
 
-| argument | meaning |
-| --- | --- |
-| `buffer` | `frame.getNativeBuffer().pointer` |
-| `frameWidth` / `frameHeight` | the frame's pixel dimensions |
-| `contours` | flat polygon list, in **frame pixel** coordinates |
-| `blurRadius` | blur radius in frame pixels; `0` or less draws the frame unblurred |
+Do this **inside** the `try`, before anything that can throw — a surprise format
+must not skip the `frame.dispose()` in the `finally`, or the bounded buffer pool
+stalls and the stream stops dead. (The native-only path this replaces hardcoded
+BT.601 *limited*, so it had this wrong on a full-range device.)
+</Owned>
 
-The frame is **center-cropped** to fill the surface: it is scaled by
-`max(surfaceWidth / frameWidth, surfaceHeight / frameHeight)` and centred, so it
-covers the canvas and the overflowing axis is cropped. The surface is cleared to
-opaque black first, whatever the view's `opaque` setting.
+## `<CameraFrame>`
 
-The pixel format is fixed at **BT.601 limited-range YUV** on this path — the
-camera default. Configure the frame output with `pixelFormat: 'yuv'`; an RGBA
-buffer sent here is reinterpreted as YUV and comes out miscoloured. (The
-[image-handle API](/docs/images#imagefromnativebuffer) is the one that takes
-an explicit `PixelFormat`.)
-
-### The contour list
-
-`contours` is one flat `number[]` holding every polygon back to back. For each
-shape: **the point count, then that many `x, y` pairs.**
-
-```
-[ 3, x0,y0, x1,y1, x2,y2,   4, x0,y0, x1,y1, x2,y2, x3,y3 ]
-  └── first shape, 3 points ──┘ └──── second shape, 4 points ────┘
+```tsx
+interface CameraFrameProps {
+  image: TgfxImage | null
+  fit?: Fit               // default 'cover'
+  sampling?: Sampling     // default 'linear'
+  rotation?: 0 | 90 | 180 | 270
+  mirror?: boolean
+}
 ```
 
-Each shape is closed automatically and its interior is filled with the blurred
-frame. An empty list means "draw the frame, blur nothing".
+It has no geometry of its own. The frame is scaled to **cover** the canvas —
+the same `max(canvasWidth / frameWidth, canvasHeight / frameHeight)` centre-crop
+the old native-only path hardcoded — so it fills the surface and the overflowing
+axis runs off it. `fit="contain"` letterboxes instead.
 
-Two things to know about malformed input. A shape with fewer than 3 points, or a
-count that runs past the end of the array, **stops parsing** — that shape *and
-every shape after it* is silently dropped, rather than being skipped
-individually. Filter short contours out on the JS side, as the example below
-does, instead of relying on the native side to ignore them.
+`image` of `null` draws nothing at all, children included: there is no frame to
+place them against, and an overlay floating at the wrong scale is worse than an
+empty canvas.
 
-### Coordinates: the trap
+### Coordinates: children are in frame pixels
 
-Contours are in **frame pixel** coordinates — the same space as `frame.width`
-and `frame.height` — *not* canvas points, and not normalised. Pass detector
-output through unchanged; do not scale it to the view.
+Every child of `<CameraFrame>` is drawn through the **same matrix** as the frame
+itself, in **frame pixel** coordinates — the space of `frame.width` and
+`frame.height`. Pass detector output through unchanged; do not scale it to the
+view.
 
 <Owned by="native">
-This is what makes the blur reliable. The frame and the contours are drawn
-through the *same* center-crop matrix, in one native function, within one frame.
-There is no JS-side mapping to get wrong and no way for the two to be computed
-against different surface sizes, so the blur cannot drift off the face it is
-hiding — not while the view resizes, not while the device rotates, not when the
+This is what makes an overlay reliable. The matrix is derived on the render
+thread, inside the frame it belongs to, from the buffer that is actually being
+drawn — so there is no JS-side mapping to get wrong and no way for the two to be
+computed against different surface sizes. A box cannot drift off the face it
+marks, not while the view resizes, not while the device rotates, not when the
 render thread falls behind.
 
 Scaling the points yourself re-introduces exactly the drift this design removes.
 </Owned>
 
+VisionCamera's `frame.convertFramePointToCameraPoint` /
+`previewView.convertCameraPointToViewPoint` pair is for React Native views laid
+over VisionCamera's **own** preview. There is no preview view here — tgfx
+replaces it and does its own crop — so those conversions do not apply and would
+map points into a view that is not drawing them. Frame pixels, unconverted.
+
 ### Orientation and mirroring
 
-The center-crop is the *only* transform `drawCameraFrame` applies. It never
-rotates the frame and never flips it, and there is no parameter to ask it to —
-so both have to be settled before the buffer is handed over.
+Both are part of that shared matrix, so correcting them moves the overlay with
+the frame rather than desynchronising the two.
 
-**Orientation.** By default VisionCamera does not rotate buffers; it reports
-`frame.orientation` as metadata and expects the consumer to counter-rotate. This
-API has no way to do that, so a frame from a device held sideways would be drawn
-sideways. Setting `enablePhysicalBufferRotation: true`, as the example below
-does, makes the pipeline physically rotate the buffers, and `frame.orientation`
-is then always `'up'` — nothing left to correct. It costs processing overhead,
-and VisionCamera's own default is `false`, so it must be set deliberately.
+- **`rotation`** counters `frame.orientation`. A frame reporting `'right'` has
+  pixels rotated +90° from upright, so it needs `rotation={270}`.
+- **`mirror`** takes `frame.isMirrored` straight through. Without it a selfie
+  frame draws the wrong way round.
 
-**Mirroring.** `frame.isMirrored` means the pixels must be interpreted flipped
-along the vertical axis; a renderer would normally cancel it by scaling the
-frame by `-1` on X. This API cannot, so a frame arriving with `isMirrored: true`
-draws un-mirrored — on a selfie camera that is the "my face is the wrong way
-round" bug. Keep the buffer itself matching the output instead: with physical
-rotation on and the output's `mirrorMode` (`'on' | 'off' | 'auto'`, default
-`'auto'`, which mirrors selfie cameras) applied to the buffer, `isMirrored` comes
-through `false` and there is nothing to cancel. Read it rather than assuming it.
+With `enablePhysicalBufferRotation: true` the pipeline rotates the buffers
+itself and `frame.orientation` is always `'up'`; combined with the output's
+`mirrorMode` (default `'auto'`, which mirrors selfie cameras) `isMirrored`
+arrives `false`. That costs processing overhead, so the alternative is to leave
+it off and let `<CameraFrame>` do both on the GPU, for free, as part of the fit:
 
-**Do not re-derive either by hand.** Detectors take the flags directly — MLKit
-accepts `orientation` and `isMirrored` for an input image, which is why the
-example passes the frame straight to the detector and the contours straight back
-out, all in one space.
+```tsx
+const ROTATION = { 'up': 0, 'right': 270, 'down': 180, 'left': 90 } as const
+
+<CameraFrame
+  image={frame}
+  rotation={ROTATION[orientation]}
+  mirror={isMirrored}
+/>
+```
+
+Read the flags rather than assuming them — they are per-device and per-camera.
+`orientation` and `isMirrored` are constant for a session, so hop them to the JS
+thread once (a `scheduleOnRN` guarded by a comparison), not every frame.
 
 <Owned by="js">
-VisionCamera's supported coordinate pair —
-`frame.convertFramePointToCameraPoint(point)` in a worklet, then
-`previewView.convertCameraPointToViewPoint(point)` on a `PreviewViewMethods`
-ref — is the right tool when React Native views are laid over VisionCamera's
-*own* preview, and it handles orientation and front-camera mirroring for you.
+**Children are mirrored and rotated too — that is the point.** A detector's box
+has to move with the frame. But it means a `<Text>` label or a logo inside a
+mirrored `<CameraFrame>` renders back-to-front, and one inside a rotated frame
+renders sideways.
 
-It does **not** apply to `drawCameraFrame`. There is no preview view in this
-path: tgfx replaces the preview and does its own center-crop, so there is no
-view to convert into. Contours stay in frame pixels, unconverted. Reaching for
-that pair here would map points into a view that is not drawing them.
+Anything that is *not* in frame space does not belong inside `<CameraFrame>`.
+Put it in the `<Canvas>` beside it, where it is in canvas coordinates and no
+transform applies:
+
+```tsx
+<Canvas style={{ flex: 1 }} opaque={true}>
+  <CameraFrame image={frame} mirror={true}>
+    <Rect x={40} y={40} width={200} height={200} style="stroke" color="lime" />
+  </CameraFrame>
+  {/* Outside: canvas coordinates, never mirrored. */}
+  <Text x={16} y={32} text="live" color="lime" fontSize={18} />
+</Canvas>
+```
 </Owned>
 
-### Backpressure
+### Tile modes
+
+`<CameraFrame>` deliberately exposes none. A YUV image sampled with any tile
+mode other than `clamp` comes back fully transparent at the pinned tgfx —
+`TiledTextureEffect::getTextureView()` returns null for a multi-plane image. The
+same caveat applies to an `<ImageShader>` you point at a frame handle: leave
+`tx`/`ty` at their `'clamp'` default.
+
+## Backpressure
 
 An undrawn frame is **superseded** by the next one rather than queued behind it:
-when rendering is slower than capture, frames are dropped and latency stays
-bounded instead of the stream falling further and further behind.
+`setNativeBuffer` overwrites whatever the renderer has not drawn yet and drops
+the previous buffer there and then. When rendering is slower than capture,
+frames are dropped and latency stays bounded instead of the stream falling
+further and further behind.
 
-Android implements this — a single latest-frame slot, swapped under a lock, with
-the displaced buffer released as it goes out of scope.
+`dropFramesWhileBusy: true` on the frame output is the producer-side half of the
+same contract. For work that genuinely cannot keep up — a heavy model, not this
+draw — use `useAsyncRunner` and dispose the frame in whichever branch
+`runAsync` chose:
 
-<Owned by="native">
-**iOS does not, today.** It retains every `CVPixelBuffer` and enqueues an
-independent block on a serial dispatch queue, so under sustained load the queue
-depth, the retained-buffer count and the latency all grow with every frame.
-A frame with an **empty** contour list is also dropped outright on iOS instead
-of being displayed unblurred. Both are tracked in
-[#103](https://github.com/riteshshukla04/react-native-tgfx/issues/103).
-</Owned>
+```tsx
+const runner = useAsyncRunner()
+// inside onFrame:
+const accepted = runner.runAsync(() => {
+  'worklet'
+  try { /* heavy work */ } finally { frame.dispose() }
+})
+if (!accepted) frame.dispose()
+```
+
+There is no `runAtTargetFps` in v5.
 
 ## A complete example
 
 Realtime face blur, which is what `apps/faceblur` in this repo does. MLKit's
-contours go straight through — they are already in frame pixels.
+face bounds go straight through — they are already in frame pixels — and drive
+Reanimated values, so the scene is committed once and the JS thread does no work
+at all while the camera runs.
 
 ```tsx
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
+import { useSharedValue, type SharedValue } from 'react-native-reanimated'
+import { scheduleOnRN } from 'react-native-worklets'
+import type { NativeBuffer } from 'react-native-vision-camera'
 import {
   Camera,
   useCameraDevice,
   useCameraPermission,
   useFrameOutput,
 } from 'react-native-vision-camera'
+import { useFaceDetector } from 'react-native-vision-camera-face-detector'
 import {
-  useFaceDetector,
-  type Contours,
-} from 'react-native-vision-camera-face-detector'
-import { callback } from 'react-native-nitro-modules'
-import { TgfxNativeView, type TgfxViewRef } from 'react-native-tgfx'
+  Blur,
+  Canvas,
+  CameraFrame,
+  ImageShader,
+  Oval,
+  Paint,
+  imageFromNativeBuffer,
+  type PixelFormat,
+  type TgfxImage,
+} from 'react-native-tgfx'
 
 const BLUR_RADIUS = 25
-const CONTOURS: (keyof Contours)[] = ['FACE', 'LEFT_CHEEK', 'RIGHT_CHEEK']
+// The scene is compiled once, so the number of faces it can draw is fixed; an
+// unused slot has zero size and draws nothing.
+const SLOTS = [0, 1, 2, 3]
 
-export function FaceBlur() {
+interface Blob {
+  x: SharedValue<number>
+  y: SharedValue<number>
+  width: SharedValue<number>
+  height: SharedValue<number>
+}
+
+function useBlob(): Blob {
+  return {
+    x: useSharedValue(0),
+    y: useSharedValue(0),
+    width: useSharedValue(0),
+    height: useSharedValue(0),
+  }
+}
+
+export function TgfxFaceBlur() {
   const { hasPermission, requestPermission } = useCameraPermission()
   const device = useCameraDevice('front')
-  const [view, setView] = useState<TgfxViewRef | null>(null)
-  const [hybridRef] = useState(() =>
-    callback((ref: TgfxViewRef) => setView(ref))
-  )
+  const [frameImage, setFrameImage] = useState<TgfxImage | null>(null)
+  const image = useSharedValue<TgfxImage | null>(null)
+  const blobs: Blob[] = [useBlob(), useBlob(), useBlob(), useBlob()]
 
-  useEffect(() => {
-    if (!hasPermission) {
-      requestPermission()
-    }
-  }, [hasPermission, requestPermission])
+  const onFirstFrame = useCallback((handle: TgfxImage) => {
+    setFrameImage(handle)
+  }, [])
 
   const faceDetector = useFaceDetector({
     performanceMode: 'fast',
-    runContours: true,
+    runContours: false,
     runLandmarks: false,
     runClassifications: false,
   })
@@ -234,41 +365,34 @@ export function FaceBlur() {
     enablePhysicalBufferRotation: true,
     onFrame(frame) {
       'worklet'
-      if (view == null) {
-        frame.dispose()
-        return
-      }
-      const buffer = frame.getNativeBuffer()
+      let buffer: NativeBuffer | null = null
       try {
+        buffer = frame.getNativeBuffer()
+        const format: PixelFormat = frame.pixelFormat.endsWith('-full')
+          ? 'bt601-full'
+          : 'bt601-limited'
+        if (image.value == null) {
+          image.value = imageFromNativeBuffer(buffer.pointer, format)
+          scheduleOnRN(onFirstFrame, image.value)
+        } else {
+          image.value.setNativeBuffer(buffer.pointer, format)
+        }
         const faces = faceDetector.detectFaces(frame)
-        // Flat polygon list: point count, then that many x,y pairs, per shape.
-        const contours: number[] = []
-        for (const face of faces) {
-          const shapes = face.contours
-          if (shapes == null) {
+        for (let i = 0; i < SLOTS.length; i++) {
+          const blob = blobs[i]!
+          const bounds = i < faces.length ? faces[i]!.bounds : null
+          if (bounds == null) {
+            blob.width.value = 0
+            blob.height.value = 0
             continue
           }
-          for (const key of CONTOURS) {
-            const points = shapes[key]
-            // Fewer than 3 points would stop the native parse dead.
-            if (points == null || points.length < 3) {
-              continue
-            }
-            contours.push(points.length)
-            for (const point of points) {
-              contours.push(point.x, point.y)
-            }
-          }
+          blob.x.value = bounds.x
+          blob.y.value = bounds.y
+          blob.width.value = bounds.width
+          blob.height.value = bounds.height
         }
-        view.drawCameraFrame(
-          buffer.pointer,
-          frame.width,
-          frame.height,
-          contours,
-          BLUR_RADIUS
-        )
       } finally {
-        buffer.release()
+        buffer?.release()
         frame.dispose()
       }
     },
@@ -277,7 +401,9 @@ export function FaceBlur() {
   if (!hasPermission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.text}>Camera permission is required.</Text>
+        <Text style={styles.text} onPress={() => void requestPermission()}>
+          Tap to grant camera permission.
+        </Text>
       </View>
     )
   }
@@ -297,12 +423,24 @@ export function FaceBlur() {
         isActive={true}
         outputs={[frameOutput]}
       />
-      <TgfxNativeView
-        style={StyleSheet.absoluteFill}
-        hybridRef={hybridRef}
-        inHierarchy={false}
-        opaque={false}
-      />
+      <Canvas style={StyleSheet.absoluteFill} opaque={true}>
+        <CameraFrame image={frameImage}>
+          {SLOTS.map((slot) => (
+            <Oval
+              key={slot}
+              x={blobs[slot]!.x}
+              y={blobs[slot]!.y}
+              width={blobs[slot]!.width}
+              height={blobs[slot]!.height}
+            >
+              <Paint>
+                <ImageShader image={frameImage} />
+                <Blur blur={BLUR_RADIUS} />
+              </Paint>
+            </Oval>
+          ))}
+        </CameraFrame>
+      </Canvas>
     </View>
   )
 }
@@ -324,67 +462,74 @@ const styles = StyleSheet.create({
 The `<Camera>` is deliberately a 1×1 invisible view. It is a frame *source*
 only — every visible pixel is drawn by tgfx.
 
-## The scene is not drawn over the frame
+The blur is an `<ImageShader>` on the same handle, sampled 1:1 in the frame's
+own space, so the blurred pixels really are the pixels underneath. `<Blur>` is
+an image filter, so it takes a save-layer: that offscreen is the one place on
+this path where a GPU intermediate exists, and it is the cost of blurring, not
+of the camera.
 
-`drawCameraFrame` is a self-contained pipeline. It clears the surface, draws the
-frame, applies the blur inside each contour, and submits — it never replays the
-scene program. So on a canvas driven by camera frames, **no child of the React
-tree is drawn at all**:
+## Where the zero-copy guarantee holds
+
+Per link in the chain, on the pinned tgfx:
+
+| link | copy? |
+| --- | --- |
+| `getNativeBuffer()` → `setNativeBuffer()` | none — a pointer and a retain |
+| `Image::MakeFrom(HardwareBufferRef, YUVColorSpace)` | none — a direct GPU import |
+| `ImageRegistry` external entry | none — held outside the decoded-pixel budget, never evicted, never re-decoded |
+| `<CameraFrame>` draw | none — the handle is re-resolved each frame and drawn through a matrix |
+| `<ImageShader>` on the handle | none — stays a texture proxy; no `makeTextureImage` |
+| YUV → RGB | none — sampler-level, one `texture()` per plane plus a `mat3` in the emitted shader |
+| `<Blur>` / any image filter | **yes** — a save-layer offscreen, inherent to the filter |
+
+Which instrument covers which row:
+
+- **Rows 1–4** — `cpp/tests/AllocBench.cpp`, a `<CameraFrame>` plus overlays over
+  60 frames with the buffer swapped every frame, gated on drawn pixels: zero
+  decodes, zero growth in the tgfx context's GPU memory, and a flat per-frame
+  allocation count. It uses an RGBA stand-in, because no host test can make a
+  hardware buffer.
+- **Row 5** — `anExternalHandleAlsoDrivesAnImageShaderPerFrame` in
+  `cpp/tests/SceneTest.cpp`: the shader is rebuilt from the handle per frame and
+  the pixels change without a re-commit.
+- **Rows 6–7** — on device only, and by construction: the emitted GLSL samples
+  the planes directly.
+
+What the GPU-memory number is *not*: `Context::memoryUsage()` counts tgfx-owned
+resources, and a 720x1280 planar YUV buffer (~1.38 MB) is larger than the whole
+figure it reports — so the imported texture is plainly not in that accounting.
+A flat reading proves **no per-frame tgfx-owned intermediate or conversion
+target**, which is the claim that matters here; it does not independently prove
+the import itself allocates nothing. `decodes=0` and the sampler-level YUV path
+carry that half.
+
+## Sampling the frame in a shader
+
+Child shaders landed in #147, so a runtime shader can sample the live frame:
+put an `<ImageShader>` on the frame handle inside the `<Shader>`, and it becomes
+the child the SkSL `.eval()`s. It is the same handle as everywhere else on this
+page, re-resolved per frame the same way, and it runs in frame-pixel
+coordinates because it is inside `<CameraFrame>`.
 
 ```tsx
-import { Canvas, Fill, Rect, Shader } from 'react-native-tgfx'
-
-const source = `
-uniform float2 uSize;
+const desaturate = `
+uniform shader frame;
 half4 main(float2 pos) {
-  float2 uv = pos / uSize;
-  return half4(uv.x, uv.y, 0.6, 0.3);
+  half4 c = frame.eval(pos);
+  half g = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  return half4(g, g, g, c.a);
 }
 `
 
-// Type-checks, renders nothing: on a camera-driven canvas neither child is drawn.
-export function Overlay() {
-  return (
-    <Canvas style={{ width: 300, height: 140 }}>
-      <Fill>
-        <Shader source={source} uniforms={{ uSize: [300, 140] }} />
-      </Fill>
-      <Rect x={10} y={10} width={80} height={80} style="stroke" color="lime" />
-    </Canvas>
-  )
-}
+<Canvas style={{ flex: 1 }} opaque={true}>
+  <CameraFrame image={frame}>
+    <Fill>
+      <Shader source={desaturate}>
+        <ImageShader image={frame} />
+      </Shader>
+    </Fill>
+  </CameraFrame>
+</Canvas>
 ```
 
-A bounding box over a detected face, a shader over the preview, a text label —
-none of it is undocumented, it is unimplemented. The only effect this API can
-express is "blur these polygons", through its two parameters.
-
-[#132](https://github.com/riteshshukla04/react-native-tgfx/issues/132) tracks
-the fix, which is to make the frame a **scene input** rather than a bespoke
-draw: stage the buffer as a native image handle, let the normal draw path render
-the scene with it bound, and expose it declaratively. The center-crop matrix
-becomes a documented, shared transform at that point, because overlays need it
-too.
-
-Separately, a runtime shader still could not *sample* the frame even then:
-`uniform shader` is rejected at compile time and there is no child-processor
-slot to bind it to. See [shaders](/docs/shaders#child-shaders-are-rejected-loudly)
-and [#130](https://github.com/riteshshukla04/react-native-tgfx/issues/130).
-
-<Owned by="native">
-The building block for #132 already exists:
-[`imageFromNativeBuffer`](/docs/images#imagefromnativebuffer) wraps a
-hardware buffer as an ordinary `TgfxImage` handle, and `setNativeBuffer()` swaps
-in a new buffer per frame while keeping the handle id — so the scene is never
-re-committed, the swap alone wakes the render loop, and an undrawn buffer is
-superseded rather than queued.
-
-Whether that composes into a camera path is **untested and currently unknown**.
-A frame processor runs on its own worklet runtime, and nothing in this repo
-establishes that the Nitro image factory — created lazily on first use in
-`src/hooks/useImage.ts` — can be instantiated or driven from that runtime. That
-`drawCameraFrame` works from a worklet is not evidence either way: it is a
-method on a view handed over by a ref, not a factory instantiated on the worklet
-runtime. No app here drives a camera through the handle path, so do not plan
-around it until #132 settles the question.
-</Owned>
+See [shaders](/docs/shaders) for the child-shader rules.

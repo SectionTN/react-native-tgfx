@@ -43,30 +43,6 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     }
   }
 
-  func drawCameraFrame(
-    buffer: UInt64,
-    frameWidth: Double,
-    frameHeight: Double,
-    contours: [Double],
-    blurRadius: Double
-  ) throws {
-    guard let pixelBuffer = UnsafeMutableRawPointer(bitPattern: UInt(buffer)) else {
-      throw RuntimeError.error(withMessage: "drawCameraFrame got a null buffer")
-    }
-    let points = contours.map { Float($0) }
-    points.withUnsafeBufferPointer { shapes in
-      guard let base = shapes.baseAddress else { return }
-      metalView.drawCameraFrame(
-        pixelBuffer,
-        frameWidth: Float(frameWidth),
-        frameHeight: Float(frameHeight),
-        contours: base,
-        count: shapes.count,
-        blurRadius: Float(blurRadius)
-      )
-    }
-  }
-
   func snapshot(options: NativeSnapshotOptions) throws -> Promise<NativeSnapshot> {
     let promise = Promise<NativeSnapshot>()
     read(options, path: nil) { bytes, size, token, width, height in
