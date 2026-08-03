@@ -1,0 +1,115 @@
+---
+title: Runtime shaders
+description: Writing SkSL, the supported subset, and animating uniforms for free.
+---
+
+`<Shader>` takes SkSL source and a set of uniforms, and runs it per pixel on the
+GPU.
+
+```tsx
+const source = `
+uniform float2 uSize;
+half4 main(float2 pos) {
+  float2 uv = pos / uSize;
+  return half4(uv.x, uv.y, 0.6, 1.0);
+}
+`
+
+<Fill>
+  <Shader source={source} uniforms={{ uSize: [300, 140] }} />
+</Fill>
+```
+
+## The contract
+
+- The entry point is `main`, returning `half4`, `float4` or `vec4`, taking an
+  optional `float2`/`half2`/`vec2` position parameter.
+- `pos` arrives in **layout points** — the same units the shape is laid out in,
+  not a 0..1 uv and not device pixels. The native side scales the canvas by the
+  display density before drawing, so pass your sizes straight through. Scaling
+  them by `PixelRatio.get()` makes every uniform too large by that factor, and
+  the effect then covers only a fraction of the shape.
+- Uniform types: `float`, `float2`, `float3`, `float4`, their `half` and `vec`
+  spellings, `int`, and the square matrices `float2x2`, `float3x3`, `float4x4`.
+  Each component is one number, so a `float3x3` takes nine.
+
+## Animating a uniform costs nothing per frame
+
+A uniform component may be a `SharedValue`. It becomes a slot, patched on the UI
+thread like any other animated value:
+
+```tsx
+import { Fill, Shader, useClock } from 'react-native-tgfx'
+
+function Animated({ width, height }: { width: number; height: number }) {
+  const t = useClock()
+  return (
+    <Fill>
+      <Shader source={source} uniforms={{ uTime: t, uSize: [width, height] }} />
+    </Fill>
+  )
+}
+```
+
+<Owned by="native">
+Changing a uniform value does **not** recompile the shader program. The compiled
+program is keyed on the source text and the uniform names and sizes — never on
+their values — so a clock-driven uniform reuses the same program every frame and
+only the uniform data changes.
+</Owned>
+
+A vector uniform can mix animated and static components: `uniforms={{ uAt: [x, 9] }}`
+where `x` is a `SharedValue` allocates one slot and writes `9` as a literal.
+
+## The supported subset
+
+The transpiler translates SkSL to GLSL ES. The gaps are deliberate:
+
+| feature | supported | note |
+| --- | --- | --- |
+| `main` returning `half4`/`float4`/`vec4` | yes | position parameter optional |
+| scalar, vector, `int` and matrix uniforms | yes | up to `float4x4` |
+| loops with constant bounds | yes | passed through verbatim |
+| helper functions | **no** | the body is spliced into `main`, and GLSL ES has no nested functions |
+| `sample()` | **no** | no child shader support |
+| `uniform shader` | **no** | rejected at commit — see below |
+
+Helper functions bite most often. Inline the logic, or repeat it.
+
+Note the difference in how the last three fail. `uniform shader` throws in
+JavaScript when the scene is encoded. A helper function or a `sample()` call is
+spliced through untouched and fails later, in the GPU driver, at draw time —
+which usually surfaces as a shape that simply does not paint.
+
+## Child shaders are rejected, loudly
+
+SkSL found elsewhere often reads a source image through a child shader:
+
+```glsl
+uniform shader tex;
+half4 main(float2 xy) {
+  return tex.eval(xy);   // not supported
+}
+```
+
+This throws at compile time:
+
+```
+[tgfx] shader: 'uniform shader tex' is not supported yet — there is no native
+child processor to bind it to
+```
+
+The refusal is deliberate. The engine's runtime shader carries float uniforms
+only, with no sampler slot, so a body calling `tex.eval` would compile to GLSL
+referencing a function nothing defines — and fail on the device, at draw time,
+with a message pointing nowhere useful. Failing in JavaScript at commit time is
+the better trade.
+
+## Performance notes
+
+- The transpile result is cached by source text, so passing the same string every
+  render costs one parse for the life of the process. Build sources as module
+  constants rather than interpolating them per render.
+- Two shaders with identical source share one compiled GPU program.
+- Uniform count and sizes are part of the program key. Changing the *shape* of
+  your uniforms recompiles; changing their values does not.

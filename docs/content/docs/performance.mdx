@@ -1,0 +1,75 @@
+---
+title: Performance
+description: What is fast, what is not, and how to measure your own scene.
+---
+
+## Making your scene faster
+
+Ordered by how much they typically matter.
+
+### Animate through SharedValues, not state
+
+The single biggest lever. A `useState` driving a value at 60 fps recompiles and
+re-encodes the whole scene 60 times a second; a `SharedValue` does none of that.
+See [animation](/docs/animation).
+
+### Keep children as host elements
+
+When every child of a `<Canvas>` is a drawing primitive — `Rect`, `Circle`,
+`Group`, a `.map()` over them — the tree is walked straight into scene nodes and
+the reconciler is skipped entirely. One function component anywhere in the
+children falls back to the full reconciler path for that commit.
+
+```tsx
+{/* fast path */}
+<Canvas>{shapes.map((s) => <Rect key={s.id} {...s} />)}</Canvas>
+
+{/* falls back — Star is a function component */}
+<Canvas>{shapes.map((s) => <Star key={s.id} {...s} />)}</Canvas>
+```
+
+The fallback is correct, just slower. If you want the abstraction, keep it
+*outside* the canvas and let it return primitives into the children array.
+
+### Hold shader source constant
+
+The SkSL transpile is cached by source text. A template literal rebuilt each
+render is a fresh cache key every time. Hoist it to a module constant.
+
+### Prefer one animated opacity per chain
+
+Each draw command has a single alpha slot. Nesting animated opacities freezes
+their product — the compiler warns, and the fix is to animate one of them.
+
+### Don't fight the group matrix
+
+A `<Group>` whose transform has no animated operand gets its matrix folded at
+compile time and costs nothing per frame. Adding one animated operand moves the
+whole group onto the per-frame path.
+
+## Where the time goes
+
+For an animated scene the JavaScript side is already off the per-frame path, so
+the frame is dominated by native drawing rather than by encoding. The practical
+consequence is that reducing *draw calls* tends to pay off and shaving JavaScript
+tends not to. Measure before acting on that — it is a rule of thumb, not a
+guarantee for your scene.
+
+## Measuring your own scene
+
+The repository ships the harness these observations came from:
+
+```bash
+node benchmarks/renderer-benchmark/scripts/run-quick.mjs \
+  --tag=mine --renderers=tgfx,thor-gpu,skia-graphite
+```
+
+It runs each renderer three times by default with cooldowns between, rejects runs
+whose thermal state drifts mid-run, and reports the median. Single runs on a warm phone are not
+worth much: build-to-build CPU variance on one device is wide enough to swallow
+most micro-optimisations, so compare medians.
+
+For render-thread attribution on **Android**, capture a Perfetto trace. The
+native side emits `tgfx.draw`, `tgfx.render`, `tgfx.flush` and `tgfx.submit`
+around each frame, plus `tgfx.setScene` when a new scene is uploaded. These are
+atrace markers and compile to nothing on iOS.

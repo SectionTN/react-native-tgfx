@@ -1,0 +1,129 @@
+---
+title: Animation
+description: How a value gets from a SharedValue to the GPU without waking JavaScript.
+---
+
+## Two ways a value can change
+
+A prop takes either a plain number or a Reanimated `SharedValue`. Which you pass
+decides which thread pays for the animation.
+
+<Owned by="js">
+**A plain value that changes.** Your component re-renders, the reconciler diffs,
+the scene is recompiled and re-encoded, and the new buffer crosses to native.
+Correct, and fine at interaction rates. At 60 fps it is 60 of those a second.
+</Owned>
+
+<Owned by="native">
+**A `SharedValue`.** At compile time the value's position in the buffer is
+recorded as a *slot*. Reanimated writes the current numbers into a flat array on
+the UI thread, and the renderer resolves slots against it as it draws. No
+re-render, no re-encode, no buffer crossing.
+</Owned>
+
+```tsx
+import { useEffect } from 'react'
+import { useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import { Canvas, Circle } from 'react-native-tgfx'
+
+function Pulse() {
+  const r = useSharedValue(20)
+
+  useEffect(() => {
+    r.value = withRepeat(withTiming(60, { duration: 900 }), -1, true)
+  }, [r])
+
+  return (
+    <Canvas style={{ width: 200, height: 200 }}>
+      <Circle cx={100} cy={100} r={r} color="#d98a4a" />
+    </Canvas>
+  )
+}
+```
+
+`r` is never read on the JS thread after the first commit.
+
+## Which props animate
+
+These resolve through a slot and animate:
+
+- shape geometry — `x`, `y`, `width`, `height`, `cx`, `cy`, `r`, `rx`, `ry`, and
+  the `Line` endpoints `x1`, `y1`, `x2`, `y2`
+- `opacity` and `strokeWidth`
+- `Text`'s `fontSize`
+- `Group` transform operands
+- shader uniform components
+
+Everything else is read once at commit. Several of those props are still *typed*
+`Animated<…>`, so they accept a `SharedValue` without complaint and then never
+move:
+
+| prop | why it freezes |
+| --- | --- |
+| `color` | packed to a single integer at compile time |
+| `Image`'s `image` | interned into the string table |
+| `text` | interned into the string table |
+| `path` | parsed once into a native path object |
+| `fontFamily` | plain `string`, resolved once |
+| gradient `colors` and `positions` | written as literals |
+| gradient geometry — `start`, `end`, `center`, `r` | written as literals |
+| noise `freqX`, `freqY`, `octaves`, `seed` | written as literals |
+| `style`, `strokeCap`, `strokeJoin`, `antiAlias` | packed into the paint flags |
+
+The failure is silent — the prop still accepts the value. If something you expect
+to move is frozen, check this table first.
+
+To animate a colour today, cross-fade two shapes with animated `opacity`.
+
+## Opacity has one slot per draw
+
+Each draw command carries a single alpha slot. Nesting two animated opacities —
+an animated `<Group opacity>` around an animated shape — cannot be represented,
+so their product freezes at the last commit. The compiler warns:
+
+```
+[tgfx] two opacities in one chain, at least one animated: a draw command has a
+single alpha slot, so their product is frozen at the last commit. Animate one
+opacity per chain.
+```
+
+It fires once per process.
+
+## useClock
+
+`useClock()` returns **seconds** since the first frame as a `SharedValue`,
+written on the UI thread. It is the intended driver for time-based shaders:
+
+```tsx
+import { Canvas, Fill, Shader, useClock } from 'react-native-tgfx'
+
+const source = `
+uniform float2 uSize;
+uniform float uTime;
+half4 main(float2 pos) {
+  float2 uv = pos / uSize;
+  return half4(half(0.5 + 0.5 * sin(uTime + uv.x * 6.0)), half(uv.y), 0.6, 1.0);
+}
+`
+
+function Sweep() {
+  const t = useClock()
+  return (
+    <Canvas style={{ width: 300, height: 300 }}>
+      <Fill>
+        <Shader source={source} uniforms={{ uTime: t, uSize: [300, 300] }} />
+      </Fill>
+    </Canvas>
+  )
+}
+```
+
+<Owned by="native">
+Seconds rather than milliseconds is deliberate. GLSL ES `mediump` floats stop
+being representable above 65504, so a millisecond clock turns every shader that
+reads it black after about a minute of uptime, silently. Seconds buy eighteen
+hours.
+</Owned>
+
+Driving a uniform from `setInterval` instead re-encodes the entire scene on every
+tick. It works, and it is the thing this library exists to avoid.

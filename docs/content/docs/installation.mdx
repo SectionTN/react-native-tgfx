@@ -13,7 +13,8 @@ either fails — one at build time, one at runtime.
 npm install react-native-tgfx@alpha react-native-nitro-modules
 ```
 
-Published under the `alpha` tag, so the tag is not optional.
+The current release is `0.0.1`, published under the `alpha` dist-tag rather than
+`latest`, so the tag is not optional.
 
 ## 2. Install Reanimated *and* worklets
 
@@ -25,8 +26,9 @@ Reanimated 4 moved worklets into their own package. Installing Reanimated alone
 fails the Android build during configuration:
 
 ```
-[Reanimated] `react-native-worklets` library not found.
-Please install it as a dependency in your project.
+[Reanimated] `react-native-worklets` library not found. Please install it as a
+dependency in your project. Install `react-native-worklets` with your package
+manager, i.e. `yarn add react-native-worklets` or `npm i react-native-worklets`.
 ```
 
 Skip both if nothing in your scene animates — the library loads Reanimated
@@ -42,12 +44,9 @@ module.exports = {
 }
 ```
 
-Without it the app builds and installs, then **crashes on the first `<Canvas>`**:
-
-```
-TypeError: Cannot read property 'bytecode' of undefined
-  NativeWorklets → createSerializable → Canvas
-```
+Without it the app builds and installs, then **crashes on the first `<Canvas>`**
+with `TypeError: Cannot read property 'bytecode' of undefined`, thrown from
+Reanimated's worklets module.
 
 Worklets need this transform to produce their bytecode. The stack points at
 `Canvas` and reads like a rendering bug, which is why it is worth stating.
@@ -78,8 +77,7 @@ cd ios && pod install
 ```
 
 Set `PLATFORM=OS64` before running it for a device build, and re-run it whenever
-the package is updated. Removing this step by shipping an XCFramework is tracked
-in [issue #106](https://github.com/riteshshukla04/react-native-tgfx/issues/106).
+the package is updated.
 
 ## 5. Draw something
 

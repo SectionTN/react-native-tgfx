@@ -1,6 +1,6 @@
 ---
 title: Components
-description: Every drawing primitive, paint, and the rules that govern how they nest.
+description: Every drawing primitive, its props and their exact types.
 ---
 
 ## Canvas
@@ -8,38 +8,86 @@ description: Every drawing primitive, paint, and the rules that govern how they 
 The root. Everything else must be a descendant.
 
 ```tsx
-<Canvas style={{ width: 300, height: 140 }}>{/* drawings */}</Canvas>
+import { Canvas, Rect } from 'react-native-tgfx'
+
+function Panel() {
+  return (
+    <Canvas style={{ width: 300, height: 140 }}>
+      <Rect x={0} y={0} width={300} height={140} color="#101725" />
+    </Canvas>
+  )
+}
 ```
 
-`style` is a normal React Native view style. Children draw in document order —
-later siblings paint over earlier ones.
+| prop | type | default |
+| --- | --- | --- |
+| `style` | view style | — |
+| `composite` | `'layer' \| 'texture'` | `'layer'` |
+| `opaque` | `boolean` | `false` |
+| `debug` | `boolean` | `false` |
+
+`composite: 'layer'` punches through the window: React Native content *behind*
+the canvas does not show through its transparent pixels, and view transforms do
+not apply to it. Use `'texture'` when the canvas has to compose with views
+behind it or be transformed.
+
+Children draw in document order — later siblings paint over earlier ones.
 
 ## Shapes
 
 | component | props |
 | --- | --- |
 | `Rect` | `x`, `y`, `width`, `height` |
-| `RoundedRect` | `x`, `y`, `width`, `height`, `r` or `rx`/`ry` |
+| `RoundedRect` | `x`, `y`, `width`, `height`, `r`, or `rx`/`ry` to override `r` per axis |
 | `Oval` | `x`, `y`, `width`, `height` |
 | `Circle` | `cx`, `cy`, `r` |
 | `Line` | `x1`, `y1`, `x2`, `y2` |
-| `Path` | `path` (SVG path data) |
+| `Path` | `path` — SVG path data, `string` |
 | `Image` | `image`, `x`, `y`, `width`, `height`, `fit` |
 | `Text` | `text`, `x`, `y`, `fontSize`, `fontFamily` |
-| `Fill` | none — covers the canvas |
+| `Fill` | none of its own — covers the canvas |
 
-Every numeric prop accepts `Animated<number>` except where
-[animation](/docs/animation) says otherwise. All shapes take the paint props below.
+Every geometric prop above is `Animated<number>`, so it may be a plain number or
+a Reanimated `SharedValue`. The exceptions are `path` (`string`), `text`
+(`Animated<string>`, but snapshotted), `fontFamily` (`string`), `image`
+(`Animated<string>`, but snapshotted) and `fit`.
+
+`Image.fit` is `'fill' | 'contain' | 'cover'`, default `'contain'`.
+`Text.fontSize` defaults to `14`.
+
+All of these take the paint props below **except `Image`**, which draws with the
+default paint and honours only `opacity`.
+
+### Line ignores `style`
+
+A line has no interior, so it is always stroked. Passing `style="fill"` to
+`<Line>` still draws a stroke.
 
 ### Fill
 
-`Fill` covers the whole canvas without being told its size, which makes it the
-natural host for a shader:
+`Fill` has no geometry of its own but takes every paint prop and accepts
+children, which makes it the natural host for a shader:
 
 ```tsx
-<Fill>
-  <Shader source={src} uniforms={{ uSize: [w, h] }} />
-</Fill>
+import { Canvas, Fill, Shader } from 'react-native-tgfx'
+
+const source = `
+uniform float2 uSize;
+half4 main(float2 pos) {
+  float2 uv = pos / uSize;
+  return half4(uv.x, uv.y, 0.6, 1.0);
+}
+`
+
+function Backdrop({ width, height }: { width: number; height: number }) {
+  return (
+    <Canvas style={{ width, height }}>
+      <Fill>
+        <Shader source={source} uniforms={{ uSize: [width, height] }} />
+      </Fill>
+    </Canvas>
+  )
+}
 ```
 
 Coverage comes from the device-space clip, so a transform on an enclosing
@@ -50,23 +98,25 @@ Coverage comes from the device-space clip, so a transform on an enclosing
 Set directly on a shape, or inherited from a `<Paint>` child:
 
 ```tsx
+import { Circle, Paint } from 'react-native-tgfx'
+
 <Circle cx={70} cy={70} r={40}>
   <Paint color="#f2c088" style="stroke" strokeWidth={3} />
 </Circle>
 ```
 
-| prop | values |
-| --- | --- |
-| `color` | any CSS colour string |
-| `style` | `'fill'` (default) or `'stroke'` |
-| `strokeWidth` | number, animatable |
-| `strokeCap` | `'butt'`, `'round'`, `'square'` |
-| `strokeJoin` | `'miter'`, `'round'`, `'bevel'` |
-| `opacity` | number, animatable |
-| `antiAlias` | boolean, default `true` |
+| prop | type | default |
+| --- | --- | --- |
+| `color` | `Animated<Color>` — hex, `rgb()`/`rgba()`, `hsl()`/`hsla()`, or a named colour | black |
+| `style` | `'fill' \| 'stroke'` | `'fill'` |
+| `strokeWidth` | `Animated<number>` | `1` |
+| `strokeCap` | `'butt' \| 'round' \| 'square'` | `'butt'` |
+| `strokeJoin` | `'miter' \| 'round' \| 'bevel'` | `'miter'` |
+| `opacity` | `Animated<number>` | `1` |
+| `antiAlias` | `boolean` | `true` |
 
 A `<Paint>` inside a `<Group>` sets the inherited default for descendants; inside
-a shape it overrides that shape only.
+a shape it overrides that shape only, including its `opacity`.
 
 To stroke *and* fill one shape, draw it twice — one fill, one stroke. That is
 what the engine does anyway.
@@ -76,56 +126,109 @@ what the engine does anyway.
 Applies transforms and inherited paint to its children.
 
 ```tsx
+import { Group, Rect } from 'react-native-tgfx'
+
 <Group transform={[{ translate: [40, 0] }, { rotate: '12deg' }, { scale: 1.5 }]}>
   <Rect x={0} y={0} width={40} height={40} />
 </Group>
 ```
 
-Operations apply in array order: `translate`, `scale`, `rotate`, `skewX`,
-`skewY`. Rotations take a string with `deg` or `rad`.
+| prop | type |
+| --- | --- |
+| `transform` | `Transform[]` |
+| `origin` | `Vector` — `{ x, y }`, the point transforms are applied about |
+
+Operations apply in array order. The full set is `translate`, `translateX`,
+`translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateZ`, `skewX`, `skewY`.
+
+Rotations accept a string with a `deg` or `rad` suffix. A bare number is
+radians — and an **animated** rotation is always radians, because a `SharedValue`
+carries no unit. Convert in your worklet if you are thinking in degrees.
 
 When no operand is animated the matrix is folded at compile time and costs
-nothing per frame. One animated operand puts the whole group on the per-frame
+nothing per frame. One animated operand moves the whole group onto the per-frame
 path — worth knowing when a static group sits inside an animated one.
 
-## Shaders
+## Gradients and noise
 
-Gradient and noise shaders are children of a shape or `<Paint>`:
+Children of a shape or `<Paint>`. They draw nothing on their own.
 
 | component | props |
 | --- | --- |
 | `LinearGradient` | `start`, `end`, `colors`, `positions` |
-| `RadialGradient` | `center`, `r`, `colors`, `positions` |
-| `SweepGradient` | `center`, `start`, `end`, `colors` — degrees, as in Skia |
-| `DiamondGradient` | `center`, `r`, `colors` |
+| `RadialGradient` | `center` (or `cx`/`cy`), `r`, `colors`, `positions` |
+| `SweepGradient` | `c` (or `center`, or `cx`/`cy`), `start`, `end`, `colors`, `positions` |
+| `DiamondGradient` | same props as `RadialGradient` |
 | `FractalNoise` | `freqX`, `freqY`, `octaves`, `seed` |
-| `Turbulence` | same as `FractalNoise`, sharper |
+| `Turbulence` | same props as `FractalNoise` |
 | `Shader` | `source`, `uniforms` — see [shaders](/docs/shaders) |
+
+`colors` is `Color[]` and `positions` is `number[]`. `SweepGradient`'s `start`
+and `end` are **degrees**, as in Skia, defaulting to a full 0–360 turn. Noise
+defaults are `freqX` and `freqY` `0.05`, `octaves` `1`, `seed` `0`.
+
+Gradient geometry (`start`, `end`, `center`, `r`), `positions`, `colors` and all
+noise parameters are read once at commit and do not animate.
+
+```tsx
+import { LinearGradient, Rect } from 'react-native-tgfx'
+
+<Rect x={0} y={0} width={300} height={140}>
+  <LinearGradient
+    start={{ x: 0, y: 0 }}
+    end={{ x: 300, y: 0 }}
+    colors={['#d98a4a', '#6aa9ff']}
+  />
+</Rect>
+```
 
 ## Hooks
 
 ### useImage
 
 ```tsx
-const data = useImage(require('./cat.png'))
+const data: string | null = useImage(require('./cat.png'))
 ```
 
-Accepts a `require()` asset, an `http(s)`/`file`/`data`/`asset`/`content` URI, or
-a raw base64 string. Returns `null` until the bytes are available.
+Takes `number | string` — a `require()` asset, an `http(s)`, `file:`, `data:`,
+`asset:` or `content:` URI, or a raw base64 string. Returns the base64 bytes, or
+`null` until they are available.
 
-Use `useImageState` when you need to tell "still loading" from "failed" — it
-returns `{ data, error, loading }`, and clears the bytes the moment `source`
-changes so a slow or failing load never leaves the previous image on screen.
+### useImageState
+
+```tsx
+const { data, error, loading } = useImageState(source)
+```
+
+Returns `ImageState`: `data: string | null`, `error: Error | null`,
+`loading: boolean`. `data` is cleared the moment `source` changes, so a slow or
+failing load never leaves the previous image on screen.
 
 ### useClock
 
-Seconds since the first frame, as a UI-thread `SharedValue`. See
-[animation](/docs/animation).
+Returns a `SharedValue<number>` holding **seconds** since the first frame,
+written on the UI thread. See [animation](/docs/animation).
+
+## Escape hatch
+
+`TgfxNativeView` is exported for callers who want to drive the native view
+directly — pushing a `scene` buffer and a values buffer themselves rather than
+going through `<Canvas>`. Its ref type is `TgfxViewRef`. Most code should not
+need it.
+
+## Types
+
+The package exports its prop types alongside the components — `CanvasProps`,
+`RectProps`, `CircleProps`, `PaintProps`, `GroupProps`, `ShaderProps`,
+`ImageState`, and the shared `Animated<T>`, `Color`, `Vector`, `Transform` and
+`TransformOp`. `DiamondGradient` and `Turbulence` reuse `RadialGradientProps` and
+`NoiseProps` respectively.
 
 ## What is not supported
 
 - No clipping primitive is exposed.
 - No blend modes, blurs, or image filters at the component level.
-- No child shaders — `uniform shader` is rejected at compile time rather than
-  producing invalid GPU code. See [shaders](/docs/shaders).
-- Colours and paths do not animate. See [animation](/docs/animation).
+- No child shaders — `uniform shader` is rejected at compile time. See
+  [shaders](/docs/shaders).
+- Colours, paths, text, images, gradient geometry and noise parameters do not
+  animate. See [animation](/docs/animation).

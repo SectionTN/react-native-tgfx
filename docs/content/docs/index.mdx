@@ -9,10 +9,14 @@ scene compiles to a binary buffer the native renderer executes on its own thread
 ```tsx
 import { Canvas, Circle, Rect } from 'react-native-tgfx'
 
-<Canvas style={{ width: 300, height: 140 }}>
-  <Rect x={0} y={0} width={300} height={140} color="#101725" />
-  <Circle cx={70} cy={70} r={44} color="#d98a4a" />
-</Canvas>
+export default function App() {
+  return (
+    <Canvas style={{ width: 300, height: 140 }}>
+      <Rect x={0} y={0} width={300} height={140} color="#101725" />
+      <Circle cx={70} cy={70} r={44} color="#d98a4a" />
+    </Canvas>
+  )
+}
 ```
 
 ## The one idea worth knowing first
@@ -57,15 +61,12 @@ Scenes that draw a lot and animate continuously: data visualisation, generative
 backgrounds, custom controls — anything where you would otherwise reach for a
 native view per element.
 
-Said plainly: memory use is its strongest characteristic, frame delivery is
-solid, and total CPU is not yet where it should be against the best alternative.
-That gap is open as
-[issue #24](https://github.com/riteshshukla04/react-native-tgfx/issues/24), and
-[performance](/docs/performance) has the harness to measure your own scene.
+[Performance](/docs/performance) covers what makes a scene fast here, and ships
+the harness to measure your own rather than take any characterisation on faith.
 
 ## Status
 
-Alpha, published as `0.0.1` under the `alpha` tag. It has been installed from
+Alpha, released as `0.0.1` under the `alpha` dist-tag. It has been installed from
 npm into a fresh app and verified drawing on a device — see
 [installation](/docs/installation), which documents the two setup steps that are
 easy to miss. iOS still needs a manual build step.
