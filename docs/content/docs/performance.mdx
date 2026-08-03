@@ -3,6 +3,36 @@ title: Performance
 description: What is fast, what is not, and how to measure your own scene.
 ---
 
+## Measured
+
+400 animated objects, Samsung device, median of three runs, all three renderers
+drawing the same scene in the same fifteen-second window.
+
+| renderer | CPU | CPU per frame | frames drawn | main fps | JS fps | jank | memory |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| tgfx | 260.6% | 36.1 ms | 1082 | 59.1 | 56.5 | 43.2% | 143.9 MB |
+| nitro-thor | 151.2% | 19.3 ms | 1177 | 60.1 | 60.1 | 39.3% | 241.6 MB |
+| skia-graphite | 193.4% | 71.6 ms | 405 | 38.0 | 21.1 | 86.5% | 206.2 MB |
+
+**CPU per frame** is the derived column, and it is the one worth reading first:
+total CPU divided by the frames actually drawn. Comparing totals alone is
+misleading whenever two renderers deliver different frame counts — skia-graphite
+uses less total CPU than tgfx while drawing 405 frames to tgfx's 1082, so it
+looks cheaper per second and is roughly twice as expensive per frame.
+
+What the table says, plainly:
+
+- **Memory is the strongest result.** 143.9 MB against 206–242 MB, consistently
+  across runs.
+- **Frame delivery is solid.** 59.1 fps and 43.2% jank, against skia-graphite's
+  38.0 fps and 86.5% jank in the identical scene.
+- **Against nitro-thor, CPU is the weak result and it is unresolved.** It draws
+  more frames than tgfx for 58% of the CPU — 19.3 ms per frame against 36.1 ms.
+  That gap is real, reproducible, and not a measurement artifact.
+
+Numbers come from the harness below. Reproduce them before relying on them:
+device, thermal state and build all move the result.
+
 ## Making your scene faster
 
 Ordered by how much they typically matter.
