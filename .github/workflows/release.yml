@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        type: choice
+        default: both
+        options:
+          - both
+          - react-native-tgfx
+          - react-native-tgfx-vision-camera
+      prerelease:
+        description: Channel — stable, or a pre-release published under that npm dist-tag
+        type: choice
+        default: stable
+        options:
+          - stable
+          - alpha
+          - beta
+      increment:
+        description: 'Override the version bump (empty = the one conventional commits recommend)'
+        type: string
+        default: ''
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # The gate: the JS side is checked on every push, the native side is not, and
+  # a broken .mm only shows up here. Nothing is published if this job fails.
+  ios:
+    name: iOS Simulator build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # The tgfx submodule is a private repo; the default GITHUB_TOKEN
+          # cannot clone it.
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Fetch tgfx third-party dependencies
+        working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
+        run: ./install_tools.sh && ./sync_deps.sh
+      - name: Build the tgfx static library
+        run: bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
+      - name: Install pods
+        working-directory: benchmarks/renderer-benchmark
+        run: |
+          npm ci
+          cd ios && pod install
+      - name: Build
+        working-directory: benchmarks/renderer-benchmark/ios
+        run: |
+          xcodebuild -workspace RendererBenchmark.xcworkspace \
+            -scheme RendererBenchmark -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
+
+  release:
+    name: Publish to npm
+    needs: ios
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: release
+    env:
+      # --preRelease=<id> both tags the version 1.2.0-alpha.0 and publishes it
+      # under the matching npm dist-tag, so `npm i` still resolves to stable.
+      RELEASE_ARGS: >-
+        ${{ inputs.increment }}
+        ${{ inputs.prerelease != 'stable' && format('--preRelease={0}', inputs.prerelease) || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          package-manager-cache: false
+      # Trusted publishing needs the OIDC support added in npm 11.5.1.
+      - run: npm install -g npm@11.14.1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Configure Git
+        run: |
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+      - name: Release react-native-tgfx
+        if: inputs.package == 'both' || inputs.package == 'react-native-tgfx'
+        working-directory: packages/react-native-tgfx
+        run: bunx release-it $RELEASE_ARGS --ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - name: Release react-native-tgfx-vision-camera
+        if: inputs.package == 'both' || inputs.package == 'react-native-tgfx-vision-camera'
+        working-directory: packages/react-native-tgfx-vision-camera
+        run: bunx release-it $RELEASE_ARGS --ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

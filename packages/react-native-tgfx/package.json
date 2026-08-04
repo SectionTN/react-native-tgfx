@@ -72,6 +72,39 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
+  "release-it": {
+    "git": {
+      "commitMessage": "chore: release react-native-tgfx ${version}",
+      "tagName": "react-native-tgfx@${version}",
+      "tagMatch": "react-native-tgfx@*",
+      "requireBranch": "main"
+    },
+    "npm": {
+      "publish": true,
+      "skipChecks": true
+    },
+    "github": {
+      "release": true,
+      "releaseName": "react-native-tgfx ${version}"
+    },
+    "plugins": {
+      "@release-it/conventional-changelog": {
+        "preset": {
+          "name": "conventionalcommits"
+        },
+        "infile": "CHANGELOG.md",
+        "tagOpts": {
+          "prefix": "react-native-tgfx@"
+        },
+        "commitsOpts": {
+          "path": "."
+        },
+        "gitRawCommitsOpts": {
+          "path": "."
+        }
+      }
+    }
+  },
   "devDependencies": {
     "@react-native/eslint-config": "0.85.3",
     "@types/react": "^19.2.15",

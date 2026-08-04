@@ -12,6 +12,8 @@
     "example": "bun --cwd apps/example"
   },
   "devDependencies": {
+    "@release-it/conventional-changelog": "^12.0.0",
+    "release-it": "^21.0.1",
     "typescript": "^6.0.3"
   }
 }
