@@ -8,7 +8,21 @@
  * An input that cannot be parsed resolves to opaque black and warns once in
  * `__DEV__`, matching how a missing color already degrades.
  */
-export type Color = string | number
+import { resolveNumber, type MaybeSharedValue } from './values'
+
+/**
+ * Red, green, blue, alpha, each 0..1. The one colour form that can carry a
+ * SharedValue per channel, and so the one the engine can patch per frame — a
+ * packed integer cannot survive the float32 slot it would have to travel in.
+ */
+export type ColorComponents = readonly [
+  MaybeSharedValue<number> | number,
+  MaybeSharedValue<number> | number,
+  MaybeSharedValue<number> | number,
+  MaybeSharedValue<number> | number,
+]
+
+export type Color = string | number | ColorComponents
 
 const NAMED: Record<string, number> = {
   aliceblue: 0xfff0f8ff,
@@ -335,6 +349,28 @@ function parseColor(str: string): number {
   return value
 }
 
+/** True for the four-channel form, the only one that can carry a live value. */
+export function isColorComponents(input: unknown): input is ColorComponents {
+  return Array.isArray(input) && input.length === 4
+}
+
+function channel(input: unknown): number {
+  const n = resolveNumber(input, 0)
+  return Math.round(Math.min(1, Math.max(0, n)) * 255)
+}
+
+/** Unpack `0xAARRGGBB` into the four 0..1 channels, in `ColorComponents` order. */
+export function colorChannels(
+  packed: number
+): [number, number, number, number] {
+  return [
+    ((packed >>> 16) & 0xff) / 255,
+    ((packed >>> 8) & 0xff) / 255,
+    (packed & 0xff) / 255,
+    ((packed >>> 24) & 0xff) / 255,
+  ]
+}
+
 /** Resolve any supported color input to a packed `0xAARRGGBB` integer. */
 export function resolveColor(input: Color | undefined): number {
   if (input == null) {
@@ -342,6 +378,15 @@ export function resolveColor(input: Color | undefined): number {
   }
   if (typeof input === 'number') {
     return input >>> 0
+  }
+  if (isColorComponents(input)) {
+    return (
+      ((channel(input[3]) << 24) |
+        (channel(input[0]) << 16) |
+        (channel(input[1]) << 8) |
+        channel(input[2])) >>>
+      0
+    )
   }
   const cached = CACHE.get(input)
   if (cached !== undefined) {

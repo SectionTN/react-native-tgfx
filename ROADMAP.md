@@ -140,9 +140,10 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   `HandlerThread` and `AndroidBitmap` as well as the codec bridge. Nothing here
   uses them directly yet; anything that starts to is live from that commit on.
 
-- 🟠 **Full animated-prop coverage.** Value slots cover geometry, opacity, and
-  transform ops (rotate/scale/translate). Add slots for colors, strokeWidth,
-  gradient stops/endpoints, path data, fontSize, and text.
+- 🟠 **Full animated-prop coverage.** Value slots cover geometry, opacity,
+  strokeWidth, fontSize, transform ops (rotate/scale/translate), shader uniforms
+  and colour (as `[r, g, b, a]`, scene version 16). Add slots for gradient
+  stops/endpoints, path data, and text.
 - 🟠 **Native `<ImageSVG>`.** SVG *documents* are not parsed, only single path
   data strings. Needs tgfx's SVG module (`TGFX_BUILD_SVG`, currently off).
 - 🟠 **Colour and image filters on `<Image>`.** The scene graph has no
@@ -189,8 +190,10 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 
 - ✅ Imperative writes (`useNode()` + `ref` on a drawing node, `CanvasHandle.redraw()`):
   a slotted prop is patched in place — from the JS thread or from inside a worklet —
-  and anything else re-encodes without React. Still open: slots for
-  `path`/`text`/`color` (#49), and structural add/remove/reorder.
+  and anything else re-encodes without React. `color`, a `<Group>`'s transform
+  operands and a `<Shader>`'s `uniforms` are patchable too (#160), and the surface
+  has its own docs page. Still open: slots for `path`/`text` (#49), and structural
+  add/remove/reorder (#160).
 - 🟠 The HostConfig is cast (`as unknown`) with stubbed suspense/hydration
   members — test Suspense (image loading), error boundaries, concurrent features.
 - 🟠 Incremental/diff updates to native (Skia diffs a command list); currently

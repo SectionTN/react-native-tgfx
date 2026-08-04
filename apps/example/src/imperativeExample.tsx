@@ -3,18 +3,53 @@
  * with no React render behind any of it. The render counter is the point — it
  * stays where it is however much the scene moves.
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Canvas, Circle, RoundedRect, Text, useNode } from 'react-native-tgfx';
+import {
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+import {
+  Canvas,
+  Circle,
+  Fill,
+  Group,
+  RoundedRect,
+  Shader,
+  Text,
+  useNode,
+} from 'react-native-tgfx';
 
 const H = 160;
 const COLORS = ['#4F8EF7', '#FF9500', '#34C759', '#AF52DE', '#FF3B30'];
+
+/** A spot the pan gesture moves, so the uniform write is the only thing driving it. */
+const SPOT = `
+uniform float2 uCenter;
+uniform float uRadius;
+half4 main(float2 pos) {
+  float d = length(pos - uCenter) / uRadius;
+  float a = clamp(1.0 - d, 0.0, 1.0);
+  return half4(half(0.31 * a), half(0.56 * a), half(0.97 * a), half(a));
+}
+`;
 
 export function ImperativeSection() {
   const box = useNode();
   const dot = useNode();
   const label = useNode();
+  const stage = useNode();
+  const fx = useNode();
+
+  // A colour that animates with no JS per frame: four channels, one of them a
+  // SharedValue. A colour string or packed number cannot do this — it is one
+  // integer, and a value slot carries one float.
+  const red = useSharedValue(0.2);
+  useEffect(() => {
+    red.value = withRepeat(withTiming(1, { duration: 1200 }), -1, true);
+  }, [red]);
 
   // Not state: React must not learn about any of this.
   const geometry = useRef({ x: 20, width: 70, color: 0 });
@@ -35,8 +70,8 @@ export function ImperativeSection() {
     box.set({ width: g.width });
   };
 
-  // No slot for a colour, so this one re-encodes the program — still without a
-  // React render or a reconciler commit.
+  // The first colour write buys four slots and re-encodes once; every one after
+  // it is a value patch, with no re-encode at all.
   const recolor = () => {
     const g = geometry.current;
     g.color = (g.color + 1) % COLORS.length;
@@ -60,6 +95,14 @@ export function ImperativeSection() {
       'worklet';
       dot.set({ cx: e.x, cy: e.y });
     });
+
+  // Both of these are slot writes from the UI thread: a transform operand on a
+  // <Group>, and a shader uniform. Neither wakes the JS thread.
+  const spin = Gesture.Pan().onUpdate(e => {
+    'worklet';
+    stage.set({ rotate: e.translationX / 120 });
+    fx.set({ uniforms: { uCenter: [e.x, e.y] } });
+  });
 
   return (
     <View style={styles.section}>
@@ -112,6 +155,33 @@ export function ImperativeSection() {
           <RNText style={styles.buttonText}>re-render</RNText>
         </Pressable>
       </View>
+      <RNText style={styles.label}>
+        Animated colour, transform slot and shader uniforms (drag)
+      </RNText>
+      <GestureDetector gesture={spin}>
+        <View>
+          <Canvas style={styles.canvas}>
+            <Fill>
+              <Shader
+                ref={fx}
+                source={SPOT}
+                uniforms={{ uCenter: [160, 80], uRadius: 90 }}
+              />
+            </Fill>
+            <Group ref={stage} transform={[{ rotate: 0 }]} origin={{ x: 160, y: 80 }}>
+              <RoundedRect
+                x={110}
+                y={55}
+                width={100}
+                height={50}
+                r={10}
+                color={[red, 0.35, 0.9, 1]}
+              />
+            </Group>
+          </Canvas>
+        </View>
+      </GestureDetector>
+
       <RNText style={styles.status} testID="tgfx-render-count">
         React renders: {renders.current} · a re-render puts the JSX values back
       </RNText>

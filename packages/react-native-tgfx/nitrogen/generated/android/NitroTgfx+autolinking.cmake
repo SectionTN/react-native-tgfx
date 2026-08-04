@@ -36,6 +36,8 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridTgfxFontsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxImageSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxImageFactorySpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxSlotsSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxSlotsFactorySpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridTgfxViewComponent.cpp
   # Android-specific Nitrogen C++ sources

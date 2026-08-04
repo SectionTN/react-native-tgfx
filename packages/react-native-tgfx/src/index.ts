@@ -83,6 +83,7 @@ export type {
   CanvasProps,
   CircleProps,
   Color,
+  ColorComponents,
   ColorMatrixProps,
   DropShadowProps,
   Fit,

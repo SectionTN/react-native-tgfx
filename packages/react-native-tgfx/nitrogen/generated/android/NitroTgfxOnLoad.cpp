@@ -20,6 +20,7 @@
 #include <NitroModules/DefaultConstructableObject.hpp>
 #include "HybridTgfxImageFactory.hpp"
 #include "HybridTgfxFonts.hpp"
+#include "HybridTgfxSlotsFactory.hpp"
 
 namespace margelo::nitro::tgfx {
 
@@ -69,6 +70,15 @@ void registerAllNatives() {
                     "The HybridObject \"HybridTgfxFonts\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridTgfxFonts>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TgfxSlotsFactory",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridTgfxSlotsFactory>,
+                    "The HybridObject \"HybridTgfxSlotsFactory\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridTgfxSlotsFactory>();
     }
   );
 }

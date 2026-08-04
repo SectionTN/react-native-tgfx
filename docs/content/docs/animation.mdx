@@ -53,16 +53,17 @@ These resolve through a slot and animate:
 - `Text`'s `fontSize`
 - `Group` transform operands
 - shader uniform components
+- a **paint** `color` in its four-channel form — a drawing node's own `color`, or
+  one on `<Paint>`
 
-Everything else is read once at commit. `color` is still *typed* `Animated<…>`,
-so it accepts a `SharedValue` without complaint and then never moves. `text`,
-`path` and `Image`'s `image` used to have the same problem and are now typed as
-what they are, so passing a `SharedValue` is a type error rather than a silent
-freeze.
+Everything else is read once at commit. `text`, `path` and `Image`'s `image`
+are typed as what they are, so passing a `SharedValue` is a type error rather
+than a silent freeze.
 
 | prop | why it freezes |
 | --- | --- |
-| `color` | packed to a single integer at compile time |
+| `color` as a string or packed number | packed to a single integer at compile time |
+| `color` anywhere but a paint — `<Span>`, gradient stops, `<BlendColor>`, `<DropShadow>` | packed at compile time even in four-channel form |
 | `Image`'s `image` | a native handle, resolved once |
 | `text` | interned into the string table |
 | `path` | parsed once into a native path object |
@@ -75,7 +76,22 @@ freeze.
 The failure is silent — the prop still accepts the value. If something you expect
 to move is frozen, check this table first.
 
-To animate a colour today, cross-fade two shapes with animated `opacity`.
+### Animating a colour
+
+A colour string or packed number is one integer, and a slot carries one float —
+32 bits of mantissa cannot hold `0xAARRGGBB` without shifting the channels. So a
+live colour travels as four channels instead, red, green, blue and alpha in
+`0..1`, each free to be a `SharedValue`:
+
+```tsx
+const red = useSharedValue(0)
+
+<Rect x={0} y={0} width={40} height={40} color={[red, 0.2, 0.4, 1]} />
+```
+
+All four literal (`color={[1, 0, 0, 1]}`) costs nothing extra — it packs into the
+same word a string does. One `SharedValue` among them puts the paint on the
+per-frame path, which is what buys the animation.
 
 ## Opacity has one slot per draw
 
@@ -154,77 +170,6 @@ function Box() {
 ```
 
 `set()` never re-renders: no component render, no reconciler commit, no Fabric
-commit.
-
-<Owned by="native">
-**A prop with a slot** — everything in the list above — is patched in place. A
-handled node is compiled with a slot for every one of them it carries, so even
-the first write is a single `setValues`: no re-encode, and the render thread
-picks it up on the next frame.
-
-`opacity` is the exception: it is made live by the first write to it, not by the
-`ref`, because whether it is live is what decides if an enclosing `<Group opacity>`
-freezes (see above). A `ref` never changes how a scene composites on its own.
-</Owned>
-
-<Owned by="js">
-**A prop without one** — `color`, `path`, `text`, `image`, or a slot prop the
-element does not carry — re-encodes the scene on every write. Still cheaper than `setState`, since React does no work at all,
-but it is the same re-encode the compiler does on a commit.
-</Owned>
-
-Handles work on `<Group>` too, so a transform can be driven the same way.
-
-### From a worklet
-
-`set()` is a worklet. Called on the UI thread it writes the slots directly, so a
-gesture drives the canvas without the JS thread being involved at all:
-
-```tsx
-import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { Canvas, Circle, useNode } from 'react-native-tgfx'
-
-function Dot() {
-  const dot = useNode()
-  const pan = Gesture.Pan().onUpdate((e) => {
-    'worklet'
-    dot.set({ cx: e.x, cy: e.y })
-  })
-
-  return (
-    <GestureDetector gesture={pan}>
-      <View>
-        <Canvas style={{ width: 300, height: 200 }}>
-          <Circle ref={dot} cx={150} cy={100} r={16} color="#FFCC00" />
-        </Canvas>
-      </View>
-    </GestureDetector>
-  )
-}
-```
-
-<Owned by="native">
-A handled node gets its slots at compile time for every patchable prop the
-element carries — `cx` and `cy` above — so the first write from a worklet is
-already a slot write. The write wakes the same UI-thread mapper that drives
-`SharedValue` props, and the renderer picks it up on the next frame.
-</Owned>
-
-A write a worklet cannot serve — a colour, a prop the element does not carry, the
-first `opacity` — hops to the JS thread through `runOnJS` and re-encodes there,
-one frame later. Keep gesture-driven props in the patchable list and in the JSX.
-
-### The next React commit wins
-
-An imperative write lasts until the canvas re-renders. The commit recompiles from
-the JSX props, and anything written since the last one is dropped — the element
-tree stays the single source of truth, and a stale imperative value can never
-outlive the render that contradicts it.
-
-So drive a given value from one side or the other. A value you write with `set()`
-should not also be interpolated into the JSX; give the element its initial value
-and leave it alone.
-
-`CanvasHandle.redraw()` is the escape hatch for state the scene *points at*
-rather than holds — an image handle re-pointed at new pixels, say. `set()`
-already redraws on its own.
+commit. The [imperative API](/docs/imperative) page has the whole surface —
+which props patch a slot, which re-encode, what that costs, and the rule that
+settles what happens when both React and a handle write the same value.

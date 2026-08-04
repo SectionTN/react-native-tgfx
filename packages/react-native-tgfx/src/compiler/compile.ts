@@ -29,6 +29,7 @@ import {
   type MaybeSharedValue,
 } from './values'
 import { Kind, type SceneWriter } from './writer'
+import type { UniformValue } from '../types'
 
 /** One entry of a `<Glyphs>` list. */
 interface GlyphInput {
@@ -119,7 +120,10 @@ function vec(input: unknown): Vector | undefined {
   return { x: resolveNumber(v.x), y: resolveNumber(v.y) }
 }
 
-function extractGradient(node: Node): GradientInput | undefined {
+function extractGradient(
+  w: SceneWriter,
+  node: Node
+): GradientInput | undefined {
   const p = node.props
   if (node.type === NodeType.LinearGradient) {
     return {
@@ -168,16 +172,25 @@ function extractGradient(node: Node): GradientInput | undefined {
     // Shader children of a <Shader> fill its `uniform shader` slots, in order.
     const children: GradientInput[] = []
     for (const child of node.children) {
-      const shader = extractGradient(child)
+      const shader = extractGradient(w, child)
       if (shader != null) {
         children.push(shader)
       }
+    }
+    // A `ref` on a <Shader> addresses its uniforms: the handle swaps in its own
+    // live values so a later write patches slots instead of re-encoding.
+    const declared = p.uniforms as Record<string, UniformValue> | undefined
+    const ref = p.ref
+    let uniforms = declared ?? {}
+    if (isNodeHandle(ref)) {
+      w.refs.push(ref)
+      uniforms = nodeInternals(ref).applyUniforms(declared, w.reseed)
     }
     return {
       kind: 'runtime',
       colors: [],
       source: String(resolveValue(p.source) ?? ''),
-      uniforms: (p.uniforms as Record<string, number | number[]>) ?? {},
+      uniforms,
       children,
     }
   }
@@ -242,8 +255,11 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
 }
 
 /** What a paint-source child contributes, or undefined if it is not one. */
-function paintFromChild(child: Node): Partial<PaintInput> | undefined {
-  const gradient = extractGradient(child)
+function paintFromChild(
+  w: SceneWriter,
+  child: Node
+): Partial<PaintInput> | undefined {
+  const gradient = extractGradient(w, child)
   return gradient != null ? { gradient } : extractFilter(child)
 }
 
@@ -256,7 +272,9 @@ function addPaintSource(
     for (const key of ['colorFilter', 'imageFilter'] as const) {
       if (contribution[key] != null && paint[key] != null) {
         console.warn(
-          `[tgfx] two ${key === 'colorFilter' ? 'colour' : 'image'} filters on one paint; only the last one is drawn. A paint carries at most one of each class, and they do not compose.`
+          `[tgfx] two ${
+            key === 'colorFilter' ? 'colour' : 'image'
+          } filters on one paint; only the last one is drawn. A paint carries at most one of each class, and they do not compose.`
         )
       }
     }
@@ -269,7 +287,7 @@ function addPaintSource(
  * Returns null when it has none, which is the common case — the caller then
  * reads the node's props directly instead of allocating a merged paint per node.
  */
-function paintFromChildren(node: Node): PaintInput | null {
+function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
   let paint: PaintInput | null = null
   for (const child of node.children) {
     // A drawable child never yields a paint source, so skip probing it.
@@ -279,14 +297,14 @@ function paintFromChildren(node: Node): PaintInput | null {
     if (child.type === NodeType.Paint) {
       const childPaint = pickPaintInput(child.props)
       for (const g of child.children) {
-        const contribution = paintFromChild(g)
+        const contribution = paintFromChild(w, g)
         if (contribution != null) {
           addPaintSource(childPaint, contribution)
         }
       }
       paint = mergePaint(paint ?? pickPaintInput(node.props), childPaint)
     } else {
-      const contribution = paintFromChild(child)
+      const contribution = paintFromChild(w, child)
       if (contribution != null) {
         paint = paint ?? pickPaintInput(node.props)
         addPaintSource(paint, contribution)
@@ -297,8 +315,8 @@ function paintFromChildren(node: Node): PaintInput | null {
 }
 
 /** A group's own paint, merged with whatever its paint-bearing children add. */
-function localPaint(node: Node): PaintInput {
-  const paint = paintFromChildren(node) ?? pickPaintInput(node.props)
+function localPaint(w: SceneWriter, node: Node): PaintInput {
+  const paint = paintFromChildren(w, node) ?? pickPaintInput(node.props)
   const ownGradient = node.props.gradient as GradientInput | undefined
   if (ownGradient != null && paint.gradient == null) {
     paint.gradient = ownGradient
@@ -315,7 +333,7 @@ function writeDrawing(
 ): void {
   const p = node.props
   // A `<Paint>` child overrides the node's own opacity, as it does every field.
-  const own = paintFromChildren(node)
+  const own = paintFromChildren(w, node)
   const alpha = mulOpacity(ctx.opacity, own == null ? p.opacity : own.opacity)
 
   w.push(kind)
@@ -491,7 +509,7 @@ function writeOps(
 }
 
 function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
-  const local = localPaint(node)
+  const local = localPaint(w, node)
   const childCtx: CompileCtx = {
     paint: mergePaint(ctx.paint, local),
     opacity: mulOpacity(ctx.opacity, local.opacity),
@@ -522,7 +540,7 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
  */
 function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const p = node.props
-  const local = localPaint(node)
+  const local = localPaint(w, node)
   const paint = mergePaint(ctx.paint, local)
   const alpha = mulOpacity(ctx.opacity, local.opacity)
   w.push(Kind.CameraFrame)

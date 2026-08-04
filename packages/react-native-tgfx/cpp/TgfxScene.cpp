@@ -350,10 +350,21 @@ tgfx::Matrix matrixFromOps(const std::vector<TransformOpCmd>& ops,
   return tgfx::Matrix::MakeAll(m.a, m.c, m.e, m.b, m.d, m.f);
 }
 
+/// A live colour channel, 0..1, quantised the same way the packed form was.
+uint8_t channelOf(const AnimF& f, std::span<const double> v) {
+  return static_cast<uint8_t>(std::clamp(f.resolve(v), 0.0f, 1.0f) * 255.0f +
+                              0.5f);
+}
+
 void applyPaint(const PaintCmd& pc, std::span<const double> v,
                 tgfx::Paint& paint) {
   paint.reset();
-  tgfx::Color color = colorFromPacked(pc.color);
+  tgfx::Color color =
+      pc.animColor ? tgfx::Color::FromRGBA(channelOf(pc.rgba[0], v),
+                                           channelOf(pc.rgba[1], v),
+                                           channelOf(pc.rgba[2], v),
+                                           channelOf(pc.rgba[3], v))
+                   : colorFromPacked(pc.color);
   paint.setColor(color);
   if (pc.runtime != nullptr) {
     paint.setShader(pc.runtime->build(v));
@@ -714,6 +725,14 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   int flags = r.nextInt();
   paint.stroke = (flags & 1) != 0;
   paint.antiAlias = (flags & 2) != 0;
+  // Bit 8: the colour is animated and travels as four live channels. The packed
+  // word above is the last committed value and is what stands without it.
+  paint.animColor = (flags & 8) != 0;
+  if (paint.animColor) {
+    for (auto& channel : paint.rgba) {
+      channel = r.nextAnim();
+    }
+  }
   paint.strokeWidth = r.nextAnim();
   paint.cap = r.nextInt();
   paint.join = r.nextInt();

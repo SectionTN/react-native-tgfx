@@ -975,3 +975,40 @@ test('a glyph node carries its ids and positions verbatim', () => {
     -3,
   ])
 })
+
+test('a literal four-channel colour packs into the colour word alone', () => {
+  const { used } = compile([
+    node(NodeType.Rect, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      color: [1, 0, 0, 1],
+    }),
+  ])
+  expect(used[9]).toBe(0xffff0000)
+  expect(used[10]).toBe(2) // fill + antiAlias, no live-colour bit
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+})
+
+test('a live channel writes four patched colour words after the flags', () => {
+  const green = sharedValue(0.5)
+  const { used, values } = compile([
+    node(NodeType.Rect, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      color: [0, green, 0, 1],
+    }),
+  ])
+  expect(values).toEqual([green])
+  // The packed word still carries the snapshot, so a reader that ignores the
+  // bit draws the last committed colour rather than nothing.
+  expect(used[9]).toBe(0xff008000)
+  expect(used[10]).toBe(2 | 8)
+  expect(Array.from(used.subarray(11, 15))).toEqual([0, 0.5, 0, 1])
+  const patchStart = used[2]
+  expect(used[patchStart]).toBe(1)
+  expect(used[patchStart + 1]).toBe(12) // the green word
+})

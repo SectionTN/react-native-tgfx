@@ -1,4 +1,4 @@
-import { resolveColor, type Color } from './colors'
+import { isColorComponents, resolveColor, type Color } from './colors'
 import {
   hasFilters,
   writeFilters,
@@ -19,7 +19,12 @@ import {
 import { transpileShader } from './sksl'
 import type { UniformValue } from '../types'
 import type { Vector } from './transform'
-import { resolveNumber, resolveValue, type MaybeSharedValue } from './values'
+import {
+  isSharedValue,
+  resolveNumber,
+  resolveValue,
+  type MaybeSharedValue,
+} from './values'
 import type { SceneWriter } from './writer'
 
 /** Public paint inputs shared by every drawing component and `<Paint>`. */
@@ -270,12 +275,22 @@ export function writePaint(
   const { colorFilter, imageFilter } = inherited
   const filtered = hasFilters(blendMode, colorFilter, imageFilter)
 
+  // Four live channels only when one of them actually moves: a literal
+  // `[r, g, b, a]` packs into the word below and costs no extra words.
+  const channels =
+    isColorComponents(color) && color.some(isSharedValue) ? color : null
   w.push(resolveColor(resolveValue(color as Color | undefined)))
   w.push(
     (forceStroke || style === 'stroke' ? 1 : 0) |
       (antiAlias !== false ? 2 : 0) |
-      (filtered ? 4 : 0)
+      (filtered ? 4 : 0) |
+      (channels != null ? 8 : 0)
   )
+  if (channels != null) {
+    for (let i = 0; i < 4; i++) {
+      w.pushAnim(channels[i], i === 3 ? 1 : 0)
+    }
+  }
   w.pushAnim(strokeWidth, 1)
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])

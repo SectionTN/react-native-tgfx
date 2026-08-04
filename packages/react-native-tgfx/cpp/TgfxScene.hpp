@@ -8,6 +8,7 @@
 // shared_ptr, so the render thread never sees a half-built program.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -37,7 +38,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 15;
+inline constexpr double kSceneVersion = 16;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -118,6 +119,11 @@ struct RuntimeShaderCmd {
 
 struct PaintCmd {
   uint32_t color = 0xff000000;
+  /// Set when the colour is animated: red, green, blue, alpha in 0..1, resolved
+  /// per frame. `color` above still holds the last committed value, and stands
+  /// whenever this is unset.
+  std::array<AnimF, 4> rgba{};
+  bool animColor = false;
   bool stroke = false;
   AnimF strokeWidth{1, -1};
   int cap = 0;
@@ -146,8 +152,8 @@ struct PaintCmd {
   /// True when a per-frame value feeds the paint, so `cached` is not the paint.
   /// strokeWidth only reaches the paint on a stroke, so a fill keeps its cache.
   bool animated() const {
-    return alpha.slot >= 0 || runtime != nullptr || imageShader != nullptr ||
-           (stroke && strokeWidth.slot >= 0);
+    return animColor || alpha.slot >= 0 || runtime != nullptr ||
+           imageShader != nullptr || (stroke && strokeWidth.slot >= 0);
   }
 };
 

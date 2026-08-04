@@ -90,6 +90,22 @@ struct Writer {
     push(-1);
   }
 
+  /// The same paint as pushPaint, with flag bit 8 and four live colour
+  /// channels (red, green, blue, alpha in 0..1) after the flags.
+  void pushLiveColorPaint(uint32_t color,
+                          const std::array<std::pair<double, int>, 4>& rgba) {
+    push(color);
+    push(2 | 8);
+    for (const auto& channel : rgba) {
+      pushAnim(channel.first, channel.second);
+    }
+    pushAnim(1);  // strokeWidth
+    push(0);
+    push(0);
+    pushAnim(1);  // alpha
+    push(-1);     // no shader
+  }
+
   /// A paint's filter block: blend mode, then the colour and image filter,
   /// each a kind code (-1 for none) followed by its own words.
   struct Filters {
@@ -337,6 +353,36 @@ void staticPaintDrawsWhatTheRebuildDraws() {
   auto rebuilt = render(animated.finish(), {}, {0.5});
   CHECK(anyPixelSet(cached));
   CHECK(cached == rebuilt);
+}
+
+/// A rect whose colour is four live channels must draw what the packed literal
+/// drew, and must track the slots from frame to frame.
+void animatedColorDrawsWhatTheLiteralDraws() {
+  Writer literal;
+  literal.push(1);
+  literal.push(1);  // Rect
+  literal.pushAnim(8);
+  literal.pushAnim(8);
+  literal.pushAnim(40);
+  literal.pushAnim(40);
+  literal.pushPaint(0xff3366cc, false);
+
+  Writer animated;
+  animated.push(1);
+  animated.push(1);
+  animated.pushAnim(8);
+  animated.pushAnim(8);
+  animated.pushAnim(40);
+  animated.pushAnim(40);
+  // The packed word is deliberately wrong: only the slots may reach the paint.
+  animated.pushLiveColorPaint(
+      0xff000000, {{{0, 0}, {0, 1}, {0, 2}, {1, -1}}});
+
+  auto words = animated.finish();
+  auto cached = render(literal.finish(), {}, {});
+  CHECK(anyPixelSet(cached));
+  CHECK(cached == render(words, {}, {0x33 / 255.0, 0x66 / 255.0, 0xcc / 255.0}));
+  CHECK(cached != render(words, {}, {1.0, 0.0, 0.0}));
 }
 
 /// A static line's baked path must draw what the per-frame path drew.
@@ -2440,6 +2486,7 @@ int main() {
     return 1;
   }
   staticPaintDrawsWhatTheRebuildDraws();
+  animatedColorDrawsWhatTheLiteralDraws();
   staticLineDrawsWhatTheRebuildDraws();
   animatedStrokeWidthDrawsWhatTheRebuildDraws();
   staticTextDrawsWhatTheRebuildDraws();

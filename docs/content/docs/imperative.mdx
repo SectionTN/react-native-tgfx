@@ -1,0 +1,242 @@
+---
+title: Imperative API
+description: Changing a mounted scene without React — what patches a slot, what re-encodes, and what each costs.
+---
+
+## useNode
+
+`useNode()` returns a **node handle**: a stable object you pass as `ref` to a
+drawing node, a `<Group>` or a `<Shader>`. Writing through it changes the mounted
+scene with no component render, no reconciler commit and no Fabric commit.
+
+```tsx
+import { Button } from 'react-native'
+import { Canvas, RoundedRect, useNode } from 'react-native-tgfx'
+
+function Box() {
+  const box = useNode()
+
+  return (
+    <>
+      <Canvas style={{ width: 300, height: 200 }}>
+        <RoundedRect ref={box} x={20} y={20} width={70} height={50} r={12} color="#4F8EF7" />
+      </Canvas>
+      <Button title="move" onPress={() => box.set({ x: 120 })} />
+    </>
+  )
+}
+```
+
+Keep the handle for the life of the component — it owns the node's live values,
+so one recreated per render would lose them. One handle per node: two nodes
+sharing a handle share its slots, and a write moves both. The library warns once
+when that happens.
+
+## What a write costs
+
+There are exactly two outcomes, and which one you get depends on the prop.
+
+<Owned by="native">
+**A slot patch.** The compiled program already holds a value slot for the prop,
+so the write is one `setValues` — a flat array of numbers handed to the renderer,
+resolved as it draws. No re-encode, and it works **inside a worklet**, so a
+gesture or a frame callback drives the canvas while the JS thread is blocked.
+</Owned>
+
+<Owned by="js">
+**A re-encode.** The prop has no slot, so the scene is compiled again from the
+element tree and the new buffer crosses to native. Still no React render, no
+reconciler commit and no Fabric commit — it is the same work a commit does, minus
+React. From a worklet it hops to the JS thread through `runOnJS` and lands a
+frame later.
+</Owned>
+
+Re-encoding is O(nodes) and allocation-free after warm-up, so it is cheap at
+interaction rates and wrong at 60 fps. The rule of thumb: anything driven by a
+gesture, a clock or a per-frame callback belongs in the slot column.
+
+## Which props patch a slot
+
+| prop | how a write lands |
+| --- | --- |
+| `x`, `y`, `width`, `height` | slot |
+| `cx`, `cy`, `r`, `rx`, `ry` | slot |
+| `x1`, `y1`, `x2`, `y2` | slot |
+| `strokeWidth` | slot |
+| `fontSize` | slot |
+| `opacity` | slot, from the first write |
+| `color` | slot, from the first write |
+| `<Group>` transform operands | slot, from the first write |
+| `<Shader>` `uniforms` | slot |
+| `path`, `text`, `image` | re-encode |
+| `style`, `strokeCap`, `strokeJoin`, `antiAlias`, `blendMode` | re-encode |
+| gradient stops and geometry | re-encode |
+| anything else | re-encode |
+
+"From the first write" means the first write re-encodes and every write after it
+patches. Those three each cost the render thread real work — four slots and a
+paint rebuild for `color`, a matrix rebuild per frame for a transform operand, a
+frozen enclosing `<Group opacity>` for `opacity` — so a `ref` alone does not buy
+them. Asking for one does.
+
+A prop the element does not carry also re-encodes, every time: there is nothing
+in the program to patch. So does a prop the compiler had to write as a literal —
+`<Text>`'s wrap `width`, an `opacity` that had to be folded into a product, or
+one a `<Paint>` child overrides, since the child's value is what gets compiled.
+
+The first write after a React commit may also re-encode even for a slotted prop:
+the handle learns which slots the new program kept on the UI thread, and a write
+in the same tick as the commit has not seen that yet. It converges immediately
+after.
+
+## Colour
+
+`set({ color })` takes any colour a prop takes:
+
+```tsx
+box.set({ color: '#4F8EF7' })    // JS thread only — the parser lives there
+box.set({ color: 0xff4f8ef7 })   // packed AARRGGBB, worklet-safe
+box.set({ color: [0.3, 0.5, 1, 1] })  // r, g, b, a in 0..1, worklet-safe
+```
+
+A colour string needs the CSS parser, which is JS-thread-only, so a write from a
+worklet hops. The packed and four-channel forms do not.
+
+## Transform
+
+A handle on a `<Group>` patches its transform operands: `translateX`,
+`translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `skewX`, `skewY`.
+
+```tsx
+const stage = useNode()
+
+const pan = Gesture.Pan().onUpdate((e) => {
+  'worklet'
+  stage.set({ translateX: e.translationX, translateY: e.translationY })
+})
+
+<Group ref={stage} transform={[{ translateX: 0 }, { translateY: 0 }]}>
+  {/* ... */}
+</Group>
+```
+
+Angles are **radians**, matching what a `SharedValue` operand means — a `'45deg'`
+string is a static spelling only.
+
+The operand written takes over the matching op in the array; `rotateZ` and
+`rotate` share one slot, and `{ translate: [x, y] }` splits across the two axis
+slots. An operand the array does not declare is appended after the declared ops,
+in the order listed above, so declare the ops you intend to drive if their
+composition order matters. A second op of the same kind keeps its literal — the
+first one owns the slot.
+
+Only `<Group>` is written with a matrix, so a transform write to a shape is
+dropped — and warns once, rather than quietly re-encoding the scene for an
+operand that could never get a slot. Wrap the shape in a `<Group>` and put the
+handle on that.
+
+## Shader uniforms
+
+A `ref` on a `<Shader>` addresses its uniforms, and only its uniforms — that is
+all a shader node can be written to, so they are live from the first compile and
+even the first write is a patch.
+
+```tsx
+const fx = useNode()
+
+<Fill>
+  <Shader ref={fx} source={SOURCE} uniforms={{ uFace: [0, 0], uRadius: 0 }} />
+</Fill>
+
+// in a frame worklet
+fx.set({ uniforms: { uFace: [face.x, face.y], uRadius: face.width / 2 } })
+```
+
+Components take slots from a pool of 32 floats per handle, assigned in
+declaration order. Writing a uniform the JSX left out, or one wider than the JSX
+declared it, re-encodes **once** to hand it a run and patches from then on — the
+write carries its own value into that compile, so nothing is lost on the way.
+
+A run is never moved once handed out. Growth appends and abandons the old run
+rather than shifting everything after it, so a uniform's value is never disturbed
+by a neighbour growing; the abandoned floats come back on the next React commit,
+which relays the pool from the JSX. Past the pool a uniform gets no slot at all:
+the write still lands, but as a literal, so it costs a re-encode each time the
+value changes. The compiler warns the first time that happens.
+
+A uniform whose JSX value is your own `SharedValue` stays yours: the handle takes
+no slot for it and leaves it animating, exactly as it leaves a `SharedValue` slot
+prop alone. So a `ref` added to make one uniform patchable never disturbs another
+one you are already driving.
+
+A `<Shader>` is reached through its uniforms and nothing else — it is not a
+drawing node. Writing any other prop to a shader handle is dropped, with a
+warning, rather than re-encoding a scene that would come back unchanged. The
+reverse holds too: `uniforms` written to a handle on a *drawing* node is dropped,
+because the node carries none. Put the handle on the `<Shader>` itself.
+
+## From a worklet
+
+`set()` is a worklet. On the UI thread it writes the slots directly and the write
+itself wakes the same mapper that drives `SharedValue` props:
+
+```tsx
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { Canvas, Circle, useNode } from 'react-native-tgfx'
+
+function Dot() {
+  const dot = useNode()
+  const pan = Gesture.Pan().onUpdate((e) => {
+    'worklet'
+    dot.set({ cx: e.x, cy: e.y })
+  })
+
+  return (
+    <GestureDetector gesture={pan}>
+      <View>
+        <Canvas style={{ width: 300, height: 200 }}>
+          <Circle ref={dot} cx={150} cy={100} r={16} color="#FFCC00" />
+        </Canvas>
+      </View>
+    </GestureDetector>
+  )
+}
+```
+
+A write a worklet cannot serve — a colour string, a `path`, a prop the element
+does not carry, the first `opacity` — goes to the JS thread through `runOnJS` and
+re-encodes there. Mixing both in one `set()` call is fine; the slot writes still
+land immediately, and only the rest waits.
+
+<Owned by="native">
+On the UI runtime a slot write is a plain store. On **any other** worklet runtime
+— a VisionCamera frame processor, say — reading the handle's own bookkeeping is a
+blocking call into the runtime that owns it, so `set()` reads it at most once per
+call and only when the keys you wrote actually need it. Writing geometry from a
+frame processor never touches the uniform map, and vice versa.
+</Owned>
+
+## The next React commit wins
+
+An imperative write lasts until the canvas re-renders. The commit recompiles from
+the JSX props, and everything written since the last one is dropped — the element
+tree stays the single source of truth, and a stale imperative value can never
+outlive the render that contradicts it. That includes the opt-ins: a commit takes
+`color` and the transform operands back to literals until they are written again.
+
+So drive a given value from one side or the other. A value you write with `set()`
+should not also be interpolated into the JSX; give the element its initial value
+and leave it alone.
+
+`CanvasHandle.redraw()` is the escape hatch for state the scene *points at*
+rather than holds — an image handle re-pointed at new pixels, say. `set()`
+already redraws on its own.
+
+## What is not here
+
+There is no imperative add, remove or reorder of nodes: the scene compiles once
+per commit, so node count comes from the element tree. A scene whose node count
+varies at runtime — an unknown number of detected faces, a particle field — still
+has to declare its maximum up front and neutralise the unused ones: a zero-size
+shape draws nothing, and a zeroed uniform slot is a face the shader skips. The
+[camera](/docs/camera) face blur is that pattern in full.

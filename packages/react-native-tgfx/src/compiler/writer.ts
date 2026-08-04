@@ -49,7 +49,11 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // count for a string index.
 // 15: adds the glyph kind, whose ids and positions an older reader would take
 // for a paragraph block.
-export const SCENE_VERSION = 15
+// 16: a paint whose flags carry bit 8 writes four animated colour channels
+// (r, g, b, a in 0..1) between the flags and the stroke width. The packed
+// colour word is still there and still correct, but an older reader would take
+// the first channel for the stroke width.
+export const SCENE_VERSION = 16
 
 /**
  * Encode a string table as a delta against the one the engine already holds:

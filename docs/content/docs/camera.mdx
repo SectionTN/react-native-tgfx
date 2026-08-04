@@ -109,6 +109,10 @@ half4 main(float2 pos) {
 Add `uniforms={{ uTime: useClock() }}` to animate it — the clock is a
 `SharedValue`, so the scene is not re-encoded per frame.
 
+Two ways to move a uniform, and neither re-encodes: a `SharedValue` in the JSX
+for a value that drives itself, like a clock, and a `ref` on the `<Shader>` for
+one you push per frame — see [the imperative API](/docs/imperative).
+
 ## Face blur
 
 A detector needs the frame in JS, so this one stays on the worklet and **cannot**
@@ -116,57 +120,52 @@ use the sink: `setOnFrameCallback` holds exactly one callback, so `attach()`
 would replace the detector rather than join it.
 
 MLKit's bounds arrive already in frame pixels — the space `<CameraFrame>`'s
-children draw in — so they go through unscaled, into Reanimated values:
+children draw in — so they go through unscaled, into node handles:
 
 ```tsx
 import { useCallback } from 'react'
-import { useSharedValue } from 'react-native-reanimated'
 import type { Frame } from 'react-native-vision-camera'
 import { useFaceDetector } from 'react-native-vision-camera-face-detector'
-import { Blur, CameraFrame, ImageShader, Oval, Paint, useCameraFrame } from 'react-native-tgfx'
+import { Blur, CameraFrame, ImageShader, Oval, Paint, useCameraFrame, useNode } from 'react-native-tgfx'
 
 // The scene is compiled once, so the number of faces it can draw is fixed; an
 // unused slot has zero size and draws nothing.
 const SLOTS = [0, 1, 2, 3]
 
-function useBlob() {
-  return {
-    x: useSharedValue(0),
-    y: useSharedValue(0),
-    width: useSharedValue(0),
-    height: useSharedValue(0),
-  }
-}
-
 export function useFaceBlur() {
   const detector = useFaceDetector({ performanceMode: 'fast' })
-  const blobs = [useBlob(), useBlob(), useBlob(), useBlob()]
+  // One handle per slot, stable for the life of the component.
+  const ovals = [useNode(), useNode(), useNode(), useNode()]
 
   const detect = useCallback(
     (frame: Frame) => {
       'worklet'
       const faces = detector.detectFaces(frame)
       for (const i of SLOTS) {
-        const bounds = faces[i]?.bounds
-        blobs[i]!.x.value = bounds?.x ?? 0
-        blobs[i]!.y.value = bounds?.y ?? 0
-        blobs[i]!.width.value = bounds?.width ?? 0
-        blobs[i]!.height.value = bounds?.height ?? 0
+        const b = faces[i]?.bounds
+        // x/y/width/height are all slot props, so this completes on the
+        // frame-processor runtime: one setValues, no re-encode, no hop to JS.
+        ovals[i]!.set({
+          x: b?.x ?? 0,
+          y: b?.y ?? 0,
+          width: b?.width ?? 0,
+          height: b?.height ?? 0,
+        })
       }
     },
-    [detector, blobs]
+    [detector, ovals]
   )
 
   // `detect` runs inside the hook's try, so detector work that throws still
   // cannot leak the frame.
-  return { ...useCameraFrame(detect), blobs }
+  return { ...useCameraFrame(detect), ovals }
 }
 ```
 
 ```tsx
 <CameraFrame image={image} {...posture}>
   {SLOTS.map((i) => (
-    <Oval key={i} x={blobs[i]!.x} y={blobs[i]!.y} width={blobs[i]!.width} height={blobs[i]!.height}>
+    <Oval key={i} ref={ovals[i]} x={0} y={0} width={0} height={0}>
       <Paint>
         {/* The same frame, sampled 1:1 in this space, so the blurred pixels
             really are the pixels underneath. */}
@@ -177,6 +176,29 @@ export function useFaceBlur() {
   ))}
 </CameraFrame>
 ```
+
+<Owned by="native">
+Nothing per frame reaches React, and nothing reaches the JS thread either. The
+detector writes value slots from the frame-processor runtime; the renderer
+resolves them as it draws. See [the imperative API](/docs/imperative) for which
+props patch a slot and which re-encode.
+</Owned>
+
+The bounds go in **uninflated** — an oval inscribed in the detector's box is what
+[mrousavy/FaceBlurApp](https://github.com/mrousavy/FaceBlurApp) clips to, and the
+corners it drops are background rather than face. Growing the box, or feathering
+the oval's edge, is what makes a blur read as covering more than the face.
+
+### Why not a runtime shader
+
+A `<Shader>` taking the bounds as `uniforms` reaches the same imperative API —
+uniform components are value slots too — and it is the wrong tool for a blur. A
+fragment shader gets **one pass**, so it has to stand in for a 2D kernel with a
+handful of point samples; at any tap count worth paying for per frame, a hard
+edge comes back as a few ghosts of itself rather than a blur. `<Blur>` is an
+image filter: two 1D passes over an offscreen, which is exact and cheaper for the
+quality. Reach for `<Shader>` when the effect *is* the shader, as the neon one
+above is.
 
 Both screens run in [`apps/faceblur`](https://github.com/riteshshukla04/react-native-tgfx/tree/main/apps/faceblur).
 

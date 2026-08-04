@@ -6,7 +6,7 @@ import type { Transform, Vector } from './compiler/transform'
 import type { NodeHandle } from './imperative'
 import type { TgfxImage } from './specs/TgfxImage.nitro'
 
-export type { Color } from './compiler/colors'
+export type { Color, ColorComponents } from './compiler/colors'
 export type { BlendMode } from './compiler/filters'
 export type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 export type { Transform, TransformOp, Vector } from './compiler/transform'
@@ -377,6 +377,11 @@ export interface SweepGradientProps extends GradientStops {
 export type UniformValue = Animated<number> | Array<Animated<number>>
 
 export interface ShaderProps {
+  /**
+   * A handle from `useNode()`, for patching `uniforms` without a React render.
+   * See {@link NodeHandle}.
+   */
+  ref?: NodeHandle
   /** SkSL source with a `vec4 main(vec2 pos)` entry point. */
   source: string
   uniforms?: Record<string, UniformValue>

@@ -7,10 +7,24 @@
  * through unchanged — there is no JS-side mapping to the view, and the blur
  * cannot drift off the face it hides.
  *
- * Nothing per-frame reaches the React tree. The scene is committed once; each
- * frame swaps the hardware buffer behind one handle (zero copy, no re-commit)
- * and writes the face bounds into Reanimated values that the engine resolves on
- * the UI thread. The JS thread does no work at all while the camera runs.
+ * The frame processor moves them through node handles, not through React:
+ *
+ *     ovals[i].set({ x, y, width, height })
+ *
+ * All four are slot props, so the write completes on the frame-processor
+ * runtime: no scene re-encode, no reconciler commit, and no hop to the JS
+ * thread. The values reach the renderer on the next UI frame, pushed by the
+ * same mapper that drives `SharedValue` props. The scene is committed once at
+ * mount and never again while the camera runs.
+ *
+ * The blur itself is `<Blur>`, tgfx's separable Gaussian, clipped to the oval.
+ * A runtime `<Shader>` taking the bounds as uniforms is the tempting way to
+ * reach the same imperative API, and it is the wrong tool here: a fragment
+ * shader gets one pass, so it has to stand in for a 2D kernel with a handful of
+ * point samples, and at any tap count worth paying for it still reads as
+ * smeared rather than blurred. An image filter runs two 1D passes over an
+ * offscreen and is exact. Reach for `<Shader>` when the effect *is* the shader —
+ * TgfxCameraEffects is one.
  *
  * This screen stays on useCameraFrame() and does *not* use the native sink from
  * react-native-tgfx-vision-camera, which TgfxCameraEffects does. That is the
@@ -22,7 +36,6 @@
  */
 import { useCallback } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { useSharedValue, type SharedValue } from 'react-native-reanimated'
 import type { Frame } from 'react-native-vision-camera'
 import {
   Camera,
@@ -39,11 +52,16 @@ import {
   Oval,
   Paint,
   useCameraFrame,
+  useNode,
+  type NodeHandle,
 } from 'react-native-tgfx'
 
+/**
+ * Sigma of the blur, in frame pixels. Fixed rather than scaled to the face:
+ * this is a true Gaussian, so one sigma hides a small face as thoroughly as a
+ * large one. mrousavy/FaceBlurApp uses 25 as well.
+ */
 const BLUR_RADIUS = 25
-/** Inflation so the inscribed ellipse covers the detector's box corners. */
-const OVAL_SCALE = 1.15
 /**
  * Blur slots. The scene is compiled once, so the number of faces it can draw is
  * fixed and an unused slot has zero size and draws nothing. Sized generously
@@ -53,35 +71,21 @@ const OVAL_SCALE = 1.15
  */
 const SLOTS = [0, 1, 2, 3, 4, 5, 6, 7]
 
-interface Blob {
-  x: SharedValue<number>
-  y: SharedValue<number>
-  width: SharedValue<number>
-  height: SharedValue<number>
-}
-
-function useBlob(): Blob {
-  return {
-    x: useSharedValue(0),
-    y: useSharedValue(0),
-    width: useSharedValue(0),
-    height: useSharedValue(0),
-  }
-}
-
 export function TgfxFaceBlur() {
   const { hasPermission, requestPermission } = useCameraPermission()
   const device = useCameraDevice('front')
 
-  const blobs: Blob[] = [
-    useBlob(),
-    useBlob(),
-    useBlob(),
-    useBlob(),
-    useBlob(),
-    useBlob(),
-    useBlob(),
-    useBlob(),
+  // One handle per slot, stable for the life of the component: a handle owns
+  // its node's live values, so one recreated per render would lose them.
+  const ovals: NodeHandle[] = [
+    useNode(),
+    useNode(),
+    useNode(),
+    useNode(),
+    useNode(),
+    useNode(),
+    useNode(),
+    useNode(),
   ]
 
   const faceDetector = useFaceDetector({
@@ -95,28 +99,26 @@ export function TgfxFaceBlur() {
     (frame: Frame) => {
       'worklet'
       // Face bounds are already in frame pixels, which is the space
-      // <CameraFrame>'s children are drawn in — so they go through unscaled.
+      // <CameraFrame>'s children are drawn in — so they go through unscaled and
+      // uninflated: the oval inscribed in the detector's box is what
+      // mrousavy/FaceBlurApp clips to, and it already covers the face.
       const faces = faceDetector.detectFaces(frame)
       for (let i = 0; i < SLOTS.length; i++) {
-        const blob = blobs[i]!
         const bounds = i < faces.length ? faces[i]!.bounds : null
         if (bounds == null) {
-          blob.width.value = 0
-          blob.height.value = 0
+          // Zero size draws nothing, which is how an unused slot stands down.
+          ovals[i]!.set({ width: 0, height: 0 })
           continue
         }
-        // An ellipse inscribed in the detector's box covers pi/4 ~= 79% of it,
-        // and the corners it drops are jaw and hairline — the parts of a face
-        // worth hiding. Inflate about the centre so it covers the box.
-        const grow = (bounds.width * (OVAL_SCALE - 1)) / 2
-        const growY = (bounds.height * (OVAL_SCALE - 1)) / 2
-        blob.x.value = bounds.x - grow
-        blob.y.value = bounds.y - growY
-        blob.width.value = bounds.width * OVAL_SCALE
-        blob.height.value = bounds.height * OVAL_SCALE
+        ovals[i]!.set({
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        })
       }
     },
-    [faceDetector, blobs]
+    [faceDetector, ovals]
   )
 
   // The hook owns the buffer's whole lifetime — the raw pointer, the release
@@ -170,13 +172,7 @@ export function TgfxFaceBlur() {
       <Canvas style={StyleSheet.absoluteFill} opaque={true}>
         <CameraFrame image={image} {...posture}>
           {SLOTS.map(slot => (
-            <Oval
-              key={slot}
-              x={blobs[slot]!.x}
-              y={blobs[slot]!.y}
-              width={blobs[slot]!.width}
-              height={blobs[slot]!.height}
-            >
+            <Oval key={slot} ref={ovals[slot]} x={0} y={0} width={0} height={0}>
               <Paint>
                 {/* The same frame, sampled 1:1 in this space, so the blurred
                     pixels are the pixels underneath. Tile modes are left at
