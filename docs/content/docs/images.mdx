@@ -86,7 +86,7 @@ A local file (`file:` URI, or a bundled asset that resolves to a path) is opened
 and decoded natively — its bytes never enter JS. A remote or Metro-served URI
 still goes through `fetch`, but as an `ArrayBuffer`; nothing is base64-encoded on
 the JS thread. Every path decodes on a background thread, so no frame waits on a
-decode.
+decode. PNG, JPEG and WebP all decode on both platforms.
 
 The handle is disposed when the source changes or the component unmounts.
 

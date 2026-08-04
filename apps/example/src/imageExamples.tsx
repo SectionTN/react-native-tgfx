@@ -3,7 +3,7 @@
  * a source rect into a sprite sheet, and an image used as a paint source with
  * every tile mode.
  *
- * All three sources are `require()`d assets, so the bytes are read and decoded
+ * Every source is a `require()`d asset, so the bytes are read and decoded
  * natively — nothing here is base64, and nothing is decoded on the JS thread.
  */
 import { Text as RNText, StyleSheet, View } from 'react-native';
@@ -22,6 +22,8 @@ import {
 } from 'react-native-tgfx';
 
 const sample = require('./assets/sample.png');
+const jpeg = require('./assets/sample.jpg');
+const webp = require('./assets/sample.webp');
 const sprites = require('./assets/sprites.png');
 const tile = require('./assets/tile.png');
 
@@ -210,10 +212,52 @@ export function ImageShaderExamples() {
   );
 }
 
+/** The same picture as PNG, JPEG and WebP — a blank cell means that decoder is dead. */
+export function CodecFormats() {
+  const png = useImage(sample);
+  const jpg = useImage(jpeg);
+  const wbp = useImage(webp);
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<Image> — png · jpeg · webp all decode'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 96 }]}>
+        <Fill color="#f2f2f7" />
+        {[png, jpg, wbp].map(
+          (img, i) =>
+            img != null && (
+              <Image
+                key={i}
+                x={i * (CELL + GAP)}
+                y={0}
+                width={CELL}
+                height={72}
+                image={img}
+                fit="contain"
+              />
+            )
+        )}
+        {['png', 'jpeg', 'webp'].map((name, i) => (
+          <Text
+            key={name}
+            x={i * (CELL + GAP) + 2}
+            y={90}
+            text={name}
+            fontSize={11}
+            color="#3a3a3c"
+          />
+        ))}
+      </Canvas>
+    </View>
+  );
+}
+
 export function ImageSection() {
   return (
     <>
       <FitModes />
+      <CodecFormats />
       <SamplingModes />
       <SpriteSheet />
       <ImageShaderExamples />

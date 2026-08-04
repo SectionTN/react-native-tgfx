@@ -57,12 +57,11 @@ A codepoint the chosen face has no glyph for falls back to the platform's
 colour-emoji font, then to `.notdef` — a visible box rather than a silent gap,
 and a one-per-codepoint native warning either way.
 
-**Colour emoji render on iOS only.** On Android the fallback resolves — the
-glyph is found and its advance reserved — but the colour bitmap does not
-rasterise through tgfx's FreeType/GL path, so an emoji leaves a blank gap of the
-right width. Because the glyph *was* found, the missing-codepoint warning does
-not fire for it either. Tracked in
-[#144](https://github.com/riteshshukla04/react-native-tgfx/issues/144).
+**Colour emoji render on both platforms.** iOS rasterises them through CoreText;
+Android goes through `android.graphics.Canvas`, which covers the COLRv1 fonts
+current Android versions ship. A multi-codepoint emoji — a ZWJ sequence or a
+skin-tone modifier — still degrades to its parts, because fallback resolves one
+codepoint at a time.
 
 Bidi reordering and complex-script shaping are **not** implemented: a run of
 Arabic or Devanagari lays out in logical order with unshaped glyphs. Tracked in
