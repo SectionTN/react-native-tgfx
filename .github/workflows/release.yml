@@ -12,11 +12,10 @@ on:
           - react-native-tgfx
           - react-native-tgfx-vision-camera
       prerelease:
-        description: Channel — stable, or a pre-release published under that npm dist-tag
+        description: Pre-release channel — the version's tag and its npm dist-tag
         type: choice
-        default: stable
+        default: alpha
         options:
-          - stable
           - alpha
           - beta
       increment:
@@ -44,6 +43,8 @@ jobs:
     env:
       # --preRelease=<id> both tags the version 1.2.0-alpha.0 and publishes it
       # under the matching npm dist-tag, so `npm i` still resolves to stable.
+      # 'stable' is deliberately not in the dropdown yet; the branch stays so
+      # adding it back to `options` is the whole change.
       RELEASE_ARGS: >-
         ${{ inputs.increment }}
         ${{ inputs.prerelease != 'stable' && format('--preRelease={0}', inputs.prerelease) || '' }}
