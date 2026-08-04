@@ -132,6 +132,14 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 
 ## Rendering engine (features + perf)
 
+- ✅ Android decodes images in-process (#151): `TGFX_USE_{PNG,JPEG,WEBP}_DECODE`
+  are forced on beside the encoders, so EXIF orientation is honoured, no decode
+  crosses JNI, and the path is the one the host tests exercise. Costs ~1.4 KB —
+  libjpeg-turbo and libwebp were already linked for the encoders.
+- ℹ️ #150 turned on more than its title says: `SetJavaVM` boots `SurfaceTexture`,
+  `HandlerThread` and `AndroidBitmap` as well as the codec bridge. Nothing here
+  uses them directly yet; anything that starts to is live from that commit on.
+
 - 🟠 **Full animated-prop coverage.** Value slots cover geometry, opacity, and
   transform ops (rotate/scale/translate). Add slots for colors, strokeWidth,
   gradient stops/endpoints, path data, fontSize, and text.

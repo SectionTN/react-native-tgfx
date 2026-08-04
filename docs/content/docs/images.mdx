@@ -88,6 +88,22 @@ still goes through `fetch`, but as an `ArrayBuffer`; nothing is base64-encoded o
 the JS thread. Every path decodes on a background thread, so no frame waits on a
 decode. PNG, JPEG and WebP all decode on both platforms.
 
+A photo shot in portrait draws the right way up: the EXIF orientation marker is
+read during the decode and the image is oriented before anything measures it, so
+`image.width`/`height` are the dimensions you see rather than the ones on disk.
+
+Which decoder does that differs by platform, and the answer only matters when
+something goes wrong. Android decodes PNG, JPEG and WebP with tgfx's own codecs,
+in-process — not `BitmapFactory` behind JNI — and anything else (HEIF, AVIF) with
+the platform decoder. iOS decodes WebP in-process and everything else through
+ImageIO.
+
+JPEG and WebP carry their orientation on every one of those paths. A PNG is the
+exception: tgfx's own PNG decoder does not read the `eXIf` chunk, so a PNG that
+has one draws unrotated on Android and rotated on iOS. Almost nothing writes it —
+cameras produce JPEG or HEIF — but if you are generating PNGs, bake the rotation
+into the pixels.
+
 The handle is disposed when the source changes or the component unmounts.
 
 ### useImageState

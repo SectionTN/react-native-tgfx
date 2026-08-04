@@ -58,7 +58,36 @@ set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_PNG_ENCODE ON CACHE BOOL "" FORCE)
 set(TGFX_USE_JPEG_ENCODE ON CACHE BOOL "" FORCE)
 set(TGFX_USE_WEBP_ENCODE ON CACHE BOOL "" FORCE)
+# The decoders, for the same reason and one more. Android's default is
+# BitmapFactory through JNI, which reads EXIF orientation only if
+# androidx.exifinterface is on the classpath — a photo shot in portrait
+# otherwise draws sideways. The embedded codecs parse the EXIF marker
+# themselves (JpegCodec::MakeFromData, WebpCodec), decode in-process with no JNI
+# round trip, and are the same code the host tests exercise, so the behaviour
+# can be tested at all. PNG was already on, but only incidentally, via
+# `if (TGFX_USE_FREETYPE) set(TGFX_USE_PNG_DECODE ON)`.
+# Nearly free: libjpeg-turbo and libwebp are already linked for the encoders
+# above, and only tgfx's own read paths are added — 1.4 KB of arm64 libNitroTgfx,
+# measured. Formats neither library covers (HEIF, AVIF) still take the platform
+# decoder, which is why androidx.exifinterface is a dependency too.
+set(TGFX_USE_PNG_DECODE ON CACHE BOOL "" FORCE)
+set(TGFX_USE_JPEG_DECODE ON CACHE BOOL "" FORCE)
+set(TGFX_USE_WEBP_DECODE ON CACHE BOOL "" FORCE)
 add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
+
+# `set(... FORCE)` above only sets a cache entry; what decides whether a codec is
+# compiled in is the define reaching tgfx. tgfx re-exports its define list to the
+# parent scope, so assert against that rather than against our own input —
+# upstream renaming an option, or gating it differently, would otherwise fall
+# back to the platform decoder silently.
+foreach (_codec TGFX_USE_PNG_DECODE TGFX_USE_JPEG_DECODE TGFX_USE_WEBP_DECODE)
+  if (NOT "${_codec}" IN_LIST TGFX_DEFINES)
+    message(FATAL_ERROR
+      "${_codec} did not reach tgfx: image decoding would fall back to \
+BitmapFactory, which drops EXIF orientation. Check how tgfx's CMakeLists \
+consumes the codec options.")
+  endif ()
+endforeach ()
 
 # --- Our shared C++ engine + JNI bridge ---
 add_library(${PACKAGE_NAME} SHARED

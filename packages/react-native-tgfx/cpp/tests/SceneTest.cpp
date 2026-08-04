@@ -25,6 +25,8 @@
 #include "tgfx/core/EncodedFormat.h"
 #include "tgfx/core/ImageCodec.h"
 #include "tgfx/core/ImageInfo.h"
+#include "core/codecs/jpeg/JpegCodec.h"
+#include "tgfx/core/Orientation.h"
 #include "tgfx/core/Pixmap.h"
 #include "tgfx/core/Surface.h"
 #include "tgfx/core/Typeface.h"
@@ -2031,6 +2033,80 @@ void aDisposedHandleDrawsNothing() {
   CHECK(!anyPixelSet(render(w.finish(), {}, {})));
 }
 
+/// A JPEG carrying the EXIF marker a phone writes for a portrait photo: the
+/// pixels are stored landscape and a viewer is expected to rotate them 90° CW.
+/// Built here rather than checked in, so the bytes the decoder sees are visible
+/// in the test.
+std::shared_ptr<tgfx::Data> exifRotatedJpeg(int width, int height) {
+  std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4, 255);
+  auto info = tgfx::ImageInfo::Make(width, height, tgfx::ColorType::RGBA_8888,
+                                    tgfx::AlphaType::Opaque);
+  tgfx::Pixmap pixmap(info, pixels.data());
+  auto jpeg = tgfx::ImageCodec::Encode(pixmap, tgfx::EncodedFormat::JPEG, 100);
+  if (jpeg == nullptr) {
+    return nullptr;
+  }
+  // APP1: length, "Exif\0\0", then a little-endian TIFF header whose one IFD
+  // entry is Orientation (0x0112, SHORT) = 6, RightTop.
+  const std::array<uint8_t, 36> app1 = {
+      0xFF, 0xE1, 0x00, 0x22,                          // marker, length (34)
+      'E',  'x',  'i',  'f',  0x00, 0x00,              // Exif\0\0
+      'I',  'I',  0x2A, 0x00, 0x08, 0x00, 0x00, 0x00,  // II, 42, IFD0 at 8
+      0x01, 0x00,                                      // one entry
+      0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,  // Orientation, SHORT, 1
+      0x06, 0x00, 0x00, 0x00,                          // = 6
+      0x00, 0x00, 0x00, 0x00};                         // no next IFD
+  auto bytes = static_cast<const uint8_t*>(jpeg->data());
+  std::vector<uint8_t> out;
+  out.reserve(jpeg->size() + app1.size());
+  // After SOI, before everything else: jpeg_read_header walks the segments in
+  // order and stops at SOS.
+  out.insert(out.end(), bytes, bytes + 2);
+  out.insert(out.end(), app1.begin(), app1.end());
+  out.insert(out.end(), bytes + 2, bytes + jpeg->size());
+  return tgfx::Data::MakeWithCopy(out.data(), out.size());
+}
+
+/// A portrait photo has to draw the right way up. The Android build decodes
+/// in-process precisely so this is the same code there — the platform decoder it
+/// replaces reads EXIF only when androidx.exifinterface is on the classpath, and
+/// silently drew every such photo on its side when it was not.
+///
+/// JpegCodec, not ImageCodec::MakeFrom: the generic entry point falls through to
+/// the platform codec, and ImageIO on this host reads the same marker — so a
+/// build with the embedded decoder off would pass every assertion below while
+/// Android regressed. Naming the codec is what ties the test to the thing the
+/// Android build turns on. What it does not cover is the dispatch in
+/// ImageCodec::MakeFrom — that Android reaches JpegCodec at all rather than the
+/// platform decoder — which is what the assertion in android/CMakeLists.txt is
+/// for. (This still compiles with TGFX_USE_JPEG_DECODE off: the codec's sources
+/// are gated on TGFX_USE_JPEG, which either option sets.)
+void anExifRotatedJpegDecodesUpright() {
+  auto data = exifRotatedJpeg(64, 32);
+  CHECK(data != nullptr);
+  if (data == nullptr) {
+    return;
+  }
+  CHECK(tgfx::JpegCodec::IsJpeg(data));
+  auto codec = tgfx::JpegCodec::MakeFrom(data);
+  CHECK(codec != nullptr);
+  if (codec == nullptr) {
+    return;
+  }
+  CHECK(codec->orientation() == tgfx::Orientation::RightTop);
+
+  auto handle = tgfxrn::ImageRegistry::instance().add(codec);
+  auto image = tgfxrn::ImageRegistry::instance().acquire(handle.handle);
+  CHECK(image != nullptr);
+  if (image != nullptr) {
+    // Stored 64x32, drawn 32x64: the registry applies the orientation, so every
+    // consumer downstream measures the image the way it is meant to be seen.
+    CHECK(image->width() == 32);
+    CHECK(image->height() == 64);
+  }
+  tgfxrn::ImageRegistry::instance().remove(handle.handle);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -2066,6 +2142,7 @@ int main() {
   anImageEvictedBeforeCompileComesBackWhenItsDecodeLands();
   aBufferSwapSchedulesADraw();
   aDisposedHandleDrawsNothing();
+  anExifRotatedJpegDecodesUpright();
   aBlendModeCompositesAgainstWhatIsBelow();
   aBlendModeSurvivesAnImageFilter();
   aColourMatrixTransformsTheDrawnColour();

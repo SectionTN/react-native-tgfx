@@ -26,6 +26,8 @@ const jpeg = require('./assets/sample.jpg');
 const webp = require('./assets/sample.webp');
 const sprites = require('./assets/sprites.png');
 const tile = require('./assets/tile.png');
+// Stored 240x120 landscape, with an EXIF marker saying "rotate 90 CW".
+const portrait = require('./assets/portrait-exif.jpg');
 
 const FITS: Fit[] = [
   'contain',
@@ -129,7 +131,7 @@ export function SpriteSheet() {
       <Canvas style={[styles.canvas, { height: 72 }]}>
         <Fill color="#f2f2f7" />
         {sheet != null &&
-          [0, 1, 2, 3].map((i) => (
+          [0, 1, 2, 3].map(i => (
             <Image
               key={i}
               x={i * 68}
@@ -236,7 +238,7 @@ export function CodecFormats() {
                 image={img}
                 fit="contain"
               />
-            )
+            ),
         )}
         {['png', 'jpeg', 'webp'].map((name, i) => (
           <Text
@@ -253,11 +255,56 @@ export function CodecFormats() {
   );
 }
 
+/**
+ * A photo shot in portrait: the pixels are landscape and the EXIF marker says to
+ * turn them, so the drawn box is taller than it is wide. Android decodes it with
+ * tgfx's own JPEG codec, which reads that marker; through BitmapFactory without
+ * androidx.exifinterface it drew on its side.
+ */
+export function ExifOrientation() {
+  const photo = useImage(portrait);
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<Image> — EXIF orientation (stored landscape, drawn portrait)'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 130 }]}>
+        <Fill color="#f2f2f7" />
+        {photo != null && (
+          <Image
+            x={0}
+            y={0}
+            width={CELL}
+            height={120}
+            image={photo}
+            fit="contain"
+          />
+        )}
+        <Text
+          x={CELL + GAP}
+          y={20}
+          text={photo != null ? `${photo.width}x${photo.height}` : 'loading'}
+          fontSize={13}
+          color="#3a3a3c"
+        />
+        <Text
+          x={CELL + GAP}
+          y={40}
+          text="upright means EXIF was applied"
+          fontSize={12}
+          color="#8e8e93"
+        />
+      </Canvas>
+    </View>
+  );
+}
+
 export function ImageSection() {
   return (
     <>
       <FitModes />
       <CodecFormats />
+      <ExifOrientation />
       <SamplingModes />
       <SpriteSheet />
       <ImageShaderExamples />

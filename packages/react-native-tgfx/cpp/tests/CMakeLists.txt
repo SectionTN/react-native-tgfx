@@ -14,7 +14,10 @@ add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
 
 add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../ImageRegistry.cpp
                ../FontRegistry.cpp ../TextLayout.cpp)
-target_include_directories(SceneTest PRIVATE ".." "${TGFX_DIR}/include")
+# tgfx's src too: the EXIF test names JpegCodec rather than going through
+# ImageCodec::MakeFrom, which would fall through to the platform decoder and
+# prove nothing about the embedded one.
+target_include_directories(SceneTest PRIVATE ".." "${TGFX_DIR}/include" "${TGFX_DIR}/src")
 # Real font faces to register, shared with the example app so the tests exercise
 # files that ship in this repo rather than whatever the host happens to install.
 target_compile_definitions(SceneTest PRIVATE

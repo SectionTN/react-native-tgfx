@@ -45,6 +45,8 @@ android {
     minSdkVersion getExtOrIntegerDefault("minSdkVersion")
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
+    // ExifInterface is only ever reached through JNI, so R8 would drop it.
+    consumerProguardFiles "consumer-rules.pro"
 
     externalNativeBuild {
       cmake {
@@ -148,6 +150,12 @@ dependencies {
 
   // Add a dependency on NitroModules
   implementation project(":react-native-nitro-modules")
+
+  // tgfx's Android NativeCodec looks this class up by name and discards EXIF
+  // orientation when it is missing. PNG, JPEG and WebP no longer go through it
+  // (see android/CMakeLists.txt), but every other format still does — a HEIF
+  // photo, which only the platform can decode, would otherwise draw sideways.
+  implementation "androidx.exifinterface:exifinterface:1.4.1"
 }
 
 // The prefab header payload. Exactly one file: TgfxFrameSink.hpp is the export
