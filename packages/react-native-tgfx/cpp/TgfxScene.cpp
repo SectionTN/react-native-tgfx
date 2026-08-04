@@ -92,7 +92,7 @@ std::atomic<size_t> gFilterBuilds{0};
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
-  KTextPath, KCameraFrame
+  KTextPath, KCameraFrame, KGlyphs
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -456,6 +456,32 @@ void SceneRenderer::readTextSpec(SceneReader& r, TextSpec& spec) {
   spec.letterSpacing = static_cast<float>(r.next());
 }
 
+/// The run list: a count, then each run's text and the style it overrides.
+/// A plain <Text> writes exactly one run that overrides nothing.
+void SceneRenderer::readTextRuns(SceneReader& r, TextCmd& text) {
+  int count = r.nextInt();
+  // A malformed count would otherwise reserve or loop unboundedly; the program
+  // is trusted, but it is trusted because this checks it.
+  if (count < 1 || count > kMaxTextRuns) {
+    TGFXRN_LOGW("text node has %d runs, which is outside 1..%d", count, kMaxTextRuns);
+    r.ok = false;
+    text.runs.assign(1, TextRun{});
+    return;
+  }
+  text.runs.resize(static_cast<size_t>(count));
+  for (auto& run : text.runs) {
+    run.text = r.nextString();
+    run.family = r.nextString();
+    run.weight = r.nextInt();
+    // Not `!= 0`: 2 means "upright", which a bool would fold into "italic".
+    run.italic = r.nextInt();
+    run.letterSpacing = static_cast<float>(r.next());
+    run.size = static_cast<float>(r.next());
+    run.hasColor = r.nextInt() != 0;
+    run.color = static_cast<uint32_t>(r.next());
+  }
+}
+
 const TextLayout& TextCmd::resolve(float size) const {
   // Quantised, not exact. Typeface::getScalerContext takes a per-typeface global
   // lock, keys its cache on the raw float, and never erases: a continuously
@@ -471,7 +497,9 @@ const TextLayout& TextCmd::resolve(float size) const {
     return layout;
   }
   layoutSize = size;
-  layout = onPath ? layoutTextOnPath(text, spec, size, path) : layoutText(text, spec, size);
+  layout = !glyphs.empty() ? layoutGlyphs(glyphs, spec, size)
+           : onPath          ? layoutTextOnPath(runs, spec, size, path)
+                             : layoutText(runs, spec, size);
   return layout;
 }
 
@@ -845,9 +873,9 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.x = r.nextAnim();
       cmd.y = r.nextAnim();
       cmd.text = std::make_shared<TextCmd>();
-      cmd.text->text = r.nextString();
       cmd.fontSize = r.nextAnim();
       readTextSpec(r, cmd.text->spec);
+      readTextRuns(r, *cmd.text);
       auto& spec = cmd.text->spec;
       spec.wrapWidth = static_cast<float>(r.next());
       spec.align = static_cast<TextAlign>(std::clamp(r.nextInt(), 0, 2));
@@ -862,10 +890,48 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.text = std::make_shared<TextCmd>();
       cmd.text->onPath = true;
       cmd.text->path = parseSvgPath(r.nextString());
-      cmd.text->text = r.nextString();
       cmd.fontSize = r.nextAnim();
       readTextSpec(r, cmd.text->spec);
+      readTextRuns(r, *cmd.text);
       cmd.text->spec.startOffset = static_cast<float>(r.next());
+      break;
+    }
+    case KGlyphs: {
+      // Its own kind rather than a <Text> variant: there is no string, no line
+      // breaking and no fallback — the caller has already done all of that.
+      cmd.kind = DrawCmd::Text;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.text = std::make_shared<TextCmd>();
+      cmd.fontSize = r.nextAnim();
+      readTextSpec(r, cmd.text->spec);
+      int count = r.nextInt();
+      if (count < 0 || count > kMaxGlyphs) {
+        TGFXRN_LOGW("glyph node has %d glyphs, which is outside 0..%d", count, kMaxGlyphs);
+        r.ok = false;
+        break;
+      }
+      cmd.text->glyphs.resize(static_cast<size_t>(count));
+      bool warnedId = false;
+      for (auto& glyph : cmd.text->glyphs) {
+        int id = r.nextInt();
+        if (id < 0 || id > 0xFFFF) {
+          // Narrowing would draw a real but unrelated glyph; .notdef is at least
+          // a visible box. Warned once per node: one bad array is one mistake,
+          // not 65536 of them.
+          if (!warnedId) {
+            warnedId = true;
+            TGFXRN_LOGW("glyph id %d is outside 0..65535; drawing .notdef", id);
+          }
+          id = 0;
+        }
+        glyph.id = static_cast<tgfx::GlyphID>(id);
+        auto x = static_cast<float>(r.next());
+        auto y = static_cast<float>(r.next());
+        // A non-finite position poisons the whole blob's bounds.
+        glyph.x = std::isfinite(x) ? x : 0;
+        glyph.y = std::isfinite(y) ? y : 0;
+      }
       break;
     }
     default:
@@ -1045,10 +1111,28 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       // the two vectors and the blob that drawSimpleText -> TextBlob::MakeFrom
       // allocated on every single draw.
       const auto& layout = cmd.text->resolve(cmd.fontSize.resolve(v));
-      if (layout.blob == nullptr) {
-        break;
+      float x = cmd.x.resolve(v);
+      float y = cmd.y.resolve(v);
+      for (const auto& run : layout.runs) {
+        if (run.blob == nullptr) {
+          continue;
+        }
+        if (!run.hasColor) {
+          canvas->drawTextBlob(run.blob, x, y, *p);
+          continue;
+        }
+        // A <Span> colour replaces the node's, and nothing else about the paint:
+        // a stroked, blurred paragraph keeps both through a coloured span.
+        tgfx::Paint spanPaint = *p;
+        spanPaint.setColor(tgfx::Color::FromRGBA(
+            static_cast<uint8_t>((run.color >> 16) & 0xFF),
+            static_cast<uint8_t>((run.color >> 8) & 0xFF), static_cast<uint8_t>(run.color & 0xFF),
+            static_cast<uint8_t>((run.color >> 24) & 0xFF)));
+        // The node's *opacity*, not its resolved alpha: that already has the
+        // node colour's own alpha folded in, which the span colour replaces.
+        spanPaint.setAlpha(spanPaint.getAlpha() * cmd.paint.alpha.resolve(v));
+        canvas->drawTextBlob(run.blob, x, y, spanPaint);
       }
-      canvas->drawTextBlob(layout.blob, cmd.x.resolve(v), cmd.y.resolve(v), *p);
       break;
     }
     default:

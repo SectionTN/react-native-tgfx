@@ -42,7 +42,14 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 // 13: adds the camera-frame kind, which carries children like a group but
 // derives its transform from the live frame, so an older reader would take its
 // image handle for a node kind.
-export const SCENE_VERSION = 13
+// 14: text carries a run list — a count, then per run the string, the face it
+// overrides and an optional colour — where it used to carry one string before
+// the font block. A <Text> with no <Span> children writes one run that overrides
+// nothing, but the words moved either way, so an older reader would take the
+// count for a string index.
+// 15: adds the glyph kind, whose ids and positions an older reader would take
+// for a paragraph block.
+export const SCENE_VERSION = 15
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
@@ -83,6 +90,7 @@ export const Kind = {
   Fill: 9,
   TextPath: 10,
   CameraFrame: 11,
+  Glyphs: 12,
 } as const
 
 const HEADER_WORDS = 3

@@ -10,6 +10,8 @@ import type {
   PathProps,
   RectProps,
   RoundedRectProps,
+  GlyphsProps,
+  SpanProps,
   TextPathProps,
   TextProps,
 } from '../types'
@@ -32,6 +34,19 @@ export const Line = NodeType.Line as unknown as FC<LineProps>
 
 /** Vector path from SVG path data. */
 export const Path = NodeType.Path as unknown as FC<PathProps>
+
+/**
+ * One styled stretch inside a `<Text>` or `<TextPath>`. Spans lay out as one
+ * paragraph — they wrap and align together — and each draws with the face and
+ * colour it overrides. A `<Text>` with spans ignores its own `text` prop.
+ */
+export const Span = NodeType.Span as unknown as FC<SpanProps>
+
+/**
+ * Glyphs you positioned yourself, drawn in one run. See {@link GlyphsProps}: no
+ * shaping and no fallback, which is the point — `<Text>` does all of that.
+ */
+export const Glyphs = NodeType.Glyphs as unknown as FC<GlyphsProps>
 
 /** Bitmap image drawn into the destination rect with the given `fit`. */
 export const Image = NodeType.Image as unknown as FC<ImageProps>

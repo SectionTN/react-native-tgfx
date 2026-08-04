@@ -7,16 +7,27 @@ import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   Canvas,
   Fill,
+  Glyphs,
+  Group,
+  Path,
   LinearGradient,
   Paint,
   Rect,
+  Span,
   Text,
   TextPath,
+  glyphIds,
   measureText,
+  textPath,
   useFonts,
 } from 'react-native-tgfx';
 
 const FAMILY = 'PT Serif';
+
+// Ruled per line from measureText's `lines`: each rule is that line's own width
+// and offset, not a guess from the block height.
+const RULED_TEXT =
+  'measureText reports every line it laid out: width, x, baseline.';
 
 const PARAGRAPH =
   'A paragraph that wraps inside an explicit width, breaks at word boundaries, and stacks on its own line height.';
@@ -156,6 +167,83 @@ export function TextSection() {
           fontSize={16}
           fontFamily={FAMILY}
           color="#0A84FF"
+        />
+      </Panel>
+
+      <Panel label="Styled runs · <Span> inside one paragraph" height={210}>
+        {/* One paragraph: the spans wrap together and the line takes its height
+            from the tallest one on it. */}
+        <Text x={0} y={30} width={340} fontSize={18} fontFamily={FAMILY} color="#1c1c1e">
+          <Span text="Total " />
+          <Span text="4 500" fontWeight="bold" color="#d98a4a" fontSize={26} />
+          <Span text=" credits, and a long tail that has to wrap onto the next line with " />
+          <Span text="one italic run" fontStyle="italic" color="#0A84FF" />
+          <Span text=" inside it." />
+        </Text>
+
+        {/* Per-line metrics, under a paragraph measureText can describe exactly:
+            it takes a string, so a paragraph built from spans is not the thing
+            being measured here. */}
+        <Text
+          x={0}
+          y={150}
+          width={340}
+          fontSize={15}
+          fontFamily={FAMILY}
+          color="#8e8e93"
+          text={RULED_TEXT}
+        />
+        {measureText(RULED_TEXT, {
+          fontSize: 15,
+          fontFamily: FAMILY,
+          width: 340,
+        }).lines.map((line, i) => (
+          <Rect
+            key={i}
+            x={line.x}
+            y={150 + line.baseline + line.descent + 1}
+            width={line.width}
+            height={1}
+            color="#d98a4a"
+          />
+        ))}
+      </Panel>
+
+      <Panel label="textPath() · the same layout, stroked as a <Path>" height={110}>
+        {/* SVG path data from the text layout, so it takes a stroke like any
+            other path. Relative to the first baseline, hence the translate. */}
+        <Group transform={[{ translateX: 0 }, { translateY: 60 }]}>
+          <Path
+            path={textPath('outlined', {
+              fontSize: 44,
+              fontFamily: FAMILY,
+              fontWeight: 'bold',
+            })}
+            color="#d98a4a"
+            style="stroke"
+            strokeWidth={1.5}
+            strokeJoin="round"
+          />
+        </Group>
+      </Panel>
+
+      <Panel label="<Glyphs> · ids placed by the caller, not by a layout" height={110}>
+        {/* glyphIds gives the ids for this face; where they go is entirely ours,
+            so the same string can ride a curve nothing in <Text> would produce. */}
+        <Glyphs
+          x={8}
+          y={62}
+          fontSize={34}
+          fontFamily={FAMILY}
+          color="#5856D6"
+          glyphs={glyphIds('placed by hand', {
+            fontSize: 34,
+            fontFamily: FAMILY,
+          }).map((id, i) => ({
+            id,
+            x: i * 17,
+            y: Math.sin(i / 1.6) * 12,
+          }))}
         />
       </Panel>
 

@@ -12,7 +12,7 @@ function fonts(): TgfxFonts {
   return manager
 }
 
-export type { TextMeasurement } from '../specs/TgfxFonts.nitro'
+export type { LineMeasurement, TextMeasurement } from '../specs/TgfxFonts.nitro'
 
 /** A `require('./Font.ttf')` asset, a URI, or raw base64 font bytes. */
 export type FontSource = number | string
@@ -116,4 +116,26 @@ export function measureText(
   style: TextStyle = {}
 ): TextMeasurement {
   return fonts().measureText(text, fontStyleOf(style))
+}
+
+/**
+ * The same layout as SVG path data, ready for `<Path>`: text you can stroke,
+ * dash, or feed to a path effect rather than only fill.
+ *
+ * Relative to the first baseline at (0, 0) — the coordinates `measureText`
+ * reports — so translate it by the `x`/`y` you would have given `<Text>`.
+ * Empty for a face with no outlines, which is what a colour emoji is.
+ */
+export function textPath(text: string, style: TextStyle = {}): string {
+  return fonts().textPath(text, fontStyleOf(style))
+}
+
+/**
+ * The glyph id per codepoint of `text` in the face `style` selects, for placing
+ * them yourself with `<Glyphs>`. 0 where the face has no glyph: this is the one
+ * path with no fallback, because a caller doing its own layout is the one that
+ * decides what to do about a hole.
+ */
+export function glyphIds(text: string, style: TextStyle = {}): number[] {
+  return fonts().glyphIds(text, fontStyleOf(style))
 }

@@ -24,6 +24,8 @@ class HybridTgfxFonts : public HybridTgfxFontsSpec {
   std::vector<std::string> getFamilyNames() override;
 
   TextMeasurement measureText(const std::string& text, const TextLayoutStyle& style) override;
+  std::string textPath(const std::string& text, const TextLayoutStyle& style) override;
+  std::vector<double> glyphIds(const std::string& text, const TextLayoutStyle& style) override;
 };
 
 }  // namespace margelo::nitro::tgfx

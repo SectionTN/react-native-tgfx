@@ -205,8 +205,12 @@ export interface TextProps extends PaintProps, FontProps, ParagraphProps {
   /**
    * Read once per commit: there is no text value slot, so a SharedValue here
    * would never animate.
+   *
+   * Optional because `<Span>` children (inherited from {@link PaintProps}) are
+   * the other way to give a `<Text>` its content, and they replace this when
+   * present. A `<Text>` with neither draws nothing.
    */
-  text: string
+  text?: string
 }
 
 /**
@@ -217,9 +221,49 @@ export interface TextProps extends PaintProps, FontProps, ParagraphProps {
 export interface TextPathProps extends PaintProps, FontProps {
   /** SVG path data, read once per commit, exactly as `<Path>` reads it. */
   path: string
-  text: string
+  /** Optional only because `<Span>` children replace it, as in `<Text>`. */
+  text?: string
   /** Distance along the path where the first glyph starts. */
   startOffset?: number
+}
+
+/**
+ * A styled run inside a `<Text>` or `<TextPath>`. Everything it does not set is
+ * the paragraph's — so a bold word is `<Span text="..." fontWeight={700} />`.
+ *
+ * `fontSize` here is static on purpose. The paragraph's `fontSize` is the one
+ * with an animation slot; the layout is memoised against it, and a second
+ * moving size would miss that memo on every frame.
+ */
+export interface SpanProps {
+  text: string
+  color?: Color
+  fontSize?: number
+  fontFamily?: string
+  fontWeight?: FontWeight
+  fontStyle?: 'normal' | 'italic'
+  letterSpacing?: number
+}
+
+/** One glyph of a `<Glyphs>`, positioned relative to the node's `x`/`y`. */
+export interface PlacedGlyph {
+  /** An id from `glyphIds()`, in the same face this node names. */
+  id: number
+  x: number
+  y: number
+}
+
+/**
+ * Explicitly positioned glyphs: the escape hatch for a caller doing its own
+ * layout. There is no shaping, no line breaking and no font fallback here — an
+ * id the face does not have draws `.notdef`.
+ *
+ * Get the ids from `glyphIds()` with the same font props.
+ */
+export interface GlyphsProps extends PaintProps, FontProps {
+  x: Animated<number>
+  y: Animated<number>
+  glyphs: PlacedGlyph[]
 }
 
 export type SnapshotFormat = 'png' | 'jpeg' | 'webp' | 'raw'

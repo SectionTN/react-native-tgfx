@@ -1,5 +1,9 @@
 #include "SvgPath.hpp"
 
+#include <algorithm>
+#include <cstdio>
+#include <string_view>
+
 #include "Log.hpp"
 
 #include <cctype>
@@ -232,6 +236,89 @@ tgfx::Path parseSvgPath(const std::string& data) {
     prevCmd = cmd;
   }
   return path;
+}
+
+namespace {
+
+/// Trailing zeroes off, so the payload is the shortest thing that round-trips at
+/// float precision. A glyph outline is hundreds of these.
+void appendNumber(std::string& out, float value) {
+  char buffer[32];
+  int written = std::snprintf(buffer, sizeof(buffer), "%.3f", static_cast<double>(value));
+  if (written <= 0) {
+    return;
+  }
+  // snprintf returns what it *would* have written: a huge coordinate truncates,
+  // and the return is longer than the buffer.
+  auto length = std::min(static_cast<size_t>(written), sizeof(buffer) - 1);
+  std::string_view text(buffer, length);
+  if (text.find('.') != std::string_view::npos) {
+    while (!text.empty() && text.back() == '0') {
+      text.remove_suffix(1);
+    }
+    if (!text.empty() && text.back() == '.') {
+      text.remove_suffix(1);
+    }
+  }
+  out += text.empty() ? "0" : text;
+}
+
+void appendPoint(std::string& out, const tgfx::Point& point) {
+  appendNumber(out, point.x);
+  out += ' ';
+  appendNumber(out, point.y);
+}
+
+}  // namespace
+
+std::string pathToSvg(const tgfx::Path& path) {
+  std::string out;
+  for (const auto& segment : path) {
+    switch (segment.verb) {
+      case tgfx::PathVerb::Move:
+        out += 'M';
+        appendPoint(out, segment.points[0]);
+        break;
+      case tgfx::PathVerb::Line:
+        out += 'L';
+        appendPoint(out, segment.points[1]);
+        break;
+      case tgfx::PathVerb::Quad:
+        out += 'Q';
+        appendPoint(out, segment.points[1]);
+        out += ' ';
+        appendPoint(out, segment.points[2]);
+        break;
+      case tgfx::PathVerb::Conic: {
+        // SVG has no conic. Splitting into two quads is exact for weight
+        // sqrt(2)/2 — the 90° arc a font or a rounded rect emits — and within a
+        // pixel elsewhere at glyph sizes.
+        auto quads = tgfx::Path::ConvertConicToQuads(segment.points[0], segment.points[1],
+                                                     segment.points[2], segment.conicWeight, 1);
+        for (size_t i = 1; i + 1 < quads.size(); i += 2) {
+          out += 'Q';
+          appendPoint(out, quads[i]);
+          out += ' ';
+          appendPoint(out, quads[i + 1]);
+        }
+        break;
+      }
+      case tgfx::PathVerb::Cubic:
+        out += 'C';
+        appendPoint(out, segment.points[1]);
+        out += ' ';
+        appendPoint(out, segment.points[2]);
+        out += ' ';
+        appendPoint(out, segment.points[3]);
+        break;
+      case tgfx::PathVerb::Close:
+        out += 'Z';
+        break;
+      case tgfx::PathVerb::Done:
+        break;
+    }
+  }
+  return out;
 }
 
 }  // namespace tgfxrn

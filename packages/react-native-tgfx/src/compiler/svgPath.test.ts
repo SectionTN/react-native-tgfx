@@ -66,6 +66,7 @@ const CASES: [string, string][] = [
 const STUB = `#pragma once
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace tgfx {
 struct Point {
@@ -73,6 +74,9 @@ struct Point {
   static Point Make(float x, float y) { return {x, y}; }
 };
 enum class PathArcSize { Small, Large };
+// pathToSvg's half of the file compiles against these; only parseSvgPath is
+// exercised here, and the real iteration is covered by cpp/tests/SceneTest.
+enum class PathVerb { Move, Line, Quad, Conic, Cubic, Close, Done };
 
 class Path {
  public:
@@ -93,6 +97,18 @@ class Path {
   void close() { if (!ops.empty()) ops += ' '; ops += 'Z'; }
   bool isEmpty() const { return ops.empty(); }
   std::string ops;
+
+  struct Segment {
+    PathVerb verb = PathVerb::Done;
+    Point points[4] = {};
+    float conicWeight = 0;
+  };
+  const Segment* begin() const { return nullptr; }
+  const Segment* end() const { return nullptr; }
+  static std::vector<Point> ConvertConicToQuads(const Point&, const Point&, const Point&, float,
+                                                int = 1) {
+    return {};
+  }
 
  private:
   void add(const char* op, float x, float y) {

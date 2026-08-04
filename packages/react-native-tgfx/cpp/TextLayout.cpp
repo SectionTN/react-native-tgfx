@@ -36,18 +36,28 @@ void warnMissing(int32_t code) {
       code);
 }
 
-/// One positioned glyph, tagged with which font in the run stack drew it.
+/// One positioned glyph, tagged with which font in the run stack drew it and
+/// which styled run it came from.
 struct Glyph {
   tgfx::GlyphID id = 0;
   uint8_t font = 0;
   float advance = 0;
   int32_t code = 0;
+  uint16_t run = 0;
+  /// Byte offset of this glyph's codepoint in the concatenated run text.
+  int32_t index = 0;
 };
 
 struct Line {
   std::vector<Glyph> glyphs;
   float width = 0;
+  /// Where the line starts in the text, including the empty ones a bare '\n'
+  /// produces — those have no glyph to ask afterwards.
+  int32_t startIndex = 0;
 };
+
+/// The stacks for every run, indexed by run. Built once per layout.
+using Stacks = std::vector<std::unique_ptr<struct FontStack>>;
 
 /// The primary face plus the fallback chain, all at the same size. Index 0 is
 /// always the primary, so a glyph the primary has never reaches a fallback.
@@ -77,9 +87,10 @@ struct FontStack {
 };
 
 /// Null when no typeface resolved at all, in which case there is nothing to draw.
-std::unique_ptr<FontStack> buildStack(const TextSpec& spec, float size) {
+std::unique_ptr<FontStack> buildStack(const std::string& family, int weight, bool italic,
+                                      float size) {
   auto& registry = FontRegistry::instance();
-  auto match = registry.match(spec.family, spec.weight, spec.italic);
+  auto match = registry.match(family, weight, italic);
   if (match.typeface == nullptr || size <= 0) {
     return nullptr;
   }
@@ -94,13 +105,13 @@ std::unique_ptr<FontStack> buildStack(const TextSpec& spec, float size) {
   return stack;
 }
 
-std::vector<Glyph> shapeAll(const std::string& text, const FontStack& stack,
-                            float letterSpacing) {
-  std::vector<Glyph> glyphs;
-  glyphs.reserve(text.size());
-  const char* cursor = text.data();
+void shapeInto(std::vector<Glyph>& glyphs, const std::string& text, const FontStack& stack,
+               float letterSpacing, uint16_t run, int32_t baseIndex) {
+  const char* start = text.data();
+  const char* cursor = start;
   const char* end = cursor + text.size();
   while (cursor < end) {
+    auto at = baseIndex + static_cast<int32_t>(cursor - start);
     auto code = tgfx::UTF::NextUTF8(&cursor, end);
     if (code < 0) {
       break;
@@ -109,22 +120,30 @@ std::vector<Glyph> shapeAll(const std::string& text, const FontStack& stack,
       continue;
     }
     if (code == '\n') {
-      glyphs.push_back({0, 0, 0, '\n'});
+      glyphs.push_back({0, 0, 0, '\n', run, at});
       continue;
     }
-    glyphs.push_back(stack.shape(code, letterSpacing));
+    auto glyph = stack.shape(code, letterSpacing);
+    glyph.run = run;
+    glyph.index = at;
+    glyphs.push_back(glyph);
   }
-  return glyphs;
 }
 
 /// Greedy line breaking: break at the last space that fits, or mid-word when a
 /// single word is wider than the box.
-std::vector<Line> breakLines(const std::vector<Glyph>& glyphs, float wrapWidth) {
+std::vector<Line> breakLines(const std::vector<Glyph>& glyphs, float wrapWidth,
+                             int32_t textLength) {
   std::vector<Line> lines;
   auto emit = [&](size_t from, size_t to, float width) {
     Line line;
-    line.glyphs.assign(glyphs.begin() + static_cast<long>(from), glyphs.begin() + static_cast<long>(to));
+    line.glyphs.assign(glyphs.begin() + static_cast<long>(from),
+                       glyphs.begin() + static_cast<long>(to));
     line.width = width;
+    // An empty line has no glyph of its own to ask. `from` is the '\n' that
+    // closes it, whose offset is where the line sits; past the end — a trailing
+    // newline — that is the end of the text.
+    line.startIndex = from < glyphs.size() ? glyphs[from].index : textLength;
     lines.push_back(std::move(line));
   };
   size_t start = 0;
@@ -176,7 +195,11 @@ float widthOf(const std::vector<Glyph>& glyphs) {
 }
 
 /// Trim `lines` to maxLines, appending the ellipsis to the last one it keeps.
-void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& stack) {
+/// The ellipsis is shaped in, and tagged as belonging to, the run it follows —
+/// otherwise it would be drawn with run 0's face and colour whatever face its
+/// glyph ids came from.
+void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& stack,
+              uint16_t run) {
   if (spec.maxLines <= 0 || lines.size() <= static_cast<size_t>(spec.maxLines)) {
     return;
   }
@@ -184,8 +207,15 @@ void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& s
   if (spec.ellipsis.empty()) {
     return;
   }
-  auto tail = shapeAll(spec.ellipsis, stack, spec.letterSpacing);
+  std::vector<Glyph> tail;
   auto& last = lines.back();
+  // Its index is the last kept glyph's, so a truncated line still reports an
+  // offset into the text rather than one into the ellipsis.
+  int32_t at = last.glyphs.empty() ? 0 : last.glyphs.back().index;
+  shapeInto(tail, spec.ellipsis, stack, spec.letterSpacing, run, 0);
+  for (auto& glyph : tail) {
+    glyph.index = at;
+  }
   float tailWidth = widthOf(tail);
   // Drop glyphs off the end until the ellipsis fits beside them.
   while (!last.glyphs.empty() && spec.wrapWidth > 0 &&
@@ -197,87 +227,300 @@ void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& s
   last.width += tailWidth;
 }
 
-/// Pack positioned glyphs into one blob, one run per stretch sharing a font.
-std::shared_ptr<tgfx::TextBlob> buildBlob(const std::vector<Glyph>& glyphs,
-                                          const std::vector<tgfx::Point>& positions,
-                                          const FontStack& stack) {
-  tgfx::TextBlobBuilder builder;
-  size_t run = 0;
-  while (run < glyphs.size()) {
-    size_t end = run;
-    while (end < glyphs.size() && glyphs[end].font == glyphs[run].font) {
-      end++;
+/// Pack positioned glyphs into blobs: a new one wherever the paint changes, and
+/// one run inside it per stretch sharing a font. A paragraph with no <Span>
+/// colours is one blob, exactly as before runs existed.
+std::vector<TextBlobRun> buildBlobs(const std::vector<Glyph>& glyphs,
+                                    const std::vector<tgfx::Point>& positions,
+                                    const std::vector<TextRun>& runs, const Stacks& stacks) {
+  std::vector<TextBlobRun> out;
+  auto paintOf = [&](const Glyph& glyph) {
+    const auto& run = runs[glyph.run];
+    return std::pair<bool, uint32_t>{run.hasColor, run.color};
+  };
+  size_t group = 0;
+  while (group < glyphs.size()) {
+    size_t groupEnd = group;
+    while (groupEnd < glyphs.size() && paintOf(glyphs[groupEnd]) == paintOf(glyphs[group])) {
+      groupEnd++;
     }
-    size_t count = end - run;
-    const auto& buffer = builder.allocRunPos(stack.fonts[glyphs[run].font], count);
-    if (buffer.glyphs == nullptr || buffer.positions == nullptr) {
-      return nullptr;
+    tgfx::TextBlobBuilder builder;
+    size_t run = group;
+    while (run < groupEnd) {
+      size_t end = run;
+      while (end < groupEnd && glyphs[end].font == glyphs[run].font &&
+             glyphs[end].run == glyphs[run].run) {
+        end++;
+      }
+      size_t count = end - run;
+      const auto& stack = *stacks[glyphs[run].run];
+      const auto& buffer = builder.allocRunPos(stack.fonts[glyphs[run].font], count);
+      if (buffer.glyphs == nullptr || buffer.positions == nullptr) {
+        return {};
+      }
+      auto* points = reinterpret_cast<tgfx::Point*>(buffer.positions);
+      for (size_t i = 0; i < count; i++) {
+        buffer.glyphs[i] = glyphs[run + i].id;
+        points[i] = positions[run + i];
+      }
+      run = end;
     }
-    auto* points = reinterpret_cast<tgfx::Point*>(buffer.positions);
-    for (size_t i = 0; i < count; i++) {
-      buffer.glyphs[i] = glyphs[run + i].id;
-      points[i] = positions[run + i];
+    auto blob = builder.build();
+    if (blob != nullptr) {
+      auto paint = paintOf(glyphs[group]);
+      out.push_back({std::move(blob), paint.first, paint.second});
     }
-    run = end;
+    group = groupEnd;
   }
-  return builder.build();
+  return out;
 }
 
-}  // namespace
+/// The stacks for every run, and the primary-face metrics beside them. Null
+/// entries are runs whose family resolved to nothing; a layout with no usable
+/// run at all draws nothing.
+struct Paragraph {
+  Stacks stacks;
+  std::vector<tgfx::FontMetrics> metrics;
+  bool empty = true;
+};
 
-TextLayout layoutText(const std::string& text, const TextSpec& spec, float size) {
-  TextLayout layout;
-  auto stack = buildStack(spec, size);
-  if (stack == nullptr || text.empty()) {
-    return layout;
+/// The last run that resolved a face, for the ellipsis to be shaped in.
+size_t lastUsableRun(const struct Paragraph& paragraph);
+
+Paragraph buildParagraph(const std::vector<TextRun>& runs, const TextSpec& spec, float size) {
+  Paragraph out;
+  out.stacks.reserve(runs.size());
+  out.metrics.resize(runs.size());
+  for (size_t i = 0; i < runs.size(); i++) {
+    const auto& run = runs[i];
+    auto stack = buildStack(run.family.empty() ? spec.family : run.family,
+                            run.weight != 0 ? run.weight : spec.weight,
+                            run.italic == 0 ? spec.italic : run.italic == 1,
+                            run.size > 0 ? run.size : size);
+    if (stack != nullptr) {
+      out.metrics[i] = stack->fonts[0].getMetrics();
+      out.empty = false;
+    }
+    out.stacks.push_back(std::move(stack));
   }
-  auto metrics = stack->fonts[0].getMetrics();
-  layout.metrics.ascent = metrics.ascent;
-  layout.metrics.descent = metrics.descent;
-  float step = spec.lineHeight > 0 ? spec.lineHeight
-                                   : metrics.descent - metrics.ascent + metrics.leading;
+  return out;
+}
 
-  auto glyphs = shapeAll(text, *stack, spec.letterSpacing);
-  auto lines = breakLines(glyphs, spec.wrapWidth);
-  truncate(lines, spec, *stack);
+size_t lastUsableRun(const Paragraph& paragraph) {
+  for (size_t i = paragraph.stacks.size(); i > 0; i--) {
+    if (paragraph.stacks[i - 1] != nullptr) {
+      return i - 1;
+    }
+  }
+  return 0;
+}
+
+/// Everything the paragraph layout produces before it is turned into blobs:
+/// the glyphs in draw order, where each one sits, and the metrics.
+struct Placement {
+  std::vector<Glyph> glyphs;
+  std::vector<tgfx::Point> positions;
+  TextMetrics metrics;
+};
+
+/// Shape, break and place `runs`. The one place line breaking happens, so
+/// text-as-path and the drawn blobs cannot disagree about where a glyph goes.
+Placement place(const std::vector<TextRun>& runs, const TextSpec& spec,
+                const Paragraph& paragraph) {
+  Placement out;
+  std::vector<Glyph> glyphs;
+  int32_t index = 0;
+  for (size_t i = 0; i < runs.size(); i++) {
+    const auto& run = runs[i];
+    if (paragraph.stacks[i] != nullptr) {
+      shapeInto(glyphs, run.text, *paragraph.stacks[i],
+                run.letterSpacing != 0 ? run.letterSpacing : spec.letterSpacing,
+                static_cast<uint16_t>(i), index);
+    }
+    index += static_cast<int32_t>(run.text.size());
+  }
+  if (glyphs.empty()) {
+    return out;
+  }
+
+  auto lines = breakLines(glyphs, spec.wrapWidth, index);
+  // The run the ellipsis follows is the last one still on screen after the trim,
+  // not the last one in the paragraph: a span that wrapped onto a dropped line
+  // must not colour it.
+  size_t kept = spec.maxLines > 0 ? std::min(lines.size(), static_cast<size_t>(spec.maxLines))
+                                  : lines.size();
+  size_t tailRun = lastUsableRun(paragraph);
+  for (size_t i = kept; i > 0; i--) {
+    if (!lines[i - 1].glyphs.empty()) {
+      tailRun = lines[i - 1].glyphs.back().run;
+      break;
+    }
+  }
+  if (paragraph.stacks[tailRun] == nullptr) {
+    tailRun = lastUsableRun(paragraph);
+  }
+  truncate(lines, spec, *paragraph.stacks[tailRun], static_cast<uint16_t>(tailRun));
 
   float widest = 0;
   for (const auto& line : lines) {
     widest = std::max(widest, line.width);
   }
   float box = spec.wrapWidth > 0 ? spec.wrapWidth : widest;
-  layout.metrics.width = widest;
-  layout.metrics.lineCount = static_cast<float>(lines.size());
-  layout.metrics.height =
-      static_cast<float>(lines.size() - 1) * step + (metrics.descent - metrics.ascent);
+  out.metrics.width = widest;
+  out.metrics.lineCount = static_cast<float>(lines.size());
+  out.metrics.lines.reserve(lines.size());
 
-  std::vector<Glyph> flat;
-  std::vector<tgfx::Point> positions;
+  float baseline = 0;
   for (size_t i = 0; i < lines.size(); i++) {
     const auto& line = lines[i];
+    // Per line, over the runs that actually appear on it: a paragraph mixing
+    // sizes leads with the tallest face on each line rather than the first one.
+    float ascent = 0;
+    float descent = 0;
+    float leading = 0;
+    if (line.glyphs.empty()) {
+      ascent = paragraph.metrics[0].ascent;
+      descent = paragraph.metrics[0].descent;
+      leading = paragraph.metrics[0].leading;
+    }
+    for (const auto& glyph : line.glyphs) {
+      const auto& m = paragraph.metrics[glyph.run];
+      ascent = std::min(ascent, m.ascent);
+      descent = std::max(descent, m.descent);
+      leading = std::max(leading, m.leading);
+    }
+    float step = spec.lineHeight > 0 ? spec.lineHeight : descent - ascent + leading;
+    if (i > 0) {
+      baseline += step;
+    }
     float x = spec.align == TextAlign::Center ? (box - line.width) / 2
               : spec.align == TextAlign::Right ? box - line.width
                                                : 0;
-    float y = static_cast<float>(i) * step;
+    LineMetrics metrics;
+    metrics.width = line.width;
+    metrics.x = x;
+    metrics.baseline = baseline;
+    metrics.ascent = ascent;
+    metrics.descent = descent;
+    metrics.startIndex = line.glyphs.empty() ? line.startIndex : line.glyphs.front().index;
+    metrics.endIndex = line.glyphs.empty() ? line.startIndex : line.glyphs.back().index;
+    out.metrics.lines.push_back(metrics);
+    if (i == 0) {
+      out.metrics.ascent = ascent;
+    }
+    out.metrics.descent = descent;
+
     for (const auto& glyph : line.glyphs) {
       if (glyph.code != '\n') {
-        flat.push_back(glyph);
-        positions.push_back({x, y});
+        out.glyphs.push_back(glyph);
+        out.positions.push_back({x, baseline});
       }
       x += glyph.advance;
     }
   }
-  if (!flat.empty()) {
-    layout.blob = buildBlob(flat, positions, *stack);
+  out.metrics.height = baseline + (out.metrics.descent - out.metrics.ascent);
+  return out;
+}
+
+}  // namespace
+
+TextLayout layoutText(const std::vector<TextRun>& runs, const TextSpec& spec, float size) {
+  TextLayout layout;
+  auto paragraph = buildParagraph(runs, spec, size);
+  if (paragraph.empty) {
+    return layout;
+  }
+  auto placement = place(runs, spec, paragraph);
+  layout.metrics = std::move(placement.metrics);
+  if (!placement.glyphs.empty()) {
+    layout.runs = buildBlobs(placement.glyphs, placement.positions, runs, paragraph.stacks);
   }
   return layout;
 }
 
-TextLayout layoutTextOnPath(const std::string& text, const TextSpec& spec, float size,
-                            const tgfx::Path& path) {
+std::vector<double> glyphIdsFor(const std::string& text, const TextSpec& spec, float size) {
+  std::vector<double> ids;
+  auto stack = buildStack(spec.family, spec.weight, spec.italic, size);
+  if (stack == nullptr) {
+    return ids;
+  }
+  const char* cursor = text.data();
+  const char* end = cursor + text.size();
+  while (cursor < end) {
+    auto code = tgfx::UTF::NextUTF8(&cursor, end);
+    if (code < 0) {
+      break;
+    }
+    ids.push_back(stack->fonts[0].getGlyphID(code));
+  }
+  return ids;
+}
+
+TextLayout layoutGlyphs(const std::vector<PlacedGlyph>& glyphs, const TextSpec& spec,
+                        float size) {
   TextLayout layout;
-  auto stack = buildStack(spec, size);
-  if (stack == nullptr || text.empty() || path.isEmpty()) {
+  auto stack = buildStack(spec.family, spec.weight, spec.italic, size);
+  if (stack == nullptr || glyphs.empty()) {
+    return layout;
+  }
+  const auto& font = stack->fonts[0];
+  auto metrics = font.getMetrics();
+  layout.metrics.ascent = metrics.ascent;
+  layout.metrics.descent = metrics.descent;
+  layout.metrics.lineCount = 1;
+  layout.metrics.height = metrics.descent - metrics.ascent;
+
+  tgfx::TextBlobBuilder builder;
+  const auto& buffer = builder.allocRunPos(font, glyphs.size());
+  if (buffer.glyphs == nullptr || buffer.positions == nullptr) {
+    return layout;
+  }
+  auto* points = reinterpret_cast<tgfx::Point*>(buffer.positions);
+  float right = 0;
+  for (size_t i = 0; i < glyphs.size(); i++) {
+    buffer.glyphs[i] = glyphs[i].id;
+    points[i] = {glyphs[i].x, glyphs[i].y};
+    right = std::max(right, glyphs[i].x + font.getAdvance(glyphs[i].id));
+  }
+  auto blob = builder.build();
+  if (blob == nullptr) {
+    return layout;
+  }
+  layout.metrics.width = right;
+  LineMetrics line;
+  line.width = right;
+  line.ascent = metrics.ascent;
+  line.descent = metrics.descent;
+  layout.metrics.lines.push_back(line);
+  layout.runs.push_back({std::move(blob), false, 0});
+  return layout;
+}
+
+tgfx::Path textToPath(const std::vector<TextRun>& runs, const TextSpec& spec, float size) {
+  tgfx::Path path;
+  auto paragraph = buildParagraph(runs, spec, size);
+  if (paragraph.empty) {
+    return path;
+  }
+  auto placement = place(runs, spec, paragraph);
+  for (size_t i = 0; i < placement.glyphs.size(); i++) {
+    const auto& glyph = placement.glyphs[i];
+    tgfx::Path outline;
+    // False for a bitmap-only face — a colour emoji has no outline to give.
+    if (!paragraph.stacks[glyph.run]->fonts[glyph.font].getPath(glyph.id, &outline)) {
+      continue;
+    }
+    outline.transform(tgfx::Matrix::MakeTrans(placement.positions[i].x, placement.positions[i].y));
+    path.addPath(outline);
+  }
+  return path;
+}
+
+TextLayout layoutTextOnPath(const std::vector<TextRun>& runs, const TextSpec& spec,
+                            float size, const tgfx::Path& path) {
+  TextLayout layout;
+  auto paragraph = buildParagraph(runs, spec, size);
+  if (paragraph.empty || path.isEmpty()) {
     return layout;
   }
   auto measure = tgfx::PathMeasure::MakeFrom(path);
@@ -285,44 +528,90 @@ TextLayout layoutTextOnPath(const std::string& text, const TextSpec& spec, float
     return layout;
   }
   float length = measure->getLength();
-  auto metrics = stack->fonts[0].getMetrics();
-  layout.metrics.ascent = metrics.ascent;
-  layout.metrics.descent = metrics.descent;
-  layout.metrics.lineCount = 1;
-  layout.metrics.height = metrics.descent - metrics.ascent;
 
-  auto glyphs = shapeAll(text, *stack, spec.letterSpacing);
-  tgfx::TextBlobBuilder builder;
+  std::vector<Glyph> glyphs;
+  int32_t index = 0;
+  for (size_t i = 0; i < runs.size(); i++) {
+    const auto& run = runs[i];
+    if (paragraph.stacks[i] != nullptr) {
+      shapeInto(glyphs, run.text, *paragraph.stacks[i],
+                run.letterSpacing != 0 ? run.letterSpacing : spec.letterSpacing,
+                static_cast<uint16_t>(i), index);
+    }
+    index += static_cast<int32_t>(run.text.size());
+  }
+  if (glyphs.empty()) {
+    return layout;
+  }
+
+  float ascent = 0;
+  float descent = 0;
+  for (const auto& glyph : glyphs) {
+    ascent = std::min(ascent, paragraph.metrics[glyph.run].ascent);
+    descent = std::max(descent, paragraph.metrics[glyph.run].descent);
+  }
+  layout.metrics.ascent = ascent;
+  layout.metrics.descent = descent;
+  layout.metrics.lineCount = 1;
+  layout.metrics.height = descent - ascent;
+
+  // The path is the line, so a run's paint still splits the blobs but nothing
+  // else about the placement changes.
+  auto paintOf = [&](const Glyph& glyph) {
+    const auto& run = runs[glyph.run];
+    return std::pair<bool, uint32_t>{run.hasColor, run.color};
+  };
   float distance = spec.startOffset;
-  size_t run = 0;
-  while (run < glyphs.size()) {
-    size_t end = run;
-    while (end < glyphs.size() && glyphs[end].font == glyphs[run].font) {
-      end++;
+  size_t group = 0;
+  while (group < glyphs.size()) {
+    size_t groupEnd = group;
+    while (groupEnd < glyphs.size() && paintOf(glyphs[groupEnd]) == paintOf(glyphs[group])) {
+      groupEnd++;
     }
-    size_t count = end - run;
-    const auto& buffer = builder.allocRunRSXform(stack->fonts[glyphs[run].font], count);
-    if (buffer.glyphs == nullptr || buffer.positions == nullptr) {
-      return layout;
+    tgfx::TextBlobBuilder builder;
+    size_t run = group;
+    while (run < groupEnd) {
+      size_t end = run;
+      while (end < groupEnd && glyphs[end].font == glyphs[run].font &&
+             glyphs[end].run == glyphs[run].run) {
+        end++;
+      }
+      size_t count = end - run;
+      const auto& stack = *paragraph.stacks[glyphs[run].run];
+      const auto& buffer = builder.allocRunRSXform(stack.fonts[glyphs[run].font], count);
+      if (buffer.glyphs == nullptr || buffer.positions == nullptr) {
+        return layout;
+      }
+      auto* xforms = reinterpret_cast<tgfx::RSXform*>(buffer.positions);
+      for (size_t i = 0; i < count; i++) {
+        const auto& glyph = glyphs[run + i];
+        buffer.glyphs[i] = glyph.id;
+        // Anchor each glyph at its own midpoint, so it sits centred on the curve
+        // rather than pivoting around its left edge on a tight bend.
+        float half = glyph.advance / 2;
+        tgfx::Point position = {};
+        tgfx::Point tangent = {1, 0};
+        measure->getPosTan(std::clamp(distance + half, 0.0f, length), &position, &tangent);
+        xforms[i] = tgfx::RSXform::MakeFromRadians(1, std::atan2(tangent.y, tangent.x), position.x,
+                                                   position.y, half, 0);
+        distance += glyph.advance;
+      }
+      run = end;
     }
-    auto* xforms = reinterpret_cast<tgfx::RSXform*>(buffer.positions);
-    for (size_t i = 0; i < count; i++) {
-      const auto& glyph = glyphs[run + i];
-      buffer.glyphs[i] = glyph.id;
-      // Anchor each glyph at its own midpoint, so it sits centred on the curve
-      // rather than pivoting around its left edge on a tight bend.
-      float half = glyph.advance / 2;
-      tgfx::Point position = {};
-      tgfx::Point tangent = {1, 0};
-      measure->getPosTan(std::clamp(distance + half, 0.0f, length), &position, &tangent);
-      xforms[i] = tgfx::RSXform::MakeFromRadians(1, std::atan2(tangent.y, tangent.x), position.x,
-                                                 position.y, half, 0);
-      distance += glyph.advance;
+    auto blob = builder.build();
+    if (blob != nullptr) {
+      auto paint = paintOf(glyphs[group]);
+      layout.runs.push_back({std::move(blob), paint.first, paint.second});
     }
-    run = end;
+    group = groupEnd;
   }
   layout.metrics.width = distance - spec.startOffset;
-  layout.blob = builder.build();
+  LineMetrics line;
+  line.width = layout.metrics.width;
+  line.ascent = ascent;
+  line.descent = descent;
+  line.endIndex = index;
+  layout.metrics.lines.push_back(line);
   return layout;
 }
 

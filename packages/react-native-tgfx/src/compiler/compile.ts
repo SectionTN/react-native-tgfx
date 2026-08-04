@@ -20,7 +20,7 @@ import {
   type GradientInput,
   type PaintInput,
 } from './paint'
-import { alignCode, writeFont } from './text'
+import { alignCode, writeFont, writeTextRuns } from './text'
 import { toRadians, type Transform, type Vector } from './transform'
 import {
   isSharedValue,
@@ -29,6 +29,13 @@ import {
   type MaybeSharedValue,
 } from './values'
 import { Kind, type SceneWriter } from './writer'
+
+/** One entry of a `<Glyphs>` list. */
+interface GlyphInput {
+  id: number
+  x: number
+  y: number
+}
 
 /** Result of compiling: the binary program plus the ordered animated values. */
 export interface CompileResult {
@@ -93,6 +100,7 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Image]: Kind.Image,
   [NodeType.Text]: Kind.Text,
   [NodeType.TextPath]: Kind.TextPath,
+  [NodeType.Glyphs]: Kind.Glyphs,
   [NodeType.Fill]: Kind.Fill,
   [NodeType.CameraFrame]: Kind.CameraFrame,
 }
@@ -363,20 +371,35 @@ function writeDrawing(
     case Kind.Text:
       w.pushAnim(p.x)
       w.pushAnim(p.y)
-      w.pushString(String(resolveValue(p.text) ?? ''))
       w.pushAnim(p.fontSize, 14)
       writeFont(w, p)
+      writeTextRuns(w, node, p)
       w.push(resolveNumber(p.width, 0))
       w.push(alignCode(p.textAlign))
       w.push(resolveNumber(p.lineHeight, 0))
       w.push(resolveNumber(p.maxLines, 0))
       w.pushString(p.ellipsis != null ? String(p.ellipsis) : '')
       break
-    case Kind.TextPath:
-      w.pushString(String(resolveValue(p.path) ?? ''))
-      w.pushString(String(resolveValue(p.text) ?? ''))
+    case Kind.Glyphs: {
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
       w.pushAnim(p.fontSize, 14)
       writeFont(w, p)
+      // Ids and positions exactly as given: no shaping, no fallback, no breaks.
+      const glyphs = (p.glyphs as GlyphInput[] | undefined) ?? []
+      w.push(glyphs.length)
+      for (const glyph of glyphs) {
+        w.push(resolveNumber(glyph?.id, 0))
+        w.push(resolveNumber(glyph?.x, 0))
+        w.push(resolveNumber(glyph?.y, 0))
+      }
+      break
+    }
+    case Kind.TextPath:
+      w.pushString(String(resolveValue(p.path) ?? ''))
+      w.pushAnim(p.fontSize, 14)
+      writeFont(w, p)
+      writeTextRuns(w, node, p)
       w.push(resolveNumber(p.startOffset, 0))
       break
     default:

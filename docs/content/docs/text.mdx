@@ -45,11 +45,111 @@ Shared by `Text` and `TextPath`:
 `x`/`y` is the **first baseline**, not the top of the box — use
 [`measureText`](#measuretext) and its negative `ascent` to get the box.
 
+## Styled runs
+
+A `<Span>` is a stretch of the paragraph with its own face and colour. Spans lay
+out as one block — they wrap and align together, and a line takes its height from
+the tallest span on it — so a bold word does not need a second `<Text>` and
+hand-computed coordinates:
+
+```tsx
+<Text x={0} y={40} width={220} fontSize={18}>
+  <Span text="Total " />
+  <Span text="4 500" fontWeight={700} color="#d98a4a" />
+  <Span text=" credits" />
+</Text>
+```
+
+A `<Text>` with spans ignores its own `text` prop: the spans are the content.
+Anything a span does not set is the paragraph's.
+
+| prop | what it overrides |
+| --- | --- |
+| `color` | the node's paint colour, for this run only |
+| `fontSize` | the paragraph's size — **static**, see below |
+| `fontFamily`, `fontWeight`, `fontStyle`, `letterSpacing` | the paragraph's face |
+
+<Owned by="native">
+Each colour is one blob and one draw call; consecutive spans that take the node's
+own paint are packed into a single blob, so a paragraph with no coloured span
+costs exactly what it did before spans existed.
+</Owned>
+
+A `<Paint>` shader on the node — a gradient, an image, a runtime shader — paints
+every glyph, so a `<Span color>` under one has nothing to override and is
+ignored. Give the span its own paint chain, or drop the shader.
+
+A span's `fontSize` is deliberately static. The paragraph's `fontSize` is the one
+with an animation slot, and the layout is memoised against it — a second moving
+size would miss that memo every frame.
+
 ## TextPath
 
 `TextPath` places each glyph at its own advance along the path and rotates it to
 the tangent there, so the path is the baseline and there is no `x`/`y`. Wrapping
 and alignment do not apply.
+
+## Text as a path
+
+`textPath()` runs the same layout and hands back SVG path data — what `<Path>`
+takes. That is text you can stroke, dash, or feed to a path effect, rather than
+only fill:
+
+```tsx
+import { Canvas, Group, Path, textPath } from 'react-native-tgfx'
+
+const outline = textPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
+
+<Canvas style={{ width: 300, height: 90 }}>
+  <Group transform={[{ translateX: 8 }, { translateY: 60 }]}>
+    <Path path={outline} color="#d98a4a" style="stroke" strokeWidth={2} />
+  </Group>
+</Canvas>
+```
+
+The path is relative to the first baseline at (0, 0) — the coordinates
+`measureText` reports — so translate it by the `x`/`y` you would have given
+`<Text>`. Wrapping, alignment and `maxLines` all apply, because it is the same
+layout.
+
+It is a snapshot, not a live node: changing the string means calling it again.
+For text that only *moves*, keep `<Text>` and animate its props.
+
+<Owned by="js">
+A colour emoji has no outline — it is a bitmap — so a face with no glyph outlines
+returns an empty string rather than a box.
+</Owned>
+
+## Glyphs
+
+`<Glyphs>` draws ids you positioned yourself. No shaping, no line breaking, no
+fallback — it is the escape hatch for a caller doing its own layout, and every
+one of those omissions is the point:
+
+```tsx
+import { Canvas, Glyphs, glyphIds } from 'react-native-tgfx'
+
+const style = { fontSize: 32, fontFamily: 'PT Serif' }
+const ids = glyphIds('wave', style)
+
+<Canvas style={{ width: 300, height: 100 }}>
+  <Glyphs
+    x={20}
+    y={60}
+    {...style}
+    glyphs={ids.map((id, i) => ({
+      id,
+      x: i * 22,
+      y: Math.sin(i) * 8,
+    }))}
+  />
+</Canvas>
+```
+
+Positions are relative to the node's `x`/`y`, which is the first baseline.
+`glyphIds` returns one id per codepoint in the face the same font props select,
+and `0` where that face has no glyph — there is no fallback chain here, so a hole
+is yours to notice and fill.
 
 ## Fallback and script support
 
@@ -67,8 +167,7 @@ Bidi reordering and complex-script shaping are **not** implemented: a run of
 Arabic or Devanagari lays out in logical order with unshaped glyphs. Tracked in
 [#143](https://github.com/riteshshukla04/react-native-tgfx/issues/143).
 
-Styled runs inside one paragraph, a `<Glyphs>` primitive and text-as-path are
-not exposed to JS either; those are tracked in
+A string animation slot is still missing; that is tracked in
 [#145](https://github.com/riteshshukla04/react-native-tgfx/issues/145).
 
 ## Hooks
@@ -109,5 +208,22 @@ const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
 
 Runs the same layout the renderer does — same fallback chain, same wrapping — so
 a width measured here is the width drawn. Returns `{ width, height, ascent,
-descent, lineCount }`, relative to the first baseline: `ascent` is negative, and
-the box runs from `y + ascent` to `y + ascent + height`.
+descent, lineCount, lines }`, relative to the first baseline: `ascent` is
+negative, and the box runs from `y + ascent` to `y + ascent + height`.
+
+`lines` describes each line the layout produced, which is what you need to draw a
+selection box, place a caret, or hit-test a tap:
+
+| field | |
+| --- | --- |
+| `width` | the line's own width |
+| `x` | where it starts once `textAlign` has placed it |
+| `baseline` | how far below the first baseline it sits |
+| `ascent`, `descent` | that line's own extents, from the tallest face on it |
+| `startIndex`, `endIndex` | UTF-8 byte offsets into the string |
+
+```tsx
+const { lines } = measureText(label, { fontSize: 18, width: 200 })
+const hit = lines.find((line) => py - y >= line.baseline + line.ascent &&
+                                 py - y <= line.baseline + line.descent)
+```

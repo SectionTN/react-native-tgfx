@@ -9,4 +9,9 @@ namespace tgfxrn {
 
 tgfx::Path parseSvgPath(const std::string& data);
 
+/// The inverse: SVG path data for `path`, so a native path can go back to JS and
+/// be handed to <Path> like any other. Absolute commands, conics expanded to
+/// quads (SVG has no conic), which is exact for the 90° arcs a font emits.
+std::string pathToSvg(const tgfx::Path& path);
+
 }  // namespace tgfxrn

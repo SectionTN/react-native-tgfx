@@ -28,9 +28,11 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `LineMeasurement` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct LineMeasurement; }
 
-
-
+#include "LineMeasurement.hpp"
+#include <vector>
 
 namespace margelo::nitro::tgfx {
 
@@ -44,10 +46,11 @@ namespace margelo::nitro::tgfx {
     double ascent     SWIFT_PRIVATE;
     double descent     SWIFT_PRIVATE;
     double lineCount     SWIFT_PRIVATE;
+    std::vector<LineMeasurement> lines     SWIFT_PRIVATE;
 
   public:
     TextMeasurement() = default;
-    explicit TextMeasurement(double width, double height, double ascent, double descent, double lineCount): width(width), height(height), ascent(ascent), descent(descent), lineCount(lineCount) {}
+    explicit TextMeasurement(double width, double height, double ascent, double descent, double lineCount, std::vector<LineMeasurement> lines): width(width), height(height), ascent(ascent), descent(descent), lineCount(lineCount), lines(lines) {}
 
   public:
     friend bool operator==(const TextMeasurement& lhs, const TextMeasurement& rhs) = default;
@@ -67,7 +70,8 @@ namespace margelo::nitro {
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "height"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "ascent"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "descent"))),
-        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "lineCount")))
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "lineCount"))),
+        JSIConverter<std::vector<margelo::nitro::tgfx::LineMeasurement>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "lines")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::tgfx::TextMeasurement& arg) {
@@ -77,6 +81,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "ascent"), JSIConverter<double>::toJSI(runtime, arg.ascent));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "descent"), JSIConverter<double>::toJSI(runtime, arg.descent));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "lineCount"), JSIConverter<double>::toJSI(runtime, arg.lineCount));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "lines"), JSIConverter<std::vector<margelo::nitro::tgfx::LineMeasurement>>::toJSI(runtime, arg.lines));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -92,6 +97,7 @@ namespace margelo::nitro {
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "ascent")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "descent")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "lineCount")))) return false;
+      if (!JSIConverter<std::vector<margelo::nitro::tgfx::LineMeasurement>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "lines")))) return false;
       return true;
     }
   };

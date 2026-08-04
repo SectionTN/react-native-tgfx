@@ -341,11 +341,14 @@ test('a text node carries its font block and its paragraph block', () => {
       ellipsis: '…',
     }),
   ])
-  expect(strings).toEqual(['hi', 'PT Serif', '…'])
-  // x y text size | family weight italic spacing | width align lh maxLines ell
-  expect(Array.from(used.subarray(5, 18))).toEqual([
-    1, 2, 0, 16, 1, 700, 1, 1.5, 120, 1, 22, 2, 2,
+  expect(strings).toEqual(['PT Serif', 'hi', '', '…'])
+  // x y size | family weight italic spacing | runs: count text family weight
+  // italic spacing size hasColor color | width align lh maxLines ellipsis
+  // The run's italic is 0 — inherit — so the node's own italic still applies.
+  expect(Array.from(used.subarray(5, 25))).toEqual([
+    1, 2, 16, 0, 700, 1, 1.5, 1, 1, 2, 0, 0, 0, 0, 0, 0, 120, 1, 22, 2,
   ])
+  expect(used[25]).toBe(3) // ellipsis
 })
 
 test('an omitted font block defaults to normal, upright and unwrapped', () => {
@@ -353,10 +356,11 @@ test('an omitted font block defaults to normal, upright and unwrapped', () => {
     node(NodeType.Text, { x: 0, y: 0, text: 'hi' }),
   ])
   // The family and the ellipsis are both the empty string, interned once.
-  expect(strings).toEqual(['hi', ''])
-  // size | family weight italic spacing | width align lh maxLines ellipsis
-  expect(Array.from(used.subarray(8, 18))).toEqual([
-    14, 1, 400, 0, 0, 0, 0, 0, 0, 1,
+  expect(strings).toEqual(['', 'hi'])
+  // size | family weight italic spacing | one run that overrides nothing |
+  // width align lh maxLines ellipsis
+  expect(Array.from(used.subarray(7, 25))).toEqual([
+    14, 0, 400, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   ])
 })
 
@@ -370,19 +374,21 @@ test('a text path carries the path, the text and the font block', () => {
       startOffset: 4,
     }),
   ])
-  expect(strings).toEqual(['M0 0 L10 0', 'hi', 'PT Serif'])
+  expect(strings).toEqual(['M0 0 L10 0', 'PT Serif', 'hi', ''])
   expect(Array.from(used.subarray(3, 11))).toEqual([
     1,
     Kind.TextPath,
     0,
-    1,
     12,
-    2,
+    1,
     400,
     0,
+    0,
   ])
-  expect(used[11]).toBe(0) // letterSpacing
-  expect(used[12]).toBe(4) // startOffset
+  // One run: count, text, family, weight, italic, spacing, size, colour flag+value
+  expect(Array.from(used.subarray(11, 19))).toEqual([1, 2, 3, 0, 0, 0, 0, 0])
+  expect(used[19]).toBe(0) // colour
+  expect(used[20]).toBe(4) // startOffset
 })
 
 // Golden encoding: paint-bearing children add paint but never enter the stream.
@@ -894,4 +900,78 @@ test('a filter on the node itself overrides the one it inherits', () => {
   ])
   const at = 3 + 1 + 3 + 5 + 6
   expect(Array.from(used.subarray(at, at + 6))).toEqual([3, -1, 0, 7, 7, 3])
+})
+
+test('spans become the run list, and the text prop steps aside', () => {
+  const { used, strings } = compile([
+    {
+      ...node(NodeType.Text, { x: 0, y: 0, text: 'ignored', fontSize: 12 }),
+      children: [
+        node(NodeType.Span, { text: 'plain ' }),
+        node(NodeType.Span, {
+          text: 'bold',
+          fontWeight: 700,
+          color: '#ff0000',
+          fontSize: 20,
+        }),
+      ],
+    },
+  ])
+  expect(strings).toEqual(['', 'plain ', 'bold'])
+  // Two runs: (text, family, weight, italic, spacing, size, hasColor, colour)
+  expect(used[12]).toBe(2)
+  expect(Array.from(used.subarray(13, 21))).toEqual([1, 0, 0, 0, 0, 0, 0, 0])
+  expect(Array.from(used.subarray(21, 29))).toEqual([
+    2, 0, 700, 0, 0, 20, 1, 0xffff0000,
+  ])
+})
+
+test('a span says whether it inherits the italic, forces it, or forces upright', () => {
+  const runs = (fontStyle?: string) => {
+    const { used } = compile([
+      {
+        ...node(NodeType.Text, { x: 0, y: 0, fontSize: 12 }),
+        children: [node(NodeType.Span, { text: 'hi', fontStyle })],
+      },
+    ])
+    // count, text, family, weight, italic
+    return used[16]
+  }
+  expect(runs(undefined)).toBe(0)
+  expect(runs('italic')).toBe(1)
+  expect(runs('normal')).toBe(2)
+})
+
+test('a glyph node carries its ids and positions verbatim', () => {
+  const { used, strings } = compile([
+    node(NodeType.Glyphs, {
+      x: 5,
+      y: 6,
+      fontSize: 18,
+      fontFamily: 'PT Serif',
+      glyphs: [
+        { id: 40, x: 0, y: 0 },
+        { id: 72, x: 11.5, y: -3 },
+      ],
+    }),
+  ])
+  expect(strings).toEqual(['PT Serif'])
+  // x y size | family weight italic spacing | count, then (id, x, y) each
+  expect(Array.from(used.subarray(4, 19))).toEqual([
+    Kind.Glyphs,
+    5,
+    6,
+    18,
+    0,
+    400,
+    0,
+    0,
+    2,
+    40,
+    0,
+    0,
+    72,
+    11.5,
+    -3,
+  ])
 })

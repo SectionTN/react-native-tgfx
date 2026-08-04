@@ -6,6 +6,7 @@
 
 #include "Base64.hpp"
 #include "FontRegistry.hpp"
+#include "SvgPath.hpp"
 #include "TextLayout.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/Typeface.h"
@@ -94,11 +95,45 @@ std::vector<std::string> HybridTgfxFonts::getFamilyNames() {
   return tgfxrn::FontRegistry::instance().familyNames();
 }
 
+namespace {
+
+/// The one-run list a string-based call lays out as.
+std::vector<tgfxrn::TextRun> runsOf(const std::string& text, const tgfxrn::TextSpec& spec) {
+  tgfxrn::TextRun run;
+  run.text = text;
+  run.family = spec.family;
+  run.weight = spec.weight;
+  run.italic = spec.italic;
+  run.letterSpacing = spec.letterSpacing;
+  return {run};
+}
+
+}  // namespace
+
+std::vector<double> HybridTgfxFonts::glyphIds(const std::string& text,
+                                              const TextLayoutStyle& style) {
+  auto spec = specOf(style);
+  return tgfxrn::glyphIdsFor(text, spec, static_cast<float>(style.fontSize));
+}
+
+std::string HybridTgfxFonts::textPath(const std::string& text, const TextLayoutStyle& style) {
+  auto spec = specOf(style);
+  return tgfxrn::pathToSvg(
+      tgfxrn::textToPath(runsOf(text, spec), spec, static_cast<float>(style.fontSize)));
+}
+
 TextMeasurement HybridTgfxFonts::measureText(const std::string& text,
                                              const TextLayoutStyle& style) {
-  auto layout = tgfxrn::layoutText(text, specOf(style), static_cast<float>(style.fontSize));
+  auto spec = specOf(style);
+  auto layout = tgfxrn::layoutText(runsOf(text, spec), spec, static_cast<float>(style.fontSize));
+  std::vector<LineMeasurement> lines;
+  lines.reserve(layout.metrics.lines.size());
+  for (const auto& line : layout.metrics.lines) {
+    lines.emplace_back(line.width, line.x, line.baseline, line.ascent, line.descent,
+                       static_cast<double>(line.startIndex), static_cast<double>(line.endIndex));
+  }
   return TextMeasurement(layout.metrics.width, layout.metrics.height, layout.metrics.ascent,
-                         layout.metrics.descent, layout.metrics.lineCount);
+                         layout.metrics.descent, layout.metrics.lineCount, std::move(lines));
 }
 
 }  // namespace margelo::nitro::tgfx

@@ -6,6 +6,7 @@ export { Group } from './components/Group'
 export {
   CameraFrame,
   Circle,
+  Glyphs,
   Fill,
   Image,
   Line,
@@ -13,6 +14,7 @@ export {
   Path,
   Rect,
   RoundedRect,
+  Span,
   Text,
   TextPath,
 } from './components/drawings'
@@ -48,10 +50,17 @@ export {
   loadFont,
   loadFonts,
   measureText,
+  glyphIds,
   registeredFontFamilies,
+  textPath,
   useFonts,
 } from './hooks/useFonts'
-export type { FontSource, TextMeasurement, TextStyle } from './hooks/useFonts'
+export type {
+  FontSource,
+  LineMeasurement,
+  TextMeasurement,
+  TextStyle,
+} from './hooks/useFonts'
 export {
   imageFromNativeBuffer,
   setImageCacheLimit,
@@ -79,6 +88,7 @@ export type {
   Fit,
   FontProps,
   FontWeight,
+  GlyphsProps,
   GroupProps,
   ImageProps,
   ImageShaderProps,
@@ -90,11 +100,13 @@ export type {
   PaintProps,
   ParagraphProps,
   PathProps,
+  PlacedGlyph,
   RadialGradientProps,
   RectProps,
   RoundedRectProps,
   Sampling,
   ShaderProps,
+  SpanProps,
   SrcRect,
   SweepGradientProps,
   SharedValueLike,

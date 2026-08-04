@@ -20,6 +20,7 @@
 #include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
 #include "TextLayout.hpp"
+#include "SvgPath.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/EncodedFormat.h"
@@ -44,6 +45,13 @@ int failures = 0;
       failures++;                                                          \
     }                                                                      \
   } while (0)
+
+/// One unstyled run, for the layout tests that call layoutText directly.
+tgfxrn::TextRun run(std::string text) {
+  tgfxrn::TextRun out;
+  out.text = std::move(text);
+  return out;
+}
 
 constexpr int kWidth = 64;
 constexpr int kHeight = 64;
@@ -391,18 +399,33 @@ const std::vector<std::string> kTextStrings{"Wg", "Helvetica", "", "Wg\nWg"};
 /// A <Text> node body. Mirrors the Kind.Text case of writeDrawing() in
 /// compile.ts: geometry, text, size, the font block, then the paragraph block.
 /// The root count is the caller's, so several can be written into one program.
+/// One run of a <Text>: the string plus the style it overrides. Zeroes mean
+/// "the paragraph's", which is what a <Text> with no <Span> children writes.
+void writeRun(Writer& w, int textIndex, int familyIndex = 2, int weight = 0, int italic = 0,
+              double size = 0, int hasColor = 0, double color = 0) {
+  w.push(1);  // one run
+  w.push(textIndex);
+  w.push(familyIndex);
+  w.push(weight);
+  w.push(italic);
+  w.push(0);  // letterSpacing
+  w.push(size);
+  w.push(hasColor);
+  w.push(color);
+}
+
 void writeTextNode(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
                    double wrapWidth = 0, int align = 0, double lineHeight = 0,
-                   int weight = 400, int italic = 0) {
+                   int weight = 400, int italic = 0, int runItalic = 0) {
   w.push(8);  // Text
   w.pushAnim(4);
   w.pushAnim(44);
-  w.push(textIndex);
   w.pushAnim(fontSize, fontSizeSlot);
   w.push(1);  // font family string index
   w.push(weight);
   w.push(italic);
   w.push(0);  // letterSpacing
+  writeRun(w, textIndex, 2, 0, runItalic);
   w.push(wrapWidth);
   w.push(align);
   w.push(lineHeight);
@@ -414,10 +437,10 @@ void writeTextNode(Writer& w, double fontSize, int fontSizeSlot, int textIndex =
 /// One <Text> as a whole program.
 void writeText(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
                double wrapWidth = 0, int align = 0, double lineHeight = 0, int weight = 400,
-               int italic = 0) {
+               int italic = 0, int runItalic = 0) {
   w.push(1);
-  writeTextNode(w, fontSize, fontSizeSlot, textIndex, wrapWidth, align, lineHeight, weight,
-                italic);
+  writeTextNode(w, fontSize, fontSizeSlot, textIndex, wrapWidth, align, lineHeight, weight, italic,
+                runItalic);
 }
 
 /// A static font must draw what the per-frame font construction drew.
@@ -1896,9 +1919,9 @@ void aParagraphWrapsAlignsAndStacks() {
   tgfxrn::TextSpec spec;
   spec.family = "Helvetica";
   spec.wrapWidth = 40;
-  auto natural = tgfxrn::layoutText("one two three four", spec, 10);
+  auto natural = tgfxrn::layoutText({run("one two three four")}, spec, 10);
   spec.lineHeight = 24;
-  auto tall = tgfxrn::layoutText("one two three four", spec, 10);
+  auto tall = tgfxrn::layoutText({run("one two three four")}, spec, 10);
   CHECK(natural.metrics.lineCount == tall.metrics.lineCount);
   CHECK(tall.metrics.height > natural.metrics.height);
 }
@@ -1921,8 +1944,8 @@ void theMeasuredWidthIsTheDrawnWidth() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
   spec.family = "Helvetica";
-  auto measured = tgfxrn::layoutText("Wg", spec, 24);
-  CHECK(measured.blob != nullptr);
+  auto measured = tgfxrn::layoutText({run("Wg")}, spec, 24);
+  CHECK(!measured.runs.empty());
   CHECK(measured.metrics.width > 0);
   CHECK(measured.metrics.lineCount == 1);
 
@@ -1933,12 +1956,12 @@ void theMeasuredWidthIsTheDrawnWidth() {
   w.push(8);
   w.pushAnim(0);
   w.pushAnim(40);
-  w.push(0);
   w.pushAnim(24);
   w.push(1);
   w.push(400);
   w.push(0);
   w.push(0);
+  writeRun(w, 0);
   w.push(0);
   w.push(0);
   w.push(0);
@@ -1952,7 +1975,7 @@ void theMeasuredWidthIsTheDrawnWidth() {
 
   // Wrapping reports the lines it produced.
   spec.wrapWidth = 40;
-  auto wrapped = tgfxrn::layoutText("one two three four", spec, 12);
+  auto wrapped = tgfxrn::layoutText({run("one two three four")}, spec, 12);
   CHECK(wrapped.metrics.lineCount > 1);
   CHECK(wrapped.metrics.width <= 40);
   CHECK(wrapped.metrics.height > wrapped.metrics.descent - wrapped.metrics.ascent);
@@ -1960,7 +1983,7 @@ void theMeasuredWidthIsTheDrawnWidth() {
   // maxLines truncates, and the ellipsis stays inside the box.
   spec.maxLines = 1;
   spec.ellipsis = "...";
-  auto clipped = tgfxrn::layoutText("one two three four", spec, 12);
+  auto clipped = tgfxrn::layoutText({run("one two three four")}, spec, 12);
   CHECK(clipped.metrics.lineCount == 1);
   CHECK(clipped.metrics.width <= 40);
 }
@@ -1972,13 +1995,16 @@ void theMeasuredWidthIsTheDrawnWidth() {
 void theLayoutIsCachedByQuantisedSize() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextCmd cmd;
-  cmd.text = "Wg";
+  cmd.runs = {run("Wg")};
   cmd.spec.family = "Helvetica";
-  auto at20 = cmd.resolve(20).blob;
+  auto blobOf = [](const tgfxrn::TextLayout& layout) {
+    return layout.runs.empty() ? nullptr : layout.runs[0].blob;
+  };
+  auto at20 = blobOf(cmd.resolve(20));
   CHECK(at20 != nullptr);
-  CHECK(cmd.resolve(20.1f).blob == at20);
-  CHECK(cmd.resolve(20).blob == at20);
-  CHECK(cmd.resolve(24).blob != at20);
+  CHECK(blobOf(cmd.resolve(20.1f)) == at20);
+  CHECK(blobOf(cmd.resolve(20)) == at20);
+  CHECK(blobOf(cmd.resolve(24)) != at20);
 }
 
 /// A codepoint the primary face has no glyph for must reach a fallback. The old
@@ -2006,12 +2032,13 @@ void textOnAPathFollowsTheCurve() {
   w.push(1);
   w.push(10);  // TextPath
   w.push(0);   // path
-  w.push(1);   // text
   w.pushAnim(12);
   w.push(2);  // family
   w.push(400);
   w.push(0);
   w.push(0);
+  // Index 3 is past this test's table, so the run inherits the paragraph's face.
+  writeRun(w, 1, 2);
   w.push(0);  // startOffset
   w.pushPaint(0xff000000, false);
   auto curved = render(w.finish(), strings, {});
@@ -2107,6 +2134,306 @@ void anExifRotatedJpegDecodesUpright() {
   tgfxrn::ImageRegistry::instance().remove(handle.handle);
 }
 
+/// A <Span> is a run with its own face: the paragraph lays out as one block, and
+/// a bold word has to be wider than the same word in the paragraph's weight.
+/// The paragraph's own italic has to survive the run list: an implicit run
+/// overrides nothing, and a span that says nothing about style inherits it.
+void aParagraphKeepsItsItalicThroughTheRuns() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  // Pixels, not widths: a synthesised italic is a shear, so it draws differently
+  // at identical advances.
+  const std::vector<std::string> strings{"italic", "Helvetica", ""};
+  Writer upright;
+  writeText(upright, 24, -1, 0, 0, 0, 0, 400, 0);
+  Writer slanted;
+  writeText(slanted, 24, -1, 0, 0, 0, 0, 400, 1);
+  auto flat = render(upright.finish(), strings, {});
+  auto leaning = render(slanted.finish(), strings, {});
+  CHECK(anyPixelSet(flat));
+  CHECK(flat != leaning);
+
+  // End to end, through the reader: a run that says "upright" (2) in an italic
+  // paragraph draws upright, and one that says "italic" (1) in an upright
+  // paragraph draws slanted. A reader that folded the tri-state into a bool
+  // would draw both italic.
+  Writer overridden;
+  writeText(overridden, 24, -1, 0, 0, 0, 0, 400, 1, 2);
+  CHECK(render(overridden.finish(), strings, {}) == flat);
+  Writer opted;
+  writeText(opted, 24, -1, 0, 0, 0, 0, 400, 0, 1);
+  CHECK(render(opted.finish(), strings, {}) == leaning);
+
+  // The same through the layout: a span that says nothing inherits the
+  // paragraph's italic, and one that says "upright" overrides it.
+  tgfxrn::TextSpec italicSpec = spec;
+  italicSpec.italic = true;
+  auto outline = [](const tgfxrn::TextRun& r, const tgfxrn::TextSpec& sp) {
+    return tgfxrn::textToPath({r}, sp, 24).getBounds();
+  };
+  tgfxrn::TextRun inherits;
+  inherits.text = "italic";
+  tgfxrn::TextRun forced = inherits;
+  forced.italic = 2;
+  CHECK(outline(inherits, italicSpec) != outline(inherits, spec));
+  CHECK(outline(forced, italicSpec) == outline(inherits, spec));
+}
+
+/// A truncated paragraph draws its ellipsis in the face of the run it follows,
+/// not run 0's — and reports an offset into the text, not into the ellipsis.
+void theEllipsisBelongsToTheRunItFollows() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  spec.wrapWidth = 60;
+  spec.maxLines = 1;
+  spec.ellipsis = "...";
+  tgfxrn::TextRun first;
+  first.text = "one two ";
+  tgfxrn::TextRun tail;
+  tail.text = "three four five";
+  tail.hasColor = true;
+  tail.color = 0xFF00FF00;
+  auto layout = tgfxrn::layoutText({first, tail}, spec, 12);
+  CHECK(layout.metrics.lineCount == 1);
+  CHECK(!layout.metrics.lines.empty());
+  // The coloured span wrapped onto the line that was dropped, so it is on screen
+  // nowhere — and the ellipsis must not be painted in a colour nothing shows.
+  CHECK(layout.runs.size() == 1);
+  CHECK(!layout.runs[0].hasColor);
+  // The reported end is an offset into the text, not the ellipsis's own 0.
+  CHECK(layout.metrics.lines[0].endIndex > 0);
+
+  // When the coloured run *is* the last thing on the kept line, the ellipsis
+  // follows it there instead.
+  tgfxrn::TextRun lead;
+  lead.text = "one ";
+  tgfxrn::TextRun rest;
+  rest.text = "two three four five";
+  rest.hasColor = true;
+  rest.color = 0xFF00FF00;
+  auto coloured = tgfxrn::layoutText({lead, rest}, spec, 12);
+  CHECK(coloured.metrics.lineCount == 1);
+  CHECK(coloured.runs.size() == 2);
+  CHECK(coloured.runs.back().hasColor);
+}
+
+void aSpanCarriesItsOwnFace() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  auto plain = tgfxrn::layoutText({run("one two")}, spec, 20);
+
+  tgfxrn::TextRun first;
+  first.text = "one ";
+  tgfxrn::TextRun bold;
+  bold.text = "two";
+  bold.weight = 700;
+  auto mixed = tgfxrn::layoutText({first, bold}, spec, 20);
+  CHECK(!mixed.runs.empty());
+  CHECK(mixed.metrics.lineCount == 1);
+  CHECK(mixed.metrics.width > plain.metrics.width);
+
+  // A larger span leads its line: the paragraph gets taller without a second line.
+  tgfxrn::TextRun big;
+  big.text = "two";
+  big.size = 40;
+  auto tall = tgfxrn::layoutText({first, big}, spec, 20);
+  CHECK(tall.metrics.lineCount == 1);
+  CHECK(tall.metrics.height > plain.metrics.height);
+}
+
+/// A coloured span is a blob of its own, so it can be drawn with its own paint;
+/// runs that take the node's paint stay in one blob however many there are.
+void aColouredSpanSplitsTheBlobs() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  tgfxrn::TextRun plain;
+  plain.text = "one ";
+  tgfxrn::TextRun red;
+  red.text = "two";
+  red.hasColor = true;
+  red.color = 0xFFFF0000;
+  auto layout = tgfxrn::layoutText({plain, red}, spec, 20);
+  CHECK(layout.runs.size() == 2);
+  CHECK(!layout.runs[0].hasColor);
+  CHECK(layout.runs[1].hasColor);
+  CHECK(layout.runs[1].color == 0xFFFF0000);
+
+  tgfxrn::TextRun more;
+  more.text = "three";
+  CHECK(tgfxrn::layoutText({plain, more}, spec, 20).runs.size() == 1);
+
+  // And it draws: a red span on a black paragraph has to change the pixels.
+  const std::vector<std::string> strings{"one ", "Helvetica", "", "two"};
+  auto write = [&](bool coloured) {
+    Writer w;
+    w.push(1);
+    w.push(8);  // Text
+    w.pushAnim(2);
+    w.pushAnim(40);
+    w.pushAnim(20);
+    w.push(1);
+    w.push(400);
+    w.push(0);
+    w.push(0);
+    w.push(2);  // two runs
+    w.push(0);
+    w.push(2);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(3);
+    w.push(2);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(coloured ? 1 : 0);
+    w.push(coloured ? 0xFFFF0000 : 0);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(0);
+    w.push(2);
+    w.pushPaint(0xff000000, false);
+    return render(w.finish(), strings, {});
+  };
+  auto mono = write(false);
+  auto tinted = write(true);
+  CHECK(anyPixelSet(mono));
+  CHECK(mono != tinted);
+}
+
+/// measureText reports every line, not just the block: a wrapped paragraph has
+/// to describe where each line starts and how far below the first it sits.
+void everyLineIsMeasured() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  spec.wrapWidth = 40;
+  spec.align = tgfxrn::TextAlign::Right;
+  auto layout = tgfxrn::layoutText({run("one two three four")}, spec, 12);
+  CHECK(layout.metrics.lines.size() == static_cast<size_t>(layout.metrics.lineCount));
+  CHECK(layout.metrics.lines.size() > 1);
+  CHECK(layout.metrics.lines[0].baseline == 0);
+
+  // An empty line reports where it sits in the text, including the one a
+  // trailing newline opens, which has no glyph after it to ask.
+  tgfxrn::TextSpec plain;
+  plain.family = "Helvetica";
+  auto blanks = tgfxrn::layoutText({run("a\n\nb")}, plain, 12);
+  CHECK(blanks.metrics.lines.size() == 3);
+  CHECK(blanks.metrics.lines[1].startIndex == 2);
+  auto trailing = tgfxrn::layoutText({run("a\n")}, plain, 12);
+  CHECK(trailing.metrics.lines.size() == 2);
+  CHECK(trailing.metrics.lines[1].startIndex == 2);
+  for (size_t i = 1; i < layout.metrics.lines.size(); i++) {
+    const auto& line = layout.metrics.lines[i];
+    CHECK(line.baseline > layout.metrics.lines[i - 1].baseline);
+    // Right-aligned: every line ends at the box edge.
+    CHECK(std::abs(line.x + line.width - spec.wrapWidth) < 0.01f);
+    CHECK(line.startIndex >= layout.metrics.lines[i - 1].endIndex);
+  }
+}
+
+/// Text as an outline: the same layout, in SVG path data. A caller strokes it,
+/// dashes it or feeds it to a path effect — none of which a TextBlob can do.
+void textComesBackAsAPath() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  auto path = tgfxrn::textToPath({run("Wg")}, spec, 40);
+  CHECK(!path.isEmpty());
+
+  // It occupies the box measureText reports, so a caller can place it with the
+  // same numbers it would have given <Text>.
+  auto measured = tgfxrn::layoutText({run("Wg")}, spec, 40);
+  auto bounds = path.getBounds();
+  CHECK(bounds.width() <= measured.metrics.width + 1);
+  CHECK(bounds.width() > measured.metrics.width * 0.7f);
+  // Above the baseline at y = 0, by no more than the ascent.
+  CHECK(bounds.top >= measured.metrics.ascent - 1);
+  CHECK(bounds.top < 0);
+
+  // And it survives the round trip through the string JS gets.
+  auto data = tgfxrn::pathToSvg(path);
+  CHECK(!data.empty());
+  auto reparsed = tgfxrn::parseSvgPath(data);
+  auto again = reparsed.getBounds();
+  CHECK(std::abs(again.width() - bounds.width()) < 0.5f);
+  CHECK(std::abs(again.height() - bounds.height()) < 0.5f);
+
+  // Wrapping applies, because it is the same layout: two lines are taller.
+  spec.wrapWidth = 30;
+  auto wrapped = tgfxrn::textToPath({run("Wg Wg Wg")}, spec, 40);
+  CHECK(wrapped.getBounds().height() > bounds.height());
+}
+
+/// <Glyphs> draws exactly the ids it is handed, where it is told to: no shaping,
+/// no fallback, no line breaking. The one primitive for a caller that has
+/// already done its own layout.
+void placedGlyphsDrawWhereTheyArePut() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  auto ids = tgfxrn::glyphIdsFor("Wg", spec, 20);
+  CHECK(ids.size() == 2);
+  CHECK(ids[0] != 0);
+
+  auto write = [&](float secondX) {
+    Writer w;
+    w.push(1);
+    w.push(12);  // Glyphs
+    w.pushAnim(2);
+    w.pushAnim(40);
+    w.pushAnim(20);
+    w.push(1);  // family
+    w.push(400);
+    w.push(0);
+    w.push(0);
+    w.push(2);  // two glyphs
+    w.push(ids[0]);
+    w.push(0);
+    w.push(0);
+    w.push(ids[1]);
+    w.push(secondX);
+    w.push(0);
+    w.pushPaint(0xff000000, false);
+    return render(w.finish(), {"", "Helvetica"}, {});
+  };
+  auto together = write(14);
+  auto apart = write(34);
+  CHECK(anyPixelSet(together));
+  CHECK(anyPixelSet(apart));
+  // Moving one glyph moves ink: the positions are the caller's, not a layout's.
+  CHECK(together != apart);
+  CHECK(rightmostInk(apart) > rightmostInk(together));
+
+  // An id the face does not have is the caller's problem, not a crash.
+  Writer bogus;
+  bogus.push(1);
+  bogus.push(12);
+  bogus.pushAnim(2);
+  bogus.pushAnim(40);
+  bogus.pushAnim(20);
+  bogus.push(1);
+  bogus.push(400);
+  bogus.push(0);
+  bogus.push(0);
+  bogus.push(1);
+  bogus.push(60000);
+  bogus.push(0);
+  bogus.push(0);
+  bogus.pushPaint(0xff000000, false);
+  render(bogus.finish(), {"", "Helvetica"}, {});
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -2143,6 +2470,13 @@ int main() {
   aBufferSwapSchedulesADraw();
   aDisposedHandleDrawsNothing();
   anExifRotatedJpegDecodesUpright();
+  aParagraphKeepsItsItalicThroughTheRuns();
+  theEllipsisBelongsToTheRunItFollows();
+  aSpanCarriesItsOwnFace();
+  aColouredSpanSplitsTheBlobs();
+  everyLineIsMeasured();
+  textComesBackAsAPath();
+  placedGlyphsDrawWhereTheyArePut();
   aBlendModeCompositesAgainstWhatIsBelow();
   aBlendModeSurvivesAnImageFilter();
   aColourMatrixTransformsTheDrawnColour();

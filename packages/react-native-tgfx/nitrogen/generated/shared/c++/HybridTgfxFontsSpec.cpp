@@ -19,6 +19,8 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("registerFromBytes", &HybridTgfxFontsSpec::registerFromBytes);
       prototype.registerHybridMethod("registerFromBase64", &HybridTgfxFontsSpec::registerFromBase64);
       prototype.registerHybridMethod("measureText", &HybridTgfxFontsSpec::measureText);
+      prototype.registerHybridMethod("textPath", &HybridTgfxFontsSpec::textPath);
+      prototype.registerHybridMethod("glyphIds", &HybridTgfxFontsSpec::glyphIds);
     });
   }
 

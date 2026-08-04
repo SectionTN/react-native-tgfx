@@ -37,7 +37,7 @@ namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
 /// Lives here so the reader and the C++ test harness cannot drift apart.
-inline constexpr double kSceneVersion = 13;
+inline constexpr double kSceneVersion = 15;
 
 /// How an image is scaled into its destination rect. Mirrors Skia's `fit`,
 /// which is Flutter's BoxFit; see fitRects() in TgfxScene.cpp.
@@ -158,6 +158,13 @@ struct TransformOpCmd {
   AnimF b;
 };
 
+/// A ceiling on <Span> children, so a corrupt run count cannot make the reader
+/// allocate or loop without bound. Far above any real paragraph.
+inline constexpr int kMaxTextRuns = 4096;
+
+/// The same ceiling for <Glyphs>, whose count comes straight off the wire.
+inline constexpr int kMaxGlyphs = 65536;
+
 /// A <Text> or <TextPath>: everything the layout needs, plus the laid-out blob
 /// for the size it was last drawn at.
 ///
@@ -165,11 +172,16 @@ struct TransformOpCmd {
 /// render thread's stack — does not carry a paragraph's worth of fields for
 /// every rect in the scene.
 struct TextCmd {
-  std::string text;
+  /// One entry with no style overrides for a plain <Text>; one per <Span>
+  /// otherwise. Never empty.
+  std::vector<TextRun> runs;
   TextSpec spec;
   /// <TextPath> only; `onPath` is what tells the two apart.
   tgfx::Path path;
   bool onPath = false;
+  /// <Glyphs> only: ids and positions the caller placed itself. Non-empty is
+  /// what marks the command as one, and `runs` is then unused.
+  std::vector<PlacedGlyph> glyphs;
 
   /// The layout for the size last drawn, rebuilt only when that size changes.
   /// Mutable because the program is shared as const, and touched only by the
@@ -241,6 +253,7 @@ class SceneRenderer {
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
   /// Reads the family/weight/style/spacing block both text kinds share.
   void readTextSpec(SceneReader& reader, TextSpec& spec);
+  void readTextRuns(SceneReader& reader, TextCmd& text);
   void readPaint(SceneReader& reader, PaintCmd& paint);
   /// Builds the paint's blend mode and filters, once.
   void readFilters(SceneReader& reader, PaintCmd& paint);

@@ -60,6 +60,8 @@ namespace margelo::nitro::tgfx {
       virtual std::shared_ptr<Promise<std::string>> registerFromBytes(const std::shared_ptr<ArrayBuffer>& bytes, const std::string& family) = 0;
       virtual std::shared_ptr<Promise<std::string>> registerFromBase64(const std::string& data, const std::string& family) = 0;
       virtual TextMeasurement measureText(const std::string& text, const TextLayoutStyle& style) = 0;
+      virtual std::string textPath(const std::string& text, const TextLayoutStyle& style) = 0;
+      virtual std::vector<double> glyphIds(const std::string& text, const TextLayoutStyle& style) = 0;
 
     protected:
       // Hybrid Setup

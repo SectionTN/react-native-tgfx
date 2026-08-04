@@ -1,5 +1,7 @@
+import { NodeType, type Node } from '../reconciler/types'
 import type { FontProps, ParagraphProps } from '../types'
-import { resolveNumber } from './values'
+import { resolveColor } from './colors'
+import { resolveNumber, resolveValue } from './values'
 import type { SceneWriter } from './writer'
 
 /** Mirrored by TextAlign in cpp/TextLayout.hpp. */
@@ -29,6 +31,52 @@ export function writeFont(w: SceneWriter, p: Record<string, unknown>): void {
   w.push(weightValue(p.fontWeight))
   w.push(p.fontStyle === 'italic' ? 1 : 0)
   w.push(resolveNumber(p.letterSpacing, 0))
+}
+
+/**
+ * The run list, read by SceneRenderer::readTextRuns: a count, then per run its
+ * string and what it overrides of the paragraph's face. A `<Text>` with no
+ * `<Span>` children writes exactly one run that overrides nothing, so a plain
+ * label costs one extra word plus a zeroed style block.
+ *
+ * A run's own `fontSize` is deliberately not animated: the layout is memoised
+ * against the paragraph's size, and a second moving size would miss that memo on
+ * every frame. 0 means "the paragraph's size", which is the animated one.
+ */
+export function writeTextRuns(
+  w: SceneWriter,
+  node: Node,
+  props: Record<string, unknown>
+): void {
+  const spans = node.children.filter((child) => child.type === NodeType.Span)
+  if (spans.length === 0) {
+    w.push(1)
+    writeRun(w, String(resolveValue(props.text) ?? ''), {})
+    return
+  }
+  w.push(spans.length)
+  for (const span of spans) {
+    writeRun(w, String(resolveValue(span.props.text) ?? ''), span.props)
+  }
+}
+
+function writeRun(
+  w: SceneWriter,
+  text: string,
+  p: Record<string, unknown>
+): void {
+  w.pushString(text)
+  w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
+  // 0, not 400: the paragraph's weight is what an unset span inherits.
+  w.push(p.fontWeight !== undefined ? weightValue(p.fontWeight) : 0)
+  // 0 inherit, 1 italic, 2 upright — a plain flag could not say "unset", and an
+  // implicit run always is.
+  w.push(p.fontStyle === 'italic' ? 1 : p.fontStyle === 'normal' ? 2 : 0)
+  w.push(resolveNumber(p.letterSpacing, 0))
+  w.push(resolveNumber(p.fontSize, 0))
+  const hasColor = p.color !== undefined
+  w.push(hasColor ? 1 : 0)
+  w.push(hasColor ? resolveColor(resolveValue(p.color) as never) : 0)
 }
 
 /** The style block for `measureText`, defaulted the same way the writer does. */

@@ -24,6 +24,21 @@ export interface TextLayoutStyle {
   ellipsis: string
 }
 
+/** One line of a laid-out paragraph, in the paragraph's own coordinates. */
+export interface LineMeasurement {
+  width: number
+  /** Where the line starts once alignment has placed it. */
+  x: number
+  /** Distance below the first baseline. */
+  baseline: number
+  /** Negative, as in Skia: the extent above this line's baseline. */
+  ascent: number
+  descent: number
+  /** UTF-8 byte offsets of the line's first and last glyph in the string. */
+  startIndex: number
+  endIndex: number
+}
+
 /** What a laid-out string occupies, with its first baseline at y = 0. */
 export interface TextMeasurement {
   width: number
@@ -32,6 +47,8 @@ export interface TextMeasurement {
   ascent: number
   descent: number
   lineCount: number
+  /** One entry per line, in order. */
+  lines: LineMeasurement[]
 }
 
 /**
@@ -66,4 +83,20 @@ export interface TgfxFonts extends HybridObject<{
    * renderer does, so a width measured here is the width that gets drawn.
    */
   measureText(text: string, style: TextLayoutStyle): TextMeasurement
+
+  /**
+   * The same layout as an outline, in SVG path data — the string `<Path>` takes.
+   * Relative to the first baseline at (0, 0), exactly as `measureText` reports.
+   *
+   * Empty when the face has no outlines to give: a colour emoji is a bitmap.
+   */
+  textPath(text: string, style: TextLayoutStyle): string
+
+  /**
+   * The glyph id per codepoint of `text` in the face `style` selects, for a
+   * caller placing glyphs itself with `<Glyphs>`. 0 means the face has no glyph
+   * for that codepoint — there is no fallback here, by design: `<Glyphs>` is the
+   * escape hatch for callers doing their own layout.
+   */
+  glyphIds(text: string, style: TextLayoutStyle): number[]
 }
