@@ -1,29 +1,11 @@
 import { useEffect } from 'react'
 import type { MaybeSharedValue } from '../compiler/values'
 import type { TgfxViewRef } from '../views/TgfxNativeView'
-import { isModuleNotFound } from './moduleNotFound'
+import { reanimatedInstalled, requireReanimated } from './peer'
 
 interface DriverProps {
   view: TgfxViewRef
   values: MaybeSharedValue<unknown>[]
-}
-
-let installed = true
-let startMapper: ((worklet: () => void, deps: unknown[]) => number) | undefined
-let stopMapper: ((id: number) => void) | undefined
-try {
-  // A require inside a try is what makes Reanimated optional to Metro; a static import never is.
-  ;({ startMapper, stopMapper } = require('react-native-reanimated'))
-} catch (e) {
-  if (!isModuleNotFound(e, 'react-native-reanimated')) {
-    throw e
-  }
-  installed = false
-}
-if (installed && (startMapper == null || stopMapper == null)) {
-  throw new Error(
-    '[tgfx] react-native-reanimated is installed but does not export startMapper/stopMapper, which the animation driver needs.'
-  )
 }
 
 /**
@@ -36,21 +18,26 @@ if (installed && (startMapper == null || stopMapper == null)) {
  * clone of N values per frame.
  */
 function Driver({ view, values }: DriverProps): null {
+  const mod = requireReanimated('the animation driver', [
+    'startMapper',
+    'stopMapper',
+  ])
+  const start = mod.startMapper!
+  const stop = mod.stopMapper!
   useEffect(() => {
     const slots = new Array<number>(values.length)
-    const mapperId = startMapper!(() => {
+    const mapperId = start(() => {
       'worklet'
       for (let i = 0; i < values.length; i++) {
         slots[i] = Number(values[i]!.value)
       }
       view.setValues(slots)
     }, values)
-    return () => stopMapper!(mapperId)
-  }, [view, values])
+    return () => stop(mapperId)
+  }, [view, values, start, stop])
   return null
 }
 
 /** Null when react-native-reanimated is not installed. */
-export const AnimationDriver: ((props: DriverProps) => null) | null = installed
-  ? Driver
-  : null
+export const AnimationDriver: ((props: DriverProps) => null) | null =
+  reanimatedInstalled() ? Driver : null

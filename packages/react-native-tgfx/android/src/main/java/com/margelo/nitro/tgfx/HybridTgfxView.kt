@@ -79,11 +79,11 @@ class HybridTgfxView(private val context: ThemedReactContext) :
 
   private fun applyCanvas() {
     val canvas =
-      if (inHierarchy) TgfxTextureView(context, target) else TgfxSurfaceView(context, target)
-    when (canvas) {
-      is TgfxTextureView -> canvas.setOpaqueSurface(opaque)
-      is TgfxSurfaceView -> canvas.setOpaqueSurface(opaque)
-    }
+      if (inHierarchy) {
+        TgfxTextureView(context, target).also { it.setOpaqueSurface(opaque) }
+      } else {
+        TgfxSurfaceView(context, target).also { it.setOpaqueSurface(opaque) }
+      }
     host.setCanvas(canvas)
   }
 
@@ -108,6 +108,8 @@ class HybridTgfxView(private val context: ThemedReactContext) :
       }
       field = value
       target.setOpaque(value)
+      // Recreates the surface, not just the flag: a SurfaceView's pixel format
+      // only takes on a fresh surface, and the renderer treats the swap as one.
       applyCanvas()
     }
 

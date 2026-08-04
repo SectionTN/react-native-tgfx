@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cmath>
 #include <iterator>
+#include <limits>
 
 #include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
@@ -46,6 +47,11 @@ struct SceneReader {
   size_t patchAt = 0;
   bool ok = true;
 
+  /// Words the cursor has not reached yet — an upper bound on any wire count.
+  size_t remaining() const {
+    return at < words.size() ? words.size() - at : 0;
+  }
+
   double next() {
     if (at >= words.size()) {
       ok = false;
@@ -55,14 +61,26 @@ struct SceneReader {
   }
 
   int nextInt() {
-    return static_cast<int>(next());
+    double v = next();
+    // Casting a NaN or out-of-range double to int is undefined behaviour.
+    if (!(v >= std::numeric_limits<int>::min() &&
+          v <= std::numeric_limits<int>::max())) {
+      ok = false;
+      return 0;
+    }
+    return static_cast<int>(v);
   }
 
   AnimF nextAnim() {
     AnimF f;
+    // Compared as a double: casting the wire value to size_t would be undefined
+    // behaviour for a NaN or negative one, and NaN fails this compare anyway.
     if (patchAt + 1 < patches.size() &&
-        static_cast<size_t>(patches[patchAt]) == at) {
-      f.slot = static_cast<int>(patches[patchAt + 1]);
+        patches[patchAt] == static_cast<double>(at)) {
+      double slot = patches[patchAt + 1];
+      f.slot = slot >= 0 && slot <= std::numeric_limits<int>::max()
+                   ? static_cast<int>(slot)
+                   : -1;
       patchAt += 2;
     }
     f.literal = static_cast<float>(next());
@@ -84,6 +102,13 @@ namespace {
 
 /// Bounds readNode and so drawCmd too; DrawCmd is 544 B, so 256 deep is ~139 KB of stack.
 constexpr int kMaxNodeDepth = 256;
+
+/// A wire count clamped to what is left in the buffer. The read loops are all
+/// bounded by `r.ok`, so a corrupt count cannot over-read — but reserving on the
+/// raw value would ask for terabytes before the first word is read.
+size_t boundedCount(const SceneReader& r, int count) {
+  return std::min(static_cast<size_t>(std::max(0, count)), r.remaining());
+}
 
 /// Every colour/image filter ever constructed. Only readFilters touches it, and
 /// readFilters only runs at setScene — see filterBuildCount().
@@ -298,12 +323,12 @@ tgfx::Color colorFromPacked(uint32_t c) {
 void readStops(SceneReader& r, std::vector<tgfx::Color>& colors,
                std::vector<float>& positions) {
   int colorCount = r.nextInt();
-  colors.reserve(static_cast<size_t>(std::max(0, colorCount)));
+  colors.reserve(boundedCount(r, colorCount));
   for (int i = 0; i < colorCount && r.ok; i++) {
     colors.push_back(colorFromPacked(static_cast<uint32_t>(r.next())));
   }
   int positionCount = r.nextInt();
-  positions.reserve(static_cast<size_t>(std::max(0, positionCount)));
+  positions.reserve(boundedCount(r, positionCount));
   for (int i = 0; i < positionCount && r.ok; i++) {
     positions.push_back(static_cast<float>(r.next()));
   }
@@ -536,13 +561,13 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
     std::string preamble = r.nextString();
     int functionCount = r.nextInt();
     std::vector<std::string> functionNames;
-    functionNames.reserve(static_cast<size_t>(std::max(0, functionCount)));
+    functionNames.reserve(boundedCount(r, functionCount));
     for (int i = 0; i < functionCount && r.ok; i++) {
       functionNames.push_back(r.nextString());
     }
     int uniformCount = r.nextInt();
     std::vector<tgfx::RuntimeShaderUniform> uniforms;
-    uniforms.reserve(static_cast<size_t>(std::max(0, uniformCount)));
+    uniforms.reserve(boundedCount(r, uniformCount));
     std::vector<AnimF> slots;
     bool animated = false;
     for (int i = 0; i < uniformCount && r.ok; i++) {
@@ -567,7 +592,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
     // `uniform shader` children, each a shader payload in its own right.
     int childCount = r.nextInt();
     std::vector<ChildShaderCmd> children;
-    children.reserve(static_cast<size_t>(std::max(0, childCount)));
+    children.reserve(boundedCount(r, childCount));
     bool dynamicChild = false;
     for (int i = 0; i < childCount && r.ok; i++) {
       ChildShaderCmd child;
@@ -759,7 +784,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
     case KGroup: {
       cmd.kind = DrawCmd::Group;
       int opCount = r.nextInt();
-      cmd.ops.reserve(static_cast<size_t>(std::max(0, opCount)));
+      cmd.ops.reserve(boundedCount(r, opCount));
       bool animated = false;
       for (int i = 0; i < opCount && r.ok; i++) {
         TransformOpCmd op;
@@ -775,7 +800,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         cmd.matrix = matrixFromOps(cmd.ops, {});
       }
       int childCount = r.nextInt();
-      cmd.children.reserve(static_cast<size_t>(std::max(0, childCount)));
+      cmd.children.reserve(boundedCount(r, childCount));
       for (int i = 0; i < childCount && r.ok; i++) {
         DrawCmd child;
         if (!readNode(r, child, depth + 1)) {
@@ -800,7 +825,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.mirror = r.nextInt() != 0;
       readPaint(r, cmd.paint);
       int childCount = r.nextInt();
-      cmd.children.reserve(static_cast<size_t>(std::max(0, childCount)));
+      cmd.children.reserve(boundedCount(r, childCount));
       for (int i = 0; i < childCount && r.ok; i++) {
         DrawCmd child;
         if (!readNode(r, child, depth + 1)) {
@@ -968,14 +993,30 @@ void SceneRenderer::setScene(std::span<const double> words,
     TGFXRN_LOGW("draw program has an unexpected header");
     return;
   }
-  auto total = static_cast<size_t>(words[1]);
-  auto patchStart = static_cast<size_t>(words[2]);
+  // Every one of these is a JS-written double, so casting a NaN, a negative or
+  // an out-of-range one to size_t would be undefined behaviour. Bounding by the
+  // buffer length also keeps the spans below from wrapping.
+  auto index = [limit = static_cast<double>(words.size())](double v,
+                                                           size_t& out) {
+    if (!std::isfinite(v) || v < 0 || v > limit) {
+      return false;
+    }
+    out = static_cast<size_t>(v);
+    return true;
+  };
+  size_t total = 0;
+  size_t patchStart = 0;
+  if (!index(words[1], total) || !index(words[2], patchStart)) {
+    TGFXRN_LOGW("draw program has an unexpected header");
+    return;
+  }
   if (total > words.size() || patchStart + 1 > total) {
     TGFXRN_LOGW("draw program is truncated");
     return;
   }
-  auto patchCount = static_cast<size_t>(words[patchStart]);
-  if (patchStart + 1 + patchCount * 2 > total) {
+  size_t patchCount = 0;
+  if (!index(words[patchStart], patchCount) ||
+      patchStart + 1 + patchCount * 2 > total) {
     TGFXRN_LOGW("draw program patch table is truncated");
     return;
   }
@@ -984,7 +1025,7 @@ void SceneRenderer::setScene(std::span<const double> words,
 
   auto program = std::make_shared<Program>();
   int rootCount = reader.nextInt();
-  program->reserve(static_cast<size_t>(std::max(0, rootCount)));
+  program->reserve(boundedCount(reader, rootCount));
   for (int i = 0; i < rootCount && reader.ok; i++) {
     DrawCmd cmd;
     if (!readNode(reader, cmd, 0)) {

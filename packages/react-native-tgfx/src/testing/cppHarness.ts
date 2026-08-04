@@ -82,14 +82,21 @@ export function runCppHarness(
     // c++ never starting or dying on a signal is the toolchain; a nonzero exit is its verdict.
     if (build.error || build.signal) {
       throw new Error(
-        `${name}: c++ failed to build the harness (${outcome(build, COMPILE_TIMEOUT_MS)}). ` +
-          `${why(build, 'This is the toolchain, not the code under test.')}\n${build.stderr ?? ''}`
+        `${name}: c++ failed to build the harness (${outcome(
+          build,
+          COMPILE_TIMEOUT_MS
+        )}). ` +
+          `${why(build, 'This is the toolchain, not the code under test.')}\n${
+            build.stderr ?? ''
+          }`
       )
     }
     if (build.status !== 0) {
       throw new Error(
         `${name}: c++ rejected the harness (exit ${build.status}). ` +
-          `This is the code under test failing to compile, not the toolchain.\n${build.stderr ?? ''}`
+          `This is the code under test failing to compile, not the toolchain.\n${
+            build.stderr ?? ''
+          }`
       )
     }
     const run = spawnSync(binary, [...args], {
@@ -98,8 +105,13 @@ export function runCppHarness(
     })
     if (run.error || run.status !== 0) {
       throw new Error(
-        `${name}: the harness did not run to completion (${outcome(run, RUN_TIMEOUT_MS)}). ` +
-          `${why(run, 'The code under test failed or never returned.')}\n${run.stderr ?? ''}`
+        `${name}: the harness did not run to completion (${outcome(
+          run,
+          RUN_TIMEOUT_MS
+        )}). ` +
+          `${why(run, 'The code under test failed or never returned.')}\n${
+            run.stderr ?? ''
+          }`
       )
     }
     return { stdout: run.stdout, stderr: run.stderr }

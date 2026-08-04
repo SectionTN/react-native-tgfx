@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from 'bun:test'
+import { beforeEach, expect, spyOn, test } from 'bun:test'
 import React from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
 import { nativeMocks } from '../testing/nativeMocks'
@@ -11,8 +11,12 @@ interface Registered {
 }
 let registered: Registered[] = []
 let measured: unknown = null
+let failing = false
 
 function record(via: Registered['via'], arg: string, family: string): string {
+  if (failing) {
+    throw new Error('no such face')
+  }
   registered.push({ via, arg, family })
   return family || 'Inferred'
 }
@@ -31,12 +35,18 @@ nativeMocks.hybridObject = () => ({
   },
 })
 
-const { loadFont, measureText, useFonts, registeredFontFamilies } =
-  require('./useFonts') as typeof import('./useFonts')
+const {
+  loadFont,
+  measureText,
+  useFonts,
+  useFontsState,
+  registeredFontFamilies,
+} = require('./useFonts') as typeof import('./useFonts')
 
 beforeEach(() => {
   registered = []
   measured = null
+  failing = false
   nativeMocks.assetSource = { uri: '/var/app/PT_Serif.ttf' }
 })
 
@@ -87,6 +97,27 @@ test('useFonts registers every face and flips to ready', async () => {
   expect(registered).toHaveLength(2)
   expect(registered.every((r) => r.family === 'Demo Serif')).toBe(true)
   expect(ready).toBe(true)
+})
+
+// A boolean alone cannot tell "still loading" from "failed", which leaves the
+// documented `{ready && <Text/>}` gate rendering nothing, forever, silently.
+test('a failed registration surfaces as an error, not a permanent false', async () => {
+  failing = true
+  const warn = spyOn(console, 'warn').mockImplementation(() => {})
+  let state: { ready: boolean; error: Error | null } | undefined
+  function Probe(): null {
+    state = useFontsState({ 'Demo Serif': [1 as unknown as number] })
+    return null
+  }
+  try {
+    await act(async () => {
+      TestRenderer.create(<Probe />)
+    })
+  } finally {
+    warn.mockRestore()
+  }
+  expect(state?.ready).toBe(false)
+  expect(state?.error?.message).toBe('no such face')
 })
 
 // The record is an object literal, so a new identity every render; re-running

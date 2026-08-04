@@ -86,10 +86,13 @@ void TgfxRenderer::setScene(std::span<const double> words,
   if (words.size() < 2) {
     return;
   }
-  auto used = static_cast<size_t>(words[1]);
-  if (used < 2 || used > words.size()) {
+  // Casting a NaN or out-of-range double to size_t is undefined behaviour.
+  double usedWord = words[1];
+  if (!std::isfinite(usedWord) || usedWord < 2 ||
+      usedWord > static_cast<double>(words.size())) {
     return;
   }
+  auto used = static_cast<size_t>(usedWord);
   words = words.first(used);
   uint64_t wordsHash = hashWords(words);
   {

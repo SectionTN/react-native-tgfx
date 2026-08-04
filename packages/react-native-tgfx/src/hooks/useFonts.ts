@@ -51,6 +51,56 @@ export function loadFonts(
   )
 }
 
+export interface FontsState {
+  /** True once every face has registered. */
+  readonly ready: boolean
+  /** Why registration failed, or `null`. `ready` stays false in that case. */
+  readonly error: Error | null
+}
+
+// Shared identity, so React can bail out of the redundant initial re-render.
+const PENDING: FontsState = Object.freeze({ ready: false, error: null })
+
+/**
+ * Register fonts for the lifetime of a component, with their ready and error
+ * state. Use this over `useFonts` when a failed load needs to be visible rather
+ * than gating the text off forever.
+ *
+ * Faces are not unregistered on unmount: they are process-wide, cheap to keep,
+ * and another canvas may still be drawing with them.
+ */
+export function useFontsState(
+  families: Record<string, FontSource[]>
+): FontsState {
+  const [state, setState] = useState<FontsState>(PENDING)
+  // The record is almost always an object literal, so a new identity every
+  // render; the families and their sources are what actually identify it.
+  const key = JSON.stringify(families)
+
+  useEffect(() => {
+    let active = true
+    setState(PENDING)
+    loadFonts(families)
+      .then(() => {
+        if (active) {
+          setState({ ready: true, error: null })
+        }
+      })
+      .catch((e: unknown) => {
+        const error = e instanceof Error ? e : new Error(String(e))
+        console.warn('[tgfx] useFonts failed to load:', error)
+        if (active) {
+          setState({ ready: false, error })
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [key])
+
+  return state
+}
+
 /**
  * Register fonts for the lifetime of a component and report when they are in.
  *
@@ -63,32 +113,10 @@ export function loadFonts(
  * return <Canvas>{ready && <Text fontFamily="Playfair" ... />}</Canvas>
  * ```
  *
- * Faces are not unregistered on unmount: they are process-wide, cheap to keep,
- * and another canvas may still be drawing with them.
+ * A load failure leaves this `false` forever; use `useFontsState` to see it.
  */
 export function useFonts(families: Record<string, FontSource[]>): boolean {
-  const [ready, setReady] = useState(false)
-  // The record is almost always an object literal, so a new identity every
-  // render; the families and their sources are what actually identify it.
-  const key = JSON.stringify(families)
-
-  useEffect(() => {
-    let active = true
-    loadFonts(families)
-      .then(() => {
-        if (active) {
-          setReady(true)
-        }
-      })
-      .catch((e: unknown) => {
-        console.warn('[tgfx] useFonts failed to load:', e)
-      })
-    return () => {
-      active = false
-    }
-  }, [key])
-
-  return ready
+  return useFontsState(families).ready
 }
 
 /** Every family registered so far, in registration order. */

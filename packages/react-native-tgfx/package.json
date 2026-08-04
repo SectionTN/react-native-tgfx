@@ -50,6 +50,7 @@
     "test": "bun test",
     "clean": "rm -rf android/build node_modules/**/android/build lib tsconfig.tsbuildinfo",
     "lint": "eslint \"**/*.{js,ts,tsx}\" --fix",
+    "lint:check": "eslint \"**/*.{js,ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "typescript": "tsc",
@@ -129,10 +130,14 @@
     "react": "*",
     "react-native": "*",
     "react-native-nitro-modules": "*",
-    "react-native-reanimated": "*"
+    "react-native-reanimated": "*",
+    "react-native-worklets": "*"
   },
   "peerDependenciesMeta": {
     "react-native-reanimated": {
+      "optional": true
+    },
+    "react-native-worklets": {
       "optional": true
     }
   },

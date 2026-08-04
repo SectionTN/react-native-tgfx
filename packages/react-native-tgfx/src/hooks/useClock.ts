@@ -1,27 +1,9 @@
 import { useCallback } from 'react'
 import type { MaybeSharedValue } from '../compiler/values'
-import { isModuleNotFound } from '../reanimated/moduleNotFound'
+import { requireReanimated } from '../reanimated/peer'
 
 interface Frame {
   timeSinceFirstFrame: number
-}
-
-let installed = true
-let useSharedValue: ((initial: number) => MaybeSharedValue<number>) | undefined
-let useFrameCallback: ((cb: (frame: Frame) => void) => unknown) | undefined
-try {
-  // A require inside a try is what makes Reanimated optional to Metro; a static import never is.
-  ;({ useSharedValue, useFrameCallback } = require('react-native-reanimated'))
-} catch (e) {
-  if (!isModuleNotFound(e, 'react-native-reanimated')) {
-    throw e
-  }
-  installed = false
-}
-if (installed && (useSharedValue == null || useFrameCallback == null)) {
-  throw new Error(
-    '[tgfx] react-native-reanimated is installed but does not export useSharedValue/useFrameCallback, which useClock needs.'
-  )
 }
 
 /**
@@ -36,12 +18,11 @@ if (installed && (useSharedValue == null || useFrameCallback == null)) {
  * a minute of uptime, silently. Seconds buy eighteen hours instead.
  */
 export function useClock(): MaybeSharedValue<number> {
-  if (!installed) {
-    throw new Error(
-      '[tgfx] useClock needs react-native-reanimated, which is not installed.'
-    )
-  }
-  const clock = useSharedValue!(0)
+  const mod = requireReanimated('useClock', [
+    'useSharedValue',
+    'useFrameCallback',
+  ])
+  const clock = mod.useSharedValue!(0)
   // Stable identity: Reanimated keys its effect on the callback, so a fresh one
   // each render re-registers the frame callback and resets the clock to zero.
   const tick = useCallback(
@@ -51,6 +32,6 @@ export function useClock(): MaybeSharedValue<number> {
     },
     [clock]
   )
-  useFrameCallback!(tick)
+  mod.useFrameCallback!(tick)
   return clock
 }

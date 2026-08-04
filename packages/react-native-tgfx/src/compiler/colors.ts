@@ -232,13 +232,29 @@ function allFinite(...ns: number[]): boolean {
   return ns.every((n) => Number.isFinite(n))
 }
 
+// `50%` is 0..100 of the channel range, a bare token is already 0..255.
+function parseComponent(token: string | undefined): number {
+  const n = parseFloat(token ?? '')
+  // `(n / 100) * 255`, not `n * 2.55`: the latter puts 50% at 127.49999999999999.
+  return token?.endsWith('%') === true ? (n / 100) * 255 : n
+}
+
+// A `%` alpha is 0..100, a bare alpha is already 0..1.
+function parseAlpha(token: string | undefined): number {
+  if (token == null) {
+    return 1
+  }
+  const n = parseFloat(token)
+  return token.endsWith('%') ? n / 100 : n
+}
+
 function fromFunc(str: string): number | undefined {
   const inside = str.slice(str.indexOf('(') + 1, str.lastIndexOf(')'))
   const parts = inside.split(/[ ,/]+/).filter((p) => p.length > 0)
-  const r = parseFloat(parts[0] ?? '')
-  const g = parseFloat(parts[1] ?? '')
-  const b = parseFloat(parts[2] ?? '')
-  const a = parts[3] != null ? parseFloat(parts[3]) : 1
+  const r = parseComponent(parts[0])
+  const g = parseComponent(parts[1])
+  const b = parseComponent(parts[2])
+  const a = parseAlpha(parts[3])
   if (!allFinite(r, g, b, a)) {
     return undefined
   }
@@ -251,7 +267,7 @@ function fromHsl(str: string): number | undefined {
   const h = parseFloat(parts[0] ?? '')
   const s = parseFloat(parts[1] ?? '') / 100
   const l = parseFloat(parts[2] ?? '') / 100
-  const alpha = parts[3] != null ? parseFloat(parts[3]) : 1
+  const alpha = parseAlpha(parts[3])
   if (!allFinite(h, s, l, alpha)) {
     return undefined
   }

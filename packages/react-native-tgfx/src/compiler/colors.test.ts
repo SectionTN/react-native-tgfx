@@ -183,4 +183,15 @@ describe('resolveColor', () => {
     })
     expect(warnings).toEqual([])
   })
+
+  // Percentages are valid CSS and never warn, so reading them as 0..255 is a
+  // silently wrong colour: rgb(100% 0% 0%) rendered as #640000, not red.
+  it('scales percentage components and alpha', () => {
+    expect(resolveColor('rgb(100%, 0%, 0%)')).toBe(0xffff0000)
+    expect(resolveColor('rgb(50% 50% 50%)')).toBe(0xff808080)
+    expect(resolveColor('rgba(255 0 0 / 50%)')).toBe(0x80ff0000)
+    expect(resolveColor('hsl(0 100% 50% / 50%)')).toBe(0x80ff0000)
+    // A bare alpha is still 0..1, not 0..100.
+    expect(resolveColor('rgba(255, 0, 0, 0.5)')).toBe(0x80ff0000)
+  })
 })

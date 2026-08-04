@@ -29,6 +29,7 @@
     "test": "bun test",
     "clean": "rm -rf android/build lib tsconfig.tsbuildinfo",
     "lint": "eslint \"**/*.{js,ts,tsx}\" --fix",
+    "lint:check": "eslint \"**/*.{js,ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "specs": "tsc --noEmit false && nitrogen --logLevel=\"debug\""

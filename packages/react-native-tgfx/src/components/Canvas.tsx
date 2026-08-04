@@ -20,6 +20,28 @@ let warnedNoDriver = false
 /** Fill in every field, so neither native side has to model an absent option. */
 function nativeOptions(options: SnapshotOptions = {}): NativeSnapshotOptions {
   const rect = options.rect
+  const scale = options.scale ?? 1
+  // Rejected here rather than clamped: a zero, negative or NaN scale surfaces
+  // natively as "could not allocate a scaled target", which blames the GPU for
+  // the caller's argument.
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error(
+      `[tgfx] snapshot: scale must be a positive finite number, got ${String(
+        options.scale
+      )}`
+    )
+  }
+  if (
+    rect != null &&
+    !(
+      Number.isFinite(rect.x) &&
+      Number.isFinite(rect.y) &&
+      Number.isFinite(rect.width) &&
+      Number.isFinite(rect.height)
+    )
+  ) {
+    throw new Error('[tgfx] snapshot: rect must have four finite numbers')
+  }
   return {
     format: options.format ?? 'png',
     // Documented as 1–100; an out-of-range value reaches ImageCodec::Encode raw.
@@ -28,7 +50,7 @@ function nativeOptions(options: SnapshotOptions = {}): NativeSnapshotOptions {
     y: rect?.y ?? 0,
     width: rect?.width ?? 0,
     height: rect?.height ?? 0,
-    scale: options.scale ?? 1,
+    scale,
   }
 }
 

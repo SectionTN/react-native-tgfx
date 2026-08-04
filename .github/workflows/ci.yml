@@ -29,6 +29,11 @@ jobs:
         run: for p in packages/*/; do (cd "$p" && bun run typecheck); done
       - name: Unit tests
         run: for p in packages/*/; do (cd "$p" && bun run test); done
+      # `lint`/`format` themselves rewrite files, so CI runs the checking pair.
+      - name: Lint
+        run: for p in packages/*/; do (cd "$p" && bun run lint:check); done
+      - name: Formatting
+        run: for p in packages/*/; do (cd "$p" && bun run format:check); done
       - name: Benchmark acceptance gate tests
         run: bun test benchmarks/renderer-benchmark/scripts
       - name: Nitrogen output is committed and in sync
@@ -54,10 +59,38 @@ jobs:
           done
           rm -f react-native-tgfx-*.tgz
 
+  native-changes:
+    name: Native paths changed
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Herestring, not a pipe: `grep -q` would SIGPIPE git and trip pipefail.
+          files=$(git diff --name-only "$BASE" HEAD)
+          if grep -qE '^packages/[^/]+/(android|ios|cpp)/' <<<"$files"; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   ios:
     name: iOS Simulator build
-    # 20-30 min each: dispatched every fifth merged PR, never automatically.
-    if: github.event_name == 'workflow_dispatch'
+    # 20-30 min each: dispatched every fifth merged PR, and on any PR that
+    # touches android/ios/cpp — a Kotlin, Swift or C++ regression would
+    # otherwise merge without ever being compiled.
+    needs: native-changes
+    if: github.event_name == 'workflow_dispatch' || needs.native-changes.outputs.changed == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +105,15 @@ jobs:
         run: ./install_tools.sh && ./sync_deps.sh
       - name: Build the tgfx static library
         run: bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
+      # Built, not run: they need a Metal device. `bun test` only exercises the
+      # header-only harness programs, so this is the one place SceneTest — where
+      # the scene reader's bounds behaviour is asserted — is compiled at all.
+      # macOS because cpp/tests/CMakeLists.txt forces TGFX_USE_METAL.
+      - name: Build the C++ tests
+        working-directory: packages/react-native-tgfx/cpp/tests
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j3
       - name: Install pods
         working-directory: benchmarks/renderer-benchmark
         run: |
@@ -89,8 +131,10 @@ jobs:
 
   android:
     name: Android release build
-    # 20-30 min each: dispatched every fifth merged PR, never automatically.
-    if: github.event_name == 'workflow_dispatch'
+    # 20-30 min each: dispatched every fifth merged PR, and on any PR that
+    # touches android/ios/cpp.
+    needs: native-changes
+    if: github.event_name == 'workflow_dispatch' || needs.native-changes.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

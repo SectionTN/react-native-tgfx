@@ -54,8 +54,10 @@ export {
   registeredFontFamilies,
   textPath,
   useFonts,
+  useFontsState,
 } from './hooks/useFonts'
 export type {
+  FontsState,
   FontSource,
   LineMeasurement,
   TextMeasurement,

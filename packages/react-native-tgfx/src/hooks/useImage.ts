@@ -110,11 +110,12 @@ export function useImageState(source: number | string): ImageState {
     // A stale image under a new source is worse than an empty one.
     setState(PENDING)
     let loaded: TgfxImage | null = null
+    const aborter = new AbortController()
 
     async function load(): Promise<void> {
       // The whole point of the handle: a local file's bytes are read and decoded
       // natively and never cross into JS.
-      loaded = await loadSource(source, images())
+      loaded = await loadSource(source, images(), aborter.signal)
 
       if (!active) {
         loaded.dispose()
@@ -124,14 +125,17 @@ export function useImageState(source: number | string): ImageState {
     }
 
     load().catch((e: unknown) => {
+      // An abandoned load reports its own cancellation; nobody is waiting on it.
+      if (!active) {
+        return
+      }
       const error = e instanceof Error ? e : new Error(String(e))
       console.warn('[tgfx] useImage failed to load:', error)
-      if (active) {
-        setState({ data: null, error, loading: false })
-      }
+      setState({ data: null, error, loading: false })
     })
     return () => {
       active = false
+      aborter.abort()
       // Deterministic, rather than waiting for the JS handle to be collected:
       // the native side is holding decoded pixels.
       loaded?.dispose()

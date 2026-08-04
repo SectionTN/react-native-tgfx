@@ -29,7 +29,8 @@ function dataPayload(uri: string): string | null {
  */
 export async function loadSource<T>(
   source: number | string,
-  api: SourceReader<T>
+  api: SourceReader<T>,
+  signal?: AbortSignal
 ): Promise<T> {
   let uri: string
   // A bundled asset may resolve to a bare path, which is a file. A caller's own
@@ -55,7 +56,9 @@ export async function loadSource<T>(
     return api.fromFile(uri)
   }
   if (/^(https?|content|asset):/.test(uri)) {
-    const res = await fetch(uri)
+    // Without the signal a hung remote source holds its socket and buffers its
+    // response for the life of the request, long after the caller gave up.
+    const res = await fetch(uri, { signal })
     // A 404 body decodes to garbage rather than failing, so check first.
     if (!res.ok) {
       throw new Error(`${uri} returned HTTP ${res.status}`)

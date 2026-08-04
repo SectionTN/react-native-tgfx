@@ -124,7 +124,9 @@ function topLevelChunks(src: string): string[] {
   }
   if (src.slice(start).trim() !== '') {
     throw new Error(
-      `[tgfx] shader: unterminated declaration above main(): '${src.slice(start).trim()}'`
+      `[tgfx] shader: unterminated declaration above main(): '${src
+        .slice(start)
+        .trim()}'`
     )
   }
   return chunks

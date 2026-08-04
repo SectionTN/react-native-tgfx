@@ -20,6 +20,12 @@ function FakeView({ hybridRef }: { hybridRef: (ref: unknown) => void }): null {
       },
       setValues: (values: number[]) => pushed.push(values.slice()),
       invalidate: () => invalidated++,
+      snapshot: async (options: { scale: number }) => ({
+        data: new ArrayBuffer(0),
+        width: options.scale,
+        height: options.scale,
+        format: 'png',
+      }),
     })
   }, [hybridRef])
   return null
@@ -752,4 +758,21 @@ test('uniforms written to a drawing-node handle are dropped, not re-encoded', as
 
   expect(scenes).toEqual([])
   expect(pushed).toEqual([])
+})
+
+// A zero, negative or NaN scale reaches the GPU as "could not allocate a scaled
+// target", which blames the device for the caller's argument.
+test('a non-positive snapshot scale is rejected at the boundary', async () => {
+  const handle = React.createRef<import('../types').CanvasHandle>()
+  await render(<Canvas ref={handle}>{null}</Canvas>)
+  for (const scale of [0, -1, NaN]) {
+    await expect(handle.current!.snapshot({ scale })).rejects.toThrow(
+      /scale must be a positive finite number/
+    )
+  }
+  await expect(
+    handle.current!.snapshot({ rect: { x: NaN, y: 0, width: 1, height: 1 } })
+  ).rejects.toThrow(/rect must have four finite numbers/)
+  const snap = await handle.current!.snapshot({ scale: 2 })
+  expect(snap.width).toBe(2)
 })

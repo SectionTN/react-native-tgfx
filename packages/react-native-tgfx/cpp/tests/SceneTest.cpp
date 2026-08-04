@@ -9,6 +9,7 @@
 // measured separately, in AllocBench.
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -327,6 +328,59 @@ std::array<uint8_t, 3> pixelAt(const Pixels& pixels, int x, int y) {
 
 bool opaqueAt(const Pixels& pixels, int x, int y) {
   return pixels[(static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4 + 3] > 0;
+}
+
+/// One opaque rect, the smallest valid program.
+std::vector<double> oneRect() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(8);
+  w.pushAnim(8);
+  w.pushAnim(40);
+  w.pushAnim(40);
+  w.pushPaint(0xff3366cc, false);
+  return w.finish();
+}
+
+/// A corrupt program must be rejected, and rejected without first trusting the
+/// counts in it: every one of these asks for an allocation the buffer cannot
+/// possibly hold, or is a cast that is undefined behaviour on the raw value.
+/// A regression here is an OOM kill or a sanitizer trap, not a wrong pixel.
+void aCorruptProgramIsRejectedWithoutTrustingItsCounts() {
+  auto valid = oneRect();
+  CHECK(anyPixelSet(render(valid, {}, {})));
+
+  const double kHuge = 2147483647.0;
+  const double kNan = std::nan("");
+  std::vector<std::vector<double>> corrupt;
+  // The root node count, read before any node is.
+  auto rootCount = valid;
+  rootCount[3] = kHuge;
+  corrupt.push_back(rootCount);
+  // A group's own child count, one level in.
+  Writer group;
+  group.push(1);
+  group.push(0);  // Group
+  group.push(0);  // no transform ops
+  group.push(kHuge);
+  corrupt.push_back(group.finish());
+  // The header's own words: a NaN or negative length is not a size_t.
+  for (double bad : {kNan, -1.0, 1e300}) {
+    auto header = valid;
+    header[1] = bad;
+    corrupt.push_back(header);
+    auto patchStart = valid;
+    patchStart[2] = bad;
+    corrupt.push_back(patchStart);
+  }
+
+  for (const auto& words : corrupt) {
+    // A fresh renderer, so "kept the previous program" cannot pass for "read it".
+    tgfxrn::SceneRenderer renderer;
+    renderer.setScene(words, {});
+    CHECK(!anyPixelSet(drawFrame(renderer, {})));
+  }
 }
 
 /// A rect whose paint alpha is a literal, versus the same alpha as a slot.
@@ -2485,6 +2539,7 @@ int main() {
     std::printf("no GPU device available\n");
     return 1;
   }
+  aCorruptProgramIsRejectedWithoutTrustingItsCounts();
   staticPaintDrawsWhatTheRebuildDraws();
   animatedColorDrawsWhatTheLiteralDraws();
   staticLineDrawsWhatTheRebuildDraws();

@@ -1,33 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { UInt64 } from 'react-native-nitro-modules'
-import { isModuleNotFound } from '../reanimated/moduleNotFound'
+import { requireReanimated, worklets } from '../reanimated/peer'
 import type { PixelFormat, TgfxImage } from '../specs/TgfxImage.nitro'
-import type { SharedValueLike } from '../types'
 import { imageFromNativeBuffer } from './useImage'
-
-let installed = true
-let useSharedValue: (<T>(initial: T) => SharedValueLike<T>) | undefined
-let scheduleOnRN:
-  | (<A extends unknown[]>(fn: (...a: A) => void, ...args: A) => void)
-  | undefined
-try {
-  // A require inside a try is what makes Reanimated optional to Metro; a static import never is.
-  ;({ useSharedValue } = require('react-native-reanimated'))
-  // Worklets is a hard peer of Reanimated, so it resolves whenever that did; a
-  // miss here names *it*, fails the check below, and is rethrown as the broken
-  // install it is.
-  ;({ scheduleOnRN } = require('react-native-worklets'))
-} catch (e) {
-  if (!isModuleNotFound(e, 'react-native-reanimated')) {
-    throw e
-  }
-  installed = false
-}
-if (installed && (useSharedValue == null || scheduleOnRN == null)) {
-  throw new Error(
-    '[tgfx] react-native-reanimated is installed but does not export useSharedValue, or react-native-worklets does not export scheduleOnRN, which useCameraFrame needs.'
-  )
-}
 
 /** The buffer a {@link FrameLike} hands over, valid only inside the callback. */
 export interface NativeBufferLike {
@@ -171,9 +146,11 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
   onEachFrame?: (frame: F) => void,
   options?: CameraFrameOptions<F>
 ): CameraFrameSource<F> {
-  if (!installed) {
+  const mod = requireReanimated('useCameraFrame', ['useSharedValue'])
+  const scheduleOnRN = worklets().scheduleOnRN
+  if (scheduleOnRN == null) {
     throw new Error(
-      '[tgfx] useCameraFrame needs react-native-reanimated, which is not installed.'
+      '[tgfx] react-native-worklets does not export scheduleOnRN, which useCameraFrame needs.'
     )
   }
   // Destructured so the callback depends on the functions, not the options
@@ -183,8 +160,8 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
   const [image, setImage] = useState<TgfxImage | null>(null)
   const [posture, setPosture] = useState<CameraFramePosture>(UPRIGHT)
   // Worklet-runtime state: read and written where the frames arrive, never here.
-  const handle = useSharedValue!<TgfxImage | null>(null)
-  const posted = useSharedValue!('')
+  const handle = mod.useSharedValue!<TgfxImage | null>(null)
+  const posted = mod.useSharedValue!('')
 
   const onImage = useCallback((h: TgfxImage) => {
     setImage(h)
@@ -212,7 +189,7 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
           formatOf != null ? formatOf(frame) : defaultFormat(frame.pixelFormat)
         if (handle.value == null) {
           handle.value = imageFromNativeBuffer(buffer.pointer, format)
-          scheduleOnRN!(onImage, handle.value)
+          scheduleOnRN(onImage, handle.value)
         } else {
           handle.value.setNativeBuffer(buffer.pointer, format)
         }
@@ -224,7 +201,7 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
         const key = `${rotation}:${frame.isMirrored}:${frame.width}x${frame.height}`
         if (posted.value !== key) {
           posted.value = key
-          scheduleOnRN!(
+          scheduleOnRN(
             onPosture,
             rotation,
             frame.isMirrored,
@@ -241,7 +218,16 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
         frame.dispose()
       }
     },
-    [handle, posted, onImage, onPosture, onEachFrame, formatOf, rotationOf]
+    [
+      handle,
+      posted,
+      onImage,
+      onPosture,
+      onEachFrame,
+      formatOf,
+      rotationOf,
+      scheduleOnRN,
+    ]
   )
 
   useEffect(() => {

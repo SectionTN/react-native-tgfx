@@ -275,7 +275,11 @@ export interface SnapshotOptions {
   quality?: number
   /** Crop, in the same logical pixels the scene is drawn in. Defaults to the whole canvas. */
   rect?: { x: number; y: number; width: number; height: number }
-  /** Multiplier on the cropped region's device-pixel size. Defaults to 1. */
+  /**
+   * Multiplier on the cropped region's device-pixel size. Defaults to 1. Must be
+   * positive and finite; the ceiling is whatever target the GPU can allocate, so
+   * a large canvas times a large scale rejects rather than resolving.
+   */
   scale?: number
 }
 

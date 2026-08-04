@@ -2,12 +2,13 @@ import { expect, mock, test } from 'bun:test'
 import type * as TestRenderer from 'react-test-renderer'
 
 // A renamed export must not look like an absent package: that is a silent freeze.
-test('Reanimated present but missing an export throws', async () => {
+// It throws where the hook runs, not at import: the package must stay importable
+// for consumers that never call it.
+test('Reanimated present but missing an export throws when the hook runs', async () => {
   mock.module('react-native-reanimated', () => ({ useSharedValue: () => {} }))
-  // `?broken` keeps the permanently-cached failed evaluation off the real module's key.
-  await expect(import('./useClock?broken')).rejects.toThrow(
-    /does not export useSharedValue\/useFrameCallback/
-  )
+  const { useClock } =
+    (await import('./useClock?broken')) as typeof import('./useClock')
+  expect(() => useClock()).toThrow(/does not export useFrameCallback/)
 })
 
 test('the clock reads the frame time and keeps one callback identity', async () => {
