@@ -425,6 +425,41 @@ read once — set `enablePhysicalBufferRotation: true`, which keeps `orientation
 effects screen on the plugin, the face-blur screen on the worklet because MLKit
 needs the frame in JS regardless.
 
+### No tile modes on the frame
+
+A YUV image sampled with any tile mode other than `clamp` comes back **fully
+transparent** at the pinned tgfx — `TiledTextureEffect::getTextureView()` returns
+null for YUV. Nothing in this path exposes one, and you should not reach for one
+on a camera frame until that is fixed upstream.
+
+### How it reaches tgfx's C++
+
+`react-native-tgfx` exports exactly one header, `cpp/TgfxFrameSink.hpp`:
+
+```cpp
+namespace tgfxrn {
+enum class FrameFormat : int32_t { RGBA, BT601Limited, BT601Full, /* … */ };
+bool setFrame(int32_t handle, uint64_t buffer, FrameFormat format) noexcept;
+}
+```
+
+- **Android** — a prefab, `react-native-tgfx::NitroTgfx`, consumed with
+  `find_package` + `target_link_libraries`.
+- **iOS** — `s.dependency 'NitroTgfx'`, with the header found through CocoaPods'
+  per-pod header directory.
+
+The point is **narrowness, not a linkage guarantee**. The plugin links
+`libNitroTgfx.so` rather than compiling any of it, so it needs neither the tgfx
+headers, nor the tgfx static library, nor the private tgfx submodule — and
+everything else under `cpp/` stays unsupported and free to change.
+
+It is explicitly *not* a defence against a second registry.
+`ImageRegistry::instance()` is out-of-line and exported with default visibility,
+so a package that vendored the header and linked this library would bind to the
+same definition and share the table anyway. The prefab simply does not ship that
+header. Making it a real contract wants `-fvisibility=hidden`, which is a
+follow-up.
+
 ## A complete example
 
 Realtime face blur, which is what `apps/faceblur` in this repo does. MLKit's
