@@ -9,11 +9,8 @@
  * hardware buffer directly. `uTime` is a useClock SharedValue, so it animates
  * without the scene being re-encoded.
  */
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native'
-import { useSharedValue } from 'react-native-reanimated'
-import { scheduleOnRN } from 'react-native-worklets'
-import type { NativeBuffer } from 'react-native-vision-camera'
 import {
   Camera,
   useCameraDevice,
@@ -27,10 +24,8 @@ import {
   Fill,
   ImageShader,
   Shader,
-  imageFromNativeBuffer,
+  useCameraFrame,
   useClock,
-  type PixelFormat,
-  type TgfxImage,
 } from 'react-native-tgfx'
 
 const BLUR_RADIUS = 28
@@ -92,14 +87,6 @@ half4 main(float2 pos) {
 }
 `
 
-/** `frame.orientation` to the clockwise rotation that cancels it. */
-const ROTATION: Record<string, 0 | 90 | 180 | 270> = {
-  up: 0,
-  right: 270,
-  down: 180,
-  left: 90,
-}
-
 type Mode = 'blur' | 'cyberpunk'
 
 export function TgfxCameraEffects() {
@@ -107,66 +94,15 @@ export function TgfxCameraEffects() {
   const device = useCameraDevice('front')
   const [mode, setMode] = useState<Mode>('blur')
 
-  const [frameImage, setFrameImage] = useState<TgfxImage | null>(null)
-  const image = useSharedValue<TgfxImage | null>(null)
-  // Constant for a session, so they reach the scene through state, not values.
-  const [posture, setPosture] = useState({
-    rotation: 0,
-    mirror: false,
-    width: 0,
-    height: 0,
-  })
-  const posted = useSharedValue('')
   const clock = useClock()
-
-  const onFirstFrame = useCallback((handle: TgfxImage) => {
-    setFrameImage(handle)
-  }, [])
-  const onPosture = useCallback(
-    (rotation: number, mirror: boolean, width: number, height: number) => {
-      setPosture({ rotation, mirror, width, height })
-    },
-    []
-  )
+  // The hook owns the buffer's lifetime: the raw pointer never leaves it.
+  const { image, posture, onFrame } = useCameraFrame()
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
     enablePhysicalBufferRotation: true,
-    onFrame(frame) {
-      'worklet'
-      // Acquired inside the try: a throw above it would skip the dispose below
-      // and stall VisionCamera's bounded pool.
-      let buffer: NativeBuffer | null = null
-      try {
-        buffer = frame.getNativeBuffer()
-        const format: PixelFormat = frame.pixelFormat.endsWith('-full')
-          ? 'bt601-full'
-          : 'bt601-limited'
-        if (image.value == null) {
-          image.value = imageFromNativeBuffer(buffer.pointer, format)
-          scheduleOnRN(onFirstFrame, image.value)
-        } else {
-          image.value.setNativeBuffer(buffer.pointer, format)
-        }
-
-        const rotation = ROTATION[frame.orientation] ?? 0
-        const key = `${rotation}:${frame.isMirrored}:${frame.width}x${frame.height}`
-        if (posted.value !== key) {
-          posted.value = key
-          scheduleOnRN(
-            onPosture,
-            rotation,
-            frame.isMirrored,
-            frame.width,
-            frame.height
-          )
-        }
-      } finally {
-        buffer?.release()
-        frame.dispose()
-      }
-    },
+    onFrame,
   })
 
   if (!hasPermission) {
@@ -200,11 +136,7 @@ export function TgfxCameraEffects() {
         outputs={[frameOutput]}
       />
       <Canvas style={StyleSheet.absoluteFill} opaque={true}>
-        <CameraFrame
-          image={frameImage}
-          rotation={posture.rotation}
-          mirror={posture.mirror}
-        >
+        <CameraFrame image={image} {...posture}>
           {mode === 'blur' ? <Blur blur={BLUR_RADIUS} /> : null}
           {mode === 'cyberpunk' && posture.width > 0 ? (
             <Fill>
@@ -217,7 +149,7 @@ export function TgfxCameraEffects() {
               >
                 {/* Tile modes left at 'clamp': a YUV frame sampled with any
                     other one comes back transparent. */}
-                <ImageShader image={frameImage} />
+                <ImageShader image={image} />
               </Shader>
             </Fill>
           ) : null}

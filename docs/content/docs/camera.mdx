@@ -32,64 +32,119 @@ export function Preview({ frame }: { frame: TgfxImage | null }) {
 
 ## Getting the buffer
 
-Frames come from [react-native-vision-camera](https://react-native-vision-camera.com)
-v5's frame output. `frame.getNativeBuffer()` gives a buffer whose `.pointer` is
-the value tgfx wants.
-
-The first frame creates a handle; every frame after it re-points that same
-handle. Keeping the id is the whole trick: the scene is committed **once**, and
-a new frame costs one pointer swap rather than a React render, a reconciler
-commit and a program recompile.
+`useCameraFrame()` is the whole of it. It returns the handle to draw, the
+frame's `posture` (rotation, mirroring and size, all read off the buffer rather
+than assumed), and the `onFrame` worklet to hand to your producer:
 
 ```tsx
-import { useCallback, useState } from 'react'
-import { useSharedValue } from 'react-native-reanimated'
-import { scheduleOnRN } from 'react-native-worklets'
-import type { NativeBuffer } from 'react-native-vision-camera'
-import { useFrameOutput } from 'react-native-vision-camera'
-import {
-  imageFromNativeBuffer,
-  type PixelFormat,
-  type TgfxImage,
-} from 'react-native-tgfx'
+import { StyleSheet } from 'react-native'
+import { Camera, useCameraDevice, useFrameOutput } from 'react-native-vision-camera'
+import { Canvas, CameraFrame, Rect, useCameraFrame } from 'react-native-tgfx'
 
-export function useCameraFrame(): {
-  frame: TgfxImage | null
-  frameOutput: ReturnType<typeof useFrameOutput>
-} {
-  const [frame, setFrame] = useState<TgfxImage | null>(null)
-  const image = useSharedValue<TgfxImage | null>(null)
-  const onFirstFrame = useCallback((handle: TgfxImage) => setFrame(handle), [])
+export function Preview() {
+  const device = useCameraDevice('back')
+  const { image, posture, onFrame } = useCameraFrame()
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
-    enablePhysicalBufferRotation: true,
-    onFrame(f) {
-      'worklet'
-      let buffer: NativeBuffer | null = null
-      try {
-        buffer = f.getNativeBuffer()
-        // Read the range off the frame; do not hardcode it. See below.
-        const format: PixelFormat = f.pixelFormat.endsWith('-full')
-          ? 'bt601-full'
-          : 'bt601-limited'
-        if (image.value == null) {
-          image.value = imageFromNativeBuffer(buffer.pointer, format)
-          scheduleOnRN(onFirstFrame, image.value)
-        } else {
-          image.value.setNativeBuffer(buffer.pointer, format)
-        }
-      } finally {
-        buffer?.release()
-        f.dispose()
-      }
-    },
+    onFrame,
   })
 
-  return { frame, frameOutput }
+  if (device == null) return null
+  return (
+    <>
+      <Camera style={styles.hidden} device={device} isActive={true} outputs={[frameOutput]} />
+      <Canvas style={StyleSheet.absoluteFill} opaque={true}>
+        <CameraFrame image={image} {...posture}>
+          <Rect x={40} y={40} width={200} height={200} style="stroke" color="lime" />
+        </CameraFrame>
+      </Canvas>
+    </>
+  )
+}
+
+// The camera is a frame *source* only; every visible pixel is drawn by tgfx.
+const styles = StyleSheet.create({
+  hidden: { width: 1, height: 1, opacity: 0, position: 'absolute' },
+})
+```
+
+Frames come from [react-native-vision-camera](https://react-native-vision-camera.com)
+v5's frame output, but nothing here is bound to it: `onFrame` is typed
+structurally, so any producer with `getNativeBuffer()`, `pixelFormat`,
+`orientation`, `isMirrored`, `width`, `height` and `dispose()` fits, and
+react-native-tgfx takes no camera dependency.
+
+The first frame creates a handle; every frame after it re-points that same
+handle. Keeping the id is the whole trick: the scene is committed **once**, and
+a new frame costs one pointer swap rather than a React render, a reconciler
+commit and a program recompile. `posture` reaches React state only when it
+actually changes, which for a session is once.
+
+### Per-frame work of your own
+
+A detector runs in the same callback. Pass it as a memoised worklet and it runs
+**inside** the hook's `try`, so work that throws still cannot leak the frame:
+
+```tsx
+import { useCallback } from 'react'
+import type { Frame } from 'react-native-vision-camera'
+import { useFrameOutput } from 'react-native-vision-camera'
+import { useFaceDetector } from 'react-native-vision-camera-face-detector'
+import { useCameraFrame } from 'react-native-tgfx'
+import { useSharedValue } from 'react-native-reanimated'
+
+export function useFaces() {
+  const detector = useFaceDetector({ performanceMode: 'fast' })
+  const box = useSharedValue({ x: 0, y: 0, width: 0, height: 0 })
+
+  const detect = useCallback(
+    (frame: Frame) => {
+      'worklet'
+      // Bounds are already in frame pixels — the space <CameraFrame>'s children
+      // are drawn in — so they go through unscaled.
+      const faces = detector.detectFaces(frame)
+      box.value = faces[0]?.bounds ?? { x: 0, y: 0, width: 0, height: 0 }
+    },
+    [detector, box]
+  )
+
+  const { image, posture, onFrame } = useCameraFrame(detect)
+  const frameOutput = useFrameOutput({ pixelFormat: 'yuv', onFrame })
+  return { image, posture, frameOutput, box }
 }
 ```
+
+<Owned by="js">
+**The frame dies when your callback returns.** The hook disposes it in the
+`finally` immediately after, so read from it and let it go:
+
+- **Do not retain the frame** past the call, and do not hand it to anything
+  asynchronous. See [backpressure](#backpressure) for work that cannot keep up.
+- **Do not call `getNativeBuffer()` on it again.** That is a second `+1` retain
+  the hook will not release, and one unreleased buffer stalls the producer's
+  bounded pool — the stream stops dead.
+- **Never store `getNativeBuffer().pointer`.** A stale pointer does not throw;
+  it imports whatever memory is now at that address.
+
+Everything the hook needs from the buffer is already done before your callback
+runs, so a detector never has to touch any of this — pass the frame straight to
+it, as above.
+</Owned>
+
+### Why the hook and not the raw call
+
+`imageFromNativeBuffer` is still exported, and [the escape hatch](#driving-the-handle-yourself)
+below shows it. Prefer the hook, because the thing it owns cannot be checked
+anywhere else:
+
+**`buffer.pointer` is a raw pointer, and nothing can validate one.** It is a
+plain integer; native only rejects zero. A stale non-zero pointer does not
+throw — it imports whatever memory is now at that address, as a crash or a
+garbage texture. TypeScript cannot express the lifetime either: any brand needs
+a cast at `buffer.pointer`, and the cast is the bug. The only enforceable form
+is a scope you never open, which is what the hook is.
 
 **Everything that can throw goes inside the `try`, `getNativeBuffer()` included.**
 A leaked `Frame` stalls VisionCamera's bounded pool, so the `frame.dispose()` in
@@ -97,12 +152,6 @@ the `finally` has to be unconditional — which it is not if the acquisition sit
 one line above the `try`. The handle takes its own reference before
 `setNativeBuffer` returns, so the producer's slot goes back into rotation
 immediately.
-
-`buffer.pointer` is a **raw pointer**, valid only for the body of this callback.
-Never store one and never let one outlive the call: a stale pointer does not
-throw, it imports whatever memory is now at that address.
-[#149](https://github.com/riteshshukla04/react-native-tgfx/issues/149) tracks a
-`react-native-tgfx-vision-camera` that owns this lifetime so you do not have to.
 
 <Owned by="native">
 Holding the reference is not the same as owning the pixels. tgfx samples the
@@ -144,10 +193,11 @@ const format: PixelFormat = frame.pixelFormat.endsWith('-full')
   : 'bt601-limited'
 ```
 
-Do this **inside** the `try`, before anything that can throw — a surprise format
+`useCameraFrame` already does exactly this, inside its `try` — a surprise format
 must not skip the `frame.dispose()` in the `finally`, or the bounded buffer pool
-stalls and the stream stops dead. (The native-only path this replaces hardcoded
-BT.601 *limited*, so it had this wrong on a full-range device.)
+stalls and the stream stops dead. You only write it yourself on the raw path.
+(The native-only path this replaces hardcoded BT.601 *limited*, so it had this
+wrong on a full-range device.)
 </Owned>
 
 ## `<CameraFrame>`
@@ -174,10 +224,10 @@ not pixels. Nothing about the frame travels through JavaScript: the handle is an
 integer id that the draw program carries, and native resolves it to the live
 buffer as it draws.
 
-You get one from `imageFromNativeBuffer(pointer, format)` on the **first** frame,
-and every frame after that re-points the *same* handle with
-`image.setNativeBuffer(pointer, format)` — see [Getting the buffer](#getting-the-buffer),
-where `useCameraFrame()` returns exactly this value.
+`useCameraFrame()` returns exactly this value. Under it: the **first** frame
+calls `imageFromNativeBuffer(pointer, format)`, and every frame after that
+re-points the *same* handle with `image.setNativeBuffer(pointer, format)` — see
+[Getting the buffer](#getting-the-buffer).
 
 That split is the reason the API looks the way it does:
 
@@ -186,11 +236,17 @@ That split is the reason the API looks the way it does:
   recompile — which is why the JS thread is idle while the camera runs.
 - **`null` until the first frame arrives.** `imageFromNativeBuffer` needs a real
   buffer, so there is nothing to hand `<CameraFrame>` before frame one. This is
-  the one place the handle crosses into React state, via `scheduleOnRN`.
+  the one place the handle crosses into React state.
 - **The handle does not own the buffer.** It takes its own reference for as long
-  as the draw needs it, so you still `release()` the `NativeBuffer` and
-  `dispose()` the `Frame` in your `finally`. A frame the renderer has not drawn
-  yet is *superseded* by the next one rather than queued behind it.
+  as the draw needs it, so the `NativeBuffer` is still `release()`d and the
+  `Frame` still `dispose()`d — by the hook, or by your own `finally` on the raw
+  path. A frame the renderer has not drawn yet is *superseded* by the next one
+  rather than queued behind it.
+- **The handle itself has to be disposed too.** It is an *external* registry
+  entry, so it is [never evicted](#where-the-zero-copy-guarantee-holds) — the
+  budget that reclaims decoded images does not apply. `useCameraFrame` disposes
+  it on unmount; on the raw path that is yours, or every mount of a camera
+  screen leaks a texture and the buffer it retains.
 
 `image` of `null` draws nothing at all, children included: there is no frame to
 place them against, and an overlay floating at the wrong scale is worse than an
@@ -235,25 +291,24 @@ the frame rather than desynchronising the two.
 - **`mirror`** takes `frame.isMirrored` straight through. Without it a selfie
   frame draws the wrong way round.
 
+Both are already in `posture`, so spreading it is the whole of it — the
+orientation string is mapped to the countering rotation once, in one place:
+
+```tsx
+<CameraFrame image={image} {...posture} />
+```
+
 With `enablePhysicalBufferRotation: true` the pipeline rotates the buffers
 itself and `frame.orientation` is always `'up'`; combined with the output's
 `mirrorMode` (default `'auto'`, which mirrors selfie cameras) `isMirrored`
 arrives `false`. That costs processing overhead, so the alternative is to leave
-it off and let `<CameraFrame>` do both on the GPU, for free, as part of the fit:
+it off and let `<CameraFrame>` do both on the GPU, for free, as part of the fit.
+Either way, spreading `posture` passes whatever the frame actually reports —
+per-device and per-camera — rather than assuming it. It is constant for a
+session, so it crosses to the JS thread once, not every frame.
 
-```tsx
-const ROTATION = { 'up': 0, 'right': 270, 'down': 180, 'left': 90 } as const
-
-<CameraFrame
-  image={frame}
-  rotation={ROTATION[orientation]}
-  mirror={isMirrored}
-/>
-```
-
-Read the flags rather than assuming them — they are per-device and per-camera.
-`orientation` and `isMirrored` are constant for a session, so hop them to the JS
-thread once (a `scheduleOnRN` guarded by a comparison), not every frame.
+`posture.width`/`posture.height` are the frame's pixel dimensions, which is what
+a shader uniform needs; they are `0` until the first frame lands.
 
 <Owned by="js">
 **Children are mirrored and rotated too — that is the point.** A detector's box
@@ -317,11 +372,10 @@ Reanimated values, so the scene is committed once and the JS thread does no work
 at all while the camera runs.
 
 ```tsx
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSharedValue, type SharedValue } from 'react-native-reanimated'
-import { scheduleOnRN } from 'react-native-worklets'
-import type { NativeBuffer } from 'react-native-vision-camera'
+import type { Frame } from 'react-native-vision-camera'
 import {
   Camera,
   useCameraDevice,
@@ -336,9 +390,7 @@ import {
   ImageShader,
   Oval,
   Paint,
-  imageFromNativeBuffer,
-  type PixelFormat,
-  type TgfxImage,
+  useCameraFrame,
 } from 'react-native-tgfx'
 
 const BLUR_RADIUS = 25
@@ -365,13 +417,7 @@ function useBlob(): Blob {
 export function TgfxFaceBlur() {
   const { hasPermission, requestPermission } = useCameraPermission()
   const device = useCameraDevice('front')
-  const [frameImage, setFrameImage] = useState<TgfxImage | null>(null)
-  const image = useSharedValue<TgfxImage | null>(null)
   const blobs: Blob[] = [useBlob(), useBlob(), useBlob(), useBlob()]
-
-  const onFirstFrame = useCallback((handle: TgfxImage) => {
-    setFrameImage(handle)
-  }, [])
 
   const faceDetector = useFaceDetector({
     performanceMode: 'fast',
@@ -380,43 +426,36 @@ export function TgfxFaceBlur() {
     runClassifications: false,
   })
 
+  const detect = useCallback(
+    (frame: Frame) => {
+      'worklet'
+      const faces = faceDetector.detectFaces(frame)
+      for (let i = 0; i < SLOTS.length; i++) {
+        const blob = blobs[i]!
+        const bounds = i < faces.length ? faces[i]!.bounds : null
+        if (bounds == null) {
+          blob.width.value = 0
+          blob.height.value = 0
+          continue
+        }
+        blob.x.value = bounds.x
+        blob.y.value = bounds.y
+        blob.width.value = bounds.width
+        blob.height.value = bounds.height
+      }
+    },
+    [faceDetector, blobs]
+  )
+
+  // The hook owns the buffer: the raw pointer, the release and the dispose.
+  // `detect` runs inside its try, so a detector throw cannot leak the frame.
+  const { image, posture, onFrame } = useCameraFrame(detect)
+
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
     enablePhysicalBufferRotation: true,
-    onFrame(frame) {
-      'worklet'
-      let buffer: NativeBuffer | null = null
-      try {
-        buffer = frame.getNativeBuffer()
-        const format: PixelFormat = frame.pixelFormat.endsWith('-full')
-          ? 'bt601-full'
-          : 'bt601-limited'
-        if (image.value == null) {
-          image.value = imageFromNativeBuffer(buffer.pointer, format)
-          scheduleOnRN(onFirstFrame, image.value)
-        } else {
-          image.value.setNativeBuffer(buffer.pointer, format)
-        }
-        const faces = faceDetector.detectFaces(frame)
-        for (let i = 0; i < SLOTS.length; i++) {
-          const blob = blobs[i]!
-          const bounds = i < faces.length ? faces[i]!.bounds : null
-          if (bounds == null) {
-            blob.width.value = 0
-            blob.height.value = 0
-            continue
-          }
-          blob.x.value = bounds.x
-          blob.y.value = bounds.y
-          blob.width.value = bounds.width
-          blob.height.value = bounds.height
-        }
-      } finally {
-        buffer?.release()
-        frame.dispose()
-      }
-    },
+    onFrame,
   })
 
   if (!hasPermission) {
@@ -445,7 +484,7 @@ export function TgfxFaceBlur() {
         outputs={[frameOutput]}
       />
       <Canvas style={StyleSheet.absoluteFill} opaque={true}>
-        <CameraFrame image={frameImage}>
+        <CameraFrame image={image} {...posture}>
           {SLOTS.map((slot) => (
             <Oval
               key={slot}
@@ -455,7 +494,7 @@ export function TgfxFaceBlur() {
               height={blobs[slot]!.height}
             >
               <Paint>
-                <ImageShader image={frameImage} />
+                <ImageShader image={image} />
                 <Blur blur={BLUR_RADIUS} />
               </Paint>
             </Oval>
@@ -488,6 +527,53 @@ own space, so the blurred pixels really are the pixels underneath. `<Blur>` is
 an image filter, so it takes a save-layer: that offscreen is the one place on
 this path where a GPU intermediate exists, and it is the cost of blurring, not
 of the camera.
+
+## Driving the handle yourself
+
+The escape hatch, for a producer whose buffer does not arrive as a frame object
+at all — a decoder, a screen capture, a custom native module.
+`imageFromNativeBuffer` is exported for exactly that, and you take on the
+lifetime the hook would otherwise own:
+
+```tsx
+import { useState } from 'react'
+import { imageFromNativeBuffer, type TgfxImage } from 'react-native-tgfx'
+import type { UInt64 } from 'react-native-nitro-modules'
+
+export function useExternalBuffer() {
+  const [image, setImage] = useState<TgfxImage | null>(null)
+
+  // Call with a pointer that is valid *right now* and for this call only.
+  function present(pointer: UInt64): void {
+    if (image == null) {
+      setImage(imageFromNativeBuffer(pointer, 'bt601-limited'))
+    } else {
+      image.setNativeBuffer(pointer, 'bt601-limited')
+    }
+  }
+
+  return { image, present }
+}
+```
+
+Three rules, none of them checkable at runtime:
+
+1. **Never store the pointer, and never let it outlive the call it came from.**
+   A stale pointer imports whatever memory is now at that address. It does not
+   throw.
+2. **Release the producer's own reference only after the call returns.** The
+   handle takes its own before then.
+3. **Do not write into the buffer while the handle still points at it.** tgfx
+   samples the memory directly; the *contents* have to stay put, not just the
+   reference count.
+
+`imageFromNativeBuffer`'s own `@remarks` carry the same lifetime contract, and
+one more: it builds its own factory per call, so it is a once-per-stream call.
+Every buffer after the first goes through `setNativeBuffer`.
+
+If your frames do come from a frame object, use
+[`useCameraFrame`](#getting-the-buffer) instead — it is the same three rules,
+enforced by a scope you cannot open.
 
 ## Where the zero-copy guarantee holds
 

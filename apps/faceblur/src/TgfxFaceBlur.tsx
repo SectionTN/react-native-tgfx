@@ -12,11 +12,10 @@
  * and writes the face bounds into Reanimated values that the engine resolves on
  * the UI thread. The JS thread does no work at all while the camera runs.
  */
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { useSharedValue, type SharedValue } from 'react-native-reanimated'
-import { scheduleOnRN } from 'react-native-worklets'
-import type { NativeBuffer } from 'react-native-vision-camera'
+import type { Frame } from 'react-native-vision-camera'
 import {
   Camera,
   useCameraDevice,
@@ -31,9 +30,7 @@ import {
   ImageShader,
   Oval,
   Paint,
-  imageFromNativeBuffer,
-  type PixelFormat,
-  type TgfxImage,
+  useCameraFrame,
 } from 'react-native-tgfx'
 
 const BLUR_RADIUS = 25
@@ -64,29 +61,9 @@ function useBlob(): Blob {
   }
 }
 
-/** `frame.orientation` to the clockwise rotation that cancels it. */
-const ROTATION: Record<string, 0 | 90 | 180 | 270> = {
-  up: 0,
-  right: 270,
-  down: 180,
-  left: 90,
-}
-
 export function TgfxFaceBlur() {
   const { hasPermission, requestPermission } = useCameraPermission()
   const device = useCameraDevice('front')
-
-  // The handle the scene draws. Created from the first frame's buffer and then
-  // re-pointed at every later one, so the scene keeps referencing the same id.
-  const [frameImage, setFrameImage] = useState<TgfxImage | null>(null)
-  const image = useSharedValue<TgfxImage | null>(null)
-  // What the buffer reports about itself, read rather than assumed. Both are
-  // constant for a session, so they reach the scene through state, not values.
-  const [orientation, setOrientation] = useState({
-    rotation: 0,
-    mirror: false,
-  })
-  const posture = useSharedValue('')
 
   const blobs: Blob[] = [
     useBlob(),
@@ -99,19 +76,45 @@ export function TgfxFaceBlur() {
     useBlob(),
   ]
 
-  const onFirstFrame = useCallback((handle: TgfxImage) => {
-    setFrameImage(handle)
-  }, [])
-  const onOrientation = useCallback((rotation: number, mirror: boolean) => {
-    setOrientation({ rotation, mirror })
-  }, [])
-
   const faceDetector = useFaceDetector({
     performanceMode: 'fast',
     runContours: false,
     runLandmarks: false,
     runClassifications: false,
   })
+
+  const detect = useCallback(
+    (frame: Frame) => {
+      'worklet'
+      // Face bounds are already in frame pixels, which is the space
+      // <CameraFrame>'s children are drawn in — so they go through unscaled.
+      const faces = faceDetector.detectFaces(frame)
+      for (let i = 0; i < SLOTS.length; i++) {
+        const blob = blobs[i]!
+        const bounds = i < faces.length ? faces[i]!.bounds : null
+        if (bounds == null) {
+          blob.width.value = 0
+          blob.height.value = 0
+          continue
+        }
+        // An ellipse inscribed in the detector's box covers pi/4 ~= 79% of it,
+        // and the corners it drops are jaw and hairline — the parts of a face
+        // worth hiding. Inflate about the centre so it covers the box.
+        const grow = (bounds.width * (OVAL_SCALE - 1)) / 2
+        const growY = (bounds.height * (OVAL_SCALE - 1)) / 2
+        blob.x.value = bounds.x - grow
+        blob.y.value = bounds.y - growY
+        blob.width.value = bounds.width * OVAL_SCALE
+        blob.height.value = bounds.height * OVAL_SCALE
+      }
+    },
+    [faceDetector, blobs]
+  )
+
+  // The hook owns the buffer's whole lifetime — the raw pointer, the release
+  // and the dispose. `detect` runs inside the same try, so detector work that
+  // throws still cannot leak the frame and stall the bounded pool.
+  const { image, posture, onFrame } = useCameraFrame(detect)
 
   const frameOutput = useFrameOutput({
     // 'yuv' and not 'rgb': 'rgb' forces a YUV->RGB conversion on every frame,
@@ -121,69 +124,9 @@ export function TgfxFaceBlur() {
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
     // The pipeline rotates the buffers itself, so `orientation` arrives 'up'
-    // and `isMirrored` false. <CameraFrame> can correct both, and the code
-    // below passes whatever the frame actually reports rather than assuming.
+    // and `isMirrored` false. <CameraFrame> corrects whatever it does report.
     enablePhysicalBufferRotation: true,
-    onFrame(frame) {
-      'worklet'
-      // Acquired *inside* the try: everything that can throw has to be inside
-      // it, or a throw skips the dispose() below and stalls the bounded pool.
-      let buffer: NativeBuffer | null = null
-      try {
-        buffer = frame.getNativeBuffer()
-        // The range suffix is load-bearing, and read rather than hardcoded:
-        // this device reports `yuv-420-8-bit-full`, and importing full-range
-        // planes as limited-range crushes the blacks. Inside the try, so a
-        // surprise format cannot skip the dispose() below and stall the pool.
-        const format: PixelFormat = frame.pixelFormat.endsWith('-full')
-          ? 'bt601-full'
-          : 'bt601-limited'
-        // Zero copy: the pointer is imported as a GPU texture, never decoded,
-        // never read back, never re-uploaded. The first frame creates the
-        // handle; every later one re-points it, which supersedes any frame the
-        // renderer has not drawn instead of queueing behind it.
-        if (image.value == null) {
-          image.value = imageFromNativeBuffer(buffer.pointer, format)
-          scheduleOnRN(onFirstFrame, image.value)
-        } else {
-          image.value.setNativeBuffer(buffer.pointer, format)
-        }
-
-        const rotation = ROTATION[frame.orientation] ?? 0
-        const posted = `${rotation}:${frame.isMirrored}`
-        if (posture.value !== posted) {
-          posture.value = posted
-          scheduleOnRN(onOrientation, rotation, frame.isMirrored)
-        }
-
-        // Face bounds are already in frame pixels, which is the space
-        // <CameraFrame>'s children are drawn in — so they go through unscaled.
-        const faces = faceDetector.detectFaces(frame)
-        for (let i = 0; i < SLOTS.length; i++) {
-          const blob = blobs[i]!
-          const bounds = i < faces.length ? faces[i]!.bounds : null
-          if (bounds == null) {
-            blob.width.value = 0
-            blob.height.value = 0
-            continue
-          }
-          // An ellipse inscribed in the detector's box covers pi/4 ~= 79% of
-          // it, and the corners it drops are jaw and hairline — the parts of a
-          // face worth hiding. Inflate about the centre so it covers the box.
-          const grow = (bounds.width * (OVAL_SCALE - 1)) / 2
-          const growY = (bounds.height * (OVAL_SCALE - 1)) / 2
-          blob.x.value = bounds.x - grow
-          blob.y.value = bounds.y - growY
-          blob.width.value = bounds.width * OVAL_SCALE
-          blob.height.value = bounds.height * OVAL_SCALE
-        }
-      } finally {
-        // The handle took its own reference, so the producer's slot is free the
-        // moment this returns. A leaked frame stalls the bounded pool.
-        buffer?.release()
-        frame.dispose()
-      }
-    },
+    onFrame,
   })
 
   if (!hasPermission) {
@@ -217,11 +160,7 @@ export function TgfxFaceBlur() {
         outputs={[frameOutput]}
       />
       <Canvas style={StyleSheet.absoluteFill} opaque={true}>
-        <CameraFrame
-          image={frameImage}
-          rotation={orientation.rotation}
-          mirror={orientation.mirror}
-        >
+        <CameraFrame image={image} {...posture}>
           {SLOTS.map(slot => (
             <Oval
               key={slot}
@@ -235,7 +174,7 @@ export function TgfxFaceBlur() {
                     pixels are the pixels underneath. Tile modes are left at
                     'clamp': a YUV image sampled with any other one comes back
                     transparent at the pinned tgfx. */}
-                <ImageShader image={frameImage} />
+                <ImageShader image={image} />
                 <Blur blur={BLUR_RADIUS} />
               </Paint>
             </Oval>

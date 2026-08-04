@@ -32,6 +32,13 @@ export {
   Turbulence,
 } from './components/Paint'
 
+export { useCameraFrame } from './hooks/useCameraFrame'
+export type {
+  CameraFramePosture,
+  CameraFrameSource,
+  FrameLike,
+  NativeBufferLike,
+} from './hooks/useCameraFrame'
 export { useClock } from './hooks/useClock'
 export {
   loadFont,
