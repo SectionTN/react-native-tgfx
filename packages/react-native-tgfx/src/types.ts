@@ -3,6 +3,7 @@ import type { Color } from './compiler/colors'
 import type { BlendMode } from './compiler/filters'
 import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
+import type { NodeHandle } from './imperative'
 import type { TgfxImage } from './specs/TgfxImage.nitro'
 
 export type { Color } from './compiler/colors'
@@ -21,6 +22,11 @@ export type Animated<T> = T | SharedValueLike<T>
 
 /** Paint attributes shared by every drawing component, `<Group>`, and `<Paint>`. */
 export interface PaintProps {
+  /**
+   * A handle from `useNode()`, for changing this node without a React render.
+   * See {@link NodeHandle}.
+   */
+  ref?: NodeHandle
   color?: Animated<Color>
   /** `'fill'` (default) or `'stroke'`. */
   style?: 'fill' | 'stroke'
@@ -255,6 +261,12 @@ export interface CanvasHandle {
    * never enter JS, so a large canvas costs nothing on the JS heap.
    */
   save(path: string, options?: SnapshotOptions): Promise<void>
+  /**
+   * Force a frame without a React commit. Only needed for state the scene
+   * points at rather than holds — an image handle re-pointed at new pixels, say.
+   * A `NodeHandle.set` already redraws on its own.
+   */
+  redraw(): void
 }
 
 export interface CanvasProps {

@@ -1,3 +1,4 @@
+import type { NodeHandle } from '../imperative'
 import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
 
 /**
@@ -93,6 +94,10 @@ export class SceneWriter {
   readonly strings: string[] = []
   private readonly stringIds = new Map<string, number>()
   readonly values: MaybeSharedValue<unknown>[] = []
+  /** The node handles this program is addressable through, in write order. */
+  readonly refs: NodeHandle[] = []
+  /** Whether this compile re-reads handled props from the element tree. */
+  reseed = true
   private readonly slots = new Map<object, number>()
 
   reset(): void {
@@ -101,6 +106,7 @@ export class SceneWriter {
     this.strings.length = 0
     this.stringIds.clear()
     this.values.length = 0
+    this.refs.length = 0
     this.slots.clear()
   }
 
@@ -146,6 +152,11 @@ export class SceneWriter {
       this.stringIds.set(value, index)
     }
     this.push(index)
+  }
+
+  /** True when this value ended up with a slot the engine patches per frame. */
+  hasSlot(value: MaybeSharedValue<unknown>): boolean {
+    return this.slots.has(value as object)
   }
 
   private slot(sv: MaybeSharedValue<unknown>): number {

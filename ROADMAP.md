@@ -179,6 +179,10 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 
 ## Reconciler / JS API
 
+- ✅ Imperative writes (`useNode()` + `ref` on a drawing node, `CanvasHandle.redraw()`):
+  a slotted prop is patched in place — from the JS thread or from inside a worklet —
+  and anything else re-encodes without React. Still open: slots for
+  `path`/`text`/`color` (#49), and structural add/remove/reorder.
 - 🟠 The HostConfig is cast (`as unknown`) with stubbed suspense/hydration
   members — test Suspense (image loading), error boundaries, concurrent features.
 - 🟠 Incremental/diff updates to native (Skia diffs a command list); currently

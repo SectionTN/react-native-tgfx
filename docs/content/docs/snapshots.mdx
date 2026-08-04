@@ -5,7 +5,8 @@ description: Reading a canvas back as pixels or a file, and what that costs.
 
 ## Reading pixels back
 
-A `ref` on `<Canvas>` gives a `CanvasHandle` with two async methods.
+A `ref` on `<Canvas>` gives a `CanvasHandle`: two async readback methods,
+and a synchronous `redraw()` that forces a frame without a React commit.
 
 ```tsx
 import { useRef } from 'react'

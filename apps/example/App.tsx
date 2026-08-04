@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Text as RNText, ScrollView, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Canvas,
@@ -34,6 +35,7 @@ import {
   Wave,
 } from './src/customShapes';
 import { AnimatedSection } from './src/animatedExamples';
+import { ImperativeSection } from './src/imperativeExample';
 import { SnapshotSection } from './src/snapshotExample';
 import {
   BlurPanel,
@@ -205,6 +207,8 @@ function Demo() {
         <AnimatedSection />
       </View>
 
+      <ImperativeSection />
+
       <SnapshotSection />
     </ScrollView>
   );
@@ -257,13 +261,16 @@ function Section({
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <Demo />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <Demo />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   scroll: { flex: 1, backgroundColor: '#F2F2F7' },
   title: { fontSize: 28, fontWeight: '700', color: '#111', paddingHorizontal: 16 },
   subtitle: { fontSize: 14, color: '#888', paddingHorizontal: 16, marginBottom: 8 },

@@ -32,6 +32,9 @@ export {
   Turbulence,
 } from './components/Paint'
 
+export { useNode } from './imperative'
+export type { NodeHandle } from './imperative'
+
 export { useCameraFrame } from './hooks/useCameraFrame'
 export type {
   CameraFrameOptions,

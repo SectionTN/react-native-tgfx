@@ -1,7 +1,10 @@
 import { compileScene } from '../compiler/compile'
 import type { MaybeSharedValue } from '../compiler/values'
 import { SceneWriter } from '../compiler/writer'
+import { nodeInternals, type NodeOwner } from '../imperative'
 import type { Node } from './types'
+
+let warnedShared = false
 
 /** Called on each committed change with the draw program and its animated values. */
 export type CommitListener = (
@@ -15,12 +18,17 @@ export type CommitListener = (
  * persistence-mode host config and, on each committed change, compiles it into
  * the binary draw program plus the ordered animated SharedValues.
  */
-export class TgfxContainer {
+export class TgfxContainer implements NodeOwner {
   root: Node[] = []
   /** Drops commits while a torn-down root is about to be replaced. */
   muted = false
+  /** Pushes the scene's slot values to the native view; set by `<Canvas>`. */
+  onValues: ((values: number[]) => void) | null = null
   private readonly writer = new SceneWriter()
   private readonly onCommit: CommitListener
+  private values: MaybeSharedValue<unknown>[] = []
+  // Reused, so an imperative write allocates nothing per call.
+  private readonly scratch: number[] = []
 
   constructor(onCommit: CommitListener) {
     this.onCommit = onCommit
@@ -32,11 +40,51 @@ export class TgfxContainer {
     this.redraw()
   }
 
-  redraw(): void {
+  /**
+   * Compile and push the scene. `fromReact` is what settles the two-writers
+   * question: a React commit is the source of truth, so it drops whatever was
+   * written imperatively since the last one. A recompile the imperative path
+   * asked for keeps it.
+   */
+  redraw(fromReact = true): void {
     if (this.muted) {
       return
     }
-    const { buffer, strings, values } = compileScene(this.root, this.writer)
+    const { buffer, strings, values, refs } = compileScene(
+      this.root,
+      this.writer,
+      fromReact
+    )
+    this.values = values
+    for (let i = 0; i < refs.length; i++) {
+      const ref = refs[i]!
+      if (refs.indexOf(ref) !== i && !warnedShared) {
+        warnedShared = true
+        console.warn(
+          '[tgfx] one node handle is on more than one node: they share its value slots, so a write moves all of them together. Use one handle per node.'
+        )
+      }
+      nodeInternals(ref).bind(this, this.writer)
+    }
     this.onCommit(buffer, strings, values)
+  }
+
+  recompile(): void {
+    this.redraw(false)
+  }
+
+  /** Patch the mounted program's value slots — no re-encode, no commit. */
+  pushValues(): void {
+    if (this.values.length === 0) {
+      // Nothing to patch, and an empty push still costs the render thread a
+      // redraw on Android.
+      return
+    }
+    const out = this.scratch
+    out.length = this.values.length
+    for (let i = 0; i < this.values.length; i++) {
+      out[i] = Number(this.values[i]!.value)
+    }
+    this.onValues?.(out)
   }
 }

@@ -1,3 +1,4 @@
+import { isNodeHandle, nodeInternals, type NodeHandle } from '../imperative'
 import { NodeType, type Node } from '../reconciler/types'
 import type { Color } from './colors'
 import type { BlendMode } from './filters'
@@ -34,6 +35,8 @@ export interface CompileResult {
   buffer: ArrayBuffer
   strings: string[]
   values: MaybeSharedValue<unknown>[]
+  /** The handles the scene was written through, for imperative writes. */
+  refs: NodeHandle[]
 }
 
 /** An accumulated opacity: a literal, or the one SharedValue still driving it. */
@@ -513,10 +516,17 @@ function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
 /** Write a node list; returns how many nodes were actually written. */
 function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
   let count = 0
-  for (const node of nodes) {
+  for (let node of nodes) {
     const kind = KIND_OF[node.type]
     if (kind === undefined) {
       continue
+    }
+    // A `ref` is a handle onto this node: it can have written props since the
+    // last commit, and they sit over the ones the element carries.
+    const ref = node.props.ref
+    if (isNodeHandle(ref)) {
+      w.refs.push(ref)
+      node = nodeInternals(ref).apply(node, w.reseed)
     }
     if (kind === Kind.Group) {
       writeGroup(w, node, ctx)
@@ -537,9 +547,19 @@ const ROOT_CTX: CompileCtx = { paint: {}, opacity: 1 }
  * list of SharedValues backing its animated slots. The writer is reused across
  * commits, so compiling allocates nothing beyond the occasional buffer growth.
  */
-export function compileScene(roots: Node[], w: SceneWriter): CompileResult {
+export function compileScene(
+  roots: Node[],
+  w: SceneWriter,
+  reseed = true
+): CompileResult {
   w.reset()
+  w.reseed = reseed
   const countAt = w.reserve()
   w.patch(countAt, writeNodes(w, roots, ROOT_CTX))
-  return { buffer: w.finish(), strings: w.strings, values: w.values }
+  return {
+    buffer: w.finish(),
+    strings: w.strings,
+    values: w.values,
+    refs: w.refs,
+  }
 }

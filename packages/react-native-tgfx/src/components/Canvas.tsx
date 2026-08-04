@@ -3,6 +3,7 @@ import { callback } from 'react-native-nitro-modules'
 import type { MaybeSharedValue } from '../compiler/values'
 import { packStringTable } from '../compiler/writer'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
+import { isLive } from '../reanimated/liveValue'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import { directNodes } from '../reconciler/directNodes'
 import type { NativeSnapshotOptions } from '../specs/TgfxView.nitro'
@@ -83,6 +84,9 @@ export function Canvas({
         const strings = scene.current.strings
         ref.setScene(scene.current.buffer, packStringTable([], strings))
         sentStrings.current = strings.slice()
+        // A write that landed before the view existed only moved its slot, and
+        // the program carries the literals from the commit before it.
+        rootRef.current?.container.pushValues()
       }
       setView(ref)
     })
@@ -108,6 +112,10 @@ export function Canvas({
         setValues(prevValues.current)
       }
     })
+    // How an imperative `NodeHandle.set` reaches the engine when the props it
+    // wrote already have slots: no re-encode, no commit.
+    rootRef.current.container.onValues = (vals) =>
+      viewRef.current?.setValues(vals)
   }
 
   useImperativeHandle(
@@ -127,6 +135,9 @@ export function Canvas({
           throw new Error('[tgfx] save: the canvas is not mounted yet')
         }
         await view.save(path, nativeOptions(options))
+      },
+      redraw: (): void => {
+        viewRef.current?.invalidate()
       },
     }),
     []
@@ -155,7 +166,13 @@ export function Canvas({
     }
   }, [])
 
-  if (AnimationDriver == null && values.length > 0 && !warnedNoDriver) {
+  // Slots this package writes itself need no driver, so they are not evidence
+  // that Reanimated is missing.
+  if (
+    AnimationDriver == null &&
+    !warnedNoDriver &&
+    values.some((value) => !isLive(value))
+  ) {
     warnedNoDriver = true
     console.warn(
       '[tgfx] SharedValue props need react-native-reanimated, which is not installed: they stay frozen at their last committed value.'
