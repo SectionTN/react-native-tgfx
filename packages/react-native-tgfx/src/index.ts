@@ -34,6 +34,7 @@ export {
 
 export { useCameraFrame } from './hooks/useCameraFrame'
 export type {
+  CameraFrameOptions,
   CameraFramePosture,
   CameraFrameSource,
   FrameLike,

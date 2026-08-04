@@ -5,7 +5,11 @@ import { compileScene } from '../compiler/compile'
 import { SceneWriter } from '../compiler/writer'
 import { NodeType, type Node } from '../reconciler/types'
 import { nativeMocks } from '../testing/nativeMocks'
-import type { CameraFrameSource, FrameLike } from './useCameraFrame'
+import type {
+  CameraFrameOptions,
+  CameraFrameSource,
+  FrameLike,
+} from './useCameraFrame'
 
 // A real SharedValue is stable per hook instance and survives re-renders; a
 // fresh object each render would hide exactly the identity bugs this checks.
@@ -86,10 +90,13 @@ function frame(over: Partial<FrameLike> = {}): FrameLike {
   }
 }
 
-async function mount(onEachFrame?: (f: FrameLike) => void) {
+async function mount(
+  onEachFrame?: (f: FrameLike) => void,
+  options?: CameraFrameOptions
+) {
   let seen!: CameraFrameSource
   function Probe(): null {
-    seen = useCameraFrame(onEachFrame)
+    seen = useCameraFrame(onEachFrame, options)
     return null
   }
   let tree!: TestRenderer.ReactTestRenderer
@@ -221,6 +228,40 @@ test('the range suffix is read off the frame, not hardcoded', async () => {
 
 // Running it after the finally would hand a detector an already-disposed frame,
 // which on device reads as a detector that silently returns nothing.
+// A camera is YUV, but the hook is not camera-only: a screen recorder or a
+// decoder hands over RGBA, and importing that as BT.601 reads its channels as
+// luma and chroma. Rec.709/2020 need their own matrix — the wrong one is a hue
+// shift, not an error, so nothing downstream would catch it.
+test('a non-YUV producer is not imported as BT.601', async () => {
+  const probe = await mount()
+  await probe.push({ pixelFormat: 'rgba-8-bit' })
+  expect(imported[0]![1]).toBe('rgba')
+})
+
+test('the colour matrix follows the producer, not a default', async () => {
+  const p709 = await mount()
+  await p709.push({ pixelFormat: 'yuv-420-10-bit-bt709-full' })
+  expect(imported[0]![1]).toBe('bt709-full')
+
+  imported.length = 0
+  made.length = 0
+  const p2020 = await mount()
+  await p2020.push({ pixelFormat: 'yuv-420-10-bit-bt2020-video' })
+  expect(imported[0]![1]).toBe('bt2020-limited')
+})
+
+test('the caller can override the format mapping entirely', async () => {
+  const probe = await mount(undefined, { format: () => 'jpeg-full' })
+  await probe.push({ pixelFormat: 'yuv-420-8-bit-video' })
+  expect(imported[0]![1]).toBe('jpeg-full')
+})
+
+test('the caller can override the rotation mapping', async () => {
+  const probe = await mount(undefined, { rotation: () => 90 })
+  await probe.push({ orientation: 'up' })
+  expect(probe.current.posture.rotation).toBe(90)
+})
+
 test('the caller callback runs while the frame is still alive', async () => {
   const aliveAt: number[] = []
   const probe = await mount(() => {

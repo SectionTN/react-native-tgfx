@@ -68,12 +68,54 @@ export interface CameraFrameSource<F extends FrameLike = FrameLike> {
   onFrame: (frame: F) => void
 }
 
+export interface CameraFrameOptions<F extends FrameLike = FrameLike> {
+  /**
+   * Map the producer's `pixelFormat` to the one tgfx imports with. A worklet —
+   * it runs on the frame thread.
+   *
+   * The default reads the string: `rgb`/`rgba`/`bgra` import as `'rgba'`,
+   * `709`/`2020` pick that matrix, anything else is BT.601, and a `-full`
+   * suffix selects the full-range variant. Override it for a producer that
+   * names its formats differently, or to pin one.
+   */
+  format?: (frame: F) => PixelFormat
+  /**
+   * Map the producer's `orientation` to the clockwise degrees that cancel it.
+   * A worklet. The default understands `'up' | 'right' | 'down' | 'left'`;
+   * anything else is 0, which draws the frame unrotated.
+   */
+  rotation?: (frame: F) => number
+}
+
 /** `frame.orientation` to the clockwise rotation that cancels it. */
 const ROTATION: Record<string, 0 | 90 | 180 | 270> = {
   up: 0,
   right: 270,
   down: 180,
   left: 90,
+}
+
+/**
+ * The producer's format string to tgfx's. Cameras are YUV, but nothing about
+ * this hook is: a screen recorder, a video decoder or a test source can hand
+ * over RGBA, and importing that as BT.601 would read the planes as luma and
+ * chroma. Rec.709 and Rec.2020 sources need their own matrix — the wrong one
+ * is a hue shift, not an error.
+ */
+function defaultFormat(pixelFormat: string): PixelFormat {
+  'worklet'
+  const f = pixelFormat.toLowerCase()
+  if (f.startsWith('rgb') || f.startsWith('bgra') || f.startsWith('argb')) {
+    return 'rgba'
+  }
+  const full = f.endsWith('-full') || f.includes('full-range')
+  if (f.includes('2020')) {
+    return full ? 'bt2020-full' : 'bt2020-limited'
+  }
+  if (f.includes('709')) {
+    return full ? 'bt709-full' : 'bt709-limited'
+  }
+  return full ? 'bt601-full' : 'bt601-limited'
 }
 
 const UPRIGHT: CameraFramePosture = Object.freeze({
@@ -126,13 +168,18 @@ const UPRIGHT: CameraFramePosture = Object.freeze({
  * producer's worklet runtime.
  */
 export function useCameraFrame<F extends FrameLike = FrameLike>(
-  onEachFrame?: (frame: F) => void
+  onEachFrame?: (frame: F) => void,
+  options?: CameraFrameOptions<F>
 ): CameraFrameSource<F> {
   if (!installed) {
     throw new Error(
       '[tgfx] useCameraFrame needs react-native-reanimated, which is not installed.'
     )
   }
+  // Destructured so the callback depends on the functions, not the options
+  // object — an inline `{}` at the call site would re-register every render.
+  const formatOf = options?.format
+  const rotationOf = options?.rotation
   const [image, setImage] = useState<TgfxImage | null>(null)
   const [posture, setPosture] = useState<CameraFramePosture>(UPRIGHT)
   // Worklet-runtime state: read and written where the frames arrive, never here.
@@ -157,11 +204,12 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
       let buffer: NativeBufferLike | null = null
       try {
         buffer = frame.getNativeBuffer()
-        // Read the range off the frame rather than hardcoding it: a device
-        // reporting `yuv-420-8-bit-full` imported as limited crushes the blacks.
-        const format: PixelFormat = frame.pixelFormat.endsWith('-full')
-          ? 'bt601-full'
-          : 'bt601-limited'
+        // Read the format off the frame rather than hardcoding it: a device
+        // reporting `yuv-420-8-bit-full` imported as limited crushes the blacks,
+        // and a non-YUV producer imported as BT.601 reads its channels as luma
+        // and chroma.
+        const format: PixelFormat =
+          formatOf != null ? formatOf(frame) : defaultFormat(frame.pixelFormat)
         if (handle.value == null) {
           handle.value = imageFromNativeBuffer(buffer.pointer, format)
           scheduleOnRN!(onImage, handle.value)
@@ -169,7 +217,10 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
           handle.value.setNativeBuffer(buffer.pointer, format)
         }
 
-        const rotation = ROTATION[frame.orientation] ?? 0
+        const rotation =
+          rotationOf != null
+            ? rotationOf(frame)
+            : (ROTATION[frame.orientation] ?? 0)
         const key = `${rotation}:${frame.isMirrored}:${frame.width}x${frame.height}`
         if (posted.value !== key) {
           posted.value = key
@@ -190,7 +241,7 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
         frame.dispose()
       }
     },
-    [handle, posted, onImage, onPosture, onEachFrame]
+    [handle, posted, onImage, onPosture, onEachFrame, formatOf, rotationOf]
   )
 
   useEffect(() => {
