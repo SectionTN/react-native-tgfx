@@ -7,34 +7,38 @@
 #include "HybridTgfxImage.hpp"
 #include "ImageRegistry.hpp"
 #include "Log.hpp"
+#include "TgfxFrameSink.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageCodec.h"
-#include "tgfx/core/YUVColorSpace.h"
-#include "tgfx/platform/HardwareBuffer.h"
 
 namespace margelo::nitro::tgfx {
 
-std::shared_ptr<::tgfx::Image> imageFromNativeBuffer(uint64_t buffer, PixelFormat format) {
-  if (buffer == 0) {
-    return nullptr;
-  }
-  auto ref = static_cast<::tgfx::HardwareBufferRef>(reinterpret_cast<void*>(buffer));
-  if (format == PixelFormat::RGBA) {
-    // Single-plane surface: imported as-is, with no YUV conversion.
-    return ::tgfx::Image::MakeFrom(ref);
-  }
-  ::tgfx::YUVColorSpace space = ::tgfx::YUVColorSpace::BT601_LIMITED;
+/// The JS-facing `PixelFormat` to the exported `FrameFormat`.
+///
+/// Deliberately exhaustive with no `default:`, so `-Wswitch` names the omission
+/// when nitrogen adds a value to the union (verified: removing a case prints
+/// "enumeration value 'JPEG_FULL' not handled in switch"). A `default:` here
+/// would map a new colour space to BT.601 limited and say nothing — and getting
+/// the *range* silently wrong is precisely the bug class this file has had
+/// before: an image still appears, just with crushed blacks.
+tgfxrn::FrameFormat toFrameFormat(PixelFormat format) {
   switch (format) {
-    case PixelFormat::BT601_FULL: space = ::tgfx::YUVColorSpace::BT601_FULL; break;
-    case PixelFormat::BT709_LIMITED: space = ::tgfx::YUVColorSpace::BT709_LIMITED; break;
-    case PixelFormat::BT709_FULL: space = ::tgfx::YUVColorSpace::BT709_FULL; break;
-    case PixelFormat::BT2020_LIMITED: space = ::tgfx::YUVColorSpace::BT2020_LIMITED; break;
-    case PixelFormat::BT2020_FULL: space = ::tgfx::YUVColorSpace::BT2020_FULL; break;
-    case PixelFormat::JPEG_FULL: space = ::tgfx::YUVColorSpace::JPEG_FULL; break;
-    default: break;
+    case PixelFormat::RGBA: return tgfxrn::FrameFormat::RGBA;
+    case PixelFormat::BT601_LIMITED: return tgfxrn::FrameFormat::BT601Limited;
+    case PixelFormat::BT601_FULL: return tgfxrn::FrameFormat::BT601Full;
+    case PixelFormat::BT709_LIMITED: return tgfxrn::FrameFormat::BT709Limited;
+    case PixelFormat::BT709_FULL: return tgfxrn::FrameFormat::BT709Full;
+    case PixelFormat::BT2020_LIMITED: return tgfxrn::FrameFormat::BT2020Limited;
+    case PixelFormat::BT2020_FULL: return tgfxrn::FrameFormat::BT2020Full;
+    case PixelFormat::JPEG_FULL: return tgfxrn::FrameFormat::JPEGFull;
   }
-  return ::tgfx::Image::MakeFrom(ref, space);
+  // Only reachable from an out-of-range cast, which JSIConverter rejects first.
+  return tgfxrn::FrameFormat::BT601Limited;
+}
+
+std::shared_ptr<::tgfx::Image> imageFromNativeBuffer(uint64_t buffer, PixelFormat format) {
+  return tgfxrn::importHardwareBuffer(buffer, toFrameFormat(format));
 }
 
 namespace {

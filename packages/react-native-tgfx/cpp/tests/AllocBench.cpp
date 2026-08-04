@@ -24,8 +24,11 @@
 #include <string>
 #include <vector>
 
+#include <cstring>
+
 #include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
+#include "TgfxFrameSink.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
@@ -40,6 +43,10 @@
 #include "tgfx/gpu/Context.h"
 #include "tgfx/gpu/Device.h"
 #include "tgfx/gpu/metal/MetalDevice.h"
+
+#if defined(__APPLE__)
+#include <CoreVideo/CoreVideo.h>
+#endif
 
 static std::atomic<size_t> gAllocs{0};
 static std::atomic<bool> gCounting{false};
@@ -470,10 +477,10 @@ bool reportText() {
 //
 // What this is NOT, so the number is not over-read:
 //
-//   * The frames are plain RGBA images, not hardware buffers, which no host
-//     test can produce. So this covers the draw path — resolve, matrix, draw —
-//     and says nothing about the YUV import or the sampler-level conversion.
-//     Those are covered by the device probe in the PR, and by the emitted GLSL.
+//   * The frames are plain RGBA images, not hardware buffers. So this covers
+//     the draw path — resolve, matrix, draw — and says nothing about the YUV
+//     import or the sampler-level conversion. reportHardwareFrame() below does
+//     cover those, on a real planar-YUV buffer.
 //   * There is no <ImageShader> and no image filter here either; the shader
 //     path is anExternalHandleAlsoDrivesAnImageShaderPerFrame in SceneTest, and
 //     an image filter genuinely does take a save-layer offscreen.
@@ -601,6 +608,224 @@ bool reportCamera() {
   return true;
 }
 
+// ---------------- hardware buffers, planar YUV ----------------
+//
+// The link the bench above cannot reach: a *real* hardware buffer carrying
+// *real* NV12 planes, imported through tgfxrn::setFrame — the entry point
+// react-native-tgfx-vision-camera's native plugin calls from the camera thread.
+//
+// It matters because the two halves of the zero-copy claim fail differently. An
+// RGBA stand-in exercises the swap and the draw; only a YUV buffer exercises
+// the conversion, and a YUV->RGB *pre-pass* — a full-frame GPU copy every frame
+// — is exactly what would hide behind an RGBA measurement. tgfx converts at the
+// sampler (one texture() per plane plus a colour matrix in the emitted shader),
+// so the resource cache must not move. If it ever grew a pre-pass, this is the
+// number that would say so.
+//
+// CVPixelBufferCreate gives a genuine IOSurface-backed planar buffer on macOS,
+// so this runs on the host rather than needing a device. The Android side is
+// AHardwareBuffer through the same setFrame(), and is not covered here.
+//
+// What the GPU-memory gate does and does not catch, measured rather than
+// assumed — swapping the loop below for each of these and reading the delta:
+//
+//   * A tgfx-owned texture per frame (a CPU-pixel image uploaded every frame,
+//     which is what a YUV->RGB pre-pass or a re-upload would look like):
+//     caught, +262144 bytes.
+//   * A *different* hardware buffer every frame instead of two recycled ones:
+//     flat, +0. An imported IOSurface is not tgfx-accounted memory at all.
+//
+// So a flat reading here means "tgfx materialised nothing per frame". It does
+// not, and cannot, mean "the import allocated nothing" — that is the producer's
+// pool, and VisionCamera bounds it.
+#if defined(__APPLE__)
+
+constexpr int kFrameWidth = 720;
+constexpr int kFrameHeight = 1280;
+/// Matches the on-device run PR #148 reported, so the two are comparable.
+constexpr int kHardwareFrames = 780;
+
+/// An NV12 buffer of flat luma and chroma — what a camera output hands a frame
+/// processor, minus the picture.
+CVPixelBufferRef makeYUVBuffer(uint8_t luma, uint8_t chroma) {
+  auto empty = CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
+                                  &kCFTypeDictionaryKeyCallBacks,
+                                  &kCFTypeDictionaryValueCallBacks);
+  const void* keys[] = {kCVPixelBufferIOSurfacePropertiesKey};
+  const void* values[] = {empty};
+  auto options =
+      CFDictionaryCreate(kCFAllocatorDefault, keys, values, 1,
+                         &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+  CVPixelBufferRef buffer = nullptr;
+  auto status = CVPixelBufferCreate(kCFAllocatorDefault, kFrameWidth, kFrameHeight,
+                                    kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                                    options, &buffer);
+  CFRelease(options);
+  CFRelease(empty);
+  if (status != kCVReturnSuccess || buffer == nullptr) {
+    return nullptr;
+  }
+  CVPixelBufferLockBaseAddress(buffer, 0);
+  auto* y = static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(buffer, 0));
+  auto yStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0);
+  for (int row = 0; row < kFrameHeight; row++) {
+    std::memset(y + static_cast<size_t>(row) * yStride, luma, kFrameWidth);
+  }
+  auto* uv = static_cast<uint8_t*>(CVPixelBufferGetBaseAddressOfPlane(buffer, 1));
+  auto uvStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1);
+  for (int row = 0; row < kFrameHeight / 2; row++) {
+    std::memset(uv + static_cast<size_t>(row) * uvStride, chroma, kFrameWidth);
+  }
+  CVPixelBufferUnlockBaseAddress(buffer, 0);
+  return buffer;
+}
+
+/// Red channel at the centre of the surface, which the frame covers.
+uint8_t drawAndSampleCentre(tgfxrn::SceneRenderer& renderer) {
+  auto* context = device()->lockContext();
+  auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+  auto* canvas = surface->getCanvas();
+  canvas->clear();
+  const double values[1] = {1.0};
+  renderer.render(canvas, values);
+  context->flushAndSubmit(true);
+  auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888);
+  std::vector<uint8_t> pixels(static_cast<size_t>(info.byteSize()));
+  surface->readPixels(info, pixels.data());
+  device()->unlock();
+  return pixels[(static_cast<size_t>(kHeight / 2) * kWidth + kWidth / 2) * 4];
+}
+
+bool reportHardwareFrame() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  CVPixelBufferRef buffers[2] = {makeYUVBuffer(40, 128), makeYUVBuffer(200, 128)};
+  if (buffers[0] == nullptr || buffers[1] == nullptr) {
+    std::printf("could not allocate an NV12 CVPixelBuffer\n");
+    return false;
+  }
+  auto pointer = [&](int i) { return reinterpret_cast<uint64_t>(buffers[i]); };
+
+  auto first = tgfxrn::importHardwareBuffer(pointer(0), tgfxrn::FrameFormat::BT601Limited);
+  if (first == nullptr) {
+    std::printf("FAIL: tgfx would not import a planar YUV hardware buffer\n");
+    return false;
+  }
+  auto external = registry.addExternal(first);
+  first.reset();
+
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(cameraScene(external.handle), {});
+
+  size_t drawn = 0;
+  size_t decodesBefore = registry.decodeCount();
+  for (int i = 0; i < 4; i++) {
+    tgfxrn::setFrame(external.handle, pointer(i % 2), tgfxrn::FrameFormat::BT601Limited);
+    frameAllocations(renderer, false, &drawn);
+  }
+
+  // The gate the counters cannot give: the pixels on screen have to follow the
+  // buffer that was swapped in. Without this the whole bench would still pass
+  // against a setFrame() that quietly did nothing — which is also the flattest
+  // possible GPU-memory reading.
+  tgfxrn::setFrame(external.handle, pointer(0), tgfxrn::FrameFormat::BT601Limited);
+  auto dark = drawAndSampleCentre(renderer);
+  tgfxrn::setFrame(external.handle, pointer(1), tgfxrn::FrameFormat::BT601Limited);
+  auto light = drawAndSampleCentre(renderer);
+
+  // The same luma read as full-range. Limited-range expands (Y-16)*255/219,
+  // full range does not, so the two readings must differ — which is what proves
+  // the format argument reaches YUVColorSpace instead of being dropped.
+  //
+  // This is the bug class, not a hypothetical: a frame imported at the wrong
+  // range still draws, just with crushed blacks, so nothing else in this file
+  // would notice. `useCameraFrame()` picks the range from
+  // `frame.pixelFormat.endsWith('-full')` and it reaches tgfx down this path.
+  //
+  // It has to be a *fresh* buffer, and that is a finding rather than a detail:
+  // at the pinned tgfx the colour space is bound to a hardware buffer at its
+  // first import, and re-importing the same buffer under a different space
+  // silently reuses the first one (measured: 215, the limited-range reading,
+  // instead of 201). Harmless for a camera — a session's pixelFormat is fixed
+  // and pool slots are recycled at that one format — but it means "change the
+  // range on a live handle" is not a thing that works.
+  auto* fresh = makeYUVBuffer(200, 128);
+  tgfxrn::setFrame(external.handle, reinterpret_cast<uint64_t>(fresh),
+                   tgfxrn::FrameFormat::BT601Full);
+  auto lightFullRange = drawAndSampleCentre(renderer);
+  CVPixelBufferRelease(fresh);
+
+  auto* context = device()->lockContext();
+  size_t memoryBefore = context->memoryUsage();
+  device()->unlock();
+
+  size_t worst = 0;
+  size_t total = 0;
+  size_t rejected = 0;
+  for (int i = 0; i < kHardwareFrames; i++) {
+    if (!tgfxrn::setFrame(external.handle, pointer(i % 2),
+                          tgfxrn::FrameFormat::BT601Limited)) {
+      rejected++;
+    }
+    size_t allocations = frameAllocations(renderer, true, &drawn);
+    worst = std::max(worst, allocations);
+    total += allocations;
+  }
+  context = device()->lockContext();
+  size_t memoryAfter = context->memoryUsage();
+  device()->unlock();
+  size_t decodes = registry.decodeCount() - decodesBefore;
+  registry.remove(external.handle);
+  CVPixelBufferRelease(buffers[0]);
+  CVPixelBufferRelease(buffers[1]);
+
+  std::printf("a %dx%d NV12 hardware buffer through tgfxrn::setFrame, %d frames:\n",
+              kFrameWidth, kFrameHeight, kHardwareFrames);
+  std::printf("  opaque pixels drawn        %zu\n", drawn);
+  std::printf("  centre luma, dark / light  %u / %u\n", dark, light);
+  std::printf("  same luma as full range    %u  (limited read %u)\n", lightFullRange,
+              light);
+  std::printf("  frames the registry took   %d\n", kHardwareFrames - int(rejected));
+  std::printf("  decodes on the frame path  %zu\n", decodes);
+  std::printf("  GPU bytes before / after   %zu / %zu  (delta %+lld)\n", memoryBefore,
+              memoryAfter,
+              static_cast<long long>(memoryAfter) - static_cast<long long>(memoryBefore));
+  std::printf("  allocations per render()   mean %zu, worst %zu\n",
+              total / kHardwareFrames, worst);
+  std::printf("\n");
+
+  if (drawn == 0) {
+    std::printf("FAIL: the frame never painted\n");
+    return false;
+  }
+  if (rejected != 0) {
+    std::printf("FAIL: the registry rejected %zu of %d frames\n", rejected,
+                kHardwareFrames);
+    return false;
+  }
+  if (dark >= light) {
+    std::printf("FAIL: the drawn pixels did not follow the swapped buffer\n");
+    return false;
+  }
+  if (lightFullRange == light) {
+    std::printf("FAIL: full-range and limited-range imports of the same luma read "
+                "identically — the format argument is not reaching the import\n");
+    return false;
+  }
+  if (decodes != 0) {
+    std::printf("FAIL: the hardware-buffer path decoded %zu times\n", decodes);
+    return false;
+  }
+  if (memoryAfter > memoryBefore) {
+    std::printf("FAIL: GPU memory grew by %zu bytes over %d frames — a per-frame "
+                "texture, i.e. a YUV->RGB pre-pass or a re-upload\n",
+                memoryAfter - memoryBefore, kHardwareFrames);
+    return false;
+  }
+  return true;
+}
+
+#endif  // __APPLE__
+
 }  // namespace
 
 int main() {
@@ -634,5 +859,10 @@ int main() {
   if (!reportCamera()) {
     return 1;
   }
+#if defined(__APPLE__)
+  if (!reportHardwareFrame()) {
+    return 1;
+  }
+#endif
   return reportText() ? 0 : 1;
 }

@@ -22,22 +22,21 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      # Every workspace package, not a hardcoded one: the second package that
+      # was added went untested for exactly as long as this line named the
+      # first. `shell: bash` carries -e, so a failure inside the loop aborts it.
       - name: Typecheck
-        working-directory: packages/react-native-tgfx
-        run: bun run typecheck
+        run: for p in packages/*/; do (cd "$p" && bun run typecheck); done
       - name: Unit tests
-        working-directory: packages/react-native-tgfx
-        run: bun run test
+        run: for p in packages/*/; do (cd "$p" && bun run test); done
       - name: Benchmark acceptance gate tests
         run: bun test benchmarks/renderer-benchmark/scripts
       - name: Nitrogen output is committed and in sync
-        working-directory: packages/react-native-tgfx
         run: |
-          bunx nitrogen
-          cd ../..
-          if ! git diff --quiet -- packages/react-native-tgfx/nitrogen; then
-            echo "::error::nitrogen output is stale — run 'bun specs' and commit the result"
-            git diff --stat -- packages/react-native-tgfx/nitrogen
+          for p in packages/*/; do (cd "$p" && bunx nitrogen); done
+          if ! git diff --quiet -- 'packages/*/nitrogen/*'; then
+            echo "::error::nitrogen output is stale — run 'bunx nitrogen' in the package and commit the result"
+            git diff --stat -- 'packages/*/nitrogen/*'
             exit 1
           fi
       - name: Tarball carries the entrypoints and the legal files

@@ -8,6 +8,9 @@
     "paths": {
       "react-native-tgfx": [
         "../../packages/react-native-tgfx/src/index"
+      ],
+      "react-native-tgfx-vision-camera": [
+        "../../packages/react-native-tgfx-vision-camera/src/index"
       ]
     }
   },

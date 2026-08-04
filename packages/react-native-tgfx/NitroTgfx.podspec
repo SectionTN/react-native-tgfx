@@ -28,6 +28,15 @@ Pod::Spec.new do |s|
 
   tgfx_dir = "$(PODS_TARGET_SRCROOT)/cpp/third_party/tgfx"
 
+  # Export contract for other native packages (see cpp/TgfxFrameSink.hpp): a pod
+  # that declares `s.dependency "NitroTgfx"` links this pod's objects into the
+  # same binary, so `tgfxrn::setFrame` resolves and there is exactly one
+  # ImageRegistry. The header reaches it as <NitroTgfx/TgfxFrameSink.hpp> from
+  # CocoaPods' per-pod header dir; the consumer adds the search path, because
+  # making cpp/*.hpp public here would drag C++ into this pod's Obj-C umbrella
+  # and break the Swift side. Android's equivalent is the prefab in
+  # android/build.gradle.
+  #
   # The Obj-C(++) view header is exposed through the module umbrella (NOT a Swift
   # bridging header — those are unsupported for framework/module pod targets), so
   # the Swift HybridTgfxView can see TgfxMetalView in-module. Its C++ guts stay

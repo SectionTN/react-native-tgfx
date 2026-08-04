@@ -18,6 +18,7 @@
     "react-native-reanimated": "^4.5.3",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-tgfx": "workspace:*",
+    "react-native-tgfx-vision-camera": "workspace:*",
     "react-native-vision-camera": "^5.2.0",
     "react-native-vision-camera-face-detector": "^2.0.6",
     "react-native-vision-camera-worklets": "^5.2.0",

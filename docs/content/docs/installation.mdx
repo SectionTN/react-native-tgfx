@@ -86,6 +86,33 @@ cd ios && pod install
 Set `PLATFORM=OS64` before running it for a device build, and re-run it whenever
 the package is updated.
 
+## Optional: the camera
+
+Camera frames need [`react-native-vision-camera`](https://visioncamera.margelo.com)
+v5 or newer, plus its worklets package for `useFrameOutput`:
+
+```sh
+npm install react-native-vision-camera react-native-vision-camera-worklets
+```
+
+`useCameraFrame()` from `react-native-tgfx` is all most apps need — see
+[Camera frames](/docs/camera). Nothing extra to install: the frame is typed
+structurally, so the core package has no dependency on VisionCamera.
+
+If the frame processor has **no** JS work to do, `react-native-tgfx-vision-camera`
+moves the import into a native frame-processor plugin so no frame reaches a JS
+runtime at all:
+
+```sh
+npm install react-native-tgfx-vision-camera
+```
+
+It links the core package's native library directly — an Android prefab, an iOS
+pod dependency — so it needs no extra build step of its own beyond the one in
+step 4. Read [the rule for choosing between the
+two](/docs/camera#taking-js-off-the-per-frame-path-entirely) before reaching for
+it: a screen running a detector every frame cannot use it.
+
 ## 5. Draw something
 
 ```tsx title="App.tsx"

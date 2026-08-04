@@ -364,6 +364,67 @@ if (!accepted) frame.dispose()
 
 There is no `runAtTargetFps` in v5.
 
+## Taking JS off the per-frame path entirely
+
+**The rule: use the native sink when nothing in JS needs the frame; use
+`useCameraFrame()` when something does.**
+
+It is not a performance preference, it is what the API allows.
+`setOnFrameCallback` holds exactly **one** callback — `HybridFrameOutput.kt:47`
+is a single `private var onFrame`, and the iOS side likewise assigns
+`delegate.onFrame`. There is no chaining and no getter. So installing the native
+callback *removes* the JS one; a screen that needs `detectFaces(frame)` every
+frame cannot have both. Two outputs would mean two buffer pools and a second
+copy of every frame, which the zero-copy requirement rules out.
+
+So:
+
+| the frame processor… | use |
+| --- | --- |
+| runs a detector / classifier / any JS per frame | `useCameraFrame()` |
+| only needs the frame on the canvas | the native sink |
+
+And when JS is already on the path for a detector, the sink would buy nothing
+anyway: `setNativeBuffer` is one Nitro call inside a worklet the frame was
+already paying for.
+
+`react-native-tgfx-vision-camera` moves the import into a native VisionCamera
+frame-processor plugin. In v5 a plugin is just a Nitro `HybridObject` (the v4
+`FrameProcessorPlugin` subclass and the `VISION_EXPORT_SWIFT_FRAME_PROCESSOR`
+macro are gone), and this one is C++, so one implementation serves both
+platforms:
+
+It composes with `useCameraFrame()` rather than replacing it — the hook still
+mints the handle from the first frame:
+
+```tsx
+import { useCameraFrame } from 'react-native-tgfx'
+import { useTgfxCameraSink } from 'react-native-tgfx-vision-camera'
+
+const { image, posture, onFrame } = useCameraFrame()
+const sink = useTgfxCameraSink()
+const frameOutput = useFrameOutput({
+  pixelFormat: 'yuv',
+  enablePhysicalBufferRotation: true,
+  onFrame,
+})
+
+useEffect(() => {
+  if (image != null) sink.attach(frameOutput, image.handle)
+}, [sink, frameOutput, image])
+```
+
+`attach()` installs a native `setOnFrameCallback` on the output's own thread, so
+from that point the camera thread calls `ImageRegistry` directly and no frame
+reaches a JS runtime. The first frame is still the hook's worklet, because
+`imageFromNativeBuffer` needs a buffer and there is none before it.
+
+The trade is that `frame.orientation` stops reaching JS too, so the posture is
+read once — set `enablePhysicalBufferRotation: true`, which keeps `orientation`
+`'up'` for the session, or stay on the worklet. `apps/faceblur` runs both: the
+effects screen on the plugin, the face-blur screen on the worklet because MLKit
+needs the frame in JS regardless.
+
 ## A complete example
 
 Realtime face blur, which is what `apps/faceblur` in this repo does. MLKit's
@@ -594,21 +655,31 @@ Which instrument covers which row:
 - **Rows 1–4** — `cpp/tests/AllocBench.cpp`, a `<CameraFrame>` plus overlays over
   60 frames with the buffer swapped every frame, gated on drawn pixels: zero
   decodes, zero growth in the tgfx context's GPU memory, and a flat per-frame
-  allocation count. It uses an RGBA stand-in, because no host test can make a
-  hardware buffer.
+  allocation count. It uses an RGBA stand-in.
 - **Row 5** — `anExternalHandleAlsoDrivesAnImageShaderPerFrame` in
   `cpp/tests/SceneTest.cpp`: the shader is rebuilt from the handle per frame and
   the pixels change without a re-commit.
-- **Rows 6–7** — on device only, and by construction: the emitted GLSL samples
-  the planes directly.
+- **Rows 2 and 6** — `reportHardwareFrame()` in the same file, on a **real**
+  720x1280 NV12 `CVPixelBuffer` (IOSurface-backed, so a genuine hardware
+  buffer), 780 frames: `gpuBytes 648032 → 648032`, delta `+0`, `decodes=0`,
+  25 allocations per `render()` flat. Gated on the drawn pixels following the
+  buffer that was swapped in, so a `setFrame` that quietly did nothing — the
+  flattest possible memory reading — fails it. The YUV conversion is measured
+  too: limited-range luma 40 and 200 come out as 29 and 215, which is the
+  BT.601 range expansion and not a passthrough.
+- **Row 7** — inherent to `<Blur>`, not measured away.
 
-What the GPU-memory number is *not*: `Context::memoryUsage()` counts tgfx-owned
-resources, and a 720x1280 planar YUV buffer (~1.38 MB) is larger than the whole
-figure it reports — so the imported texture is plainly not in that accounting.
-A flat reading proves **no per-frame tgfx-owned intermediate or conversion
-target**, which is the claim that matters here; it does not independently prove
-the import itself allocates nothing. `decodes=0` and the sampler-level YUV path
-carry that half.
+What the GPU-memory number is *not*, measured rather than argued by swapping the
+loop for each case:
+
+- A tgfx-owned texture per frame — a YUV→RGB pre-pass, or a re-upload — moves it
+  by `+262144` bytes. The gate is live.
+- A *different* hardware buffer every frame instead of two recycled ones leaves
+  it flat at `+0`. An imported IOSurface is not tgfx-accounted memory at all.
+
+So a flat reading means **tgfx materialised nothing per frame**. It cannot mean
+"the import allocated nothing" — that memory is the producer's pool, which
+VisionCamera bounds.
 
 ## Sampling the frame in a shader
 

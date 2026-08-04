@@ -95,6 +95,16 @@ android {
   buildFeatures {
     buildConfig true
     prefab true
+    // Publishes libNitroTgfx.so plus the headers copied by `prepareHeaders`
+    // below, so another native package can link the *same* ImageRegistry
+    // instead of compiling a second copy of it. See cpp/TgfxFrameSink.hpp.
+    prefabPublishing true
+  }
+
+  prefab {
+    NitroTgfx {
+      headers "${project.buildDir}/headers/nitrotgfx/"
+    }
   }
 
   buildTypes {
@@ -139,4 +149,16 @@ dependencies {
   // Add a dependency on NitroModules
   implementation project(":react-native-nitro-modules")
 }
+
+// The prefab header payload. Exactly one file: TgfxFrameSink.hpp is the export
+// contract, and everything else under cpp/ stays unpublished on purpose — not
+// because including it would break anything (the symbols are exported with
+// default visibility either way), but because a header nobody can reach is a
+// header nobody depends on.
+tasks.register('prepareHeaders', Copy) {
+  from file('../cpp/TgfxFrameSink.hpp')
+  into "${project.buildDir}/headers/nitrotgfx/NitroTgfx/"
+}
+
+preBuild.dependsOn(prepareHeaders)
 

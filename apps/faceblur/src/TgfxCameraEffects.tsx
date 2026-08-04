@@ -8,8 +8,13 @@
  * <ImageShader> on the same frame handle (#147), so the SkSL samples the live
  * hardware buffer directly. `uTime` is a useClock SharedValue, so it animates
  * without the scene being re-encoded.
+ *
+ * This screen also runs the native sink: useCameraFrame()'s worklet mints the
+ * handle from the first frame, and then the camera thread writes that handle
+ * directly with no JS runtime on the path. TgfxFaceBlur is the other half of the
+ * comparison — it keeps the worklet, because MLKit needs the frame in JS anyway.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native'
 import {
   Camera,
@@ -27,6 +32,7 @@ import {
   useCameraFrame,
   useClock,
 } from 'react-native-tgfx'
+import { useTgfxCameraSink } from 'react-native-tgfx-vision-camera'
 
 const BLUR_RADIUS = 28
 
@@ -97,6 +103,7 @@ export function TgfxCameraEffects() {
   const clock = useClock()
   // The hook owns the buffer's lifetime: the raw pointer never leaves it.
   const { image, posture, onFrame } = useCameraFrame()
+  const sink = useTgfxCameraSink()
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
@@ -104,6 +111,16 @@ export function TgfxCameraEffects() {
     enablePhysicalBufferRotation: true,
     onFrame,
   })
+
+  // There is no per-frame JS work on this screen, so once the hook has a handle
+  // the worklet has nothing left to do: hand the output to the native sink and
+  // it takes over on the camera thread. `enablePhysicalBufferRotation` above is
+  // what makes that sound — the pipeline keeps `orientation` 'up' for the
+  // session, so `posture` freezing at its first value stays correct.
+  useEffect(() => {
+    if (image == null) return
+    sink.attach(frameOutput, image.handle)
+  }, [sink, frameOutput, image])
 
   if (!hasPermission) {
     return (

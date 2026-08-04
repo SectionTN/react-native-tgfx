@@ -1,0 +1,83 @@
+{
+  "name": "react-native-tgfx-vision-camera",
+  "version": "0.0.1",
+  "description": "A native VisionCamera frame-processor plugin that hands camera frames to react-native-tgfx without JS on the per-frame path.",
+  "main": "lib/index",
+  "module": "lib/index",
+  "types": "lib/index.d.ts",
+  "react-native": "src/index",
+  "source": "src/index",
+  "files": [
+    "src",
+    "lib",
+    "nitrogen",
+    "android/build.gradle",
+    "android/gradle.properties",
+    "android/fix-prefab.gradle",
+    "android/CMakeLists.txt",
+    "android/src",
+    "cpp/*.cpp",
+    "cpp/*.hpp",
+    "*.podspec",
+    "nitro.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prepack": "npx --no-install tsc --build --force && ls lib/index.js lib/index.d.ts > /dev/null",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "clean": "rm -rf android/build lib tsconfig.tsbuildinfo",
+    "lint": "eslint \"**/*.{js,ts,tsx}\" --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "specs": "tsc --noEmit false && nitrogen --logLevel=\"debug\""
+  },
+  "keywords": [
+    "react-native",
+    "nitro",
+    "vision-camera",
+    "tgfx"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/riteshshukla04/react-native-tgfx.git"
+  },
+  "author": "Ritesh Shukla <riteshkumarshukla04@gmail.com> (https://github.com/riteshshukla04)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/riteshshukla04/react-native-tgfx/issues"
+  },
+  "homepage": "https://github.com/riteshshukla04/react-native-tgfx#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@typescript-eslint/eslint-plugin": "^8.48.2",
+    "@typescript-eslint/parser": "^8.48.2",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "nitrogen": "*",
+    "prettier": "^3.8.3",
+    "react-native": "0.85.3",
+    "react-native-nitro-modules": "*",
+    "react-native-tgfx": "workspace:*",
+    "react-native-vision-camera": "^5.2.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "react-native": "*",
+    "react-native-nitro-modules": "*",
+    "react-native-tgfx": "*",
+    "react-native-vision-camera": ">=5.2.0"
+  },
+  "prettier": {
+    "quoteProps": "consistent",
+    "singleQuote": true,
+    "tabWidth": 2,
+    "trailingComma": "es5",
+    "useTabs": false,
+    "semi": false
+  }
+}

@@ -30,19 +30,23 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
 
+      # Looped over every workspace package rather than naming one: a package
+      # this gate does not know about is a package with no gate.
       - name: Lint
         id: lint
-        working-directory: packages/react-native-tgfx
         continue-on-error: true
-        run: bunx eslint "**/*.{js,ts,tsx}" --max-warnings 0 2>&1 | tee /tmp/lint.txt
+        run: |
+          for p in packages/*/; do
+            (cd "$p" && bunx eslint "**/*.{js,ts,tsx}" --max-warnings 0)
+          done 2>&1 | tee /tmp/lint.txt
 
       - name: Formatting
         id: format
-        working-directory: packages/react-native-tgfx
         continue-on-error: true
         # bun run resolves node_modules/.bin locally, so the prettier major
         # cannot depend on the cwd. The root hoists a different one.
-        run: bun run format:check 2>&1 | tee /tmp/format.txt
+        run: |
+          for p in packages/*/; do (cd "$p" && bun run format:check); done 2>&1 | tee /tmp/format.txt
 
       # The generated bindings must match the spec, or the native side silently
       # drifts from the TypeScript API.
@@ -52,8 +56,8 @@ jobs:
         run: |
           # nitrogen's own failure has to reach the file too, or -e aborts
           # before the tee and the PR comment renders an empty block.
-          (cd packages/react-native-tgfx && bunx nitrogen) 2>&1 | tee /tmp/codegen.txt
-          git diff --exit-code -- packages/react-native-tgfx/nitrogen 2>&1 | tee -a /tmp/codegen.txt
+          for p in packages/*/; do (cd "$p" && bunx nitrogen); done 2>&1 | tee /tmp/codegen.txt
+          git diff --exit-code -- 'packages/*/nitrogen/*' 2>&1 | tee -a /tmp/codegen.txt
 
       # A change to the draw-program format is only safe if both ends move
       # together, so flag it for a human rather than trying to judge it here.

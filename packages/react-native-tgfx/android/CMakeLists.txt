@@ -68,6 +68,7 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/SvgPath.cpp
         ../cpp/TgfxRenderer.cpp
         ../cpp/ImageRegistry.cpp
+        ../cpp/TgfxFrameSink.cpp
         ../cpp/HybridTgfxImageFactory.cpp
         ../cpp/FontRegistry.cpp
         ../cpp/TextLayout.cpp

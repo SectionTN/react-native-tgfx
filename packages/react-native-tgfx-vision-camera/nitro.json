@@ -1,0 +1,26 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": [
+    "tgfxcamera"
+  ],
+  "ios": {
+    "iosModuleName": "NitroTgfxCamera"
+  },
+  "android": {
+    "androidNamespace": [
+      "tgfxcamera"
+    ],
+    "androidCxxLibName": "NitroTgfxCamera"
+  },
+  "autolinking": {
+    "TgfxCameraSink": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTgfxCameraSink"
+      }
+    }
+  },
+  "ignorePaths": [
+    "**/node_modules"
+  ]
+}

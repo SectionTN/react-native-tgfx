@@ -11,6 +11,14 @@
  * frame swaps the hardware buffer behind one handle (zero copy, no re-commit)
  * and writes the face bounds into Reanimated values that the engine resolves on
  * the UI thread. The JS thread does no work at all while the camera runs.
+ *
+ * This screen stays on useCameraFrame() and does *not* use the native sink from
+ * react-native-tgfx-vision-camera, which TgfxCameraEffects does. That is the
+ * boundary between the two, not an omission: detectFaces(frame) needs the frame
+ * in a JS runtime every frame, and setOnFrameCallback holds exactly one
+ * callback — so the sink would replace the detector rather than join it. With
+ * JS on the path regardless, the import is one Nitro call inside a worklet that
+ * already had to run.
  */
 import { useCallback } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
