@@ -6,7 +6,7 @@ description: Drawing a live camera stream as an ordinary scene input, with the r
 A camera frame is an ordinary **scene input**. `<CameraFrame>` places it, and the
 rest of the React tree draws over it like it draws over anything else. The frame
 arrives as a platform hardware buffer and is imported straight to a GPU texture:
-no decode, no CPU round trip, nothing copied.
+no decode, no CPU round trip, nothing is copied.
 
 ```sh
 npm install react-native-vision-camera react-native-vision-camera-worklets react-native-tgfx-vision-camera
