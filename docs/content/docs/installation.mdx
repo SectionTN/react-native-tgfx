@@ -109,9 +109,8 @@ npm install react-native-tgfx-vision-camera
 
 It links the core package's native library directly — an Android prefab, an iOS
 pod dependency — so it needs no extra build step of its own beyond the one in
-step 4. Read [the rule for choosing between the
-two](/docs/camera#taking-js-off-the-per-frame-path-entirely) before reaching for
-it: a screen running a detector every frame cannot use it.
+step 4. A screen running a detector every frame cannot use it — see
+[face blur](/docs/camera#face-blur) for why.
 
 ## 5. Draw something
 

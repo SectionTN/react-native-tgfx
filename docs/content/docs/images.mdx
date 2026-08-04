@@ -130,7 +130,7 @@ buffer is only alive for the duration of the callback.
 
 `pointer` is a **raw pointer and nothing can validate one**: a stale value does
 not throw, it imports whatever memory is now at that address. If your buffers
-arrive as camera frames, use [`useCameraFrame`](/docs/camera#getting-the-buffer)
+arrive as camera frames, use [`useCameraFrame`](/docs/camera#quick-start)
 instead — it owns the whole lifetime and the pointer never leaves its scope.
 This function is the escape hatch for producers that are not frame objects. See
 [camera frames](/docs/camera) for both, and for how `<CameraFrame>` draws them.
