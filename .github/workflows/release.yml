@@ -29,44 +29,13 @@ defaults:
     shell: bash
 
 jobs:
-  # The gate: the JS side is checked on every push, the native side is not, and
-  # a broken .mm only shows up here. Nothing is published if this job fails.
-  ios:
-    name: iOS Simulator build
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          # The tgfx submodule is a private repo; the default GITHUB_TOKEN
-          # cannot clone it.
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - name: Fetch tgfx third-party dependencies
-        working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
-        run: ./install_tools.sh && ./sync_deps.sh
-      - name: Build the tgfx static library
-        run: bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
-      - name: Install pods
-        working-directory: benchmarks/renderer-benchmark
-        run: |
-          npm ci
-          cd ios && pod install
-      - name: Build
-        working-directory: benchmarks/renderer-benchmark/ios
-        run: |
-          xcodebuild -workspace RendererBenchmark.xcworkspace \
-            -scheme RendererBenchmark -configuration Release \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
-
+  # macOS and one job, not a gate job feeding a publish job: ios/libs is
+  # gitignored but whitelisted in `files`, so the xcframework has to exist on
+  # this runner at `npm publish` time or the tarball ships a podspec whose
+  # vendored_frameworks points at nothing.
   release:
-    name: Publish to npm
-    needs: ios
-    runs-on: ubuntu-latest
+    name: Build tgfx and publish
+    runs-on: macos-15
     permissions:
       contents: read
       id-token: write
@@ -82,27 +51,65 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: recursive
+          # cpp/third_party/tgfx is a private repo: the default GITHUB_TOKEN is
+          # scoped to this one, so the submodule needs a PAT that can read both.
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      # A failed submodule clone leaves an empty directory, and cmake would then
+      # fail 20 minutes later with something unrelated-looking.
+      - name: Verify the tgfx submodule is populated
+        run: |
+          if [ ! -f packages/react-native-tgfx/cpp/third_party/tgfx/CMakeLists.txt ]; then
+            echo "::error::tgfx submodule is empty — PERSONAL_ACCESS_TOKEN needs read access to riteshshukla04/tgfx-private"
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      - name: Fetch tgfx third-party dependencies
+        working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
+        run: ./install_tools.sh && ./sync_deps.sh
+
+      - name: Build the tgfx static library
+        run: bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
+
+      - name: Verify both slices are in the xcframework
+        working-directory: packages/react-native-tgfx/ios/libs/libtgfx.xcframework
+        run: |
+          for slice in ios-arm64/libtgfx-ios.a ios-arm64-simulator/libtgfx-ios.a; do
+            if [ ! -f "$slice" ]; then
+              echo "::error::$slice missing from libtgfx.xcframework"
+              exit 1
+            fi
+          done
+          ls -lh ios-arm64/libtgfx-ios.a ios-arm64-simulator/libtgfx-ios.a
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           package-manager-cache: false
       # Trusted publishing needs the OIDC support added in npm 11.5.1.
       - run: npm install -g npm@11.14.1
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
+
       - name: Configure Git
         run: |
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          # sync_deps.sh writes inside the submodule, which makes the parent repo
+          # dirty and trips release-it's clean-working-dir check.
+          git config submodule."packages/react-native-tgfx/cpp/third_party/tgfx".ignore all
+
       - name: Release react-native-tgfx
         if: inputs.package == 'both' || inputs.package == 'react-native-tgfx'
         working-directory: packages/react-native-tgfx
         run: bunx release-it $RELEASE_ARGS --ci
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
       - name: Release react-native-tgfx-vision-camera
         if: inputs.package == 'both' || inputs.package == 'react-native-tgfx-vision-camera'
         working-directory: packages/react-native-tgfx-vision-camera
