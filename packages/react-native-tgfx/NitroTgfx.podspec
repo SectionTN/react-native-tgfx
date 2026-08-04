@@ -53,9 +53,10 @@ Pod::Spec.new do |s|
     "OTHER_LDFLAGS" => "-lc++",
   }
 
-  # Prebuilt tgfx (+ vendored deps) static library. Build it first with:
-  #   node packages/react-native-tgfx/scripts/build-tgfx-ios.js   (or the .sh)
-  s.vendored_libraries = "ios/libs/libtgfx-ios.a"
+  # Prebuilt tgfx (+ vendored deps) static library, device + simulator slices.
+  # Build it first with:
+  #   bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
+  s.vendored_frameworks = "ios/libs/libtgfx.xcframework"
 
   s.frameworks = "Metal", "QuartzCore", "CoreText", "CoreGraphics", "UIKit", "Foundation"
 

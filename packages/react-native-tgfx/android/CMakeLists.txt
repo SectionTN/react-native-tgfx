@@ -14,15 +14,6 @@ set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 # failing) sync step.
 file(MAKE_DIRECTORY "${TGFX_DIR}/third_party/shaderc/third_party/glslang")
 
-# Every change to a tracked tgfx file lives in patches/ and is applied by this
-# script, which is idempotent and fails loudly if a patch no longer applies.
-execute_process(
-  COMMAND bash "${CMAKE_SOURCE_DIR}/../scripts/apply-tgfx-patches.sh"
-  RESULT_VARIABLE _tgfx_patch_status)
-if (NOT _tgfx_patch_status EQUAL 0)
-  message(FATAL_ERROR "apply-tgfx-patches.sh failed (status ${_tgfx_patch_status})")
-endif ()
-
 # vendor_tools' vendor-build guesses its source dir from argv[1], which breaks
 # under the workspace symlink (node_modules/react-native-tgfx -> packages/...).
 # Force `-s ${CONFIG_DIR}` so it finds vendor.json at the tgfx root. Not a patch:
