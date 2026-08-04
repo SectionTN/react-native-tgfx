@@ -71,6 +71,13 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
 
+      # tgfx-private carries no LFS objects — a fork's LFS storage does not copy
+      # the upstream's — so depsync's `git lfs pull` 404s on every icon and font.
+      # The OIDs are identical upstream, and Tencent/tgfx serves them anonymously.
+      - name: Point LFS at upstream tgfx
+        working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
+        run: git config lfs.url https://github.com/Tencent/tgfx.git/info/lfs
+
       - name: Fetch tgfx third-party dependencies
         working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
         run: ./install_tools.sh && ./sync_deps.sh
