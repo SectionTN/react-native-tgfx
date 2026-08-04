@@ -76,7 +76,14 @@ jobs:
       # The OIDs are identical upstream, and Tencent/tgfx serves them anonymously.
       - name: Point LFS at upstream tgfx
         working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
-        run: git config lfs.url https://github.com/Tencent/tgfx.git/info/lfs
+        run: |
+          git config lfs.url https://github.com/Tencent/tgfx.git/info/lfs
+          # actions/checkout leaves the PAT in an extraheader on every submodule.
+          # Sent to another org's LFS endpoint it is rejected outright ("Resource
+          # not accessible by personal access token"); unauthenticated is fine,
+          # Tencent/tgfx is public. The parent repo keeps its header, so
+          # release-it can still push.
+          git config --local --unset-all http.https://github.com/.extraheader
 
       - name: Fetch tgfx third-party dependencies
         working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
