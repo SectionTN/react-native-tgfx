@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2-alpha.0](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%401.0.0-alpha.0...react-native-tgfx%400.0.2-alpha.0) (2026-08-05)
+
+### Bug Fixes
+
+* address the full-repo audit findings in [#162](https://github.com/riteshshukla04/react-native-tgfx/issues/162) ([#163](https://github.com/riteshshukla04/react-native-tgfx/issues/163)) ([c66a042](https://github.com/riteshshukla04/react-native-tgfx/commit/c66a042f3ff7a48a231408ee0651284489383939))
+* **release:** keep versions on the 0.0.x prerelease line ([0943e58](https://github.com/riteshshukla04/react-native-tgfx/commit/0943e58200af1cce452a22d2fd9345a9ebc3a969))
+
 ## [1.0.0-alpha.0](https://github.com/riteshshukla04/react-native-tgfx/compare/v0.0.1-alpha.1...react-native-tgfx%401.0.0-alpha.0) (2026-08-04)
 
 ### ⚠ BREAKING CHANGES
