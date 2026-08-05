@@ -19,9 +19,11 @@ The current release is `0.0.1`, published under the `alpha` dist-tag rather than
 tgfx keeps its vendored dependencies in a gitignored directory, so the tarball
 cannot carry them and a `postinstall` fetches them instead — a few hundred MB of
 git clones, on the first install only. It needs `git` and network access, and it
-does not run under `npm install --ignore-scripts`; without it the Android
-configure step fails on a missing `third_party/vendor_tools/vendor.cmake`. Run it
-by hand in that case:
+is skipped by any package manager that does not run lifecycle scripts:
+`npm install --ignore-scripts`, and **bun and pnpm by default** — bun needs
+`react-native-tgfx` in `trustedDependencies`, pnpm in `onlyBuiltDependencies`.
+Without it the Android configure step stops with `tgfx's vendored dependencies
+are missing`. Run it by hand in that case:
 
 ```bash
 cd node_modules/react-native-tgfx/cpp/third_party/tgfx && npx depsync

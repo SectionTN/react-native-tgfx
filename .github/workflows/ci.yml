@@ -59,6 +59,56 @@ jobs:
           done
           rm -f react-native-tgfx-*.tgz
 
+  # #165: the published tarball shipped none of tgfx's vendored dependencies for
+  # two releases, because every local and CI build reads them out of the
+  # submodule and nothing ever installed the packed artifact.
+  installable:
+    name: Packed tarball installs and carries a buildable tgfx
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+      - name: Verify the tgfx submodule is populated
+        run: |
+          if [ ! -f packages/react-native-tgfx/cpp/third_party/tgfx/CMakeLists.txt ]; then
+            echo "::error::tgfx submodule is empty — PERSONAL_ACCESS_TOKEN needs read access to riteshshukla04/tgfx-private"
+            exit 1
+          fi
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - name: Pack
+        working-directory: packages/react-native-tgfx
+        run: |
+          rm -rf lib
+          npm pack --silent --pack-destination "$RUNNER_TEMP"
+      # Deliberately not --ignore-scripts: the postinstall that fetches the
+      # vendored dependencies is the thing under test.
+      - name: Install the tarball into a scratch app
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p scratch && cd scratch
+          echo '{"name":"scratch","private":true,"version":"1.0.0"}' > package.json
+          npm install --no-audit --no-fund ../react-native-tgfx-*.tgz
+      - name: The installed package has everything the Android configure step reads
+        working-directory: ${{ runner.temp }}/scratch/node_modules/react-native-tgfx
+        run: |
+          for f in cpp/third_party/tgfx/CMakeLists.txt \
+                   cpp/third_party/tgfx/src/gpu/Texture.cpp \
+                   cpp/third_party/tgfx/third_party/vendor_tools/vendor.cmake \
+                   cpp/third_party/tgfx/third_party/vendor_tools/ios.toolchain.cmake; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f missing after a clean install — a fresh app cannot build"
+              exit 1
+            fi
+          done
+
   native-changes:
     name: Native paths changed
     runs-on: ubuntu-latest
