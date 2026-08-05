@@ -1,6 +1,6 @@
 {
   "name": "react-native-tgfx",
-  "version": "1.0.0-alpha.0",
+  "version": "0.0.1",
   "description": "A declarative, Skia-style GPU 2D canvas for React Native, backed by Tencent's tgfx and built with Nitro Modules.",
   "main": "lib/index",
   "module": "lib/index",
@@ -102,7 +102,8 @@
         },
         "gitRawCommitsOpts": {
           "path": "."
-        }
+        },
+        "ignoreRecommendedBump": true
       }
     }
   },
