@@ -7,6 +7,7 @@
 #include "HybridTgfxImage.hpp"
 #include "ImageRegistry.hpp"
 #include "Log.hpp"
+#include "SvgImage.hpp"
 #include "TgfxFrameSink.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/Image.h"
@@ -49,6 +50,28 @@ std::shared_ptr<HybridTgfxImageSpec> registerCodec(
   return std::make_shared<HybridTgfxImage>(handle);
 }
 
+/// Every byte-shaped entry point lands here, so an `.svg` works wherever a PNG does.
+std::shared_ptr<HybridTgfxImageSpec> registerData(std::shared_ptr<::tgfx::Data> data,
+                                                  const std::string& what) {
+  if (data == nullptr || data->empty()) {
+    throw std::runtime_error("tgfx: " + what + " is not a supported image format");
+  }
+  if (!tgfxrn::looksLikeSvg(*data)) {
+    return registerCodec(::tgfx::ImageCodec::MakeFrom(std::move(data)), what);
+  }
+  auto image = tgfxrn::svgImage(data);
+  if (image == nullptr) {
+    throw std::runtime_error("tgfx: " + what + " is not a renderable SVG document");
+  }
+  // External: there are no decoded pixels to budget, and the picture replays at whatever
+  // size it is drawn, so the handle's own size is nominal rather than a resolution cap.
+  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image));
+  if (handle.handle == 0) {
+    throw std::runtime_error("tgfx: failed to render " + what);
+  }
+  return std::make_shared<HybridTgfxImage>(handle);
+}
+
 std::string stripFileScheme(const std::string& path) {
   constexpr std::string_view kScheme = "file://";
   if (path.rfind(kScheme, 0) == 0) {
@@ -61,7 +84,12 @@ std::string stripFileScheme(const std::string& path) {
 
 std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromFile(const std::string& path) {
   return ImagePromise::async([file = stripFileScheme(path)]() {
-    return registerCodec(::tgfx::ImageCodec::MakeFrom(file), file);
+    // Codec first: it keeps the bytes on disk and re-reads them after an eviction, which
+    // reading the file up front would give up. Only a non-raster falls through to the bytes.
+    if (auto codec = ::tgfx::ImageCodec::MakeFrom(file)) {
+      return registerCodec(std::move(codec), file);
+    }
+    return registerData(::tgfx::Data::MakeFromFile(file), file);
   });
 }
 
@@ -75,7 +103,7 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromBytes(
     if (data == nullptr) {
       throw std::runtime_error("tgfx: fromBytes was given an empty buffer");
     }
-    return registerCodec(::tgfx::ImageCodec::MakeFrom(std::move(data)), "the given bytes");
+    return registerData(std::move(data), "the given bytes");
   });
 }
 
@@ -86,8 +114,7 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromBase64(const std::stri
       throw std::runtime_error("tgfx: fromBase64 was given no decodable bytes");
     }
     auto data = ::tgfx::Data::MakeWithCopy(decoded.data(), decoded.size());
-    return registerCodec(::tgfx::ImageCodec::MakeFrom(std::move(data)),
-                         "the given base64 payload");
+    return registerData(std::move(data), "the given base64 payload");
   });
 }
 

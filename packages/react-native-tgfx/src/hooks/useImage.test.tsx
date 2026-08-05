@@ -38,7 +38,8 @@ nativeMocks.hybridObject = () => ({
   cachedBytes: 0,
 })
 
-const { useImageState } = require('./useImage') as typeof import('./useImage')
+const { useImageState, loadImage } =
+  require('./useImage') as typeof import('./useImage')
 
 beforeEach(() => {
   made = []
@@ -223,6 +224,24 @@ test('a failed source recovers when a working one replaces it', async () => {
   await probe.setSource('https://example.test/a.png')
   expect(probe.state.data).not.toBeNull()
   expect(probe.state.error).toBeNull()
+})
+
+// An SVG is not a new source kind, and needs no new entry point: native sniffs the bytes.
+test('an svg source goes through the same entry points as a raster', async () => {
+  await mount('file:///tmp/logo.svg')
+  expect(made[0]!.via).toBe('fromFile')
+  expect(made[0]!.arg).toBe('file:///tmp/logo.svg')
+
+  globalThis.fetch = (async () => reply('<svg/>')) as unknown as typeof fetch
+  await mount('https://example.test/logo.svg')
+  expect(made[1]!.via).toBe('fromBytes')
+  expect(made[1]!.arg).toBe('<svg/>')
+})
+
+test('loadImage resolves a handle outside React', async () => {
+  const image = await loadImage('file:///tmp/logo.svg')
+  expect(image).toBe(made[0]!.handle as never)
+  expect(made[0]!.via).toBe('fromFile')
 })
 
 test('the pending state cannot be poisoned by a caller', async () => {

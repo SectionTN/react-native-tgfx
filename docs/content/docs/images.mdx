@@ -86,7 +86,8 @@ A local file (`file:` URI, or a bundled asset that resolves to a path) is opened
 and decoded natively — its bytes never enter JS. A remote or Metro-served URI
 still goes through `fetch`, but as an `ArrayBuffer`; nothing is base64-encoded on
 the JS thread. Every path decodes on a background thread, so no frame waits on a
-decode. PNG, JPEG and WebP all decode on both platforms.
+decode. PNG, JPEG and WebP all decode on both platforms, and an SVG document is
+parsed and drawn on the same paths — see [SVG documents](#svg-documents).
 
 A photo shot in portrait draws the right way up: the EXIF orientation marker is
 read during the decode and the image is oriented before anything measures it, so
@@ -115,6 +116,42 @@ const { data, error, loading } = useImageState(source)
 Returns `ImageState`: `data: TgfxImage | null`, `error: Error | null`,
 `loading: boolean`. `data` is cleared the moment `source` changes, so a slow or
 failing load never leaves the previous image on screen.
+
+### SVG documents
+
+```tsx
+const icon = useImage(require('./logo.svg'))
+```
+
+There is no separate SVG hook, node or wire format: an SVG **document** is just
+another image source. `useImage`, `useImageState` and `loadImage` all take one,
+and `<Image>` and `<ImageShader>` draw the handle like any other.
+
+It is recognised from its bytes rather than its file extension, so a bundled
+asset, a `file:` path and an `http(s)` URL all reach the parser on their own, and
+a `.svg` served with the wrong MIME type still works.
+
+**Its size is nominal, not a resolution cap.** The handle reports the size the
+document itself asks for — a 24×24 icon reports 24×24 — but that is not a size it
+was flattened to. The document is parsed once into a picture that is replayed at
+whatever size it is drawn, so one handle stays crisp at 24 px and at 240 px.
+There is no size to pass and none to keep in sync with your layout.
+
+The cost sits where it usually belongs: the picture is replayed per draw rather
+than cached as pixels. Right for an icon; worth knowing for a large document
+redrawn every frame.
+
+Malformed markup, a non-`<svg>` root, or a document with no resolvable size
+rejects the load — `useImageState().error` rather than a crash or a blank draw.
+
+**Text inside an SVG** renders through the same faces `<Text>` can see: whatever
+[`loadFont`](/docs/text#loadfont) has registered, plus the system fonts. A
+`font-family` naming something neither has does not render at all — register the
+face first, or convert the text to paths when authoring the file.
+
+`<Path d="…" />` is a different thing and still the right one for a single shape:
+it takes SVG *path data*, takes its fill and stroke from the node's own props,
+and involves no document and no parser.
 
 ### imageFromNativeBuffer
 
@@ -150,6 +187,15 @@ arrive as camera frames, use [`useCameraFrame`](/docs/camera#quick-start)
 instead — it owns the whole lifetime and the pointer never leaves its scope.
 This function is the escape hatch for producers that are not frame objects. See
 [camera frames](/docs/camera) for both, and for how `<CameraFrame>` draws them.
+
+### loadImage
+
+```tsx
+const image = await loadImage(require('./cat.png'))
+```
+
+The same load without React — same sources, `.svg` included. Unlike the hooks,
+the caller owns the handle and must `dispose()` it.
 
 ### setImageCacheLimit
 

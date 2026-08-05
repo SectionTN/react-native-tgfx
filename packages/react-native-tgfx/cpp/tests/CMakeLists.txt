@@ -7,12 +7,12 @@ set(TGFX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/tgfx")
 set(TGFX_USE_METAL ON CACHE BOOL "" FORCE)
 set(TGFX_USE_OPENGL OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_LAYERS OFF CACHE BOOL "" FORCE)
-set(TGFX_BUILD_SVG OFF CACHE BOOL "" FORCE)
+set(TGFX_BUILD_SVG ON CACHE BOOL "" FORCE)
 set(TGFX_BUILD_PDF OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
 
-add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../ImageRegistry.cpp
+add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../SvgImage.cpp ../ImageRegistry.cpp
                ../FontRegistry.cpp ../TextLayout.cpp)
 # tgfx's src too: the EXIF test names JpegCodec rather than going through
 # ImageCodec::MakeFrom, which would fall through to the platform decoder and
