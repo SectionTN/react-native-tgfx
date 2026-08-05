@@ -15,11 +15,8 @@ const MAX_OUTPUT_BYTES = 32 << 20
 export const HARNESS_TIMEOUT_MS = COMPILE_TIMEOUT_MS + RUN_TIMEOUT_MS + 30_000
 
 export type CppHarnessOptions = {
-  /** Extra files written next to the program, keyed by path relative to its include root. */
   headers?: Record<string, string>
-  /** Extra translation units, named relative to the package's `cpp` directory. */
   sources?: string[]
-  /** argv for the compiled harness. */
   args?: readonly string[]
 }
 
@@ -34,7 +31,6 @@ function outcome(result: SpawnSyncReturns<string>, budgetMs: number): string {
   return `exit ${result.status}`
 }
 
-/** An overflowed buffer is neither a hang nor a crash: the child ran, its output did not fit. */
 function why(result: SpawnSyncReturns<string>, otherwise: string): string {
   return overflowed(result)
     ? 'It ran to completion; the output buffer did not hold what it printed.'
@@ -79,7 +75,6 @@ export function runCppHarness(
       ],
       { ...SPAWN, timeout: COMPILE_TIMEOUT_MS }
     )
-    // c++ never starting or dying on a signal is the toolchain; a nonzero exit is its verdict.
     if (build.error || build.signal) {
       throw new Error(
         `${name}: c++ failed to build the harness (${outcome(

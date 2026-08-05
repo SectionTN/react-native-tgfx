@@ -19,8 +19,7 @@
 namespace tgfxrn {
 namespace {
 
-/// Once per codepoint per process: a paragraph of an uncovered script would
-/// otherwise log a line per character, every time its size changes.
+/// Once per codepoint per process, or an uncovered script logs a line per character per size.
 void warnMissing(int32_t code) {
   static std::mutex mutex;
   static std::unordered_set<int32_t> seen;
@@ -36,44 +35,27 @@ void warnMissing(int32_t code) {
       code);
 }
 
-/// One positioned glyph, tagged with which font in the run stack drew it and
-/// which styled run it came from.
 struct Glyph {
   tgfx::GlyphID id = 0;
   uint8_t font = 0;
   float advance = 0;
   int32_t code = 0;
   uint16_t run = 0;
-  /// Byte offset of this glyph's codepoint in the concatenated run text.
   int32_t index = 0;
 };
 
 struct Line {
   std::vector<Glyph> glyphs;
   float width = 0;
-  /// Where the line starts in the text, including the empty ones a bare '\n'
-  /// produces — those have no glyph to ask afterwards.
   int32_t startIndex = 0;
 };
 
-/// The stacks for every run, indexed by run. Built once per layout.
 using Stacks = std::vector<std::unique_ptr<struct FontStack>>;
 
-/// The primary face plus the fallback chain, all at the same size. Index 0 is
-/// always the primary, so a glyph the primary has never reaches a fallback.
 struct FontStack {
   std::vector<tgfx::Font> fonts;
 
-  /// The first font with a glyph for `code`, or the primary with .notdef — a
-  /// box where the font has one, rather than the blank gap TextBlob::MakeFrom
-  /// leaves when it drops glyph 0.
-  ///
-  /// Whichever it draws, an uncovered codepoint is logged: many fonts have a
-  /// blank .notdef, so "nothing on screen" is otherwise indistinguishable from
-  /// "the string was empty".
-  /// letterSpacing lands on the last glyph's advance too, so a measured width
-  /// carries one trailing gap. That is what CSS letter-spacing does, and what
-  /// keeps a measured width equal to the advance the next run would start at.
+  /// The first font with a glyph for `code`, or the primary with .notdef, logged either way.
   Glyph shape(int32_t code, float letterSpacing) const {
     for (size_t i = 0; i < fonts.size(); i++) {
       auto id = fonts[i].getGlyphID(code);
@@ -86,7 +68,6 @@ struct FontStack {
   }
 };
 
-/// Null when no typeface resolved at all, in which case there is nothing to draw.
 std::unique_ptr<FontStack> buildStack(const std::string& family, int weight, bool italic,
                                       float size) {
   auto& registry = FontRegistry::instance();
@@ -130,8 +111,6 @@ void shapeInto(std::vector<Glyph>& glyphs, const std::string& text, const FontSt
   }
 }
 
-/// Greedy line breaking: break at the last space that fits, or mid-word when a
-/// single word is wider than the box.
 std::vector<Line> breakLines(const std::vector<Glyph>& glyphs, float wrapWidth,
                              int32_t textLength) {
   std::vector<Line> lines;
@@ -140,9 +119,6 @@ std::vector<Line> breakLines(const std::vector<Glyph>& glyphs, float wrapWidth,
     line.glyphs.assign(glyphs.begin() + static_cast<long>(from),
                        glyphs.begin() + static_cast<long>(to));
     line.width = width;
-    // An empty line has no glyph of its own to ask. `from` is the '\n' that
-    // closes it, whose offset is where the line sits; past the end — a trailing
-    // newline — that is the end of the text.
     line.startIndex = from < glyphs.size() ? glyphs[from].index : textLength;
     lines.push_back(std::move(line));
   };
@@ -169,13 +145,11 @@ std::vector<Line> breakLines(const std::vector<Glyph>& glyphs, float wrapWidth,
         breakStart = std::string::npos;
         continue;
       }
-      // One word wider than the box: break inside it rather than overflow.
       emit(start, i, x);
       start = i;
       x = 0;
     }
     if (glyph.code == ' ') {
-      // The space itself is trimmed off the end of the line it breaks.
       breakEnd = i;
       breakWidth = x;
       breakStart = i + 1;
@@ -194,10 +168,6 @@ float widthOf(const std::vector<Glyph>& glyphs) {
   return width;
 }
 
-/// Trim `lines` to maxLines, appending the ellipsis to the last one it keeps.
-/// The ellipsis is shaped in, and tagged as belonging to, the run it follows —
-/// otherwise it would be drawn with run 0's face and colour whatever face its
-/// glyph ids came from.
 void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& stack,
               uint16_t run) {
   if (spec.maxLines <= 0 || lines.size() <= static_cast<size_t>(spec.maxLines)) {
@@ -209,15 +179,12 @@ void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& s
   }
   std::vector<Glyph> tail;
   auto& last = lines.back();
-  // Its index is the last kept glyph's, so a truncated line still reports an
-  // offset into the text rather than one into the ellipsis.
   int32_t at = last.glyphs.empty() ? 0 : last.glyphs.back().index;
   shapeInto(tail, spec.ellipsis, stack, spec.letterSpacing, run, 0);
   for (auto& glyph : tail) {
     glyph.index = at;
   }
   float tailWidth = widthOf(tail);
-  // Drop glyphs off the end until the ellipsis fits beside them.
   while (!last.glyphs.empty() && spec.wrapWidth > 0 &&
          last.width + tailWidth > spec.wrapWidth) {
     last.width -= last.glyphs.back().advance;
@@ -227,9 +194,6 @@ void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& s
   last.width += tailWidth;
 }
 
-/// Pack positioned glyphs into blobs: a new one wherever the paint changes, and
-/// one run inside it per stretch sharing a font. A paragraph with no <Span>
-/// colours is one blob, exactly as before runs existed.
 std::vector<TextBlobRun> buildBlobs(const std::vector<Glyph>& glyphs,
                                     const std::vector<tgfx::Point>& positions,
                                     const std::vector<TextRun>& runs, const Stacks& stacks) {
@@ -275,16 +239,12 @@ std::vector<TextBlobRun> buildBlobs(const std::vector<Glyph>& glyphs,
   return out;
 }
 
-/// The stacks for every run, and the primary-face metrics beside them. Null
-/// entries are runs whose family resolved to nothing; a layout with no usable
-/// run at all draws nothing.
 struct Paragraph {
   Stacks stacks;
   std::vector<tgfx::FontMetrics> metrics;
   bool empty = true;
 };
 
-/// The last run that resolved a face, for the ellipsis to be shaped in.
 size_t lastUsableRun(const struct Paragraph& paragraph);
 
 Paragraph buildParagraph(const std::vector<TextRun>& runs, const TextSpec& spec, float size) {
@@ -315,16 +275,12 @@ size_t lastUsableRun(const Paragraph& paragraph) {
   return 0;
 }
 
-/// Everything the paragraph layout produces before it is turned into blobs:
-/// the glyphs in draw order, where each one sits, and the metrics.
 struct Placement {
   std::vector<Glyph> glyphs;
   std::vector<tgfx::Point> positions;
   TextMetrics metrics;
 };
 
-/// Shape, break and place `runs`. The one place line breaking happens, so
-/// text-as-path and the drawn blobs cannot disagree about where a glyph goes.
 Placement place(const std::vector<TextRun>& runs, const TextSpec& spec,
                 const Paragraph& paragraph) {
   Placement out;
@@ -344,9 +300,7 @@ Placement place(const std::vector<TextRun>& runs, const TextSpec& spec,
   }
 
   auto lines = breakLines(glyphs, spec.wrapWidth, index);
-  // The run the ellipsis follows is the last one still on screen after the trim,
-  // not the last one in the paragraph: a span that wrapped onto a dropped line
-  // must not colour it.
+  // The last run still on screen after the trim, so a span on a dropped line cannot colour it.
   size_t kept = spec.maxLines > 0 ? std::min(lines.size(), static_cast<size_t>(spec.maxLines))
                                   : lines.size();
   size_t tailRun = lastUsableRun(paragraph);
@@ -373,8 +327,7 @@ Placement place(const std::vector<TextRun>& runs, const TextSpec& spec,
   float baseline = 0;
   for (size_t i = 0; i < lines.size(); i++) {
     const auto& line = lines[i];
-    // Per line, over the runs that actually appear on it: a paragraph mixing
-    // sizes leads with the tallest face on each line rather than the first one.
+    // Per line, over the runs on it: mixed sizes lead with the tallest face, not the first.
     float ascent = 0;
     float descent = 0;
     float leading = 0;
@@ -555,8 +508,6 @@ TextLayout layoutTextOnPath(const std::vector<TextRun>& runs, const TextSpec& sp
   layout.metrics.lineCount = 1;
   layout.metrics.height = descent - ascent;
 
-  // The path is the line, so a run's paint still splits the blobs but nothing
-  // else about the placement changes.
   auto paintOf = [&](const Glyph& glyph) {
     const auto& run = runs[glyph.run];
     return std::pair<bool, uint32_t>{run.hasColor, run.color};
@@ -586,8 +537,7 @@ TextLayout layoutTextOnPath(const std::vector<TextRun>& runs, const TextSpec& sp
       for (size_t i = 0; i < count; i++) {
         const auto& glyph = glyphs[run + i];
         buffer.glyphs[i] = glyph.id;
-        // Anchor each glyph at its own midpoint, so it sits centred on the curve
-        // rather than pivoting around its left edge on a tight bend.
+        // Anchored at its midpoint, so a glyph sits centred on a tight bend rather than pivoting.
         float half = glyph.advance / 2;
         tgfx::Point position = {};
         tgfx::Point tangent = {1, 0};

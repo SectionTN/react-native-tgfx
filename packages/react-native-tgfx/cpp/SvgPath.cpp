@@ -37,8 +37,7 @@ struct Cursor {
     return v;
   }
 
-  // SVG 2 path grammar: `flag ::= "0" | "1"`, one character wide. Reading it as
-  // a number swallows the digits after it and desynchronises the whole string.
+  // SVG 2 grammar: `flag ::= "0" | "1"`, one character. Reading a number desynchronises the string.
   int flag() {
     skipSep();
     if (p < end && (*p == '0' || *p == '1')) {
@@ -72,11 +71,9 @@ tgfx::Path parseSvgPath(const std::string& data) {
       cmd = c;
       cur.p++;
     } else {
-      // Only an argument-taking command can repeat implicitly; Z takes none.
       if (!tookArgs) {
         break;
       }
-      // Implicit repeat of previous command (M->L, m->l).
       if (cmd == 'M') {
         cmd = 'L';
       } else if (cmd == 'm') {
@@ -228,7 +225,6 @@ tgfx::Path parseSvgPath(const std::string& data) {
         break;
       }
       default:
-        // Unknown command — bail out to avoid an infinite loop.
         cur.p = cur.end;
         break;
     }
@@ -240,16 +236,13 @@ tgfx::Path parseSvgPath(const std::string& data) {
 
 namespace {
 
-/// Trailing zeroes off, so the payload is the shortest thing that round-trips at
-/// float precision. A glyph outline is hundreds of these.
 void appendNumber(std::string& out, float value) {
   char buffer[32];
   int written = std::snprintf(buffer, sizeof(buffer), "%.3f", static_cast<double>(value));
   if (written <= 0) {
     return;
   }
-  // snprintf returns what it *would* have written: a huge coordinate truncates,
-  // and the return is longer than the buffer.
+  // snprintf returns what it would have written, which is longer than the buffer on truncation.
   auto length = std::min(static_cast<size_t>(written), sizeof(buffer) - 1);
   std::string_view text(buffer, length);
   if (text.find('.') != std::string_view::npos) {
@@ -290,9 +283,7 @@ std::string pathToSvg(const tgfx::Path& path) {
         appendPoint(out, segment.points[2]);
         break;
       case tgfx::PathVerb::Conic: {
-        // SVG has no conic. Splitting into two quads is exact for weight
-        // sqrt(2)/2 — the 90° arc a font or a rounded rect emits — and within a
-        // pixel elsewhere at glyph sizes.
+        // SVG has no conic. Two quads are exact at weight sqrt(2)/2, the 90° arc fonts emit.
         auto quads = tgfx::Path::ConvertConicToQuads(segment.points[0], segment.points[1],
                                                      segment.points[2], segment.conicWeight, 1);
         for (size_t i = 1; i + 1 < quads.size(); i += 2) {

@@ -1,7 +1,4 @@
-/**
- * react-native-tgfx example — shapes, strokes, gradients, image and text,
- * all rendered through tgfx via the declarative <Canvas> API.
- */
+// react-native-tgfx example — shapes, strokes, gradients, image and text through <Canvas>.
 import { useEffect, useState } from 'react';
 import { Text as RNText, ScrollView, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -214,13 +211,6 @@ function Demo() {
   );
 }
 
-/**
- * The cyberpunk shader animates through `uTime`, and shader uniforms are
- * snapshotted at commit time rather than bound to an animation slot, so each
- * tick re-encodes the scene. That is the expensive path — an animated
- * `opacity` or `strokeWidth` rides a SharedValue slot and costs nothing per
- * frame. 20 Hz here keeps the demo alive without pretending otherwise.
- */
 function ShaderScreenSection() {
   const [time, setTime] = useState(0);
 

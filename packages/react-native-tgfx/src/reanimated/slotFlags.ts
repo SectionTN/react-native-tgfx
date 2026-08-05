@@ -1,20 +1,3 @@
-/**
- * A handle's patchable-key flags, in native bytes every runtime can read.
- *
- * The compiler decides once per commit which keys the mounted program keeps a
- * value slot for, and every `set()` has to consult that answer — on whichever
- * runtime the write came from. A Reanimated `SharedValue` cannot serve it: the
- * value is hosted by one runtime, so publishing it from the JS thread is
- * asynchronous and reading it back there returns the previous commit's answer,
- * while reading it from a third runtime is a blocking call into the host.
- *
- * Nitro hands each runtime its own `ArrayBuffer` over the *same* native
- * allocation, so the answer is just bytes: the compiler stores, every runtime
- * loads, and there is nothing to publish and nothing to go stale.
- *
- * Optional, like Reanimated itself: without the native module every read
- * returns null and the caller falls back to the shared-value path.
- */
 import type { TgfxSlots, TgfxSlotsFactory } from '../specs/TgfxSlots.nitro'
 
 /** A boxed `TgfxSlots`, the form that survives a hop to another runtime. */
@@ -23,9 +6,7 @@ export interface BoxedSlots {
 }
 
 export interface FlagBlock {
-  /** The JS thread's own view, for the compiler's stores. */
   bytes: Uint8Array
-  /** What a worklet captures; unboxed once per runtime, then cached. */
   boxed: BoxedSlots
 }
 
@@ -68,16 +49,11 @@ export function makeFlagBlock(size: number): FlagBlock | null {
       boxed: modules.box(slots),
     }
   } catch {
-    // Registered by the native side; absent in a JS-only environment.
     return null
   }
 }
 
-/**
- * This runtime's view of the block, cached on its global object. Unboxing costs
- * a JSI call, so it happens once per runtime rather than once per write; the
- * bytes behind every view are the same memory either way.
- */
+/** This runtime's view of the block, cached on its global: unboxing costs a JSI call. */
 export function flagsOf(boxed: BoxedSlots): Uint8Array {
   'worklet'
   const scope = globalThis as {

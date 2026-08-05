@@ -16,12 +16,9 @@ import {
 
 const CANVAS_ID = 'tgfx-harness-canvas';
 
-// 8x8 opaque red PNG, so <Image> needs no asset pipeline. The base64 path is
-// still supported; it is just no longer how bytes reach the engine.
 const RED_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAEklEQVR4nGP4z8DwHx9mGBkKAMLXf4EvceABAAAAAElFTkSuQmCC';
 
-/// <Image> takes a native handle, so the base64 goes through useImage first.
 function RedImage(props: {
   x: number;
   y: number;
@@ -32,11 +29,6 @@ function RedImage(props: {
   return image == null ? null : <Image {...props} image={image} fit="fill" />;
 }
 
-/**
- * `composite="texture"` puts the canvas in the view hierarchy: the harness
- * screenshot walks the view tree, so a separate compositor layer is invisible
- * to it.
- */
 function Stage({ children }: { children: React.ReactNode }) {
   return (
     <View testID={CANVAS_ID} style={{ width: 200, height: 200 }}>
@@ -62,26 +54,14 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-// ponytail: before the GPU surface presents its first frame the capture is a
-// flat fill, and two of those in a row look exactly as "settled" as a finished
-// frame — a pure stability poll captures black on the first test of a run. So
-// stability is only trusted after the surface has had time to come up. Drop the
-// floor if the engine ever exposes a "frame presented" callback to await.
+// ponytail: before the first frame presents, two flat fills look as settled as a finished frame.
 const WARMUP_MS = 700;
 
-/**
- * The engine has no "frame presented" callback, so settling is observed rather
- * than waited out: capture until two consecutive frames are byte-identical.
- * PNG encoding is deterministic, so equal bytes mean an equal image. Unlike a
- * fixed delay this also absorbs a slow frame instead of snapshotting mid-draw.
- */
 async function stableScreenshot(element: ElementReference) {
   await sleep(WARMUP_MS);
   let previous: Uint8Array | undefined;
   for (let attempt = 0; attempt < 25; attempt += 1) {
     const shot = await screen.screenshot(element);
-    // Native capture returns null on failure; toMatchImageSnapshot would then
-    // fail on `received.data` with an unrelated message.
     if (!shot) {
       throw new Error(`Screenshot of "${CANVAS_ID}" failed`);
     }
@@ -97,14 +77,7 @@ async function stableScreenshot(element: ElementReference) {
 async function snapshot(name: string) {
   const element = await screen.findByTestId(CANVAS_ID);
   const shot = await stableScreenshot(element);
-  // GPU output is never bit-exact across drivers, and the harness default is
-  // `failureThreshold: 0` / `'pixel'` — zero differing pixels. pixelmatch's own
-  // per-pixel `threshold` (0.1) plus AA detection already absorbs edge jitter;
-  // this budgets 0.1% of pixels on top for the rest. SSIM was the alternative
-  // and loses on small-area damage: erasing a 4 px slice of stroke scores 0.9805,
-  // passing its 0.95 default, where pixelmatch reports 0.332% and fails.
-  // Ceiling of both: pixelmatch's 0.1 threshold absorbs a ~14/255 channel delta,
-  // so a 0.25 -> 0.30 opacity drift measures 0.000% and escapes this suite.
+  // GPU output is never bit-exact, so this budgets 0.1% of pixels on top of pixelmatch's AA pass.
   await expect(shot).toMatchImageSnapshot({
     name,
     failureThreshold: 0.001,
@@ -123,7 +96,6 @@ describe('tgfx rendering', () => {
     await snapshot('shapes-rect-circle');
   });
 
-  // PR #69: group / paint / image opacity were parsed but never applied.
   test('applies group opacity', async () => {
     await render(
       <Stage>
@@ -139,8 +111,6 @@ describe('tgfx rendering', () => {
     await snapshot('opacity-group');
   });
 
-  // PR #89: an animated field's literal is its current value, not 0, so a
-  // never-changing SharedValue still renders.
   test('applies an animated group opacity', async () => {
     function AnimatedOpacity() {
       const opacity = useSharedValue(0.3);
@@ -174,8 +144,6 @@ describe('tgfx rendering', () => {
     await snapshot('opacity-paint-and-image');
   });
 
-  // PR #80: elliptical arcs are drawn as arcs, and the compact flag form
-  // ("110-14" => large=1, sweep=1, x=0, y=-14) is split correctly.
   test('draws svg elliptical arcs', async () => {
     await render(
       <Stage>
@@ -194,9 +162,6 @@ describe('tgfx rendering', () => {
     await snapshot('path-elliptical-arcs');
   });
 
-  // PR #73: the palette is the full CSS list, so `darkgrey` is #a9a9a9 (not
-  // black), `green` is #008000 and `lime` is #00ff00. Every bar is a different
-  // colour, so the black fallback bar cannot be confused with a missing name.
   test('resolves named and malformed colours', async () => {
     await render(
       <Stage>

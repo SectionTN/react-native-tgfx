@@ -31,7 +31,6 @@ half4 main(float2 xy) {
 }
 `)
   expect(t.childNames).toEqual(['tex'])
-  // A child is not a float uniform and must not consume a uniform slot.
   expect(t.uniformNames).toEqual(['params'])
   expect(t.body).toContain('TGFX_CHILD_0(xy)')
   expect(t.body).not.toContain('tex.eval')
@@ -58,8 +57,7 @@ half4 main(float2 p) { return tex . eval ( p ); }
   expect(t.body).toContain('TGFX_CHILD_0( p )')
 })
 
-// `sample(child, coord)` is the spelling most SkSL found elsewhere uses, and
-// Skia treats it as exactly `child.eval(coord)`.
+// `sample(child, coord)` is the common SkSL spelling, and Skia treats it as `child.eval(coord)`.
 test('sample(child, coord) is the same thing as child.eval(coord)', () => {
   const alias = transpileShader(`
 uniform shader tex;
@@ -123,8 +121,7 @@ half4 main(float2 p) { return half4(0.0); }
   ).toThrow(/unsupported uniform type/)
 })
 
-// GLSL ES has no nested functions, so a helper spliced into the body is a
-// driver compile error at draw time and a shape that never paints.
+// GLSL ES has no nested functions, so a helper in the body is a driver error at draw time.
 test('a helper function is routed to the preamble, not into the body', () => {
   const t = transpileShader(`
 float sdCircle(float2 p, float r) { return length(p) - r; }
@@ -151,8 +148,7 @@ half4 main(float2 p) { return half4(ring(p)); }
   expect(t.body).toContain('ring(p)')
 })
 
-// The helper is emitted at file scope; a `const` left in the body would be
-// invisible to it and the program would fail to link with nothing painted.
+// The helper is at file scope, so a `const` left in the body would be invisible to it.
 test('a helper can read a top-level const, because both go to file scope', () => {
   const t = transpileShader(`
 const float PI = 3.14159;
@@ -185,8 +181,7 @@ half4 main(float2 p) { return half4(A, B, 0.0, 1.0); }
   ).toThrow(/one name per statement/)
 })
 
-// Everything after main's closing brace was silently discarded, so the body
-// called a helper nothing declared and the driver rejected the program.
+// Everything after main's brace was silently discarded, so the body called an undeclared helper.
 test('a helper declared below main is rejected, not dropped', () => {
   expect(() =>
     transpileShader(`
@@ -213,8 +208,7 @@ half4 main(float2 p) { return tint(p); }
   expect(t.preamble).not.toContain('tex.eval')
 })
 
-// The uniform regex cannot match `weights[5];`, so before this the declaration
-// slipped into the body and failed in the driver with nothing pointing back.
+// The uniform regex cannot match `weights[5];`, so it used to fail in the driver instead.
 test('an array uniform is rejected in JavaScript, not in the driver', () => {
   expect(() =>
     transpileShader(`

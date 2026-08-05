@@ -1,5 +1,4 @@
-// Public API for react-native-tgfx — a declarative GPU 2D canvas for React
-// Native backed by Tencent's tgfx, built with Nitro.
+// Public API for react-native-tgfx: a declarative GPU 2D canvas backed by Tencent's tgfx.
 
 export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'

@@ -17,8 +17,7 @@
 #include "TgfxRenderer.hpp"
 #include "tgfx/gpu/metal/MetalWindow.h"
 
-// The completion's `token` is the encoded buffer's owning reference, handed to
-// Swift so ArrayBuffer.wrap can keep the bytes alive without a copy.
+// The `token` is the encoded buffer's owning reference, so ArrayBuffer.wrap needs no copy.
 void TgfxSnapshotRelease(void* token) {
   delete static_cast<std::shared_ptr<tgfx::Data>*>(token);
 }
@@ -26,13 +25,11 @@ void TgfxSnapshotRelease(void* token) {
 @implementation TgfxMetalView {
   std::unique_ptr<tgfxrn::TgfxRenderer> _renderer;
   CADisplayLink* _displayLink;
-  // GPU work runs here, not on the main thread: the display link only enqueues.
   dispatch_queue_t _renderQueue;
   std::atomic<bool> _drawPending;
   tgfxrn::IdleGate _idleGate;
   std::atomic<bool> _windowBound;
-  // Set once the display link is gone: a snapshot staged after that would never
-  // get the frame it needs, so it is rejected instead of hanging.
+  // Set once the display link is gone, so a snapshot staged after that is rejected, not hung.
   std::atomic<bool> _released;
   std::atomic<double> _drawableWidth;
   std::atomic<double> _drawableHeight;
@@ -62,10 +59,7 @@ void TgfxSnapshotRelease(void* token) {
 
 - (void)commonInit {
   _renderer = std::make_unique<tgfxrn::TgfxRenderer>();
-  // The display link pauses itself after a few idle ticks, so a change nobody
-  // committed — the next camera frame behind a hardware-buffer handle, or an
-  // evicted image finishing its re-decode — has to unpause it or it is never
-  // drawn. Weak, because the renderer is owned by the view.
+  // The link pauses when idle, so a change nobody committed has to unpause it. Weak: the view owns it.
   __weak __typeof(self) weakSelf = self;
   _renderer->setWakeCallback([weakSelf] { [weakSelf wakeUp]; });
   _windowBound = false;
@@ -96,11 +90,9 @@ void TgfxSnapshotRelease(void* token) {
   CAMetalLayer* layer = [self metalLayer];
   layer.contentsScale = scale;
   layer.drawableSize = CGSizeMake(size.width * scale, size.height * scale);
-  // Cached so the render thread never reads a CALayer property.
   _drawableWidth = size.width * scale;
   _drawableHeight = size.height * scale;
   if (_renderer != nullptr) {
-    // Scene coordinates are logical points; the drawable is in physical pixels.
     _renderer->setPixelRatio(static_cast<float>(scale));
     _renderer->onResize();
   }
@@ -121,8 +113,6 @@ void TgfxSnapshotRelease(void* token) {
   }
 }
 
-// Main thread: hand the frame to the render queue and return immediately. A
-// frame still in flight is not queued twice, so a slow frame cannot pile up.
 - (void)render {
   auto tick = _idleGate.tick(_drawPending.load(std::memory_order_acquire));
   if (tick == tgfxrn::IdleGate::Tick::Pause) {
@@ -142,15 +132,13 @@ void TgfxSnapshotRelease(void* token) {
       snapshotPending = self->_renderer->snapshotPending();
     }
     self->_drawPending = false;
-    // A GPU→CPU transfer needs another tick to land, and the idle gate would
-    // otherwise pause the link before it does.
+    // A GPU transfer needs another tick, which the idle gate would otherwise pause before.
     if (snapshotPending) {
       [self wakeUp];
     }
   });
 }
 
-// Callable from any thread; the display link belongs to the main run loop.
 - (void)wakeUp {
   _idleGate.wake();
   if (_displayLink == nil) {
@@ -169,10 +157,7 @@ void TgfxSnapshotRelease(void* token) {
            count:(NSInteger)count
          strings:(NSArray<NSString*>*)strings {
   if (_renderer == nullptr || words == nullptr || count <= 0) {
-    // As on Android: this also drops the string-table delta, which JS has
-    // already committed to and cannot resend. Only reachable on a null/empty
-    // buffer, and the next delta warns in applyStringTable. Do not add a third
-    // early return above _renderer->setScene without routing the delta in.
+    // As on Android: this drops the string-table delta too, which JS cannot resend.
     return;
   }
   std::vector<std::string> table;
@@ -238,24 +223,11 @@ void TgfxSnapshotRelease(void* token) {
       completion(nullptr, 0, nullptr, width, height, nil);
       return;
     }
-    // Ownership moves to the token; Swift releases it when the ArrayBuffer it
-    // wraps is collected.
     auto* token = new std::shared_ptr<tgfx::Data>(std::move(data));
     completion(const_cast<void*>((*token)->data()),
                static_cast<NSInteger>((*token)->size()), token, width, height, nil);
   };
-  // The surface tgfx renders into is the layer's drawable, and a CAMetalLayer
-  // hands out framebuffer-only drawables by default — blitting out of one is
-  // illegal and wedges the whole Metal device, not just this view, and it stays
-  // wedged across a relaunch. The property only binds to drawables acquired
-  // after it is set, and a frame already recording on the render queue can be
-  // holding an older one (a blur or backdrop materialises the render target
-  // mid-scene, well before the readback is issued). So the flip is paired with
-  // deferSnapshotsToNextSurface(): the request is held staged until a surface
-  // created after the flip exists, which is one extra surface recreation, once
-  // per canvas. Flipped once and left off — it costs the drawable's lossless
-  // compression on every later frame, but restoring it would put that surface
-  // recreation on every snapshot, and a canvas nobody reads back never pays.
+  // Blitting a framebuffer-only drawable wedges the Metal device, so this is paired with deferSnapshotsToNextSurface().
   dispatch_async(dispatch_get_main_queue(), ^{
     if (self->_renderer == nullptr || self->_released) {
       deliver(nullptr, 0, 0, "[tgfx] snapshot: the canvas is no longer mounted");
@@ -283,7 +255,6 @@ void TgfxSnapshotRelease(void* token) {
   if (_renderer == nullptr) {
     return;
   }
-  // Wait for any in-flight frame before tearing the GPU resources down.
   dispatch_sync(_renderQueue, ^{
     self->_renderer->releaseWindow();
   });

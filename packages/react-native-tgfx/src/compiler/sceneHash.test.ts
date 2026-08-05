@@ -58,13 +58,10 @@ test(
     // The regression: <Text>{count}</Text> going 1 -> 2 leaves the words byte-identical.
     expect(text2).not.toBe(text1)
     expect(text1Again).toBe(text1)
-    // An absent table, a single empty string, and a populated table are all distinct.
     expect(noTable).not.toBe(emptyString)
     expect(noTable).not.toBe(text1)
-    // Re-splitting or permuting the same bytes must not collide.
     expect(aBc).not.toBe(abC)
     expect(cAb).not.toBe(abC)
-    // And the words still count.
     expect(otherWords).not.toBe(text1)
     // A trailing word must not be able to stand in for the table-size field.
     expect(longWords).not.toBe(shortWords)

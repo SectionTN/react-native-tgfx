@@ -26,7 +26,6 @@ inline void mixSize(uint64_t& hash, size_t size) {
 
 }  // namespace scenehash
 
-/// FNV-1a identity of a draw-program's words.
 inline uint64_t hashWords(std::span<const double> words) {
   uint64_t hash = scenehash::kOffset;
   // Length-prefixed so no word can absorb the count that follows it.
@@ -35,8 +34,6 @@ inline uint64_t hashWords(std::span<const double> words) {
   return hash;
 }
 
-/// FNV-1a identity of a string table. Kept across commits, so a table that did
-/// not change is never rescanned.
 inline uint64_t hashStrings(const std::vector<std::string>& strings) {
   uint64_t hash = scenehash::kOffset;
   scenehash::mixSize(hash, strings.size());
@@ -48,8 +45,6 @@ inline uint64_t hashStrings(const std::vector<std::string>& strings) {
   return hash;
 }
 
-/// Identity of a whole draw-program: the words plus the table they index. String
-/// indices are re-assigned per commit, so equal words can index a different table.
 inline uint64_t hashScene(uint64_t wordsHash, uint64_t stringsHash) {
   uint64_t hash = scenehash::kOffset;
   scenehash::mix(hash, &wordsHash, sizeof(wordsHash));

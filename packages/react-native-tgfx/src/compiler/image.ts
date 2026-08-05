@@ -65,12 +65,7 @@ export function tileCode(tile: unknown, fallback: TileMode = 'clamp'): number {
   return TILE_CODE[tile as TileMode] ?? TILE_CODE[fallback]
 }
 
-// `.handle` is a JSI property getter dispatching into C++, and a commit reads
-// one per image node — at a few hundred nodes and frame rate that is tens of
-// thousands of native calls a second on the JS thread. The id never changes and
-// ids are never reused, so it is read once per image object and remembered; a
-// remembered id whose image has since been disposed resolves to nothing native
-// side rather than to somebody else's bitmap.
+// `.handle` is a JSI getter read once per image node per commit, so the id is remembered here.
 const handles = new WeakMap<object, number>()
 
 /**
@@ -90,7 +85,6 @@ export function imageHandle(image: unknown): number {
   try {
     handle = (image as TgfxImage).handle
   } catch {
-    // Disposed before it was ever committed: nothing to draw, nothing to cache.
     return 0
   }
   if (typeof handle !== 'number') {

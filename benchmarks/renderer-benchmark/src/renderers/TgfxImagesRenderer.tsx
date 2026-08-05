@@ -3,14 +3,7 @@ import { Canvas, Image, Rect, useImage } from 'react-native-tgfx'
 import { TEXTURES } from '../assets/textures'
 import type { Shape } from '../types'
 
-/**
- * What the scene last actually had to draw, published for `backendProof`.
- *
- * A renderer id in the result is a label; these are measurements taken from the
- * decoded handles and the emitted node list. A run whose textures never loaded
- * reports zeros here and the acceptance gate rejects it, so "the benchmark
- * silently measured an empty scene" cannot happen twice.
- */
+/** What the scene last had to draw, measured from the handles: zeros make the gate reject the run. */
 export const drawnBitmaps = { textures: 0, texturePixels: 0, imageNodes: 0 }
 
 type Props = {
@@ -20,15 +13,8 @@ type Props = {
 }
 
 /**
- * The bitmap-heavy scene: every object is an `<Image>` rather than a shape, so
- * each commit carries as many image references as there are objects.
- *
- * This is the workload the base64 transport was worst at — a per-node hash of
- * the whole payload on every compile — and the one the native handle makes
- * free. Positions move every frame, so the scene really is recompiled.
- *
- * Four *distinct* textures, because the string table interns by value: one
- * shared payload would hide how the transport scales with image bytes.
+ * The bitmap-heavy scene: every object is an `<Image>`, which is the workload the base64 transport
+ * was worst at. Four *distinct* textures, because the string table interns by value.
  */
 export function TgfxImagesRenderer({
   width,

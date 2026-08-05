@@ -3,11 +3,7 @@ import Foundation
 import React
 import UIKit
 
-/// iOS counterpart of `BenchmarkMetricsModule.kt`. Same contract, same metric
-/// windows: a main-thread display link samples frame times while burning
-/// `mainThreadPressureMs` of every vsync, and process CPU/memory are read from
-/// the Mach task. Fields Android reports and iOS has no equivalent for (PSS,
-/// Java heap, battery temperature) are reported as 0.
+/// iOS counterpart of `BenchmarkMetricsModule.kt`; fields iOS has no equivalent for are 0.
 @objc(BenchmarkMetrics)
 final class BenchmarkMetrics: NSObject {
   private var frameTimes: [CFTimeInterval] = []
@@ -86,8 +82,7 @@ final class BenchmarkMetrics: NSObject {
         "processCpuPercent": durationMs > 0 ? cpuMs * 100 / durationMs : 0,
         "wallTimeMs": durationMs,
         "processCpuTimeMs": cpuMs,
-        // iOS has no PSS; the Mach phys_footprint is the comparable number and
-        // is reported in every PSS field so the shared schema still holds.
+        // iOS has no PSS; Mach phys_footprint fills every PSS field so the schema holds.
         "memory": [
           "startPssKb": start, "endPssKb": end, "peakPssKb": peak,
           "startNativeHeapKb": start, "endNativeHeapKb": end, "peakNativeHeapKb": peak,
@@ -103,8 +98,7 @@ final class BenchmarkMetrics: NSObject {
   }
 
   @objc func publish(_ result: String) {
-    // A file in the app container rather than a log line: the result JSON is a
-    // few KB and the unified log truncates long messages.
+    // A file in the app container: the unified log truncates a few-KB result JSON.
     guard let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
     else { return }
     try? result.write(to: directory.appendingPathComponent("benchmark-result.json"),
@@ -134,7 +128,6 @@ final class BenchmarkMetrics: NSObject {
     ]
   }
 
-  /// Summed CPU time of every thread in this task, in milliseconds.
   private func processCpuMs() -> Double {
     var info = task_thread_times_info_data_t()
     var count = mach_msg_type_number_t(MemoryLayout<task_thread_times_info_data_t>.size / MemoryLayout<natural_t>.size)

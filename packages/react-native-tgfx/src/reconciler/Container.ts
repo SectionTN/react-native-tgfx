@@ -20,32 +20,22 @@ export type CommitListener = (
  */
 export class TgfxContainer implements NodeOwner {
   root: Node[] = []
-  /** Drops commits while a torn-down root is about to be replaced. */
   muted = false
-  /** Pushes the scene's slot values to the native view; set by `<Canvas>`. */
   onValues: ((values: number[]) => void) | null = null
   private readonly writer = new SceneWriter()
   private readonly onCommit: CommitListener
   private values: MaybeSharedValue<unknown>[] = []
-  // Reused, so an imperative write allocates nothing per call.
   private readonly scratch: number[] = []
 
   constructor(onCommit: CommitListener) {
     this.onCommit = onCommit
   }
 
-  /** Swap in a root built without the reconciler, then compile as usual. */
   setRootDirect(roots: Node[]): void {
     this.root = roots
     this.redraw()
   }
 
-  /**
-   * Compile and push the scene. `fromReact` is what settles the two-writers
-   * question: a React commit is the source of truth, so it drops whatever was
-   * written imperatively since the last one. A recompile the imperative path
-   * asked for keeps it.
-   */
   redraw(fromReact = true): void {
     if (this.muted) {
       return
@@ -73,11 +63,9 @@ export class TgfxContainer implements NodeOwner {
     this.redraw(false)
   }
 
-  /** Patch the mounted program's value slots — no re-encode, no commit. */
   pushValues(): void {
     if (this.values.length === 0) {
-      // Nothing to patch, and an empty push still costs the render thread a
-      // redraw on Android.
+      // Nothing to patch, and an empty push still costs the render thread a redraw on Android.
       return
     }
     const out = this.scratch

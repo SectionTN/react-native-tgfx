@@ -8,15 +8,6 @@ interface DriverProps {
   values: MaybeSharedValue<unknown>[]
 }
 
-/**
- * The Reanimated UI-thread driver. A mapper worklet reads every SharedValue
- * backing the scene's `{ __s }` slots into a buffer allocated once and hands it
- * to the native renderer, so animation costs no JS-thread work per frame.
- *
- * `startMapper` rather than `useAnimatedReaction`: the latter writes its result
- * into a SharedValue every frame, which for an N-element array is a blocking
- * clone of N values per frame.
- */
 function Driver({ view, values }: DriverProps): null {
   const mod = requireReanimated('the animation driver', [
     'startMapper',

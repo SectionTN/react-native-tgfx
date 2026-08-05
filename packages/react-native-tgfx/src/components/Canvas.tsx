@@ -17,13 +17,10 @@ import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
 let warnedNoDriver = false
 
-/** Fill in every field, so neither native side has to model an absent option. */
 function nativeOptions(options: SnapshotOptions = {}): NativeSnapshotOptions {
   const rect = options.rect
   const scale = options.scale ?? 1
-  // Rejected here rather than clamped: a zero, negative or NaN scale surfaces
-  // natively as "could not allocate a scaled target", which blames the GPU for
-  // the caller's argument.
+  // Rejected rather than clamped: natively this surfaces as a GPU allocation failure.
   if (!Number.isFinite(scale) || scale <= 0) {
     throw new Error(
       `[tgfx] snapshot: scale must be a positive finite number, got ${String(
@@ -54,7 +51,6 @@ function nativeOptions(options: SnapshotOptions = {}): NativeSnapshotOptions {
   }
 }
 
-/** True when two SharedValue lists reference the same set in the same order. */
 function sameValueSet(
   a: MaybeSharedValue<unknown>[],
   b: MaybeSharedValue<unknown>[]
@@ -90,24 +86,20 @@ export function Canvas({
   const viewRef = useRef<TgfxViewRef | null>(null)
   const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
-  // The string table this view already holds, so commits send only the delta.
   const sentStrings = useRef<string[]>([])
   const hybridRef = useRef<ReturnType<
     typeof callback<(ref: TgfxViewRef) => void>
   > | null>(null)
 
-  // `useRef(callback(...))` would wrap a fresh Nitro callback on every render.
   if (hybridRef.current == null) {
     hybridRef.current = callback((ref: TgfxViewRef) => {
       viewRef.current = ref
       sentStrings.current = []
-      // Commits can land before the native view exists; flush the latest scene.
       if (scene.current != null) {
         const strings = scene.current.strings
         ref.setScene(scene.current.buffer, packStringTable([], strings))
         sentStrings.current = strings.slice()
-        // A write that landed before the view existed only moved its slot, and
-        // the program carries the literals from the commit before it.
+        // A write before the view existed only moved its slot; the program carries the literals.
         rootRef.current?.container.pushValues()
       }
       setView(ref)
@@ -116,8 +108,7 @@ export function Canvas({
   const hybrid = hybridRef.current
 
   if (rootRef.current == null) {
-    // The program goes straight to the hybrid object: as a prop it would ride a
-    // React re-render plus a Fabric shadow-tree commit on every frame.
+    // Straight to the hybrid object: as a prop it would ride a React and a Fabric commit per frame.
     rootRef.current = new TgfxRoot((buffer, strings, vals) => {
       scene.current = { buffer, strings }
       if (viewRef.current != null) {
@@ -127,15 +118,11 @@ export function Canvas({
         )
         sentStrings.current = strings.slice()
       }
-      // The Reanimated mapper must re-subscribe when the value set changes —
-      // but only then, not on every reconciler commit.
       if (!sameValueSet(prevValues.current, vals)) {
         prevValues.current = vals.slice()
         setValues(prevValues.current)
       }
     })
-    // How an imperative `NodeHandle.set` reaches the engine when the props it
-    // wrote already have slots: no re-encode, no commit.
     rootRef.current.container.onValues = (vals) =>
       viewRef.current?.setValues(vals)
   }
@@ -170,9 +157,6 @@ export function Canvas({
     if (root == null) {
       return
     }
-    // Plain shape trees need none of the reconciler's machinery, and mounting a
-    // fiber per node is the JS thread's largest cost on an animated scene.
-    // Anything it cannot handle returns null and takes the reconciler as before.
     const direct = directNodes(children)
     if (direct !== null) {
       root.setDirect(direct)
@@ -181,15 +165,13 @@ export function Canvas({
     root.render(<>{children}</>)
   }, [children])
 
-  // Not nulled: the render body that builds it never re-runs on a StrictMode remount.
   useEffect(() => {
     return () => {
       rootRef.current?.unmount()
     }
   }, [])
 
-  // Slots this package writes itself need no driver, so they are not evidence
-  // that Reanimated is missing.
+  // Slots this package writes need no driver, so they are not evidence Reanimated is missing.
   if (
     AnimationDriver == null &&
     !warnedNoDriver &&

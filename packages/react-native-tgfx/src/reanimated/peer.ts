@@ -24,7 +24,6 @@ export interface Worklets {
   ) => void
 }
 
-// Latched, so an absent peer costs one failed resolve rather than one per call.
 let absent = false
 
 /**

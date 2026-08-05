@@ -1,19 +1,3 @@
-/**
- * Two live-camera effects drawn over <CameraFrame>, switchable on screen.
- *
- * Blur: <Blur> as a paint child of <CameraFrame> itself, so the whole frame
- * goes through one image filter — no shape, no overlay.
- *
- * Cyberpunk: a runtime <Shader> whose `uniform shader` child is an
- * <ImageShader> on the same frame handle (#147), so the SkSL samples the live
- * hardware buffer directly. `uTime` is a useClock SharedValue, so it animates
- * without the scene being re-encoded.
- *
- * This screen also runs the native sink: useCameraFrame()'s worklet mints the
- * handle from the first frame, and then the camera thread writes that handle
- * directly with no JS runtime on the path. TgfxFaceBlur is the other half of the
- * comparison — it keeps the worklet, because MLKit needs the frame in JS anyway.
- */
 import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native'
 import {
@@ -36,17 +20,6 @@ import { useTgfxCameraSink } from 'react-native-tgfx-vision-camera'
 
 const BLUR_RADIUS = 28
 
-/**
- * Neon edge glow: a directional emboss tinted cyan on one side of every edge
- * and magenta on the other, over a near-black base.
- *
- * The two colours come from the *signed* diagonal luminance difference — an
- * unsigned Sobel magnitude alone gives white outlines, not the two-tone split.
- * Magnitude then drives how bright the line is, so flat areas stay black.
- *
- * `pos` is in frame pixels, because the shape hosting this shader is inside
- * <CameraFrame> — so the taps below are offsets in pixels, not UV.
- */
 const NEON_EDGE = `
 uniform shader cam;
 uniform float2 uSize;
@@ -59,12 +32,10 @@ float luma(half4 c) {
 half4 main(float2 pos) {
   float t = 1.7;
 
-  // Signed diagonal difference: which side of the edge we are on.
   float lo = luma(cam.eval(pos - float2(t, t)));
   float hi = luma(cam.eval(pos + float2(t, t)));
   float dirEdge = hi - lo;
 
-  // Unsigned cross gradient: how strong the edge is, in any direction.
   float gx = luma(cam.eval(pos + float2(t, 0.0))) -
              luma(cam.eval(pos - float2(t, 0.0)));
   float gy = luma(cam.eval(pos + float2(0.0, t))) -
@@ -75,13 +46,11 @@ half4 main(float2 pos) {
   half3 magenta = half3(1.00, 0.15, 0.90);
   half3 tint = mix(cyan, magenta, clamp(dirEdge * 7.0 + 0.5, 0.0, 1.0));
 
-  // pow() below 1 lifts the faint edges so texture reads, not just hard lines.
   float edge = pow(clamp(mag * 6.5, 0.0, 1.0), 0.70);
 
   half4 base = cam.eval(pos);
   half3 col = base.rgb * half3(0.14, 0.09, 0.28) + tint * edge * 1.45;
 
-  // Slow breathe, so a still scene still looks live.
   col *= 0.93 + 0.07 * sin(uTime * 1.6);
 
   float2 uv = pos / uSize;
@@ -101,7 +70,6 @@ export function TgfxCameraEffects() {
   const [mode, setMode] = useState<Mode>('blur')
 
   const clock = useClock()
-  // The hook owns the buffer's lifetime: the raw pointer never leaves it.
   const { image, posture, onFrame } = useCameraFrame()
   const sink = useTgfxCameraSink()
 
@@ -112,11 +80,7 @@ export function TgfxCameraEffects() {
     onFrame,
   })
 
-  // There is no per-frame JS work on this screen, so once the hook has a handle
-  // the worklet has nothing left to do: hand the output to the native sink and
-  // it takes over on the camera thread. `enablePhysicalBufferRotation` above is
-  // what makes that sound — the pipeline keeps `orientation` 'up' for the
-  // session, so `posture` freezing at its first value stays correct.
+  // No per-frame JS here, so the native sink takes over once the hook has a handle.
   useEffect(() => {
     if (image == null) return
     sink.attach(frameOutput, image.handle)
@@ -191,7 +155,6 @@ export function TgfxCameraEffects() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: '#000' },
-  // The camera has no preview of its own here; tgfx draws every frame.
   hidden: { width: 1, height: 1, opacity: 0, position: 'absolute' },
   center: {
     flex: 1,

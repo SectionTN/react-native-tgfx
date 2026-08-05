@@ -1,12 +1,4 @@
-// Host tests for the compiled draw program: what setScene is allowed to bake
-// into a DrawCmd, and what must still be resolved every frame.
-//
-// Rendering goes through a real (headless Metal) GPU surface and compares
-// pixels, because the invariant that matters is "the cached object draws what
-// the per-frame rebuild drew", and no cheaper observation proves that.
-//
-// Build and run: see cpp/tests/CMakeLists.txt. The allocation cost of text is
-// measured separately, in AllocBench.
+// Host tests for the compiled draw program, through a real headless Metal surface.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -47,7 +39,6 @@ int failures = 0;
     }                                                                      \
   } while (0)
 
-/// One unstyled run, for the layout tests that call layoutText directly.
 tgfxrn::TextRun run(std::string text) {
   tgfxrn::TextRun out;
   out.text = std::move(text);
@@ -57,8 +48,7 @@ tgfxrn::TextRun run(std::string text) {
 constexpr int kWidth = 64;
 constexpr int kHeight = 64;
 
-/// The example app's bundled fonts, so the font-manager tests run against real
-/// faces that live in this repo. Set by cpp/tests/CMakeLists.txt.
+/// The example app's bundled fonts, set by cpp/tests/CMakeLists.txt.
 constexpr const char* kFontDir = TGFXRN_TEST_FONT_DIR;
 
 /// Mirrors src/compiler/writer.ts: header, node stream, then the patch table.
@@ -70,7 +60,6 @@ struct Writer {
     words.push_back(value);
   }
 
-  /// A field that is either a literal or (slot >= 0) resolved per frame.
   void pushAnim(double literal, int slot = -1) {
     if (slot >= 0) {
       patches.push_back(static_cast<double>(words.size()));
@@ -91,8 +80,6 @@ struct Writer {
     push(-1);
   }
 
-  /// The same paint as pushPaint, with flag bit 8 and four live colour
-  /// channels (red, green, blue, alpha in 0..1) after the flags.
   void pushLiveColorPaint(uint32_t color,
                           const std::array<std::pair<double, int>, 4>& rgba) {
     push(color);
@@ -107,17 +94,12 @@ struct Writer {
     push(-1);     // no shader
   }
 
-  /// A paint's filter block: blend mode, then the colour and image filter,
-  /// each a kind code (-1 for none) followed by its own words.
   struct Filters {
     int blend = 3;  // SrcOver
     std::vector<double> colorFilter{-1};
     std::vector<double> imageFilter{-1};
   };
 
-  /// The same paint as pushPaint, with flag bit 4 and the filter block set.
-  /// `alphaSlot >= 0` puts the paint on the per-frame path, so applyPaint runs
-  /// every frame rather than the compiled `cached` paint being handed over.
   void pushFilteredPaint(uint32_t color, const Filters& filters,
                          int alphaSlot = -1, double strokeWidth = 1) {
     push(color);
@@ -136,16 +118,12 @@ struct Writer {
     push(-1);  // no shader
   }
 
-  /// One uniform: its name's string index and a component per (value, slot).
   struct Uniform {
     int name;
     std::vector<std::pair<double, int>> components;
   };
 
-  /// A paint whose shader is a runtime shader. Strings: 0 = body, then names.
-  /// `preamble` and `functions` are string indices; the caller supplies an empty
-  /// entry for the preamble when the shader declares no helper. `children` holds
-  /// one shader payload per `uniform shader`, each starting with its kind.
+  /// A runtime-shader paint. Strings: 0 = body, then names; `children` is one payload per child.
   void pushRuntimePaint(uint32_t color, const std::vector<Uniform>& uniforms, int preamble,
                         const std::vector<int>& functions = {},
                         const std::vector<std::vector<double>>& children = {}) {
@@ -178,8 +156,7 @@ struct Writer {
     }
   }
 
-  /// An image node: geometry, the registry handle, fit/sampling, an optional
-  /// source rect, then a full paint. Mirrors writeDrawing() in compile.ts.
+  /// An image node, mirroring writeDrawing() in compile.ts.
   void pushImage(int32_t handle, double x, double y, double w, double h,
                  int fit = 0, int sampling = 1, const double* srcRect = nullptr) {
     push(7);
@@ -201,8 +178,7 @@ struct Writer {
     pushPaint(0xffffffff, false);
   }
 
-  /// A <CameraFrame>: no geometry of its own, then a paint, then its children.
-  /// The caller pushes `childCount` nodes after this.
+  /// A <CameraFrame>: paint, then `childCount` nodes the caller pushes after this.
   void pushCameraFrame(int32_t handle, int childCount, int fit = 2,
                        int quarterTurns = 0, bool mirror = false,
                        int sampling = 1) {
@@ -216,7 +192,6 @@ struct Writer {
     push(childCount);
   }
 
-  /// A paint whose shader is an <ImageShader> with no fit rect.
   void pushImageShaderPaint(int32_t handle, int tileX, int tileY,
                             int sampling = 1) {
     push(0xffffffff);
@@ -253,9 +228,7 @@ tgfx::Device* device() {
 
 using Pixels = std::vector<uint8_t>;
 
-/// Draw one frame of `renderer`'s already-compiled program against `values`.
-/// Separate from render() so a test can prove what a *second* frame does
-/// without recompiling the scene between them.
+/// Draw one frame of an already-compiled program, so a test can prove what a *second* frame does.
 Pixels drawFrame(tgfxrn::SceneRenderer& renderer, const std::vector<double>& values) {
   auto* context = device()->lockContext();
   auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
@@ -270,7 +243,6 @@ Pixels drawFrame(tgfxrn::SceneRenderer& renderer, const std::vector<double>& val
   return pixels;
 }
 
-/// Compile `words` and draw one frame against `values`, returning the pixels.
 Pixels render(const std::vector<double>& words,
               const std::vector<std::string>& strings,
               const std::vector<double>& values) {
@@ -288,15 +260,13 @@ bool anyPixelSet(const Pixels& pixels) {
   return false;
 }
 
-/// A distinct opaque colour per image index.
 std::array<uint8_t, 4> cellColor(int index) {
   return {static_cast<uint8_t>(10 + index * 6),
           static_cast<uint8_t>(200 - index * 4),
           static_cast<uint8_t>(60 + index * 3), 255};
 }
 
-/// Encode `pixels` as a PNG and register it, the way the TgfxImage hybrid
-/// object does from a background thread. Returns the handle the program carries.
+/// Encode as PNG and register it the way the TgfxImage hybrid object does. Returns the handle.
 tgfxrn::ImageHandle registerPixels(int width, int height,
                                    const std::vector<uint8_t>& pixels) {
   auto info = tgfx::ImageInfo::Make(width, height, tgfx::ColorType::RGBA_8888,
@@ -310,7 +280,6 @@ tgfxrn::ImageHandle registerPixels(int width, int height,
       tgfx::ImageCodec::MakeFrom(std::move(data)));
 }
 
-/// A solid image of `rgba`.
 tgfxrn::ImageHandle registerSolid(const std::array<uint8_t, 4>& rgba,
                                   int width = 2, int height = 2) {
   std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
@@ -320,7 +289,6 @@ tgfxrn::ImageHandle registerSolid(const std::array<uint8_t, 4>& rgba,
   return registerPixels(width, height, pixels);
 }
 
-/// The pixel at (x, y) as RGB.
 std::array<uint8_t, 3> pixelAt(const Pixels& pixels, int x, int y) {
   size_t at = (static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4;
   return {pixels[at], pixels[at + 1], pixels[at + 2]};
@@ -330,7 +298,6 @@ bool opaqueAt(const Pixels& pixels, int x, int y) {
   return pixels[(static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4 + 3] > 0;
 }
 
-/// One opaque rect, the smallest valid program.
 std::vector<double> oneRect() {
   Writer w;
   w.push(1);
@@ -343,10 +310,7 @@ std::vector<double> oneRect() {
   return w.finish();
 }
 
-/// A corrupt program must be rejected, and rejected without first trusting the
-/// counts in it: every one of these asks for an allocation the buffer cannot
-/// possibly hold, or is a cast that is undefined behaviour on the raw value.
-/// A regression here is an OOM kill or a sanitizer trap, not a wrong pixel.
+/// A corrupt program must be rejected without first trusting its counts: a regression here is an OOM.
 void aCorruptProgramIsRejectedWithoutTrustingItsCounts() {
   auto valid = oneRect();
   CHECK(anyPixelSet(render(valid, {}, {})));
@@ -354,11 +318,9 @@ void aCorruptProgramIsRejectedWithoutTrustingItsCounts() {
   const double kHuge = 2147483647.0;
   const double kNan = std::nan("");
   std::vector<std::vector<double>> corrupt;
-  // The root node count, read before any node is.
   auto rootCount = valid;
   rootCount[3] = kHuge;
   corrupt.push_back(rootCount);
-  // A group's own child count, one level in.
   Writer group;
   group.push(1);
   group.push(0);  // Group
@@ -383,7 +345,6 @@ void aCorruptProgramIsRejectedWithoutTrustingItsCounts() {
   }
 }
 
-/// A rect whose paint alpha is a literal, versus the same alpha as a slot.
 void staticPaintDrawsWhatTheRebuildDraws() {
   Writer literal;
   literal.push(1);
@@ -409,8 +370,6 @@ void staticPaintDrawsWhatTheRebuildDraws() {
   CHECK(cached == rebuilt);
 }
 
-/// A rect whose colour is four live channels must draw what the packed literal
-/// drew, and must track the slots from frame to frame.
 void animatedColorDrawsWhatTheLiteralDraws() {
   Writer literal;
   literal.push(1);
@@ -439,7 +398,6 @@ void animatedColorDrawsWhatTheLiteralDraws() {
   CHECK(cached != render(words, {}, {1.0, 0.0, 0.0}));
 }
 
-/// A static line's baked path must draw what the per-frame path drew.
 void staticLineDrawsWhatTheRebuildDraws() {
   Writer literal;
   literal.push(1);
@@ -465,8 +423,6 @@ void staticLineDrawsWhatTheRebuildDraws() {
   CHECK(cached == rebuilt);
 }
 
-/// A stroked rect whose strokeWidth is a slot must rebuild rather than reuse
-/// `cached`, and must actually track the slot from frame to frame.
 void animatedStrokeWidthDrawsWhatTheRebuildDraws() {
   Writer literal;
   literal.push(1);
@@ -496,11 +452,7 @@ void animatedStrokeWidthDrawsWhatTheRebuildDraws() {
 /// 0 the text, 1 the family, 2 an empty ellipsis, 3 a two-line text.
 const std::vector<std::string> kTextStrings{"Wg", "Helvetica", "", "Wg\nWg"};
 
-/// A <Text> node body. Mirrors the Kind.Text case of writeDrawing() in
-/// compile.ts: geometry, text, size, the font block, then the paragraph block.
-/// The root count is the caller's, so several can be written into one program.
-/// One run of a <Text>: the string plus the style it overrides. Zeroes mean
-/// "the paragraph's", which is what a <Text> with no <Span> children writes.
+/// A <Text> node body, mirroring the Kind.Text case of writeDrawing(); zeroes mean "the paragraph's".
 void writeRun(Writer& w, int textIndex, int familyIndex = 2, int weight = 0, int italic = 0,
               double size = 0, int hasColor = 0, double color = 0) {
   w.push(1);  // one run
@@ -534,7 +486,6 @@ void writeTextNode(Writer& w, double fontSize, int fontSizeSlot, int textIndex =
   w.pushPaint(0xff000000, false);
 }
 
-/// One <Text> as a whole program.
 void writeText(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
                double wrapWidth = 0, int align = 0, double lineHeight = 0, int weight = 400,
                int italic = 0, int runItalic = 0) {
@@ -543,7 +494,6 @@ void writeText(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
                 runItalic);
 }
 
-/// A static font must draw what the per-frame font construction drew.
 void staticTextDrawsWhatTheRebuildDraws() {
   Writer literal;
   writeText(literal, 20, -1);
@@ -556,7 +506,6 @@ void staticTextDrawsWhatTheRebuildDraws() {
   CHECK(cached == rebuilt);
 }
 
-/// An animated field must still move after the invariant parts are cached.
 void animatedFieldsStillAnimate() {
   Writer rect;
   rect.push(1);
@@ -602,14 +551,7 @@ void animatedFieldsStillAnimate() {
 
 }  // namespace
 
-/// A uniform on a slot must draw what the same uniform as a literal drew, and
-/// must still move when the slot value changes -- the shader is rebuilt per
-/// frame, so a stale cached paint would pin it to its first value.
-///
-/// The animated component sits between static ones and behind a multi-component
-/// uniform, because the slots are held in one flat run across all uniforms: a
-/// run that restarted per uniform, or ran in the wrong order, would read a
-/// static component here and still draw the right thing for a single uniform.
+/// A slotted uniform must draw what the literal drew and still move, from a flat cross-uniform run.
 void animatedUniformDrawsWhatTheRebuildDraws() {
   const std::vector<std::string> strings = {
       "return vec4(uLevel, uTint) + vec4(uPad.x, uPad.y, 0.0, 0.0);", "uTint",
@@ -620,8 +562,7 @@ void animatedUniformDrawsWhatTheRebuildDraws() {
       {3, {{0.05, -1}, {0.0, -1}}},
   };
   auto slotted = baseUniforms;
-  // Slot 1, not 0: a build that resolved every animated component against
-  // values[0] would survive a test that only ever used the first slot.
+  // Slot 1, not 0: resolving every component against values[0] would survive a slot-0 test.
   slotted[1].components[0] = {0, 1};
 
   auto write = [](const std::vector<Writer::Uniform>& uniforms) {
@@ -642,24 +583,15 @@ void animatedUniformDrawsWhatTheRebuildDraws() {
   CHECK(anyPixelSet(baked));
   CHECK(baked == resolved);
 
-  // Same compiled program, different value: the second frame must differ.
   CHECK(render(words, strings, {0.0, 0.2}) != resolved);
 
-  // An empty-named uniform is dropped, and must take its slots with it or the
-  // flat run desyncs and every survivor reads the wrong component.
+  // An empty-named uniform must take its slots with it, or the flat run desyncs.
   auto withDropped = slotted;
   withDropped.insert(withDropped.begin(), {4, {{0.9, 0}, {0.9, -1}}});
   CHECK(render(write(withDropped), strings, {0.0, 0.6}) == baked);
 }
 
-/// A helper declared by the author has to reach the shader at file scope: GLSL
-/// ES has no nested functions, so splicing it into the body is a driver compile
-/// error and an unpainted shape.
-///
-/// Two shaders whose helpers share a name are drawn in one scene, with the SAME
-/// body -- so only the preamble tells the two programs apart. The body hash in
-/// onComputeProcessorKey cannot carry this; drop the preamble from that key and
-/// the second draw reuses the first's program and paints the wrong value.
+/// A file-scope helper must reach the shader, and the preamble must key the compiled program.
 void aHelperFunctionCompilesAndDoesNotCollide() {
   const std::vector<std::string> strings = {
       "return vec4(tint(uLevel), 0.0, 0.0, 1.0);",  // 0: the only body
@@ -683,29 +615,17 @@ void aHelperFunctionCompilesAndDoesNotCollide() {
     return render(w.finish(), strings, {});
   };
 
-  // Emitting the helper at file scope at all: without it the body calls an
-  // undeclared tint, the driver rejects the program and nothing paints.
+  // Without the file-scope helper the body calls an undeclared tint and nothing paints.
   auto identity = draw(2, {3});
   CHECK(anyPixelSet(identity));
-  // uLevel is 0.75, so this draws red 0.75 and the next draws red 0.25 through
-  // a helper of the same name -- one body, two programs.
+  // uLevel 0.75 here, 0.25 next, through a helper of the same name: one body, two programs.
   auto inverted = draw(4, {3});
   CHECK(anyPixelSet(inverted));
   CHECK(identity != inverted);
 }
 
-/// `uniform shader img; main(p) { return img.eval(p); }` must draw exactly what
-/// the child would have drawn on its own, and must honour the coordinate it is
-/// handed rather than the fragment's own.
-///
-/// The child's fragment processor samples in *its* space -- a texture's
-/// normalised space, only known once the texture resolves -- while the author's
-/// coordinate is in the runtime shader's local space. The wrapper bridges the
-/// two with an uploaded matrix, so a shifted coordinate landing on the wrong
-/// texel is what a wrong (or missing) bridge looks like.
 void aChildShaderSamplesWhereItIsAsked() {
-  // A 2x1 image, two very different colours, repeated across a 32x32 rect, so
-  // one texel of drift is a whole colour change rather than a rounding error.
+  // A 2x1 image repeated across 32x32, so one texel of drift is a whole colour change.
   auto left = cellColor(2);
   auto right = cellColor(20);
   std::vector<uint8_t> pixels(8);
@@ -745,14 +665,12 @@ void aChildShaderSamplesWhereItIsAsked() {
   CHECK(at1[0] == right[0] && at1[1] == right[1]);
   CHECK(at2[0] == left[0] && at2[1] == left[1]);
 
-  // The same child, sampled one texel to the right: every column shifts. A
-  // wrapper that ignored its argument would draw the block above again.
+  // The same child one texel right: a wrapper ignoring its argument redraws the block above.
   auto shifted = draw(2);
   auto shifted0 = pixelAt(shifted, 0, 0);
   CHECK(shifted0[0] == right[0] && shifted0[1] == right[1]);
 }
 
-/// A child is a shader, not an image slot: a gradient has to work as one.
 void aGradientChildShades() {
   // Linear black -> white across the 32-wide rect.
   const std::vector<double> child = {0, 0, 0, 32, 0, 2, 0xff000000, 0xffffffff, 0};
@@ -768,20 +686,11 @@ void aGradientChildShades() {
   w.pushRuntimePaint(0xffffffff, {}, 1, {}, {child});
   auto drawn = render(w.finish(), strings, {});
   CHECK(anyPixelSet(drawn));
-  // Dark at the left end, bright at the right: the child's own coordinate ramp
-  // reached it, which a child bound but never sampled would not show.
+  // Dark left, bright right: the child's own coordinate ramp reached it.
   CHECK(pixelAt(drawn, 1, 16)[0] < 40);
   CHECK(pixelAt(drawn, 30, 16)[0] > 200);
 }
 
-/// Two children on ONE shader, which is what `uniform shader a; uniform shader
-/// b;` already spells and what the encoder already writes. Both wrappers land at
-/// file scope in the same program, so their names have to differ per child and
-/// not merely per processor -- otherwise the second redefines the first, the
-/// driver rejects the whole program, and the shape paints nothing at all.
-///
-/// The body also samples child 0 twice, once at an offset, because the docs'
-/// headline example does exactly that.
 void twoChildrenOnOneShaderBothPaint() {
   // Child 0: a 2x1 image, red on the left texel and green on the right.
   auto left = cellColor(2);
@@ -792,13 +701,11 @@ void twoChildrenOnOneShaderBothPaint() {
   auto image = registerPixels(2, 1, pixels);
 
   const std::vector<std::vector<double>> children = {
-      // repeat/repeat, nearest
       {7, static_cast<double>(image.handle), 1, 1, 0, 0},
       // Child 1: a black -> white ramp across the 32-wide rect.
       {0, 0, 0, 32, 0, 2, 0xff000000, 0xffffffff, 0},
   };
-  // Child 0 twice (once shifted a texel) in the red and green channels, child 1
-  // in the blue: a wrapper bound to the wrong child shows up as a wrong channel.
+  // Child 0 in red and green (one shifted), child 1 in blue: a wrong binding is a wrong channel.
   const std::vector<std::string> strings{
       "return vec4(TGFX_CHILD_0(fragCoord).r, "
       "TGFX_CHILD_0(fragCoord + vec2(1.0, 0.0)).g, TGFX_CHILD_1(fragCoord).b, 1.0);",
@@ -814,8 +721,7 @@ void twoChildrenOnOneShaderBothPaint() {
   w.pushRuntimePaint(0xffffffff, {}, 1, {}, children);
   auto drawn = render(w.finish(), strings, {});
   CHECK(anyPixelSet(drawn));
-  // Column 0 reads child 0 at texel 0 for red and texel 1 for green, and child 1
-  // near the dark end of its ramp for blue.
+  // Column 0: child 0 at texels 0 and 1, child 1 near the dark end of its ramp.
   auto at0 = pixelAt(drawn, 0, 16);
   CHECK(at0[0] == left[0]);
   CHECK(at0[1] == right[1]);
@@ -826,11 +732,6 @@ void twoChildrenOnOneShaderBothPaint() {
   CHECK(at30[2] > 200);
 }
 
-/// A child may itself be a runtime shader, which puts two runtime shader
-/// processors -- and so two child wrappers -- in one compiled program. The
-/// wrapper name has to be mangled per processor: two `vec4 tgfxChild(vec2)` at
-/// file scope is a redefinition, the driver rejects the program, and the shape
-/// does not paint at all.
 void aRuntimeShaderChildNestsInOneProgram() {
   auto only = cellColor(7);
   std::vector<uint8_t> onePixel(only.begin(), only.end());
@@ -840,8 +741,7 @@ void aRuntimeShaderChildNestsInOneProgram() {
       "return TGFX_CHILD_0(fragCoord);",  // 0: both bodies
       "",                                 // 1: no preamble
   };
-  // The inner runtime shader, as a child payload: body, preamble, no functions,
-  // no uniforms, one child of its own.
+  // The inner runtime shader as a child payload: body, preamble, no functions, one child.
   const std::vector<double> inner = {6, 0, 1, 0, 0, 1,
                                      7, static_cast<double>(image.handle), 0, 0, 0, 0};
 
@@ -858,9 +758,6 @@ void aRuntimeShaderChildNestsInOneProgram() {
   CHECK(middle[0] == only[0] && middle[1] == only[1]);
 }
 
-/// Two runtime shaders with children in one scene: the child indices and the
-/// mangled wrapper names are per processor, so neither may reach the other's
-/// child. One body, two children -- only the binding tells the draws apart.
 void twoShadersWithChildrenDoNotCollide() {
   auto first = cellColor(3);
   auto second = cellColor(30);
@@ -889,8 +786,6 @@ void twoShadersWithChildrenDoNotCollide() {
   CHECK(onRight[0] == second[0] && onRight[1] == second[1]);
 }
 
-/// A Fill must cover the whole surface, not just where a rect would have been,
-/// and must carry a shader like any other drawing.
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -910,7 +805,6 @@ void fillCoversTheWholeCanvas() {
   CHECK(anyPixelSet(filled));
   CHECK(filled == render(rect.finish(), {}, {}));
 
-  // A Fill smaller than the surface would match a half-height rect instead.
   Writer half;
   half.push(1);
   half.push(1);
@@ -921,8 +815,6 @@ void fillCoversTheWholeCanvas() {
   half.pushPaint(0xff3366cc, false);
   CHECK(filled != render(half.finish(), {}, {}));
 
-  // A Fill must carry a shader and an animated alpha like any other drawing,
-  // so dropping either on this kind alone has to fail.
   const std::vector<std::string> strings = {
       "return vec4(uLevel, 0.0, 0.0, 1.0);", "uLevel", ""};
   const std::vector<Writer::Uniform> uniforms = {{1, {{0, 0}}}};
@@ -931,11 +823,9 @@ void fillCoversTheWholeCanvas() {
   shaded.push(1);
   shaded.push(9);
   shaded.pushRuntimePaint(0xff000000, uniforms, 2);
-  // finish() appends a patch table, so it must be called once per writer.
   auto shadedWords = shaded.finish();
   auto shadedPixels = render(shadedWords, strings, {0.75});
   CHECK(anyPixelSet(shadedPixels));
-  // Without the shader the paint is opaque black, and the uniform must reach it.
   CHECK(shadedPixels != filled);
   CHECK(shadedPixels != render(shadedWords, strings, {0.25}));
 
@@ -946,8 +836,6 @@ void fillCoversTheWholeCanvas() {
   CHECK(render(faded.finish(), {}, {0.5}) != filled);
 }
 
-/// Images are addressed by an integer handle, so more of them on screen than
-/// any cache bound must still each draw their own pixels.
 void everyImageDrawsItsOwnHandle() {
   constexpr int kCount = 40;
   constexpr int kCell = 8;
@@ -968,8 +856,6 @@ void everyImageDrawsItsOwnHandle() {
   }
 }
 
-/// Re-committing a scene whose images have not changed must cost no decode at
-/// all: the handle is an integer lookup, not a hash of the payload.
 void reCommittingAnImageSceneDecodesNothing() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   auto image = registerSolid(cellColor(3));
@@ -979,41 +865,33 @@ void reCommittingAnImageSceneDecodesNothing() {
   for (int i = 0; i < 5; i++) {
     Writer w;
     w.push(1);
-    // A different geometry each time, so the scene really is recompiled.
     w.pushImage(image.handle, i, 0, 8, 8);
     renderer.setScene(w.finish(), {});
   }
   CHECK(registry.decodeCount() == before);
 }
 
-/// The decoded-pixel budget is bytes with a real LRU, not a count with FIFO:
-/// a hit has to refresh recency, or the image most likely to still be on screen
-/// is the one evicted. Invisible in the pixels, so it is counted instead.
+/// Bytes with a real LRU, not a count with FIFO. Invisible in the pixels, so it is counted.
 void theByteBudgetEvictsLeastRecentlyUsed() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   size_t restore = registry.cacheLimit();
-  // 32x32 RGBA is 4096 B; a budget of three of them.
   auto a = registerSolid(cellColor(1), 32, 32);
   auto b = registerSolid(cellColor(2), 32, 32);
   auto c = registerSolid(cellColor(3), 32, 32);
   auto d = registerSolid(cellColor(4), 32, 32);
   CHECK(d.handle != 0);
-  // Registration order is recency order, so this drops A, the oldest.
   registry.setCacheLimit(3 * 32 * 32 * 4);
   CHECK(registry.cachedBytes() <= 3 * 32 * 32 * 4);
   size_t decodes = registry.decodeCount();
 
-  // acquire() is called on the render thread, so an evicted entry must come
-  // back empty — a node skips a frame — rather than decoding inline.
+  // acquire() runs on the render thread, so an evicted entry comes back empty, never decoding.
   CHECK(registry.acquire(a.handle) == nullptr);
   CHECK(registry.decodeCount() == decodes);
   registry.waitForDecodes();
   CHECK(registry.decodeCount() == decodes + 1);
   CHECK(registry.acquire(a.handle) != nullptr);
-  // A came back at the head, so B is now the least recently used one.
   CHECK(registry.acquire(b.handle) == nullptr);
 
-  // A hit on C refreshes its recency, so bringing B back evicts D instead.
   CHECK(registry.acquire(c.handle) != nullptr);
   registry.waitForDecodes();
   CHECK(registry.decodeCount() == decodes + 2);
@@ -1025,10 +903,7 @@ void theByteBudgetEvictsLeastRecentlyUsed() {
 }
 
 
-/// `fit` follows Skia (Flutter's BoxFit): cover crops the source rather than
-/// overflowing the destination, and contain letterboxes inside it.
 void fitModesLetterboxAndCrop() {
-  // 4x2, so twice as wide as it is tall, drawn into a 32x32 box at the origin.
   auto image = registerSolid(cellColor(7), 4, 2);
   auto draw = [&](int fit) {
     Writer w;
@@ -1050,15 +925,12 @@ void fitModesLetterboxAndCrop() {
   auto fill = draw(0);
   CHECK(opaqueAt(fill, 1, 1) && opaqueAt(fill, 30, 30));
 
-  // `none` draws at native size, centred: 4x2 in the middle of the box.
   auto none = draw(5);
   CHECK(opaqueAt(none, 16, 16));
   CHECK(!opaqueAt(none, 16, 4));
 }
 
-/// A source rect picks one sprite out of a sheet without slicing it in JS.
 void aSourceRectPicksOneSprite() {
-  // Two side-by-side pixels: left is cellColor(1), right is cellColor(9).
   auto left = cellColor(1);
   auto right = cellColor(9);
   std::vector<uint8_t> pixels(8);
@@ -1075,9 +947,7 @@ void aSourceRectPicksOneSprite() {
   CHECK(got[0] == right[0] && got[1] == right[1] && got[2] == right[2]);
 }
 
-/// <ImageShader>: an image as the paint source, tiled across a shape.
 void anImageShaderTilesAcrossAShape() {
-  // A 2x1 image, two different colours, repeated across a 32x32 rect.
   auto left = cellColor(2);
   auto right = cellColor(20);
   std::vector<uint8_t> pixels(8);
@@ -1100,9 +970,7 @@ void anImageShaderTilesAcrossAShape() {
   auto at2 = pixelAt(drawn, 2, 0);
   CHECK(at0[0] == left[0] && at0[1] == left[1]);
   CHECK(at1[0] == right[0] && at1[1] == right[1]);
-  // The third column proves it repeated rather than clamped.
   CHECK(at2[0] == at0[0] && at2[1] == at0[1]);
-  // Mirror puts the *right* colour next to itself at the seam instead.
   Writer m;
   m.push(1);
   m.push(1);
@@ -1116,14 +984,8 @@ void anImageShaderTilesAcrossAShape() {
   CHECK(m2[0] == right[0] && m2[1] == right[1]);
 }
 
-/// A hardware-buffer handle (the camera path, #132) is registered rather than
-/// decoded: it stays out of the byte budget, and a new frame replaces the image
-/// behind the same id. The scene is compiled ONCE here, so what the second frame
-/// draws is decided entirely by the draw path re-reading the handle.
 void anExternalHandleIsReplacedInPlaceAndNotBudgeted() {
   auto& registry = tgfxrn::ImageRegistry::instance();
-  // Stands in for the imported buffer: registry-side semantics are the same
-  // whichever tgfx::Image the import produced.
   auto first = registerSolid(cellColor(11), 32, 32);
   auto second = registerSolid(cellColor(29), 32, 32);
   auto frameA = registry.acquire(first.handle);
@@ -1133,7 +995,6 @@ void anExternalHandleIsReplacedInPlaceAndNotBudgeted() {
   size_t bytesBefore = registry.cachedBytes();
   auto external = registry.addExternal(frameA);
   CHECK(external.handle != 0 && external.width == 32);
-  // Not the producer's memory to budget.
   CHECK(registry.cachedBytes() == bytesBefore);
 
   Writer w;
@@ -1147,26 +1008,19 @@ void anExternalHandleIsReplacedInPlaceAndNotBudgeted() {
   auto before = pixelAt(drawFrame(renderer, {}), 16, 16);
   CHECK(before[0] == expectedFirst[0] && before[1] == expectedFirst[1]);
 
-  // The next frame: same handle id, same compiled program, new pixels.
   CHECK(registry.replaceExternal(external.handle, frameB));
-  // A swap with no commit behind it still has to wake the render loop.
   CHECK(registry.epoch() != epochBefore);
-  // ...and the registry lets go of the previous buffer there and then, rather
-  // than starving the producer's pool until the scene is next recompiled. Two
-  // references left: this test's local and the decoded entry it came from.
+  // ...and the previous buffer is released there and then. Two refs left: local and entry.
   CHECK(frameA.use_count() == 2);
 
   auto expectedSecond = cellColor(29);
   auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
   CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
 
-  // A decoded asset handle is not replaceable this way.
   CHECK(!registry.replaceExternal(first.handle, frameA));
   registry.remove(external.handle);
 }
 
-/// The same per-frame contract for <ImageShader>, whose shader is otherwise
-/// built once at setScene and would freeze on the first camera frame.
 void anExternalHandleAlsoDrivesAnImageShaderPerFrame() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   auto first = registerSolid(cellColor(13), 32, 32);
@@ -1196,11 +1050,6 @@ void anExternalHandleAlsoDrivesAnImageShaderPerFrame() {
   registry.remove(external.handle);
 }
 
-/// The #132 seam: a runtime shader whose child is an <ImageShader> on an
-/// external (hardware-buffer) handle. The buffer is re-pointed from C++ with no
-/// re-commit, so the child cannot be baked at setScene -- and the compiled
-/// program stays the same one, because what a texture holds is not part of its
-/// key. One setScene, two frames, two different images.
 void anExternalHandleDrivesAChildShaderPerFrame() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   auto first = registerSolid(cellColor(11), 32, 32);
@@ -1232,15 +1081,7 @@ void anExternalHandleDrivesAChildShaderPerFrame() {
   registry.remove(external.handle);
 }
 
-/// <CameraFrame> (#132): the frame becomes an ordinary scene input, and the
-/// scene draws over it.
-///
-/// The property under test is the one the native-only camera path had and this
-/// must not lose: the frame and its children go through the *same* matrix, so
-/// an overlay in frame pixels cannot drift from the image. A 32x32 frame
-/// covering a 64x64 canvas is scaled 2x, so a 16x16 child at the frame's origin
-/// has to land on a 32x32 canvas quadrant — which is only true if it rode the
-/// frame's transform rather than being drawn in canvas coordinates.
+/// The frame and its children share one matrix, so an overlay in frame pixels cannot drift.
 void aCameraFrameCoversTheCanvasAndItsChildrenRideItsTransform() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   auto frame = registerSolid(cellColor(7), 32, 32);
@@ -1262,16 +1103,13 @@ void aCameraFrameCoversTheCanvasAndItsChildrenRideItsTransform() {
 
   auto first = cellColor(7);
   auto pixels = drawFrame(renderer, {});
-  // The 16x16 child fills the top-left 32x32 of the canvas: same matrix.
   auto overlay = pixelAt(pixels, 8, 8);
   CHECK(overlay[0] == 0 && overlay[2] == 255);
   CHECK(!(pixelAt(pixels, 40, 8)[2] == 255));
-  // ...and the frame covers everything the child does not.
   auto uncovered = pixelAt(pixels, 48, 48);
   CHECK(uncovered[0] == first[0] && uncovered[1] == first[1]);
 
-  // A new buffer behind the same handle, with no re-commit: the draw path has
-  // to re-read it, and the overlay must not move.
+  // A new buffer behind the same handle, no re-commit: the overlay must not move.
   CHECK(registry.replaceExternal(external.handle, registry.acquire(next.handle)));
   auto second = cellColor(23);
   pixels = drawFrame(renderer, {});
@@ -1283,16 +1121,7 @@ void aCameraFrameCoversTheCanvasAndItsChildrenRideItsTransform() {
   registry.remove(external.handle);
 }
 
-/// Mirroring and rotation are part of that shared matrix, not a separate
-/// correction applied to the image alone — so they move the overlay with the
-/// frame. A selfie frame drawn un-mirrored is the "my face is the wrong way
-/// round" bug; an overlay that stays put while the frame flips is the drift the
-/// shared matrix exists to prevent.
-/// Which corner of the canvas a child at the frame's origin lands in, under one
-/// (rotation, mirror) pair. `frameW`/`frameH` size the frame; the child is a
-/// quarter of it, so the answer is a corner whatever the frame's aspect is.
-///
-/// Returned as {topLeft, topRight, bottomLeft, bottomRight}.
+/// Which canvas corner a child at the frame's origin lands in, as {TL, TR, BL, BR}.
 std::array<bool, 4> cameraFrameChildCorner(int32_t handle, int frameW, int frameH,
                                            int quarterTurns, bool mirror) {
   Writer w;
@@ -1319,31 +1148,19 @@ void aCameraFrameMirrorsAndRotatesItsChildrenWithTheFrame() {
   auto frame = registerSolid(cellColor(7), 32, 32);
   auto external = registry.addExternal(registry.acquire(frame.handle));
 
-  // The same 16x16 child at the frame's origin, under each transform.
   auto quadrant = [&](int quarterTurns, bool mirror) {
     return cameraFrameChildCorner(external.handle, 32, 32, quarterTurns, mirror);
   };
 
   CHECK(quadrant(0, false) == kTopLeft);
-  // Flipped along the vertical axis: top-left becomes top-right.
   CHECK(quadrant(0, true) == kTopRight);
-  // A quarter turn clockwise carries it round the canvas.
   CHECK(quadrant(1, false) == kTopRight);
   CHECK(quadrant(2, false) == kBottomRight);
   CHECK(quadrant(3, false) == kBottomLeft);
   registry.remove(external.handle);
 }
 
-/// The same four turns on a frame that is **not square**, which is the only
-/// shape a camera actually produces.
-///
-/// A square frame cannot see this: with `w == h`, `postTranslate(h, 0)` and
-/// `postTranslate(0, w)` are the same call, and the `ow`/`oh` swap that feeds
-/// the fit is a no-op — so the rotation maths can be wrong in two independent
-/// places and every square case still passes. 32x16 separates them: an odd
-/// quarter turn makes the frame 16 wide and 32 tall, which changes the cover
-/// scale (max(64/16, 64/32) = 4, against 2 for the even turns) as well as the
-/// slide-back offset.
+/// Four turns on a non-square frame: with w == h the translate and the ow/oh swap both collapse.
 void aCameraFrameRotatesANonSquareFrame() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   auto frame = registerSolid(cellColor(7), 32, 16);
@@ -1354,26 +1171,16 @@ void aCameraFrameRotatesANonSquareFrame() {
   };
 
   CHECK(quadrant(0) == kTopLeft);
-  // turns=1: the 16x8 child maps to x in [8,16], y in [0,16] of the 16x32
-  // rotated frame; cover scale 4 and a -32 y offset put it at x in [32,64],
-  // y in [-32,32] — the top-right corner.
   CHECK(quadrant(1) == kTopRight);
   CHECK(quadrant(2) == kBottomRight);
   CHECK(quadrant(3) == kBottomLeft);
-  // Mirroring is still a flip about the frame's own vertical axis, and the
-  // frame's width is 32 here where the rotated height is 16 — using the wrong
-  // one puts the child off-canvas rather than in the opposite corner.
+  // Mirroring flips about the frame's own axis: the wrong width puts the child off-canvas.
   CHECK(cameraFrameChildCorner(external.handle, 32, 16, 0, true) == kTopRight);
   registry.remove(external.handle);
 }
 
-/// A non-square frame is centre-cropped by `cover` — it is scaled to fill the
-/// canvas and the overflowing axis runs off it, rather than being letterboxed.
-/// The old native-only path hardcoded exactly this (`max(sw/fw, sh/fh)`), so it
-/// is the behaviour a camera scene has to keep by default.
 void aCameraFrameCoverCropsTheOverflowingAxis() {
   auto& registry = tgfxrn::ImageRegistry::instance();
-  // 32x16: twice as wide as it is tall, on a square canvas.
   auto wide = registerSolid(cellColor(7), 32, 16);
   auto external = registry.addExternal(registry.acquire(wide.handle));
 
@@ -1381,7 +1188,6 @@ void aCameraFrameCoverCropsTheOverflowingAxis() {
   w.push(1);
   w.pushCameraFrame(external.handle, 0);
   auto pixels = render(w.finish(), {}, {});
-  // scale = max(64/32, 64/16) = 4, so the frame is 128x64: every corner covered.
   auto expected = cellColor(7);
   for (auto [x, y] : {std::pair{1, 1}, {62, 1}, {1, 62}, {62, 62}}) {
     auto pixel = pixelAt(pixels, x, y);
@@ -1390,9 +1196,6 @@ void aCameraFrameCoverCropsTheOverflowingAxis() {
   registry.remove(external.handle);
 }
 
-/// A handle with no frame behind it yet draws nothing at all — children
-/// included. There is no frame to place them against, and an overlay floating
-/// over a black canvas at the wrong scale is worse than an empty one.
 void aCameraFrameWithNoFrameDrawsNothing() {
   Writer w;
   w.push(1);
@@ -1407,18 +1210,13 @@ void aCameraFrameWithNoFrameDrawsNothing() {
   CHECK(!opaqueAt(pixels, 8, 8));
 }
 
-/// An asset the byte budget dropped *before* the scene compiled has nothing to
-/// cache at setScene. Its re-decode lands afterwards, and the already-compiled
-/// program has to be able to reach it — otherwise the fix for "never decode on
-/// the render thread" trades a stall for a permanently blank tile, which is
-/// worse than what it replaced. Counting decodes cannot see this; only a frame can.
+/// An asset evicted before the scene compiled must still appear when its re-decode lands.
 void anImageEvictedBeforeCompileComesBackWhenItsDecodeLands() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   size_t restore = registry.cacheLimit();
   auto victim = registerSolid(cellColor(17), 32, 32);
   auto keep = registerSolid(cellColor(23), 32, 32);
   CHECK(keep.handle != 0);
-  // Room for one, so `victim` — registered first, so least recently used — goes.
   registry.setCacheLimit(32 * 32 * 4);
   size_t decodes = registry.decodeCount();
 
@@ -1426,27 +1224,20 @@ void anImageEvictedBeforeCompileComesBackWhenItsDecodeLands() {
   w.push(1);
   w.pushImage(victim.handle, 0, 0, 32, 32);
   tgfxrn::SceneRenderer renderer;
-  // Nothing has acquired `victim` since the eviction, so this compile is
-  // guaranteed to be the one that finds it empty and schedules the re-decode.
+  // Nothing has acquired `victim` since the eviction, so this compile schedules the re-decode.
   renderer.setScene(w.finish(), {});
 
   registry.setCacheLimit(restore);
   registry.waitForDecodes();
-  // The compile really did fail to resolve it: the re-decode it scheduled ran.
   CHECK(registry.decodeCount() == decodes + 1);
   CHECK(registry.acquire(victim.handle) != nullptr);
 
-  // Same renderer, same program, no re-commit: the pixels are back, so the
-  // frame must show them.
   auto expected = cellColor(17);
   auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
   CHECK(after[0] == expected[0] && after[1] == expected[1]);
 }
 
-/// Every epoch bump has to reach the platform render loops. Both are
-/// push-driven — Android posts one draw per staging call, iOS pauses its display
-/// link after a few idle ticks — so a swap that only moves the epoch schedules
-/// no frame at all and a static scene fed by setNativeBuffer freezes.
+/// Both render loops are push-driven, so a swap that only moves the epoch schedules no frame.
 void aBufferSwapSchedulesADraw() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   int wakes = 0;
@@ -1459,7 +1250,6 @@ void aBufferSwapSchedulesADraw() {
   CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
   CHECK(wakes == before + 1);
 
-  // And a disposed handle, so a view still drawing it is told to stop.
   registry.remove(external.handle);
   CHECK(wakes == before + 2);
   registry.removeWakeListener(token);
@@ -1467,10 +1257,7 @@ void aBufferSwapSchedulesADraw() {
   CHECK(wakes == before + 2);
 }
 
-/// The blend mode has to reach the paint, so a drawing composites against what
-/// is already on the surface instead of replacing it.
 void aBlendModeCompositesAgainstWhatIsBelow() {
-  // Yellow under, magenta over. Multiply keeps only the channels both have: red.
   auto scene = [](int blend) {
     Writer w;
     w.push(2);
@@ -1501,8 +1288,6 @@ void aBlendModeCompositesAgainstWhatIsBelow() {
   auto blended = pixelAt(multiply, 16, 16);
   CHECK(blended[0] == 255 && blended[1] == 0 && blended[2] == 0);
 
-  // An explicit srcOver must be byte-identical to writing no filter block at
-  // all, or the flag bit is changing more than it claims to.
   Writer srcOver;
   srcOver.push(2);
   srcOver.push(1);
@@ -1520,13 +1305,8 @@ void aBlendModeCompositesAgainstWhatIsBelow() {
   CHECK(render(srcOver.finish(), {}, {}) == over);
 }
 
-/// A blend mode and an image filter on one paint must both survive. An image
-/// filter forces an offscreen layer, and a blend mode left on the inner draw
-/// composites against the empty layer instead of against the canvas — so this
-/// fails with the blurred rect coming back magenta rather than red.
+/// A blend mode left on the inner draw composites against the empty layer an image filter forces.
 void aBlendModeSurvivesAnImageFilter() {
-  // Same yellow-under-magenta multiply as above, but blurred. Sigma is small
-  // enough that the centre pixel is the unblurred colour either way.
   auto scene = [](double sigma) {
     Writer w;
     w.push(3);
@@ -1559,15 +1339,11 @@ void aBlendModeSurvivesAnImageFilter() {
   CHECK(sharp[0] == 255 && sharp[1] == 0 && sharp[2] == 0);
   auto blurred = pixelAt(scene(0.5), 16, 16);
   CHECK(blurred[0] == 255 && blurred[1] == 0 && blurred[2] == 0);
-  // The layer is still real: the blur has to reach past the rect's own edge.
   CHECK(opaqueAt(scene(6), 34, 16));
-  // ...and it was closed again: the next node draws on the canvas, not into it.
   auto after = pixelAt(scene(0.5), 52, 52);
   CHECK(after[0] == 0 && after[1] == 255 && after[2] == 0);
 }
 
-/// A 4x5 colour matrix must transform the drawn colour, and the identity
-/// matrix must leave it exactly as an unfiltered paint drew it.
 void aColourMatrixTransformsTheDrawnColour() {
   auto draw = [](const std::vector<double>& matrix) {
     Writer w;
@@ -1598,7 +1374,6 @@ void aColourMatrixTransformsTheDrawnColour() {
                                         0, 0, 1, 0, 0, 0, 0, 0, 1, 0};
   CHECK(draw(identity) == unfiltered);
 
-  // R' = B, B' = R: a channel swap, so 0x2050c0 comes out as 0xc05020.
   const std::vector<double> swap = {0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
                                     1, 0, 0, 0, 0, 0, 0, 0, 1, 0};
   auto swapped = pixelAt(draw(swap), 16, 16);
@@ -1607,7 +1382,6 @@ void aColourMatrixTransformsTheDrawnColour() {
   CHECK(swapped[1] == source[1]);
 }
 
-/// A blend colour filter tints the drawing without touching what is under it.
 void aBlendColourFilterTints() {
   auto draw = [](bool filtered) {
     Writer w;
@@ -1618,7 +1392,6 @@ void aBlendColourFilterTints() {
     w.pushAnim(32);
     w.pushAnim(32);
     if (filtered) {
-      // Opaque red, src: replaces the paint's own colour entirely.
       w.pushFilteredPaint(0xff2050c0, {3, {1, 0xffff0000, 1}, {-1}});
     } else {
       w.pushPaint(0xff2050c0, false);
@@ -1630,9 +1403,6 @@ void aBlendColourFilterTints() {
   CHECK(draw(false) != draw(true));
 }
 
-/// A blur is an *image* filter: it grows the drawing past its own geometry.
-/// Nothing but a real offscreen layer paints outside the rect, so this is the
-/// observation that separates it from a colour filter.
 void aBlurSpreadsPastTheGeometry() {
   auto draw = [](double sigma) {
     Writer w;
@@ -1652,19 +1422,13 @@ void aBlurSpreadsPastTheGeometry() {
 
   auto sharp = draw(0);
   CHECK(anyPixelSet(sharp));
-  // Four pixels outside the rect: untouched without the filter.
   CHECK(!opaqueAt(sharp, 14, 32));
   auto blurred = draw(6);
   CHECK(opaqueAt(blurred, 14, 32));
-  // ...and the middle is still painted, so it is a blur and not a wipe.
   CHECK(opaqueAt(blurred, 32, 32));
 }
 
-/// A drop shadow paints under the content that cast it, offset by dx/dy, and
-/// `shadowOnly` drops the content and keeps the shadow.
 void aDropShadowPaintsUnderItsContent() {
-  // A 16x16 rect at (24, 24); an unblurred black shadow 8px down and right, so
-  // the shadow covers (32, 32)-(48, 48) and the content covers (24, 24)-(40, 40).
   auto draw = [](int only) {
     Writer w;
     w.push(1);
@@ -1692,25 +1456,15 @@ void aDropShadowPaintsUnderItsContent() {
   auto shadow = pixelAt(shadowed, 44, 44);
   CHECK(opaqueAt(shadowed, 44, 44));
   CHECK(shadow[0] == 0 && shadow[1] == 0 && shadow[2] == 0);
-  // The content is still there, on top of its own shadow.
   auto content = pixelAt(shadowed, 28, 28);
   CHECK(content[0] == 255 && content[1] == 255 && content[2] == 255);
 
   auto only = draw(1);
   CHECK(opaqueAt(only, 44, 44));
-  // The content it was cast from is gone, so its uncovered corner is empty.
   CHECK(!opaqueAt(only, 28, 28));
 }
 
-/// A filter must be built once, by setScene, and never again — otherwise every
-/// filtered node allocates a filter per frame, which is exactly what the
-/// compile-once command list exists to avoid. Counted rather than reasoned
-/// about: filterBuildCount() moves on every construction, wherever it happens.
-///
-/// Every paint here has an animated alpha, so applyPaint really does run once
-/// per node per frame. A test on static paints would pass without proving
-/// anything: their compiled paint is handed over untouched, so a filter built
-/// inside applyPaint would never be reached.
+/// A filter must be built once, by setScene, and never again. Counted, not reasoned about.
 void filtersAreBuiltOnceAndNeverOnTheDrawPath() {
   constexpr int kNodes = 16;
   Writer w;
@@ -1721,7 +1475,6 @@ void filtersAreBuiltOnceAndNeverOnTheDrawPath() {
     w.pushAnim(i);
     w.pushAnim(8);
     w.pushAnim(8);
-    // A colour filter and an image filter on every node: two builds each.
     w.pushFilteredPaint(
         0xff3366cc,
         {24,
@@ -1736,16 +1489,13 @@ void filtersAreBuiltOnceAndNeverOnTheDrawPath() {
   size_t afterCompile = tgfxrn::filterBuildCount();
   CHECK(afterCompile == before + 2 * kNodes);
 
-  // Ten frames off one compile: the count must not move by one.
   for (int frame = 0; frame < 10; frame++) {
     CHECK(anyPixelSet(drawFrame(renderer, {1})));
   }
   CHECK(tgfxrn::filterBuildCount() == afterCompile);
 }
 
-// ---------------- text ----------------
 
-/// The rightmost column holding ink, or -1 when nothing was drawn.
 int rightmostInk(const Pixels& pixels) {
   int rightmost = -1;
   for (int y = 0; y < kHeight; y++) {
@@ -1771,10 +1521,7 @@ int inkRows(const Pixels& pixels) {
   return rows;
 }
 
-/// The acceptance case the old code could not meet: an Android image with none
-/// of Roboto-Regular.ttf, NotoSans-Regular.ttf or DroidSans.ttf. Those three
-/// paths were the only resolution that could ever succeed there — MakeFromName
-/// is nullptr on FreeType — so such a device drew no text at all.
+/// The acceptance case: an Android image with none of the three paths the old code hardcoded.
 void aFontIsFoundOnAnImageWithNoneOfTheOldHardcodedPaths() {
   auto best = [](const std::vector<std::string>& files, const std::string& family, int weight,
                  bool italic) {
@@ -1788,57 +1535,41 @@ void aFontIsFoundOnAnImageWithNoneOfTheOldHardcodedPaths() {
       "/system/fonts/SamsungSharpSans-Bold.ttf",
   };
   CHECK(best(oemImage, "", 400, false) >= 0);
-  // Never the emoji font: that is how a paragraph renders as blank boxes.
   CHECK(best(oemImage, "", 400, false) != 0);
-  // Weight steers the choice inside what the image actually has.
   CHECK(best(oemImage, "", 700, false) != best(oemImage, "", 400, false));
 
-  // An asked-for family beats every default, even an unstyled match.
   const std::vector<std::string> withFamily{"/system/fonts/Roboto-Regular.ttf",
                                             "/system/fonts/PlayfairDisplay-Regular.ttf"};
   CHECK(best(withFamily, "Playfair Display", 400, false) == 1);
   CHECK(best(withFamily, "playfair-display", 400, false) == 1);
-  // Nothing but an emoji font is still nothing.
   CHECK(tgfxrn::rankFontFiles({"/system/fonts/NotoColorEmoji.ttf"}, "", 400, false).empty());
 
-  // Every plausible candidate is offered, best first, because a filename says
-  // nothing about coverage. On a real Samsung image the top-scoring bold face is
-  // NotoSansCham-Bold, which has no Latin at all — resolution has to be able to
-  // walk past it instead of giving up, which is what left bold text blank.
+  // Every candidate, best first: NotoSansCham-Bold outranks and has no Latin, so walking matters.
   const std::vector<std::string> samsung{
       "/system/fonts/DroidSans-Bold.ttf", "/system/fonts/NotoColorEmoji.ttf",
       "/system/fonts/NotoSansCham-Bold.ttf", "/system/fonts/Roboto-Regular.ttf"};
   auto ranked = tgfxrn::rankFontFiles(samsung, "", 700, false);
   CHECK(ranked.size() >= 3);
   CHECK(std::find(ranked.begin(), ranked.end(), 0) != ranked.end());
-  // The emoji font is still never offered.
   CHECK(std::find(ranked.begin(), ranked.end(), 1) == ranked.end());
 
-  // A *named* family must not promote a special-purpose face either: "Noto"
-  // prefix-matches NotoColorEmoji, which would otherwise outrank every real
-  // text face and draw the paragraph as .notdef.
+  // A named family must not promote a special-purpose face: "Noto" prefix-matches NotoColorEmoji.
   const std::vector<std::string> noto{"/system/fonts/NotoColorEmoji.ttf",
                                       "/system/fonts/SamsungOne-400.ttf"};
   CHECK(best(noto, "Noto", 400, false) == 1);
   CHECK(tgfxrn::rankFontFiles(noto, "Noto", 400, false).size() == 1);
-  // Unless it is asked for by name, in which case it is the only answer.
   CHECK(best(noto, "Noto Color Emoji", 400, false) == 0);
 }
 
-/// The path cache is shared with the fallback chain, which files the colour
-/// emoji face by path. A hit has to clear the same bar a fresh open does, or
-/// resolution returns a different face depending on whether an emoji was drawn
-/// first — the same input, two answers.
+/// The path cache is shared with the fallback chain, so a hit must clear the same bar as an open.
 void aCachedFaceStillHasToBeAbleToDrawText() {
   auto& registry = tgfxrn::FontRegistry::instance();
   registry.clear();
-  // Warms files_ with whatever colour-emoji face this host has.
   auto fallbacks = registry.fallbacks();
   CHECK(!fallbacks.empty());
   for (const auto& typeface : fallbacks) {
     CHECK(typeface->getGlyphID('A') == 0);
   }
-  // Every resolution after that still has to land on a face that can draw.
   for (const char* family : {"", "Noto", "Apple Color Emoji", "No Such Family"}) {
     auto match = registry.match(family, 400, false);
     CHECK(match.typeface != nullptr);
@@ -1849,9 +1580,7 @@ void aCachedFaceStillHasToBeAbleToDrawText() {
   registry.clear();
 }
 
-/// <Text> with no fontFamily at all has to resolve to something that can draw
-/// Latin. CoreText answers a descriptor naming no family with *a* font, and the
-/// one it picks has no Latin glyphs — every unstyled label renders blank.
+/// <Text> with no fontFamily must resolve to something that can draw Latin, which CoreText will not.
 void theDefaultFamilyCanActuallyDrawText() {
   auto& registry = tgfxrn::FontRegistry::instance();
   registry.clear();
@@ -1861,19 +1590,15 @@ void theDefaultFamilyCanActuallyDrawText() {
     CHECK(fallback.typeface->getGlyphID('A') != 0);
     CHECK(fallback.typeface->getGlyphID('0') != 0);
   }
-  // A family nothing has must land on the same drawable default.
   auto unknown = registry.match("No Such Family At All", 400, false);
   CHECK(unknown.typeface != nullptr && unknown.typeface->getGlyphID('A') != 0);
 
-  // And it has to reach the draw, not just the match.
   Writer w;
   writeText(w, 24, -1, 0);
   CHECK(anyPixelSet(render(w.finish(), {"Wg", "", ""}, {})));
 }
 
-/// loadFont() is a bare promise: no state change, no commit, nothing else to
-/// wake the render loop. Registering a face has to schedule the draw itself, or
-/// text stays in the platform fallback for the life of the process.
+/// loadFont() is a bare promise, so registering a face has to schedule the draw itself.
 void aFontRegistrationSchedulesADraw() {
   auto& registry = tgfxrn::FontRegistry::instance();
   registry.clear();
@@ -1886,7 +1611,6 @@ void aFontRegistrationSchedulesADraw() {
   CHECK(wakes == 1);
   CHECK(registry.epoch() > before);
 
-  // A registration that fails registers nothing and wakes nobody.
   registry.add(nullptr, "Wake Serif");
   CHECK(wakes == 1);
 
@@ -1897,10 +1621,7 @@ void aFontRegistrationSchedulesADraw() {
   registry.clear();
 }
 
-/// Why the wake alone is not enough: the layout is memoised per command, so a
-/// face that lands after the scene compiled is only picked up by recompiling
-/// the same program. Re-running setScene on identical words has to change what
-/// is drawn.
+/// The layout is memoised per command, so a late face is only picked up by recompiling.
 void recompilingAfterARegistrationPicksUpTheNewFace() {
   auto& registry = tgfxrn::FontRegistry::instance();
   registry.clear();
@@ -1916,16 +1637,12 @@ void recompilingAfterARegistrationPicksUpTheNewFace() {
 
   registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Bold.ttf"),
                "Late Serif");
-  // A redraw alone replays the memoised layout — same pixels.
   CHECK(drawFrame(renderer, {}) == fallback);
-  // The recompile is what re-resolves the typeface.
   renderer.setScene(words, strings);
   CHECK(drawFrame(renderer, {}) != fallback);
   registry.clear();
 }
 
-/// The registered face has to win over the system one, and fontWeight has to
-/// pick between the faces of a family rather than "whatever loads".
 void aRegisteredFamilyMatchesByWeightAndStyle() {
   auto& registry = tgfxrn::FontRegistry::instance();
   registry.clear();
@@ -1936,7 +1653,6 @@ void aRegisteredFamilyMatchesByWeightAndStyle() {
   if (regular == nullptr || bold == nullptr || italic == nullptr) {
     return;
   }
-  // The weight and slant come from the font's own OS/2 table, not the caller.
   CHECK(tgfxrn::readFaceStyle(regular).weight == 400);
   CHECK(tgfxrn::readFaceStyle(bold).weight >= 700);
   CHECK(!tgfxrn::readFaceStyle(regular).italic);
@@ -1946,26 +1662,19 @@ void aRegisteredFamilyMatchesByWeightAndStyle() {
   CHECK(registry.add(regular, "Demo Serif") == "Demo Serif");
   registry.add(bold, "Demo Serif");
   registry.add(italic, "Demo Serif");
-  // The epoch has to move, or a scene committed before the load skips its
-  // recompile and keeps drawing in the fallback face forever.
   CHECK(registry.epoch() > before);
 
   CHECK(registry.match("Demo Serif", 400, false).typeface == regular);
   CHECK(registry.match("Demo Serif", 700, false).typeface == bold);
   CHECK(registry.match("Demo Serif", 500, false).typeface == regular);
   CHECK(registry.match("Demo Serif", 400, true).typeface == italic);
-  // Folded: spelling the family differently must not miss it.
   CHECK(registry.match("demoserif", 700, false).typeface == bold);
-  // A weight no face covers is synthesised rather than dropped.
   auto black = registry.match("Demo Serif", 900, false);
   CHECK(black.typeface == bold && black.fauxBold);
-  // An unregistered family still resolves to something drawable.
   CHECK(registry.match("Nothing By This Name", 400, false).typeface != nullptr);
   registry.clear();
 }
 
-/// The registered family has to reach the draw, and bold has to look different
-/// from regular — the whole point of fontWeight.
 void aRegisteredFontDrawsAndBoldDiffersFromRegular() {
   auto& registry = tgfxrn::FontRegistry::instance();
   registry.clear();
@@ -1984,16 +1693,12 @@ void aRegisteredFontDrawsAndBoldDiffersFromRegular() {
   CHECK(anyPixelSet(regularPixels));
   CHECK(regularPixels != boldPixels);
 
-  // And it is really the registered face: the system's Helvetica draws
-  // something else entirely.
   Writer system;
   writeText(system, 28, -1, 0, 0, 0, 0, 400, 0);
   CHECK(render(system.finish(), {"Wg", "Helvetica", ""}, {}) != regularPixels);
   registry.clear();
 }
 
-/// Wrapping, alignment and line height are the three things a single
-/// drawSimpleText call could not do at all.
 void aParagraphWrapsAlignsAndStacks() {
   tgfxrn::FontRegistry::instance().clear();
   const std::vector<std::string> strings{"one two three four", "Helvetica", ""};
@@ -2008,14 +1713,10 @@ void aParagraphWrapsAlignsAndStacks() {
   CHECK(inkRows(stacked) > inkRows(flat));
   CHECK(rightmostInk(stacked) < rightmostInk(flat));
 
-  // Alignment moves the short lines, so it cannot be a no-op.
   Writer right;
   writeText(right, 10, -1, 0, 40, 2, 0);
   CHECK(render(right.finish(), strings, {}) != stacked);
 
-  // A larger line height spreads the same lines further apart. Measured rather
-  // than drawn: at 24 px apart the later baselines fall off a 64 px canvas, so
-  // pixels would report the clip, not the spacing.
   tgfxrn::TextSpec spec;
   spec.family = "Helvetica";
   spec.wrapWidth = 40;
@@ -2026,7 +1727,6 @@ void aParagraphWrapsAlignsAndStacks() {
   CHECK(tall.metrics.height > natural.metrics.height);
 }
 
-/// An explicit \n has to break the line even with no wrap width.
 void anExplicitNewlineBreaksTheLine() {
   tgfxrn::FontRegistry::instance().clear();
   const std::vector<std::string> strings{"Wg", "Helvetica", "", "Wg\nWg"};
@@ -2038,8 +1738,6 @@ void anExplicitNewlineBreaksTheLine() {
         inkRows(render(single.finish(), strings, {})));
 }
 
-/// measureText has to describe the text that is actually drawn, or it is worse
-/// than no measurement at all.
 void theMeasuredWidthIsTheDrawnWidth() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2049,8 +1747,6 @@ void theMeasuredWidthIsTheDrawnWidth() {
   CHECK(measured.metrics.width > 0);
   CHECK(measured.metrics.lineCount == 1);
 
-  // Drawn from x = 0: every inked column has to fall inside the measured width,
-  // and the ink has to reach most of the way across it.
   Writer w;
   w.push(1);
   w.push(8);
@@ -2073,14 +1769,12 @@ void theMeasuredWidthIsTheDrawnWidth() {
   CHECK(static_cast<float>(ink) <= measured.metrics.width);
   CHECK(static_cast<float>(ink) > measured.metrics.width * 0.7f);
 
-  // Wrapping reports the lines it produced.
   spec.wrapWidth = 40;
   auto wrapped = tgfxrn::layoutText({run("one two three four")}, spec, 12);
   CHECK(wrapped.metrics.lineCount > 1);
   CHECK(wrapped.metrics.width <= 40);
   CHECK(wrapped.metrics.height > wrapped.metrics.descent - wrapped.metrics.ascent);
 
-  // maxLines truncates, and the ellipsis stays inside the box.
   spec.maxLines = 1;
   spec.ellipsis = "...";
   auto clipped = tgfxrn::layoutText({run("one two three four")}, spec, 12);
@@ -2088,10 +1782,7 @@ void theMeasuredWidthIsTheDrawnWidth() {
   CHECK(clipped.metrics.width <= 40);
 }
 
-/// The layout is cached by rounded size: two sizes inside one quarter-pixel
-/// share a blob, a real change builds a new one. Without that, an animated
-/// fontSize allocates a ScalerContext under a global lock on every frame and
-/// grows a map tgfx never erases.
+/// Cached by rounded size: without it an animated fontSize builds a ScalerContext every frame.
 void theLayoutIsCachedByQuantisedSize() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextCmd cmd;
@@ -2107,24 +1798,17 @@ void theLayoutIsCachedByQuantisedSize() {
   CHECK(blobOf(cmd.resolve(24)) != at20);
 }
 
-/// A codepoint the primary face has no glyph for must reach a fallback. The old
-/// path dropped glyph 0 inside TextBlob::MakeFrom and left a blank gap with no
-/// warning, which is how emoji "worked".
+/// A codepoint the primary face lacks must reach a fallback, not the blank gap glyph 0 leaves.
 void anEmojiFallsBackInsteadOfVanishing() {
   tgfxrn::FontRegistry::instance().clear();
   const std::vector<std::string> strings{"\xF0\x9F\x98\x80", "Helvetica", ""};
   Writer w;
   writeText(w, 28, -1, 0);
   auto pixels = render(w.finish(), strings, {});
-  // Not conditional: this host always has Apple Color Emoji, so an empty chain
-  // is a regression rather than an environment, and a skip here would be a test
-  // that cannot fail.
   CHECK(!tgfxrn::FontRegistry::instance().fallbacks().empty());
   CHECK(anyPixelSet(pixels));
 }
 
-/// <TextPath> has to bend the run: the same string on a curve cannot be the
-/// same pixels as the flat one.
 void textOnAPathFollowsTheCurve() {
   tgfxrn::FontRegistry::instance().clear();
   const std::vector<std::string> strings{"M4 40 q28 -32 56 0", "curve", "Helvetica"};
@@ -2137,20 +1821,17 @@ void textOnAPathFollowsTheCurve() {
   w.push(400);
   w.push(0);
   w.push(0);
-  // Index 3 is past this test's table, so the run inherits the paragraph's face.
   writeRun(w, 1, 2);
   w.push(0);  // startOffset
   w.pushPaint(0xff000000, false);
   auto curved = render(w.finish(), strings, {});
   CHECK(anyPixelSet(curved));
 
-  // The same string, same size, drawn flat.
   Writer flat;
   writeText(flat, 12, -1, 0);
   CHECK(render(flat.finish(), {"curve", "Helvetica", ""}, {}) != curved);
 }
 
-/// A handle JS has disposed must draw nothing, not somebody else's bitmap.
 void aDisposedHandleDrawsNothing() {
   auto image = registerSolid(cellColor(5));
   tgfxrn::ImageRegistry::instance().remove(image.handle);
@@ -2160,10 +1841,7 @@ void aDisposedHandleDrawsNothing() {
   CHECK(!anyPixelSet(render(w.finish(), {}, {})));
 }
 
-/// A JPEG carrying the EXIF marker a phone writes for a portrait photo: the
-/// pixels are stored landscape and a viewer is expected to rotate them 90° CW.
-/// Built here rather than checked in, so the bytes the decoder sees are visible
-/// in the test.
+/// A JPEG with the EXIF marker a phone writes for a portrait photo, built here so the bytes show.
 std::shared_ptr<tgfx::Data> exifRotatedJpeg(int width, int height) {
   std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4, 255);
   auto info = tgfx::ImageInfo::Make(width, height, tgfx::ColorType::RGBA_8888,
@@ -2173,8 +1851,7 @@ std::shared_ptr<tgfx::Data> exifRotatedJpeg(int width, int height) {
   if (jpeg == nullptr) {
     return nullptr;
   }
-  // APP1: length, "Exif\0\0", then a little-endian TIFF header whose one IFD
-  // entry is Orientation (0x0112, SHORT) = 6, RightTop.
+  // APP1: length, "Exif\0\0", then a little-endian TIFF whose one entry is Orientation = 6.
   const std::array<uint8_t, 36> app1 = {
       0xFF, 0xE1, 0x00, 0x22,                          // marker, length (34)
       'E',  'x',  'i',  'f',  0x00, 0x00,              // Exif\0\0
@@ -2186,28 +1863,13 @@ std::shared_ptr<tgfx::Data> exifRotatedJpeg(int width, int height) {
   auto bytes = static_cast<const uint8_t*>(jpeg->data());
   std::vector<uint8_t> out;
   out.reserve(jpeg->size() + app1.size());
-  // After SOI, before everything else: jpeg_read_header walks the segments in
-  // order and stops at SOS.
   out.insert(out.end(), bytes, bytes + 2);
   out.insert(out.end(), app1.begin(), app1.end());
   out.insert(out.end(), bytes + 2, bytes + jpeg->size());
   return tgfx::Data::MakeWithCopy(out.data(), out.size());
 }
 
-/// A portrait photo has to draw the right way up. The Android build decodes
-/// in-process precisely so this is the same code there — the platform decoder it
-/// replaces reads EXIF only when androidx.exifinterface is on the classpath, and
-/// silently drew every such photo on its side when it was not.
-///
-/// JpegCodec, not ImageCodec::MakeFrom: the generic entry point falls through to
-/// the platform codec, and ImageIO on this host reads the same marker — so a
-/// build with the embedded decoder off would pass every assertion below while
-/// Android regressed. Naming the codec is what ties the test to the thing the
-/// Android build turns on. What it does not cover is the dispatch in
-/// ImageCodec::MakeFrom — that Android reaches JpegCodec at all rather than the
-/// platform decoder — which is what the assertion in android/CMakeLists.txt is
-/// for. (This still compiles with TGFX_USE_JPEG_DECODE off: the codec's sources
-/// are gated on TGFX_USE_JPEG, which either option sets.)
+/// A portrait photo must draw upright, through JpegCodec by name rather than the host codec.
 void anExifRotatedJpegDecodesUpright() {
   auto data = exifRotatedJpeg(64, 32);
   CHECK(data != nullptr);
@@ -2226,24 +1888,17 @@ void anExifRotatedJpegDecodesUpright() {
   auto image = tgfxrn::ImageRegistry::instance().acquire(handle.handle);
   CHECK(image != nullptr);
   if (image != nullptr) {
-    // Stored 64x32, drawn 32x64: the registry applies the orientation, so every
-    // consumer downstream measures the image the way it is meant to be seen.
     CHECK(image->width() == 32);
     CHECK(image->height() == 64);
   }
   tgfxrn::ImageRegistry::instance().remove(handle.handle);
 }
 
-/// A <Span> is a run with its own face: the paragraph lays out as one block, and
-/// a bold word has to be wider than the same word in the paragraph's weight.
-/// The paragraph's own italic has to survive the run list: an implicit run
-/// overrides nothing, and a span that says nothing about style inherits it.
 void aParagraphKeepsItsItalicThroughTheRuns() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
   spec.family = "Helvetica";
-  // Pixels, not widths: a synthesised italic is a shear, so it draws differently
-  // at identical advances.
+  // Pixels, not widths: a synthesised italic is a shear at identical advances.
   const std::vector<std::string> strings{"italic", "Helvetica", ""};
   Writer upright;
   writeText(upright, 24, -1, 0, 0, 0, 0, 400, 0);
@@ -2254,10 +1909,6 @@ void aParagraphKeepsItsItalicThroughTheRuns() {
   CHECK(anyPixelSet(flat));
   CHECK(flat != leaning);
 
-  // End to end, through the reader: a run that says "upright" (2) in an italic
-  // paragraph draws upright, and one that says "italic" (1) in an upright
-  // paragraph draws slanted. A reader that folded the tri-state into a bool
-  // would draw both italic.
   Writer overridden;
   writeText(overridden, 24, -1, 0, 0, 0, 0, 400, 1, 2);
   CHECK(render(overridden.finish(), strings, {}) == flat);
@@ -2265,8 +1916,6 @@ void aParagraphKeepsItsItalicThroughTheRuns() {
   writeText(opted, 24, -1, 0, 0, 0, 0, 400, 0, 1);
   CHECK(render(opted.finish(), strings, {}) == leaning);
 
-  // The same through the layout: a span that says nothing inherits the
-  // paragraph's italic, and one that says "upright" overrides it.
   tgfxrn::TextSpec italicSpec = spec;
   italicSpec.italic = true;
   auto outline = [](const tgfxrn::TextRun& r, const tgfxrn::TextSpec& sp) {
@@ -2280,8 +1929,6 @@ void aParagraphKeepsItsItalicThroughTheRuns() {
   CHECK(outline(forced, italicSpec) == outline(inherits, spec));
 }
 
-/// A truncated paragraph draws its ellipsis in the face of the run it follows,
-/// not run 0's — and reports an offset into the text, not into the ellipsis.
 void theEllipsisBelongsToTheRunItFollows() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2298,15 +1945,10 @@ void theEllipsisBelongsToTheRunItFollows() {
   auto layout = tgfxrn::layoutText({first, tail}, spec, 12);
   CHECK(layout.metrics.lineCount == 1);
   CHECK(!layout.metrics.lines.empty());
-  // The coloured span wrapped onto the line that was dropped, so it is on screen
-  // nowhere — and the ellipsis must not be painted in a colour nothing shows.
   CHECK(layout.runs.size() == 1);
   CHECK(!layout.runs[0].hasColor);
-  // The reported end is an offset into the text, not the ellipsis's own 0.
   CHECK(layout.metrics.lines[0].endIndex > 0);
 
-  // When the coloured run *is* the last thing on the kept line, the ellipsis
-  // follows it there instead.
   tgfxrn::TextRun lead;
   lead.text = "one ";
   tgfxrn::TextRun rest;
@@ -2335,7 +1977,6 @@ void aSpanCarriesItsOwnFace() {
   CHECK(mixed.metrics.lineCount == 1);
   CHECK(mixed.metrics.width > plain.metrics.width);
 
-  // A larger span leads its line: the paragraph gets taller without a second line.
   tgfxrn::TextRun big;
   big.text = "two";
   big.size = 40;
@@ -2344,8 +1985,6 @@ void aSpanCarriesItsOwnFace() {
   CHECK(tall.metrics.height > plain.metrics.height);
 }
 
-/// A coloured span is a blob of its own, so it can be drawn with its own paint;
-/// runs that take the node's paint stay in one blob however many there are.
 void aColouredSpanSplitsTheBlobs() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2366,7 +2005,6 @@ void aColouredSpanSplitsTheBlobs() {
   more.text = "three";
   CHECK(tgfxrn::layoutText({plain, more}, spec, 20).runs.size() == 1);
 
-  // And it draws: a red span on a black paragraph has to change the pixels.
   const std::vector<std::string> strings{"one ", "Helvetica", "", "two"};
   auto write = [&](bool coloured) {
     Writer w;
@@ -2410,8 +2048,6 @@ void aColouredSpanSplitsTheBlobs() {
   CHECK(mono != tinted);
 }
 
-/// measureText reports every line, not just the block: a wrapped paragraph has
-/// to describe where each line starts and how far below the first it sits.
 void everyLineIsMeasured() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2423,8 +2059,6 @@ void everyLineIsMeasured() {
   CHECK(layout.metrics.lines.size() > 1);
   CHECK(layout.metrics.lines[0].baseline == 0);
 
-  // An empty line reports where it sits in the text, including the one a
-  // trailing newline opens, which has no glyph after it to ask.
   tgfxrn::TextSpec plain;
   plain.family = "Helvetica";
   auto blanks = tgfxrn::layoutText({run("a\n\nb")}, plain, 12);
@@ -2436,14 +2070,11 @@ void everyLineIsMeasured() {
   for (size_t i = 1; i < layout.metrics.lines.size(); i++) {
     const auto& line = layout.metrics.lines[i];
     CHECK(line.baseline > layout.metrics.lines[i - 1].baseline);
-    // Right-aligned: every line ends at the box edge.
     CHECK(std::abs(line.x + line.width - spec.wrapWidth) < 0.01f);
     CHECK(line.startIndex >= layout.metrics.lines[i - 1].endIndex);
   }
 }
 
-/// Text as an outline: the same layout, in SVG path data. A caller strokes it,
-/// dashes it or feeds it to a path effect — none of which a TextBlob can do.
 void textComesBackAsAPath() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2451,17 +2082,13 @@ void textComesBackAsAPath() {
   auto path = tgfxrn::textToPath({run("Wg")}, spec, 40);
   CHECK(!path.isEmpty());
 
-  // It occupies the box measureText reports, so a caller can place it with the
-  // same numbers it would have given <Text>.
   auto measured = tgfxrn::layoutText({run("Wg")}, spec, 40);
   auto bounds = path.getBounds();
   CHECK(bounds.width() <= measured.metrics.width + 1);
   CHECK(bounds.width() > measured.metrics.width * 0.7f);
-  // Above the baseline at y = 0, by no more than the ascent.
   CHECK(bounds.top >= measured.metrics.ascent - 1);
   CHECK(bounds.top < 0);
 
-  // And it survives the round trip through the string JS gets.
   auto data = tgfxrn::pathToSvg(path);
   CHECK(!data.empty());
   auto reparsed = tgfxrn::parseSvgPath(data);
@@ -2469,15 +2096,12 @@ void textComesBackAsAPath() {
   CHECK(std::abs(again.width() - bounds.width()) < 0.5f);
   CHECK(std::abs(again.height() - bounds.height()) < 0.5f);
 
-  // Wrapping applies, because it is the same layout: two lines are taller.
   spec.wrapWidth = 30;
   auto wrapped = tgfxrn::textToPath({run("Wg Wg Wg")}, spec, 40);
   CHECK(wrapped.getBounds().height() > bounds.height());
 }
 
-/// <Glyphs> draws exactly the ids it is handed, where it is told to: no shaping,
-/// no fallback, no line breaking. The one primitive for a caller that has
-/// already done its own layout.
+/// <Glyphs> draws exactly the ids it is handed, where it is told: no shaping, no fallback.
 void placedGlyphsDrawWhereTheyArePut() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2511,11 +2135,9 @@ void placedGlyphsDrawWhereTheyArePut() {
   auto apart = write(34);
   CHECK(anyPixelSet(together));
   CHECK(anyPixelSet(apart));
-  // Moving one glyph moves ink: the positions are the caller's, not a layout's.
   CHECK(together != apart);
   CHECK(rightmostInk(apart) > rightmostInk(together));
 
-  // An id the face does not have is the caller's problem, not a crash.
   Writer bogus;
   bogus.push(1);
   bogus.push(12);

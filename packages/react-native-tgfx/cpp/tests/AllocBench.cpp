@@ -1,19 +1,4 @@
-// How many heap allocations one frame costs, with and without filters, on an
-// animated scene — one where the paint really is resolved per frame, so
-// applyPaint runs once per node per frame.
-//
-// Replaces global operator new, so allocations inside the draw are counted,
-// tgfx's own included — but not the over-aligned operator new, which reaches
-// aligned_alloc directly. The numbers are a floor, not a total; both sides use
-// the same instrument, so the A/B still holds. The claim it exists to support
-// is that a filter costs nothing per frame: it is built once at setScene and
-// only applied afterwards.
-//
-// The second half measures <Text>: the memoised layout against the
-// drawSimpleText path it replaces, reported as a mean rather than a best-of-N
-// because the interesting case is a size that keeps crossing a quantum.
-//
-// Build and run: see cpp/tests/CMakeLists.txt, target AllocBench.
+// Heap allocations per frame, and the memoised <Text> layout. See docs/text-layout.md.
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
@@ -90,8 +75,6 @@ struct Writer {
   }
 };
 
-/// `filters` adds a colour matrix + a blend mode (no image filter: that is a
-/// save-layer, whose cost is inherently per-frame and tgfx's, not ours).
 std::vector<double> scene(bool filters) {
   Writer w;
   w.push(kNodes);
@@ -125,9 +108,6 @@ tgfx::Device* device() {
   return shared.get();
 }
 
-/// Drawn pixels are read back and counted every frame. A benchmark that
-/// measures a scene which never painted measures nothing, so this gates it:
-/// `drawn` is asserted by the caller before any number is printed.
 size_t frameAllocations(tgfxrn::SceneRenderer& renderer, bool count,
                         size_t* drawn) {
   auto* context = device()->lockContext();
@@ -168,24 +148,10 @@ size_t measure(bool filters, size_t* drawn) {
   return best;
 }
 
-// ---------------- child shaders ----------------
-//
-// The claim: a runtime shader whose `uniform shader` children are all settled
-// at setScene costs no more per frame than one with no children at all. Only a
-// child that genuinely moves between frames -- a hardware-buffer handle, the
-// camera path of #132 -- pays for a rebuild, and it is gated on exactly that.
-//
-// The GPU side is measured separately: a per-frame *heap* allocation would show
-// above, but a per-frame *texture* would not, and a texture per frame is what
-// "zero-copy" rules out. Context::memoryUsage() over N frames is the probe.
+// Child shaders settled at setScene must cost no more per frame than none; the GPU probe is memoryUsage().
 
 constexpr int kShaderNodes = 50;
 
-/// One <Shader> per node over a rect, with an animated alpha so applyPaint runs
-/// every frame. `childHandle` of 0 writes no child; `animatedUniform` puts the
-/// shader's one uniform on a slot, which is the existing per-frame rebuild.
-/// `bare` drops the runtime shader entirely and paints the image directly, which
-/// is what a child costs when it is not a child.
 std::vector<double> childShaderScene(int32_t childHandle, bool animatedUniform,
                                      bool bare = false) {
   Writer w;
@@ -248,9 +214,6 @@ size_t measureShader(const std::vector<double>& words,
   return best;
 }
 
-/// Bytes the tgfx resource cache holds after `frames` more draws of an
-/// already-compiled scene. A texture materialised per frame moves this; a
-/// sampler reading the texture that is already there does not.
 size_t gpuBytesAfter(tgfxrn::SceneRenderer& renderer, int frames, size_t* drawn) {
   for (int i = 0; i < frames; i++) {
     frameAllocations(renderer, false, drawn);
@@ -261,7 +224,6 @@ size_t gpuBytesAfter(tgfxrn::SceneRenderer& renderer, int frames, size_t* drawn)
   return bytes;
 }
 
-/// A 4x4 solid image, registered the way the TgfxImage hybrid object does.
 tgfxrn::ImageHandle registerSolid() {
   std::vector<uint8_t> pixels(4 * 4 * 4, 0);
   for (size_t at = 0; at < pixels.size(); at += 4) {
@@ -319,8 +281,7 @@ bool reportChildShaders() {
   std::printf("  animated uniform             %zu  (%.2f per node)\n", animated,
               double(animated) / kShaderNodes);
 
-  // The GPU probe, on the child that resolves per frame: the texture behind the
-  // handle is imported once, and sampling it as a child must not upload another.
+  // The GPU probe: the imported texture must not be uploaded again to be sampled as a child.
   tgfxrn::SceneRenderer renderer;
   renderer.setScene(childShaderScene(external.handle, false), strings);
   size_t warm = gpuBytesAfter(renderer, 5, &dynamicDrawn);
@@ -331,21 +292,12 @@ bool reportChildShaders() {
   return dynamicDrawn != 0 && later <= warm;
 }
 
-// ---------------- text ----------------
-//
-// The claim under test is different in kind from the filter one, so it is
-// measured differently: <Text> memoises its layout against a quarter-pixel
-// size, which makes a still size much cheaper than the drawSimpleText path it
-// replaces and a *moving* one more expensive. Best-of-N would hide that
-// entirely — it picks the frame that happened not to cross a quantum — so this
-// half reports the mean, over enough frames for the rate to matter.
+// Text: the mean over enough frames for the rate to matter, since a moving size costs more.
 
 constexpr int kTextNodes = 100;
 constexpr int kTextFrames = 37;
 constexpr float kBaseSize = 18;
 
-/// One <Text> per node, all on animation slot 0. Mirrors the Kind.Text case of
-/// writeDrawing() in compile.ts.
 std::vector<double> textScene() {
   Writer w;
   w.push(kTextNodes);
@@ -375,8 +327,7 @@ std::vector<double> textScene() {
   return w.finish();
 }
 
-/// The pre-#142 draw path, reproduced: a Font held at size 1, copied and
-/// re-sized for every draw, rebuilding a TextBlob inside drawSimpleText.
+/// The pre-#142 path: a Font re-sized per draw, rebuilding a TextBlob inside drawSimpleText.
 void drawOldPath(tgfx::Canvas* canvas, const tgfx::Font& base, const tgfx::Paint& paint,
                  float size) {
   for (int i = 0; i < kTextNodes; i++) {
@@ -386,7 +337,6 @@ void drawOldPath(tgfx::Canvas* canvas, const tgfx::Font& base, const tgfx::Paint
   }
 }
 
-/// Mean allocations per recorded frame, and the opaque pixels the last one drew.
 template <typename Draw>
 size_t meanAllocations(Draw&& draw, size_t* drawn) {
   size_t total = 0;
@@ -415,8 +365,6 @@ size_t meanAllocations(Draw&& draw, size_t* drawn) {
   return total / kTextFrames;
 }
 
-/// Returns false when either side drew nothing, which would make the numbers
-/// the cost of drawing nothing.
 bool reportText() {
   tgfxrn::FontRegistry::instance().clear();
   auto match = tgfxrn::FontRegistry::instance().match("Helvetica", 400, false);
@@ -463,31 +411,7 @@ bool reportText() {
   return true;
 }
 
-// ---------------- camera frames ----------------
-//
-// #132's acceptance criterion: a camera scene must cost zero per-frame frame-
-// pixel allocations and zero encode/decode/conversion passes on the frame path.
-// "It looks smooth" is not evidence, so this measures the three things that
-// would each break that claim, over frames that really do swap the buffer:
-//
-//   1. decodes           — a frame that went through the codec path at all.
-//   2. GPU memory        — a new tgfx-owned texture per frame, i.e. a re-upload
-//                          or an intermediate conversion target.
-//   3. CPU allocations   — inside render(), which must not scale with pixels.
-//
-// What this is NOT, so the number is not over-read:
-//
-//   * The frames are plain RGBA images, not hardware buffers. So this covers
-//     the draw path — resolve, matrix, draw — and says nothing about the YUV
-//     import or the sampler-level conversion. reportHardwareFrame() below does
-//     cover those, on a real planar-YUV buffer.
-//   * There is no <ImageShader> and no image filter here either; the shader
-//     path is anExternalHandleAlsoDrivesAnImageShaderPerFrame in SceneTest, and
-//     an image filter genuinely does take a save-layer offscreen.
-//   * Context::memoryUsage() counts tgfx-owned resources. A real 720x1280
-//     planar YUV buffer is ~1.38 MB — larger than the whole figure this prints
-//     — so an imported buffer is plainly not in that accounting. A flat reading
-//     proves "no per-frame intermediate", not "the import allocates nothing".
+// Camera frames (#132): no decode, no texture per frame. RGBA stand-ins cover the draw path only.
 
 constexpr int kCameraFrames = 60;
 constexpr int kOverlays = 8;
@@ -501,8 +425,6 @@ std::shared_ptr<tgfx::Image> solidImage(int size, uint8_t value) {
   return tgfx::Image::MakeFrom(info, std::move(pixels));
 }
 
-/// A <CameraFrame> with `kOverlays` children in frame pixels — the face-blur
-/// shape: a live frame with detector output composited over it.
 std::vector<double> cameraScene(int32_t handle) {
   Writer w;
   w.push(1);
@@ -539,7 +461,6 @@ std::vector<double> cameraScene(int32_t handle) {
 
 bool reportCamera() {
   auto& registry = tgfxrn::ImageRegistry::instance();
-  // Two buffers swapped in rotation, as a real producer's pool would be.
   std::shared_ptr<tgfx::Image> buffers[2] = {solidImage(kWidth, 90),
                                              solidImage(kWidth, 200)};
   if (buffers[0] == nullptr || buffers[1] == nullptr) {
@@ -556,8 +477,6 @@ bool reportCamera() {
 
   size_t drawn = 0;
   size_t decodesBefore = registry.decodeCount();
-  // Warm up: the first frames upload the two textures and grow tgfx's caches,
-  // which is a one-off, not a per-frame cost.
   for (int i = 0; i < 4; i++) {
     registry.replaceExternal(external.handle, buffers[i % 2]);
     frameAllocations(renderer, false, &drawn);
@@ -594,8 +513,6 @@ bool reportCamera() {
   std::printf("  allocations per render()   mean %zu, worst %zu  (%d nodes)\n",
               total / kCameraFrames, worst, kOverlays + 1);
   std::printf("\n");
-  // The claims, asserted rather than eyeballed: no decode, and no texture per
-  // frame. A re-upload or a YUV->RGB pre-pass would show up as a growing cache.
   if (decodes != 0) {
     std::printf("FAIL: the frame path decoded %zu times\n", decodes);
     return false;
@@ -608,36 +525,7 @@ bool reportCamera() {
   return true;
 }
 
-// ---------------- hardware buffers, planar YUV ----------------
-//
-// The link the bench above cannot reach: a *real* hardware buffer carrying
-// *real* NV12 planes, imported through tgfxrn::setFrame — the entry point
-// react-native-tgfx-vision-camera's native plugin calls from the camera thread.
-//
-// It matters because the two halves of the zero-copy claim fail differently. An
-// RGBA stand-in exercises the swap and the draw; only a YUV buffer exercises
-// the conversion, and a YUV->RGB *pre-pass* — a full-frame GPU copy every frame
-// — is exactly what would hide behind an RGBA measurement. tgfx converts at the
-// sampler (one texture() per plane plus a colour matrix in the emitted shader),
-// so the resource cache must not move. If it ever grew a pre-pass, this is the
-// number that would say so.
-//
-// CVPixelBufferCreate gives a genuine IOSurface-backed planar buffer on macOS,
-// so this runs on the host rather than needing a device. The Android side is
-// AHardwareBuffer through the same setFrame(), and is not covered here.
-//
-// What the GPU-memory gate does and does not catch, measured rather than
-// assumed — swapping the loop below for each of these and reading the delta:
-//
-//   * A tgfx-owned texture per frame (a CPU-pixel image uploaded every frame,
-//     which is what a YUV->RGB pre-pass or a re-upload would look like):
-//     caught, +262144 bytes.
-//   * A *different* hardware buffer every frame instead of two recycled ones:
-//     flat, +0. An imported IOSurface is not tgfx-accounted memory at all.
-//
-// So a flat reading here means "tgfx materialised nothing per frame". It does
-// not, and cannot, mean "the import allocated nothing" — that is the producer's
-// pool, and VisionCamera bounds it.
+// Hardware buffers: a real NV12 IOSurface through setFrame. A flat cache means no per-frame pre-pass.
 #if defined(__APPLE__)
 
 constexpr int kFrameWidth = 720;
@@ -645,8 +533,6 @@ constexpr int kFrameHeight = 1280;
 /// Matches the on-device run PR #148 reported, so the two are comparable.
 constexpr int kHardwareFrames = 780;
 
-/// An NV12 buffer of flat luma and chroma — what a camera output hands a frame
-/// processor, minus the picture.
 CVPixelBufferRef makeYUVBuffer(uint8_t luma, uint8_t chroma) {
   auto empty = CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
                                   &kCFTypeDictionaryKeyCallBacks,
@@ -680,7 +566,6 @@ CVPixelBufferRef makeYUVBuffer(uint8_t luma, uint8_t chroma) {
   return buffer;
 }
 
-/// Red channel at the centre of the surface, which the frame covers.
 uint8_t drawAndSampleCentre(tgfxrn::SceneRenderer& renderer) {
   auto* context = device()->lockContext();
   auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
@@ -723,31 +608,13 @@ bool reportHardwareFrame() {
     frameAllocations(renderer, false, &drawn);
   }
 
-  // The gate the counters cannot give: the pixels on screen have to follow the
-  // buffer that was swapped in. Without this the whole bench would still pass
-  // against a setFrame() that quietly did nothing — which is also the flattest
-  // possible GPU-memory reading.
+  // The counters cannot see this: the pixels must follow the buffer that was swapped in.
   tgfxrn::setFrame(external.handle, pointer(0), tgfxrn::FrameFormat::BT601Limited);
   auto dark = drawAndSampleCentre(renderer);
   tgfxrn::setFrame(external.handle, pointer(1), tgfxrn::FrameFormat::BT601Limited);
   auto light = drawAndSampleCentre(renderer);
 
-  // The same luma read as full-range. Limited-range expands (Y-16)*255/219,
-  // full range does not, so the two readings must differ — which is what proves
-  // the format argument reaches YUVColorSpace instead of being dropped.
-  //
-  // This is the bug class, not a hypothetical: a frame imported at the wrong
-  // range still draws, just with crushed blacks, so nothing else in this file
-  // would notice. `useCameraFrame()` picks the range from
-  // `frame.pixelFormat.endsWith('-full')` and it reaches tgfx down this path.
-  //
-  // It has to be a *fresh* buffer, and that is a finding rather than a detail:
-  // at the pinned tgfx the colour space is bound to a hardware buffer at its
-  // first import, and re-importing the same buffer under a different space
-  // silently reuses the first one (measured: 215, the limited-range reading,
-  // instead of 201). Harmless for a camera — a session's pixelFormat is fixed
-  // and pool slots are recycled at that one format — but it means "change the
-  // range on a live handle" is not a thing that works.
+  // Limited expands (Y-16)*255/219; a *fresh* buffer, since tgfx binds the space at first import.
   auto* fresh = makeYUVBuffer(200, 128);
   tgfxrn::setFrame(external.handle, reinterpret_cast<uint64_t>(fresh),
                    tgfxrn::FrameFormat::BT601Full);
@@ -836,8 +703,6 @@ int main() {
   size_t plainPixels = 0, filteredPixels = 0;
   size_t plain = measure(false, &plainPixels);
   size_t filtered = measure(true, &filteredPixels);
-  // The gate: both scenes have to have actually painted, or the counts below
-  // are the cost of drawing nothing.
   if (plainPixels == 0 || filteredPixels == 0) {
     std::printf("nothing was drawn (%zu / %zu opaque pixels)\n", plainPixels,
                 filteredPixels);

@@ -15,7 +15,6 @@ std::shared_ptr<tgfx::Image> importHardwareBuffer(uint64_t buffer, FrameFormat f
   }
   auto ref = static_cast<tgfx::HardwareBufferRef>(reinterpret_cast<void*>(buffer));
   if (format == FrameFormat::RGBA) {
-    // Single-plane surface: imported as-is, with no YUV conversion.
     return tgfx::Image::MakeFrom(ref);
   }
   tgfx::YUVColorSpace space = tgfx::YUVColorSpace::BT601_LIMITED;
@@ -32,9 +31,7 @@ std::shared_ptr<tgfx::Image> importHardwareBuffer(uint64_t buffer, FrameFormat f
 }
 
 bool setFrame(int32_t handle, uint64_t buffer, FrameFormat format) noexcept {
-  // noexcept and not just "does not throw today": this runs on a camera thread
-  // inside somebody else's callback, where an escaping exception would skip
-  // their buffer release and stall a bounded pool.
+  // noexcept: this runs inside somebody else's camera callback, whose buffer release must run.
   try {
     auto image = importHardwareBuffer(buffer, format);
     if (image == nullptr) {

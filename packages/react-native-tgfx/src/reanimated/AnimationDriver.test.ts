@@ -1,8 +1,6 @@
 import { expect, mock, test } from 'bun:test'
 
-// A renamed export must not look like an absent package: that is a silent freeze.
-// It throws where the driver renders, not at import: the bindings are not public
-// Reanimated API, so a rename must not take down every import of the package.
+// A renamed export must not look like an absent package, and it throws where the driver renders.
 test('Reanimated present but missing an export throws on render', async () => {
   mock.module('react-native-reanimated', () => ({ stopMapper: () => {} }))
   const { AnimationDriver } =

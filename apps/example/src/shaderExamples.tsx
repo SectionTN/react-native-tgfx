@@ -1,25 +1,3 @@
-/**
- * Runtime shader examples: `<Shader source uniforms>` takes SkSL and runs it as
- * the paint's shader, so the whole shape is filled by the fragment program.
- *
- * Three things about this API are worth knowing before writing your own, and
- * all three are load-bearing for the shaders below:
- *
- * 1. `main` receives the position in *layout points*, the same units the shape
- *    is laid out in, not a 0..1 uv. The native side scales the canvas by the
- *    display density before drawing, so pass sizes straight through: scaling
- *    them by `PixelRatio.get()` makes every uniform too large by that factor
- *    and the effect only covers a fraction of the shape.
- * 2. Helper functions declared above `main` are supported: they are emitted at
- *    file scope, not spliced into `main`, and their names are mangled natively
- *    so two shaders may declare the same helper. Loops still need constant
- *    bounds. See `sdCircleSource` and `helperCollisionSources` below.
- * 3. A `uniform shader` is a child slot: pass a shader component as a child of
- *    `<Shader>` and sample it with `name.eval(coord)` or `sample(name, coord)`.
- *    See `ChildShaderPanels` below. What is *not* expressible is reading the
- *    pixels already on the canvas, so a true backdrop blur still is not — see
- *    `blurSource` for what is.
- */
 import {
   ImageShader,
   LinearGradient,
@@ -52,7 +30,6 @@ float4 main(float2 pos) {
   for (int i = -4; i <= 4; i++) {
     for (int j = -4; j <= 4; j++) {
       float2 tap = uv + float2(float(i), float(j)) * uRadius / uSize;
-      // The signal being blurred: an 8x8 checkerboard.
       float cx = floor(tap.x * 8.0);
       float cy = floor(tap.y * 8.0);
       float checker = mod(cx + cy, 2.0);
@@ -63,7 +40,6 @@ float4 main(float2 pos) {
   }
 
   float v = acc / wsum;
-  // Tint it so the blur is legible as a gradient rather than flat grey.
   float3 cool = float3(0.20, 0.45, 0.95);
   float3 warm = float3(0.98, 0.42, 0.62);
   return float4(mix(cool, warm, v), 1.0);
@@ -87,22 +63,18 @@ uniform float uTime;
 float4 main(float2 pos) {
   float2 uv = (pos - uOrigin) / uSize;
 
-  // Horizon at 0.42; everything below it is the receding floor grid.
   float horizon = 0.42;
   float3 col = float3(0.04, 0.02, 0.10);
 
-  // Sky: magenta-to-indigo wash with a sun disc.
   float sky = smoothstep(horizon, 0.0, uv.y);
   col = mix(col, float3(0.36, 0.05, 0.42), sky * 0.9);
   float2 sun = float2(0.5, horizon - 0.16);
   float sd = length((uv - sun) * float2(1.0, 1.6));
   float disc = smoothstep(0.15, 0.11, sd);
-  // Slice the sun with horizontal gaps, the genre's whole visual signature.
   float slice = step(0.35, fract(uv.y * 42.0));
   col = mix(col, float3(1.00, 0.45, 0.25), disc * slice);
   col += float3(0.9, 0.25, 0.5) * smoothstep(0.34, 0.12, sd) * 0.35;
 
-  // Floor grid: project so lines converge toward the horizon.
   if (uv.y > horizon) {
     float depth = 1.0 / max(uv.y - horizon, 0.001);
     float gx = fract((uv.x - 0.5) * depth * 0.35);
@@ -114,17 +86,14 @@ float4 main(float2 pos) {
     col += float3(0.95, 0.20, 0.75) * lz * fade * 0.9;
   }
 
-  // Chromatic aberration: shift the channel weights toward the edges.
   float edge = length(uv - float2(0.5, 0.5)) * 1.4;
   col.r *= 1.0 + edge * 0.35;
   col.b *= 1.0 + edge * 0.20;
 
-  // CRT scanlines plus a slow horizontal roll.
   float scan = 0.90 + 0.10 * sin(uv.y * 380.0);
   float roll = 0.96 + 0.04 * sin((uv.y + uTime * 0.08) * 6.2831);
   col *= scan * roll;
 
-  // Vignette.
   col *= smoothstep(1.25, 0.35, edge);
 
   return float4(col, 1.0);
@@ -283,7 +252,6 @@ uniform float uShift;
 half4 main(float2 pos) {
   half4 base = img.eval(pos);
   half4 red = img.eval(pos + float2(uShift, 0.0));
-  // sample(child, coord) is the same call, spelled the way Skia spells it.
   half4 blue = sample(img, pos - float2(uShift, 0.0));
   return half4(red.r, base.g, blue.b, base.a);
 }
@@ -340,7 +308,6 @@ export function ChildShaderPanels({ x, y, width, height }: Box) {
   if (img == null) {
     return null;
   }
-  // The child samples in the same space `pos` is in, so its rect is the panel's.
   const rect = (at: number) => ({ x: at, y, width: cell, height });
   return (
     <>

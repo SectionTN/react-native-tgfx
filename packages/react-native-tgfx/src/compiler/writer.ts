@@ -76,9 +76,7 @@ export class SceneWriter {
   readonly strings: string[] = []
   private readonly stringIds = new Map<string, number>()
   readonly values: MaybeSharedValue<unknown>[] = []
-  /** The node handles this program is addressable through, in write order. */
   readonly refs: NodeHandle[] = []
-  /** Whether this compile re-reads handled props from the element tree. */
   reseed = true
   private readonly slots = new Map<object, number>()
 
@@ -101,12 +99,10 @@ export class SceneWriter {
     this.words[this.n++] = value
   }
 
-  /** Write a numeric field, recording a patch when it is animated. */
   pushAnim(value: unknown, fallback = 0): void {
     if (isSharedValue(value)) {
       this.patches.push(this.n, this.slot(value))
-      // The literal is what native resolves against until the first setValues,
-      // and a never-changing shared value never gets one.
+      // The literal is what native resolves against until the first setValues.
       this.push(resolveNumber(value, fallback))
       return
     }
@@ -114,7 +110,6 @@ export class SceneWriter {
     this.push(Number.isFinite(n) ? n : fallback)
   }
 
-  /** Reserve a word and return its index, for counts known only afterwards. */
   reserve(): number {
     const at = this.n
     this.push(0)
@@ -125,7 +120,6 @@ export class SceneWriter {
     this.words[at] = value
   }
 
-  /** Intern a string and return its index in the string table. */
   pushString(value: string): void {
     let index = this.stringIds.get(value)
     if (index === undefined) {
@@ -136,7 +130,6 @@ export class SceneWriter {
     this.push(index)
   }
 
-  /** True when this value ended up with a slot the engine patches per frame. */
   hasSlot(value: MaybeSharedValue<unknown>): boolean {
     return this.slots.has(value as object)
   }
@@ -152,7 +145,6 @@ export class SceneWriter {
     return index
   }
 
-  /** Close the program and return the buffer holding it. */
   finish(): ArrayBuffer {
     const patchStart = this.n
     this.push(this.patches.length / 2)

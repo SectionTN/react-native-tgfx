@@ -9,9 +9,7 @@ namespace tgfxrn {
 
 namespace {
 
-/// Decode `codec` into a fully-decoded Image. Synchronous by construction:
-/// makeBuffer() does the work here rather than scheduling it, which is the
-/// whole point — a render thread must never be the one to pay for it.
+/// Decode into a fully-decoded Image. Synchronous by construction: never call from a render thread.
 std::shared_ptr<tgfx::Image> decode(const tgfx::ImageCodec& codec) {
   auto buffer = codec.makeBuffer();
   if (buffer == nullptr) {
@@ -21,13 +19,10 @@ std::shared_ptr<tgfx::Image> decode(const tgfx::ImageCodec& codec) {
   if (image == nullptr) {
     return nullptr;
   }
-  // MakeFrom(ImageBuffer) knows nothing about EXIF, so apply it here — the
-  // Image::MakeFromEncoded path this replaces did it for us.
+  // MakeFrom(ImageBuffer) knows nothing about EXIF, which MakeFromEncoded applied for us.
   return image->makeOriented(codec.orientation());
 }
 
-/// CPU-side cost only. The same pixels are resident a second time as a GPU
-/// texture, under the tgfx Context's cache limit — see kDefaultImageCacheBytes.
 size_t byteSizeOf(const tgfx::Image& image) {
   auto pixels = static_cast<size_t>(image.width()) * static_cast<size_t>(image.height());
   return image.isAlphaOnly() ? pixels : pixels * 4;
@@ -84,8 +79,7 @@ ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image) {
   entry.width = image->width();
   entry.height = image->height();
   entry.decoded = std::move(image);
-  // No `codec`, no `bytes`, never touched into the LRU: the pixels are the
-  // producer's, not ours to budget or evict.
+  // Never touched into the LRU: the pixels are the producer's, not ours to budget.
   auto& stored = entries_.emplace(handle, std::move(entry)).first->second;
   return {handle, stored.width, stored.height};
 }
@@ -95,9 +89,7 @@ bool ImageRegistry::replaceExternal(int32_t handle,
   if (image == nullptr) {
     return false;
   }
-  // Released after the lock: dropping the last reference to a hardware-buffer
-  // image is what hands the slot back to the producer, and it must not happen
-  // under a mutex the render thread is about to want.
+  // Released after the lock: the drop hands the slot back, and must not hold the render thread.
   std::shared_ptr<tgfx::Image> previous;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -107,13 +99,9 @@ bool ImageRegistry::replaceExternal(int32_t handle,
     }
     it->second.width = image->width();
     it->second.height = image->height();
-    // Overwrites whatever the renderer has not drawn yet, rather than queueing.
     previous = std::move(it->second.decoded);
     it->second.decoded = std::move(image);
   }
-  // The draw path resolves external handles per frame, so this is what makes the
-  // new buffer visible — and what wakes a render loop with nothing else to
-  // redraw for.
   bumpEpoch();
   return true;
 }
@@ -148,19 +136,14 @@ std::shared_ptr<tgfx::Image> ImageRegistry::acquire(int32_t handle, bool* extern
     *external = entry.external();
   }
   if (entry.external()) {
-    // Outside the budget entirely, so there is no recency to refresh.
     return entry.decoded;
   }
   if (entry.decoded == nullptr) {
-    // Reachable only once the budget has dropped this handle's pixels. The
-    // caller is the render thread, so the re-decode goes to the worker and the
-    // node skips frames until it lands; decoding here would be the very stall
-    // the handle refactor exists to remove.
+  // Only after the budget dropped these pixels. The caller is the render thread, so the worker re-decodes.
     scheduleDecodeLocked(handle);
     return nullptr;
   }
-  // On a hit too, not only on a miss: recency that only records insertion order
-  // is FIFO, which evicts the image most likely to still be on screen.
+  // On a hit too: recency that only records insertion is FIFO, which evicts what is on screen.
   touchLocked(handle, entry);
   return entry.decoded;
 }
@@ -183,9 +166,7 @@ void ImageRegistry::removeWakeListener(uint64_t token) {
 }
 
 void ImageRegistry::wakeAll() {
-  // Invoked under the listener lock rather than through a copy: a wake only
-  // posts work, there is normally one of them, and a per-frame camera swap
-  // should not allocate to say so.
+  // Under the listener lock, not through a copy: a wake only posts work and must not allocate.
   std::lock_guard<std::mutex> lock(listenersMutex_);
   for (auto& [token, wake] : listeners_) {
     (void)token;
@@ -231,8 +212,7 @@ void ImageRegistry::decodeWorker() {
     lock.lock();
     wanted_.erase(handle);
     auto at = entries_.find(handle);
-    // The handle can have been disposed while the lock was down; `codec`
-    // identity is what proves this is still the same image.
+    // The handle can have been disposed while the lock was down; `codec` identity proves it.
     bool landed = false;
     if (image != nullptr && at != entries_.end() && at->second.codec == codec &&
         at->second.decoded == nullptr) {
@@ -244,8 +224,7 @@ void ImageRegistry::decodeWorker() {
     }
     wake_.notify_all();
     if (landed) {
-      // Outside `mutex_`: a wake schedules a draw, and a render thread that then
-      // resolves the handle would deadlock against a lock held here.
+      // Outside `mutex_`: a woken render thread resolving the handle would deadlock on it.
       lock.unlock();
       bumpEpoch();
       lock.lock();
@@ -267,7 +246,6 @@ void ImageRegistry::touchLocked(int32_t handle, Entry& entry) {
   evictLocked();
 }
 
-/// Never evicts the head, so one image larger than the whole budget still draws.
 void ImageRegistry::evictLocked() {
   while (cachedBytes_ > cacheLimit_ && lru_.size() > 1) {
     int32_t victim = lru_.back();
@@ -287,8 +265,6 @@ void ImageRegistry::setCacheLimit(size_t bytes) {
     cacheLimit_ = bytes;
     evictLocked();
   }
-  // TgfxRenderer applies the same number to the GPU context cache, so the change
-  // has to reach a render thread that may have nothing else to redraw for.
   bumpEpoch();
 }
 

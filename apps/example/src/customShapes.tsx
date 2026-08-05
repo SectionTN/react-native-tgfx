@@ -1,11 +1,4 @@
-/**
- * Custom + procedural shapes built ON TOP of react-native-tgfx primitives.
- *
- * These are ordinary React components that compute geometry on the fly and
- * return `<Path>` / `<Circle>` / `<RoundedRect>` etc. Because <Canvas> uses a
- * real react-reconciler, custom function components (and `.map()` over data)
- * compose exactly like normal React — the reconciler expands them.
- */
+// Custom and procedural shapes built on tgfx primitives; the reconciler expands them like any React.
 import { type ReactElement } from 'react';
 import { Circle, Group, Path, RoundedRect } from 'react-native-tgfx';
 
@@ -18,7 +11,6 @@ type Paint = {
   opacity?: number;
 };
 
-// ---------- path generators ----------
 
 export function starPath(
   cx: number,
@@ -83,7 +75,6 @@ export function wavePath(
   return d;
 }
 
-// ---------- custom shape components ----------
 
 export function Star(
   props: { cx: number; cy: number; outerR: number; innerR?: number; points?: number } & Paint
@@ -111,7 +102,6 @@ export function Wave(
   return <Path path={wavePath(x, y, width, amplitude, wavelength)} style="stroke" {...paint} />;
 }
 
-// ---------- procedural / generative ----------
 
 /** A grid of circles tinted across the HSL hue wheel. */
 export function CircleField(props: {

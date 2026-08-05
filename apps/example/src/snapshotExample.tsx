@@ -1,7 +1,4 @@
-/**
- * Canvas.snapshot() / Canvas.save() against a canvas that never stops moving —
- * the readback has to land without the animation hitching.
- */
+// Canvas.snapshot() / save() against a canvas that never stops moving.
 import { useEffect, useRef, useState } from 'react';
 import {
   Image as RNImage,
@@ -29,9 +26,6 @@ import {
 
 const H = 140;
 
-// A real app gets this from expo-file-system or react-native-fs; hardcoded here
-// so the example keeps its dependency list at zero. Both are app-private and
-// writable without a permission prompt.
 const SAVE_PATH =
   Platform.OS === 'android'
     ? '/data/data/com.tgfxexample/cache/tgfx-snapshot.png'
@@ -39,11 +33,6 @@ const SAVE_PATH =
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
-/**
- * Demo-only: the library hands back raw bytes precisely so nothing has to do
- * this. RN's <Image> just has no way to take an ArrayBuffer until the image
- * handle work lands, so the example pays for one base64 pass to show the frame.
- */
 function toDataUri(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let out = '';

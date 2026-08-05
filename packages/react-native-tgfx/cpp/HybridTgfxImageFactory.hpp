@@ -1,6 +1,3 @@
-// Creates TgfxImage handles. Every entry point decodes on Nitro's thread pool
-// and resolves once the pixels exist, so no frame ever waits on a decode and no
-// image ever crosses the bridge as base64.
 #pragma once
 
 #include <memory>

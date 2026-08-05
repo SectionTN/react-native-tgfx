@@ -18,7 +18,6 @@ const encode = (roots: Node[]) => {
   }
 }
 
-/** The tree the reconciler actually builds, so equivalence is measured, not assumed. */
 async function viaReconciler(children: React.ReactNode): Promise<Node[]> {
   const root = new TgfxRoot(() => {})
   // The same wrapping `<Canvas>` uses on the fallback path.

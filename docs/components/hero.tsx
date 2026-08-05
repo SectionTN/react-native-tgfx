@@ -6,10 +6,6 @@ import { Spider } from './spider'
 
 const HEADLINE = 'Draw with React components. Animate on the thread that paints.'
 
-/**
- * The lit spider is masked to a soft disc that follows the pointer, so colour
- * only appears where you look. Both layers are the same drawing.
- */
 function useSpotlight() {
   const layer = useRef<HTMLDivElement>(null)
 

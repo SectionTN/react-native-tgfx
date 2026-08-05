@@ -1,9 +1,4 @@
-/**
- * Reanimated added to the Skia-only screen one layer at a time, so a crash can
- * be attributed to a specific layer. Selected with `am start -e step <1..4>`.
- *   1 = import only   2 = useSharedValue   3 = useDerivedValue -> Skia prop
- *   4 = withRepeat animation driving Skia
- */
+// Reanimated added to the Skia-only screen one layer at a time; select with `am start -e step <1..4>`.
 import { useEffect } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Canvas, Circle } from '@shopify/react-native-skia';
@@ -24,7 +19,6 @@ export function SkiaReaStep({ step }: { step: number }) {
   const t = useSharedValue(0);
   useEffect(() => {
     if (step < 4) return;
-    // Not reversed: sin() already closes its own cycle over t 0->1.
     t.value = withRepeat(
       withTiming(1, { duration: 1400, easing: Easing.linear }),
       -1,

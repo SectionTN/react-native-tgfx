@@ -23,8 +23,7 @@ export function useClock(): MaybeSharedValue<number> {
     'useFrameCallback',
   ])
   const clock = mod.useSharedValue!(0)
-  // Stable identity: Reanimated keys its effect on the callback, so a fresh one
-  // each render re-registers the frame callback and resets the clock to zero.
+  // Stable identity: Reanimated keys its effect on the callback, so a fresh one resets the clock.
   const tick = useCallback(
     (frame: Frame) => {
       'worklet'

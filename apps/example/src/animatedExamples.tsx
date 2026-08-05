@@ -1,8 +1,4 @@
-/**
- * Reanimated-driven tgfx animations. SharedValues are passed STRAIGHT to the
- * declarative tgfx components — the reconciler turns them into value slots and
- * the native UI-thread driver updates them every frame with zero JS-thread work.
- */
+// Reanimated-driven tgfx animations: SharedValues go straight to the components as value slots.
 import { useEffect } from 'react';
 import {
   cancelAnimation,

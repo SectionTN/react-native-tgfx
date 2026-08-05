@@ -5,15 +5,7 @@ import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.TextureView
 
-/**
- * The in-hierarchy canvas view, for `composite="texture"`. The canvas is drawn as
- * part of the app window, so its transparent pixels show whatever React Native
- * renders behind it and view transforms apply to it.
- *
- * Slower than [TgfxSurfaceView]: every new frame makes the window redraw and
- * costs the UI thread a traversal. Measured on a Samsung SM-E146B with 400
- * animated objects: main-thread FPS 57.3 → 56.2, peak PSS 135 → 149 MB.
- */
+/** The `composite="texture"` view: transforms work, but every frame redraws the window. */
 internal class TgfxTextureView(context: Context, private val target: TgfxRenderTarget) :
   TextureView(context),
   TextureView.SurfaceTextureListener {
@@ -35,8 +27,7 @@ internal class TgfxTextureView(context: Context, private val target: TgfxRenderT
     target.surfaceResized(width, height, resources.displayMetrics.density)
   }
 
-  // Returning false keeps ownership of the SurfaceTexture, so it is released on
-  // the render thread rather than blocking the caller until that thread idles.
+  // False keeps ownership, so the SurfaceTexture is released off the caller's thread.
   override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
     target.surfaceDestroyed(await = false) { st.release() }
     return false

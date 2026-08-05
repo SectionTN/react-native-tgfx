@@ -1,14 +1,3 @@
-/**
- * Pixel-parity harness: renders the SAME static scene with tgfx and Skia at the
- * SAME pixel size, both on screen at once in known absolute rects. One
- * screenshot per scene, two deterministic crops, numeric diff — no timing race
- * and no eyeballing.
- *
- * Logs for the harness:
- *   PARITY_LAYOUT ratio=<> x=<> w=<> h=<> yTgfx=<> ySkia=<>
- *   PARITY_SCENE name=<> index=<>/<>
- *   PARITY_DONE
- */
 import { useEffect, useState } from 'react';
 import { makeMutable } from 'react-native-reanimated';
 import { PixelRatio, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -71,11 +60,6 @@ type SceneName = (typeof SCENES)[number];
 
 const HOLD_MS = 3000;
 
-// The `slots` scene drives geometry through Reanimated SharedValues, so both
-// engines render via their animated-value path rather than a static scene. Held
-// constant so the image is deterministic.
-// One source, both engines: Skia compiles it as SkSL, tgfx transpiles it to the
-// GLSL its fragment builder emits (and Metal cross-compiles that to MSL).
 const SHADER_SRC = `
 uniform float2 size;
 uniform float phase;
@@ -271,8 +255,7 @@ function TgfxScene({ name, w, h }: { name: SceneName; w: number; h: number }) {
         </TgfxRect>
       );
     case 'zorder': {
-      // Deliberately overlapping shapes of DIFFERENT kinds, so any reordering
-      // of draw commands for batching shows up as a wrong stacking order.
+      // Deliberately overlapping shapes of different kinds, so any reordering shows as wrong stacking.
       const out = [];
       for (let i = 0; i < 10; i++) {
         const x = 10 + i * (w - 120) / 10;

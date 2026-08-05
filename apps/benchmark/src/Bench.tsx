@@ -1,24 +1,3 @@
-/**
- * tgfx vs @shopify/react-native-skia — symmetric perf harness.
- *
- * Fairness rules baked in:
- *  - one scene builder and one UI-thread driver per workload, shared by both engines
- *  - identical canvas pixel size, identical colors/geometry
- *  - one engine mounted at a time; 2.5 s warmup discarded; 6 s window
- *  - lib order flipped so each lib runs first exactly half the time per config
- *  - a discarded pre-roll config per lib absorbs cold start / first shader compile
- *  - SharedValues allocated ONCE for the whole sweep and sliced per config, so
- *    later configs do not pay for earlier ones' leaked mutables
- *  - Skia gets colorSpace="srgb" so it is not silently color-managing on iOS
- *  - all three engines animate from ONE UI-thread worklet: tgfx/skia via
- *    SharedValues, thor via its imperative drawShapes fast path
- *
- * Logs consumed by bench.sh:
- *   BENCH_BASELINE                      (nothing mounted — idle PSS reference)
- *   BENCH_START lib= wl= n= run=
- *   BENCH_END   lib= wl= n= run= uiFps= jsFps= uiJank= uiMaxMs= secs=
- *   BENCH_SWEEP_DONE
- */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
@@ -60,10 +39,6 @@ import {
   vec,
 } from '@shopify/react-native-skia';
 
-// A realistic composite frame: gradient background, a runtime-shader panel,
-// animated particles, a rotating card deck with sweep gradients, and a stroked
-// path. Identical geometry for both engines; the shader is one SkSL source that
-// Skia compiles natively and tgfx transpiles to GLSL.
 const SHOWCASE_SHADER = `
 uniform float2 size;
 uniform float phase;
@@ -91,7 +66,6 @@ const FULL_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
   { wl: 'idle', counts: [600], runs: 4 },
 ];
 
-// Single-primitive probes: isolate which draw kind is slow.
 const PROBE_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
   { wl: 'leaves', counts: [600], runs: 3 },
   { wl: 'rects', counts: [600], runs: 3 },
@@ -107,8 +81,7 @@ const BASELINE_MS = 4000;
 type Config = { lib: Lib; wl: Workload; n: number; run: number; preroll?: boolean };
 
 function buildConfigs(plan: typeof FULL_PLAN): Config[] {
-  // Pre-roll on `mixed` so every draw kind's first shader compile is absorbed,
-  // not just circles'.
+  // Pre-roll on `mixed`, so every draw kind's first shader compile is absorbed.
   const out: Config[] = [
     { lib: 'tgfx', wl: 'mixed', n: 300, run: 0, preroll: true },
     { lib: 'skia', wl: 'mixed', n: 300, run: 0, preroll: true },
@@ -120,15 +93,13 @@ function buildConfigs(plan: typeof FULL_PLAN): Config[] {
   );
   const maxRuns = Math.max(...pairs.map((p) => p.runs));
   for (let run = 1; run <= maxRuns; run++) {
-    // Rotate the workload order every run so no workload always runs last, on
-    // the hottest die and the most fragmented heap.
+    // Rotate the workload order so none always runs last, on the hottest die.
     const k = run % pairs.length;
     for (const p of [...pairs.slice(k), ...pairs.slice(0, k)]) {
       if (run > p.runs) {
         continue;
       }
-      // Thor's scene only implements circles, so it is compared on `leaves`
-      // only rather than silently drawing the wrong scene elsewhere.
+      // Thor's scene only implements circles, so it is compared on `leaves` alone.
       const engines: Lib[] = p.wl === 'leaves' ? ['tgfx', 'skia', 'thor'] : ['tgfx', 'skia'];
       const k = (run + p.ci + p.wi) % engines.length;
       const order: Lib[] = [...engines.slice(k), ...engines.slice(0, k)];
@@ -142,7 +113,6 @@ function buildConfigs(plan: typeof FULL_PLAN): Config[] {
 
 const MAX_N = 1500;
 
-// Allocated once for the entire sweep and sliced per config (no per-config leak).
 const POOL = {
   cxs: Array.from({ length: MAX_N }, () => makeMutable(0)),
   cys: Array.from({ length: MAX_N }, () => makeMutable(0)),
@@ -168,7 +138,6 @@ function hsl(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-/** Static layout shared by both engines for a given (n, size). */
 function useLayout(n: number, width: number, height: number) {
   return useMemo(() => {
     const cols = Math.max(1, Math.ceil(Math.sqrt((n * width) / height)));
@@ -187,10 +156,6 @@ function useLayout(n: number, width: number, height: number) {
   }, [n, width, height]);
 }
 
-/**
- * The one UI-thread driver. Animates according to the workload and counts UI
- * frames — identical code for both engines.
- */
 function Driver({
   lib,
   wl,
@@ -410,8 +375,6 @@ function TgfxScene({ wl, n, w, h }: { wl: Workload; n: number; w: number; h: num
 function SkiaScene({ wl, n, w, h }: { wl: Workload; n: number; w: number; h: number }) {
   const { bx, by, colors, r, sx, sy } = useLayout(n, w, h);
   const { cxs, cys, angle } = POOL;
-  // Skia's documented way to animate a transform: a derived value holding the
-  // whole transform array.
   const transform = useDerivedValue(() => [{ rotate: angle.value }]);
   if (wl === 'leaves') {
     return (
@@ -558,15 +521,6 @@ function SkiaScene({ wl, n, w, h }: { wl: Workload; n: number; w: number; h: num
   return <>{out}</>;
 }
 
-/**
- * Thor via its documented worklet fast path: the native HybridObject is drawn
- * imperatively from the shared UI-thread Driver, so no Fabric commit or JS
- * render sits in the animation loop. `shapes` stays a stable empty array — a
- * re-commit would clobber the worklet-drawn frame.
- *
- * backend="cpu": ThorVG's software rasterizer. Its GL backend is a GLSurfaceView,
- * whose frames bypass HWUI and so cannot be counted by gfxinfo at all.
- */
 const THOR_EMPTY: ThorShape[] = [];
 
 function ThorScene({
@@ -650,8 +604,6 @@ export function Bench({ plan }: { plan?: string }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Live readout, frozen while a window is measuring so the display cannot
-  // perturb either engine.
   useEffect(() => {
     let ui = 0;
     let js = 0;
@@ -667,8 +619,6 @@ export function Bench({ plan }: { plan?: string }) {
     return () => clearInterval(id);
   }, []);
 
-  // Idle phase first: nothing mounted, so the harness can read a PSS reference
-  // that contains both libraries loaded but neither rendering.
   useEffect(() => {
     console.log('BENCH_BASELINE');
     const t = setTimeout(() => setIdx(0), BASELINE_MS);

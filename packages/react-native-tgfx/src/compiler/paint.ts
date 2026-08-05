@@ -30,20 +30,15 @@ import type { SceneWriter } from './writer'
 /** Public paint inputs shared by every drawing component and `<Paint>`. */
 export interface PaintInput {
   color?: Color
-  /** `'fill'` (default) or `'stroke'`. */
   style?: 'fill' | 'stroke'
   strokeWidth?: number | MaybeSharedValue<number>
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
-  /** Kept unresolved so an animated opacity can stay a live alpha slot. */
   opacity?: number | MaybeSharedValue<number>
   antiAlias?: boolean
-  /** How this drawing composites onto what is already there. */
   blendMode?: BlendMode
   gradient?: GradientInput
-  /** Set by a `<ColorMatrix>` / `<BlendColor>` child; never a prop. */
   colorFilter?: ColorFilterInput
-  /** Set by a `<Blur>` / `<DropShadow>` child; never a prop. */
   imageFilter?: ImageFilterInput
 }
 
@@ -57,7 +52,6 @@ export interface GradientInput {
     | 'turbulence'
     | 'runtime'
     | 'image'
-  /** Image shader: the native handle plus how it tiles and fits. */
   image?: unknown
   tx?: TileMode
   ty?: TileMode
@@ -70,18 +64,14 @@ export interface GradientInput {
   radius?: number
   colors: Color[]
   positions?: number[]
-  /** Sweep gradient angular range, in degrees (same convention as Skia). */
   startAngle?: number
   endAngle?: number
-  /** Perlin noise parameters. */
   freqX?: number
   freqY?: number
   octaves?: number
   seed?: number
-  /** Runtime shader source (SkSL subset) and its uniform values. */
   source?: string
   uniforms?: Record<string, UniformValue>
-  /** One shader per `uniform shader` the source declares, in declaration order. */
   children?: GradientInput[]
 }
 
@@ -165,8 +155,7 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
         childNames,
       } = transpileShader(g.source ?? '')
       const children = g.children ?? []
-      // A missing child leaves `TGFX_CHILD_n` bound to nothing, and the node
-      // would silently not paint. Fail here, where the source is in view.
+      // A missing child leaves `TGFX_CHILD_n` bound to nothing and the node silently unpainted.
       if (children.length !== childNames.length) {
         throw new Error(
           `[tgfx] shader: the source declares ${
@@ -187,8 +176,6 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
       w.push(uniformNames.length)
       for (const name of uniformNames) {
         const raw = g.uniforms?.[name]
-        // Left unresolved: pushAnim turns a SharedValue element into a slot the
-        // engine patches on the UI thread, so an animated uniform costs no JS.
         const values = Array.isArray(raw) ? raw : raw != null ? [raw] : []
         const size = uniformSizes[name] ?? 1
         w.pushString(name)
@@ -270,13 +257,11 @@ export function writePaint(
     props.gradient !== undefined ? props.gradient : inherited.gradient
   const blendMode =
     props.blendMode !== undefined ? props.blendMode : inherited.blendMode
-  // Filters only ever reach a paint through its children, so `inherited` — the
-  // merged paint the caller built for such a node — is their only source.
+  // Filters only reach a paint through its children, so `inherited` is their only source.
   const { colorFilter, imageFilter } = inherited
   const filtered = hasFilters(blendMode, colorFilter, imageFilter)
 
-  // Four live channels only when one of them actually moves: a literal
-  // `[r, g, b, a]` packs into the word below and costs no extra words.
+  // Four live channels only when one moves; a literal `[r, g, b, a]` packs into the word below.
   const channels =
     isColorComponents(color) && color.some(isSharedValue) ? color : null
   w.push(resolveColor(resolveValue(color as Color | undefined)))
@@ -295,7 +280,6 @@ export function writePaint(
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])
   w.pushAnim(alpha, 1)
-  // Skipped entirely when unused: an unfiltered paint costs no extra words.
   if (filtered) {
     writeFilters(w, blendMode, colorFilter, imageFilter)
   }

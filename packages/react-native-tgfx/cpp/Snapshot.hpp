@@ -1,7 +1,4 @@
-// Pixel readback for a TgfxRenderer: the request the platform layer stages, and
-// the CPU-side tail (alpha conversion, encode, optional file write) that runs on
-// a worker so it never touches the render thread — which on Android is shared by
-// every canvas in the process.
+// Pixel readback: the staged request, and the CPU tail that runs on a worker, off the render thread.
 #pragma once
 
 #include <cstdint>
@@ -24,35 +21,21 @@ struct SnapshotRequest {
   /// "png" | "jpeg" | "webp" | "raw"; anything else is treated as "png".
   std::string format = "png";
   int quality = 100;
-  /// Crop in logical pixels (dp), matching scene coordinates. A width or height
-  /// of zero means the whole canvas.
+  /// Crop in logical pixels (dp). A zero width or height means the whole canvas.
   float x = 0;
   float y = 0;
   float width = 0;
   float height = 0;
   /// Multiplier on the cropped region's physical-pixel size.
   float scale = 1;
-  /// Non-empty: encode and write here instead of handing the bytes back.
   std::string path;
 };
 
-/// `error` empty means success. `data` is null for a request with a `path`.
-///
-/// Never called on the render thread. Anything the renderer accepted — every
-/// success, and every failure raised once the request reached the GPU — arrives
-/// on a tgfx::Task worker. A request the platform layer rejects before it gets
-/// that far (an unmounted canvas) is answered inline on the requesting thread:
-/// the JS thread on Android, the main thread on iOS.
 using SnapshotCallback = std::function<void(std::shared_ptr<tgfx::Data> data,
                                             int width, int height,
                                             const std::string& error)>;
 
-/// The device-pixel rect a request reads, clamped to `bounds` (the surface, also
-/// in device pixels). Empty means the crop lies outside the canvas.
-///
-/// Rounded, not truncated: Surface::asyncReadPixels casts the rect straight to
-/// size_t, so a fractional device rect would silently shrink and the size the
-/// promise resolves with would not be the size that was asked for.
+/// The device-pixel rect a request reads, clamped to `bounds`. Rounded: asyncReadPixels truncates.
 inline tgfx::Rect snapshotSourceRect(const SnapshotRequest& request, float ratio,
                                      const tgfx::Rect& bounds) {
   if (request.width <= 0 || request.height <= 0) {
@@ -77,10 +60,6 @@ inline tgfx::EncodedFormat encodedFormat(const std::string& format) {
   return tgfx::EncodedFormat::PNG;
 }
 
-/// Convert, encode and deliver a readback. `pixels` is whatever the GPU handed
-/// back (premultiplied, possibly row-padded); everything below normalises it to
-/// tightly packed straight-alpha RGBA8888 first, so the documented output does
-/// not depend on the backend.
 inline void finishSnapshot(std::shared_ptr<tgfx::Data> pixels,
                            const tgfx::ImageInfo& info,
                            const SnapshotRequest& request,
@@ -117,8 +96,6 @@ inline void finishSnapshot(std::shared_ptr<tgfx::Data> pixels,
     callback(std::move(out), dstInfo.width(), dstInfo.height(), "");
     return;
   }
-  // save(): the bytes are written here and never handed back, so they never
-  // reach JS at all.
   std::ofstream file(request.path, std::ios::binary | std::ios::trunc);
   file.write(static_cast<const char*>(out->data()),
              static_cast<std::streamsize>(out->size()));

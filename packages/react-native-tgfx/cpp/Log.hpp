@@ -1,6 +1,3 @@
-// Minimal cross-platform warning log for the error paths that would otherwise
-// be silently swallowed (scene parse failures, image decode failures, missing
-// typefaces). Routed to logcat on Android and stderr (Xcode console) elsewhere.
 #pragma once
 
 #if defined(__ANDROID__)

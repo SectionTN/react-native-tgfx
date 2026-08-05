@@ -8,27 +8,17 @@ import {
 import { TgfxContainer, type CommitListener } from './Container'
 import { createNode, type Node, type NodeTypeName } from './types'
 
-/**
- * A persistence-mode react-reconciler host config (the same architecture
- * react-native-skia uses): host instances are immutable `{ type, props,
- * children }` nodes, every change clones the tree, and the whole root is
- * replaced on commit. `resetAfterCommit` then compiles and pushes the scene.
- */
-
 type Instance = Node
 type Container = TgfxContainer
 
-// React reads/writes the "current update priority" through these three hooks.
 let currentUpdatePriority: number = NoEventPriority
 
-// A stable (non-null) host context — react-reconciler warns "Expected host
-// context to exist" if getRootHostContext/getChildHostContext returns null.
+// Non-null, or react-reconciler warns "Expected host context to exist".
 const HOST_CONTEXT = {}
 
 const HostTransitionContext = createContext<unknown>(null)
 
-// Called for every cloned node on every commit, so it counts keys in place
-// rather than materialising two Object.keys arrays per node per frame.
+// Called per cloned node per commit, so it counts keys in place rather than allocating two arrays.
 export function shallowEqualProps(
   a: Record<string, unknown>,
   b: Record<string, unknown>
@@ -56,13 +46,9 @@ const hostConfig = {
   cancelTimeout: clearTimeout,
 
   createInstance(type: NodeTypeName, props: Record<string, unknown>): Instance {
-    // `props.children` are React elements, never read by the compiler (which
-    // walks `node.children`), so we keep props as-is.
     return createNode(type, props)
   },
   createTextInstance(text: string): Instance {
-    // Raw strings are not drawable; keep an inert node so a stray string child
-    // never crashes a render (the compiler ignores unknown node types).
     return createNode('tgfx_rawtext' as NodeTypeName, { text })
   },
   appendInitialChild(parent: Instance, child: Instance): void {
@@ -91,7 +77,6 @@ const hostConfig = {
   },
   preparePortalMount(): void {},
 
-  // ---- Persistence ----
   cloneInstance(
     instance: Instance,
     type: NodeTypeName,
@@ -99,7 +84,6 @@ const hostConfig = {
     newProps: Record<string, unknown>,
     keepChildren: boolean
   ): Instance {
-    // Reuse the instance when nothing changed to avoid extra recompiles.
     if (keepChildren && shallowEqualProps(oldProps, newProps)) {
       return instance
     }
@@ -136,7 +120,6 @@ const hostConfig = {
     container.root = []
   },
 
-  // ---- Misc required hooks ----
   getInstanceFromNode: () => null,
   beforeActiveInstanceBlur: () => {},
   afterActiveInstanceBlur: () => {},
@@ -144,7 +127,6 @@ const hostConfig = {
   getInstanceFromScope: () => null,
   detachDeletedInstance: () => {},
 
-  // ---- Update priority ----
   setCurrentUpdatePriority(priority: number): void {
     currentUpdatePriority = priority
   },
@@ -157,7 +139,6 @@ const hostConfig = {
       : DefaultEventPriority
   },
 
-  // ---- Transitions / suspense (unused but accessed by React 19) ----
   NotPendingTransition: null,
   HostTransitionContext,
   resetFormInstance: () => {},
@@ -173,8 +154,7 @@ const hostConfig = {
   waitForCommitToBeReady: () => null,
 }
 
-// The full HostConfig type is enormous; we provide exactly the members React 19
-// invokes at runtime, so we cast at the boundary.
+// The full HostConfig type is enormous, so this provides what React 19 invokes and casts.
 const reconciler = ReactReconciler(
   hostConfig as unknown as Parameters<typeof ReactReconciler>[0]
 )
@@ -206,18 +186,14 @@ export class TgfxRoot {
     reconciler.updateContainer(element, this.root, null, null)
   }
 
-  /** Hand the container over to a root built without the reconciler. */
   setDirect(roots: Node[]): void {
     if (!this.direct) {
-      // `updateContainer` only schedules, so the reconciler's teardown would
-      // otherwise land *after* this scene and blank the canvas. Flush it now,
-      // muted, so the empty tree never reaches the view.
+      // `updateContainer` only schedules, so flush it muted or the teardown blanks the canvas.
       this.container.muted = true
       try {
         reconciler.updateContainerSync(null, this.root, null, null)
         reconciler.flushSyncWork()
       } finally {
-        // A stuck mute would leave the canvas silently blank forever.
         this.container.muted = false
       }
       this.direct = true
@@ -227,8 +203,6 @@ export class TgfxRoot {
 
   unmount(): void {
     reconciler.updateContainer(null, this.root, null, null)
-    // A root built by setRootDirect is not owned by the reconciler, so its
-    // teardown does not empty the container. Commit the empty scene either way.
     if (this.container.root.length > 0) {
       this.container.setRootDirect([])
     }

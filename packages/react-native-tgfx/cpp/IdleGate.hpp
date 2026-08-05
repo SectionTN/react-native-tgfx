@@ -10,14 +10,12 @@ class IdleGate {
  public:
   enum class Tick { Draw, Skip, Pause };
 
-  // Callable from any thread.
   void wake() {
     wakeGeneration_.fetch_add(1, std::memory_order_release);
   }
 
   // Display-link thread only, so the pause decision cannot race its own state.
   Tick tick(bool drawPending) {
-    // A frame in flight is neither an idle tick nor a tick that consumes a wake.
     if (drawPending) {
       return Tick::Skip;
     }

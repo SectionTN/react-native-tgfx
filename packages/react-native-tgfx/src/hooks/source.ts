@@ -11,7 +11,6 @@ export interface SourceReader<T> {
   fromBase64(data: string): Promise<T>
 }
 
-/** The `data:` payload, or null when the URI is not one. */
 function dataPayload(uri: string): string | null {
   if (!uri.startsWith('data:')) {
     return null
@@ -33,9 +32,7 @@ export async function loadSource<T>(
   signal?: AbortSignal
 ): Promise<T> {
   let uri: string
-  // A bundled asset may resolve to a bare path, which is a file. A caller's own
-  // string never is: a JPEG's base64 starts "/9j/", so treating a leading slash
-  // as a path there would misroute every JPEG payload.
+  // A bundled asset may be a bare path; a caller's own string never is (JPEG base64 starts "/9j/").
   let bareIsPath = false
   if (typeof source === 'number') {
     const resolved = RNImage.resolveAssetSource(source)
@@ -56,10 +53,8 @@ export async function loadSource<T>(
     return api.fromFile(uri)
   }
   if (/^(https?|content|asset):/.test(uri)) {
-    // Without the signal a hung remote source holds its socket and buffers its
-    // response for the life of the request, long after the caller gave up.
+    // Without the signal a hung source holds its socket long after the caller gave up.
     const res = await fetch(uri, { signal })
-    // A 404 body decodes to garbage rather than failing, so check first.
     if (!res.ok) {
       throw new Error(`${uri} returned HTTP ${res.status}`)
     }

@@ -3,7 +3,6 @@ import React from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
 import { nativeMocks } from '../testing/nativeMocks'
 
-/** Every registration the hook made, in order. */
 interface Registered {
   via: 'fromFile' | 'fromBytes' | 'fromBase64'
   arg: string
@@ -64,8 +63,6 @@ test('a bundled font asset is opened natively, never fetched', async () => {
   expect(family).toBe('Demo Serif')
 })
 
-// In dev, Metro serves the asset over http, so the bytes have to come back as
-// an ArrayBuffer rather than a base64 round trip through JS.
 test('a Metro-served font arrives as raw bytes', async () => {
   globalThis.fetch = (async () => ({
     ok: true,
@@ -99,8 +96,7 @@ test('useFonts registers every face and flips to ready', async () => {
   expect(ready).toBe(true)
 })
 
-// A boolean alone cannot tell "still loading" from "failed", which leaves the
-// documented `{ready && <Text/>}` gate rendering nothing, forever, silently.
+// A boolean cannot tell "still loading" from "failed", leaving the documented gate empty forever.
 test('a failed registration surfaces as an error, not a permanent false', async () => {
   failing = true
   const warn = spyOn(console, 'warn').mockImplementation(() => {})
@@ -120,8 +116,7 @@ test('a failed registration surfaces as an error, not a permanent false', async 
   expect(state?.error?.message).toBe('no such face')
 })
 
-// The record is an object literal, so a new identity every render; re-running
-// the effect on identity alone would re-register on every commit forever.
+// The record is a literal, so re-running the effect on identity alone would re-register forever.
 test('useFonts does not re-register on a re-render with the same fonts', async () => {
   function Probe({ tick }: { tick: number }): null {
     useFonts({ 'Demo Serif': [1 as unknown as number] })

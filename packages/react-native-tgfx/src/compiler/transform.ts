@@ -1,13 +1,6 @@
-/**
- * React-Native-style transform arrays: an array of single-key objects such as
- * `{ translateX: 10 }`, `{ scale: 2 }`, `{ rotate: '45deg' }`. The compiler turns
- * each operand into either a literal or an animated value slot, and the native
- * engine composes them left to right.
- */
+// React-Native-style transform arrays of single-key objects, composed left to right natively.
 
-/** A transform operand: a literal, or a Reanimated SharedValue. */
 type Num = number | { value: number }
-/** An angle. Literals may use `deg`/`rad` suffixes; SharedValues are radians. */
 type Angle = number | `${number}deg` | `${number}rad` | { value: number }
 
 export type TransformOp =

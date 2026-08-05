@@ -85,8 +85,6 @@ function backendProof(renderer: RendererId): Record<string, string | number | bo
     return { requestedBackend: 'gpu', engine: 'ThorVG GlCanvas GLES3' }
   }
   if (renderer === 'tgfx-images') {
-    // Measured, not asserted: zeros here mean nothing was drawn, and the gate
-    // rejects the run rather than publishing numbers for an empty scene.
     return { engine: 'tgfx', backend: 'gpu', scene: 'bitmaps', ...drawnBitmaps }
   }
   if (renderer === 'tgfx-animated') {
@@ -152,8 +150,7 @@ export function BenchmarkScreen(): React.JSX.Element {
 
   const width = Math.round(window.width)
   const height = Math.round(window.height)
-  // The animated renderer drives positions on the UI thread from a tree built
-  // once, so its scene must not depend on `phase`.
+  // The animated renderer drives positions from a tree built once, so its scene ignores `phase`.
   const scenePhase = config.renderer === 'tgfx-animated' ? 0 : phase
   const shapes = useMemo(
     () => buildScene(config.objectCount, config.seed, width, height, scenePhase),

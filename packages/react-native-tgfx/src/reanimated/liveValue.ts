@@ -4,8 +4,7 @@ import { reanimated, type Reanimated } from './peer'
 /** A value slot this package created, rather than one the caller animates. */
 export type LiveValue = MaybeSharedValue<number>
 
-// A set rather than a property on the value: `makeMutable` returns Reanimated's
-// own object, and branding it would mean mutating a foreign one.
+// A set, not a property: `makeMutable` returns Reanimated's object, and branding it mutates a foreign one.
 const LIVE = new WeakSet<object>()
 
 /**

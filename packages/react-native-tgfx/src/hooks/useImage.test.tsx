@@ -5,7 +5,6 @@ import { nativeMocks } from '../testing/nativeMocks'
 
 const DEFAULT_ASSET = { uri: 'https://example.test/a.png' }
 
-/** Every call the hook made into the native factory, in order. */
 interface Made {
   via: 'fromFile' | 'fromBytes' | 'fromBase64'
   arg: string
@@ -89,7 +88,6 @@ test('a successful load reports a handle and stops loading', async () => {
   expect(probe.state.loading).toBe(false)
 })
 
-// The point of the refactor: bytes reach native without a base64 round trip.
 test('a remote source hands the raw bytes to the factory, never base64', async () => {
   globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
   await mount('https://example.test/a.png')
@@ -157,15 +155,13 @@ test('a slow new source clears the old image immediately, not when it settles', 
   const probe = await mount('https://example.test/a.png')
   expect(probe.state.data).not.toBeNull()
 
-  // Never settles: the old bytes must not stay on screen while it is in flight.
   globalThis.fetch = (() => new Promise(() => {})) as unknown as typeof fetch
   await probe.setSource('https://example.test/slow.png')
   expect(probe.state.data).toBeNull()
   expect(probe.state.loading).toBe(true)
 })
 
-// Decoded pixels are native memory; waiting for a GC to release them is how a
-// long-lived list ends up holding every image it ever scrolled past.
+// Decoded pixels are native memory; waiting for GC is how a long list holds every image it passed.
 test('a replaced source disposes the handle it replaces', async () => {
   globalThis.fetch = (async () => reply('hi')) as unknown as typeof fetch
   const probe = await mount('https://example.test/a.png')
@@ -208,8 +204,7 @@ test('a slow old source cannot overwrite the result of a newer one', async () =>
   const current = probe.state.data
   expect(current).not.toBeNull()
 
-  // The old fetch lands last; its cleanup already ran, so it must not write —
-  // and the handle it built must be released rather than leaked.
+  // The old fetch lands last: its cleanup already ran, so it must not write, and must release.
   await act(async () => {
     releaseOld(reply('old'))
   })

@@ -1,11 +1,4 @@
-/**
- * Everything `<Image>` and `<ImageShader>` can do: the full fit set, sampling,
- * a source rect into a sprite sheet, and an image used as a paint source with
- * every tile mode.
- *
- * Every source is a `require()`d asset, so the bytes are read and decoded
- * natively — nothing here is base64, and nothing is decoded on the JS thread.
- */
+// Everything <Image> and <ImageShader> can do. Every source is a require()d asset, decoded natively.
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   Canvas,

@@ -26,13 +26,10 @@ export function directNodes(children: ReactNode): Node[] | null {
     if (!ok) {
       return
     }
-    // `null`/`undefined`/`false` are legal empty children in JSX; React drops
-    // them and so does the reconciler, so they are skipped, not a fallback.
     if (child == null || typeof child === 'boolean') {
       return
     }
-    // A keyed `.map()` almost always wraps its items in a Fragment, which is
-    // not a host element but adds no node of its own -- splice its children in.
+    // A keyed `.map()` wraps items in a Fragment, which adds no node — splice its children in.
     if (isValidElement(child) && child.type === Fragment) {
       const inner = directNodes(
         (child.props as { children?: ReactNode }).children

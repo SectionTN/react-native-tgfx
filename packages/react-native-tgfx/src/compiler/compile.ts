@@ -31,7 +31,6 @@ import {
 import { Kind, type SceneWriter } from './writer'
 import type { UniformValue } from '../types'
 
-/** One entry of a `<Glyphs>` list. */
 interface GlyphInput {
   id: number
   x: number
@@ -43,11 +42,9 @@ export interface CompileResult {
   buffer: ArrayBuffer
   strings: string[]
   values: MaybeSharedValue<unknown>[]
-  /** The handles the scene was written through, for imperative writes. */
   refs: NodeHandle[]
 }
 
-/** An accumulated opacity: a literal, or the one SharedValue still driving it. */
 type Opacity = number | MaybeSharedValue<number>
 
 interface CompileCtx {
@@ -57,7 +54,6 @@ interface CompileCtx {
 
 let warnedFrozenOpacity = false
 
-/** Combine opacities; one alpha slot per command, so only one can stay live. */
 function mulOpacity(inherited: Opacity, own: unknown): Opacity {
   if (own === undefined) {
     return inherited
@@ -82,14 +78,8 @@ function mulOpacity(inherited: Opacity, own: unknown): Opacity {
   return resolveNumber(inherited, 1) * resolveNumber(own, 1)
 }
 
-/** Transform op codes, mirrored by the native parser. */
 const Op = { translate: 0, scale: 1, rotate: 2, skewX: 3, skewY: 4 } as const
 
-/**
- * Node type to binary kind. One lookup per node replaces a chain of string
- * comparisons; `<Paint>` and the gradient types are absent, which is what marks
- * them as "contributes paint, draws nothing".
- */
 const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Group]: Kind.Group,
   [NodeType.Rect]: Kind.Rect,
@@ -106,7 +96,6 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.CameraFrame]: Kind.CameraFrame,
 }
 
-/** `rotation` in degrees to clockwise quarter turns, 0-3. */
 function quarterTurns(input: unknown): number {
   const turns = Math.round(resolveNumber(input, 0) / 90)
   return ((turns % 4) + 4) % 4
@@ -169,7 +158,6 @@ function extractGradient(
     }
   }
   if (node.type === NodeType.Shader) {
-    // Shader children of a <Shader> fill its `uniform shader` slots, in order.
     const children: GradientInput[] = []
     for (const child of node.children) {
       const shader = extractGradient(w, child)
@@ -177,8 +165,7 @@ function extractGradient(
         children.push(shader)
       }
     }
-    // A `ref` on a <Shader> addresses its uniforms: the handle swaps in its own
-    // live values so a later write patches slots instead of re-encoding.
+    // A `ref` on a <Shader> addresses its uniforms, swapping in its own live values.
     const declared = p.uniforms as Record<string, UniformValue> | undefined
     const ref = p.ref
     let uniforms = declared ?? {}
@@ -210,7 +197,6 @@ function extractGradient(
   return undefined
 }
 
-/** What a `<ColorMatrix>` / `<BlendColor>` / `<Blur>` / `<DropShadow>` adds. */
 function extractFilter(node: Node): Partial<PaintInput> | undefined {
   const p = node.props
   switch (node.type) {
@@ -254,7 +240,6 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
   }
 }
 
-/** What a paint-source child contributes, or undefined if it is not one. */
 function paintFromChild(
   w: SceneWriter,
   child: Node
@@ -263,7 +248,6 @@ function paintFromChild(
   return gradient != null ? { gradient } : extractFilter(child)
 }
 
-/** Object.assign, warning in dev when a filter overwrites one of its own class. */
 function addPaintSource(
   paint: Partial<PaintInput>,
   contribution: Partial<PaintInput>
@@ -282,15 +266,9 @@ function addPaintSource(
   Object.assign(paint, contribution)
 }
 
-/**
- * Merge a node's `<Paint>`, gradient and filter children into its own paint.
- * Returns null when it has none, which is the common case — the caller then
- * reads the node's props directly instead of allocating a merged paint per node.
- */
 function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
   let paint: PaintInput | null = null
   for (const child of node.children) {
-    // A drawable child never yields a paint source, so skip probing it.
     if (KIND_OF[child.type] !== undefined) {
       continue
     }
@@ -314,7 +292,6 @@ function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
   return paint
 }
 
-/** A group's own paint, merged with whatever its paint-bearing children add. */
 function localPaint(w: SceneWriter, node: Node): PaintInput {
   const paint = paintFromChildren(w, node) ?? pickPaintInput(node.props)
   const ownGradient = node.props.gradient as GradientInput | undefined
@@ -324,7 +301,6 @@ function localPaint(w: SceneWriter, node: Node): PaintInput {
   return paint
 }
 
-/** Write one drawing node of the given kind. */
 function writeDrawing(
   w: SceneWriter,
   node: Node,
@@ -332,7 +308,6 @@ function writeDrawing(
   kind: number
 ): void {
   const p = node.props
-  // A `<Paint>` child overrides the node's own opacity, as it does every field.
   const own = paintFromChildren(w, node)
   const alpha = mulOpacity(ctx.opacity, own == null ? p.opacity : own.opacity)
 
@@ -379,8 +354,7 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
-      // An integer, not a payload: the string table no longer scales with the
-      // bytes on screen and a re-commit rehashes nothing.
+      // An integer, not a payload: the string table no longer scales with the bytes on screen.
       w.push(imageHandle(p.image))
       w.push(fitCode(p.fit))
       w.push(samplingCode(p.sampling))
@@ -403,7 +377,6 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushAnim(p.fontSize, 14)
       writeFont(w, p)
-      // Ids and positions exactly as given: no shaping, no fallback, no breaks.
       const glyphs = (p.glyphs as GlyphInput[] | undefined) ?? []
       w.push(glyphs.length)
       for (const glyph of glyphs) {
@@ -439,7 +412,6 @@ function angle(w: SceneWriter, v: unknown): void {
   }
 }
 
-/** Write a group's transform ops; returns the number written. */
 function writeOps(
   w: SceneWriter,
   transform: Transform,
@@ -470,7 +442,6 @@ function writeOps(
       w.pushAnim(t[0])
       w.pushAnim(t[1])
     } else if ('scale' in o) {
-      // One animated scale drives both axes, so it is written into both slots.
       w.push(Op.scale)
       w.pushAnim(o.scale, 1)
       w.pushAnim(o.scale, 1)
@@ -525,19 +496,9 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     )
   )
   const childCountAt = w.reserve()
-  // writeNodes already skips everything absent from KIND_OF.
   w.patch(childCountAt, writeNodes(w, node.children, childCtx))
 }
 
-/**
- * A live camera frame plus everything drawn over it, in *frame pixels*.
- *
- * No geometry of its own: the frame covers the canvas, and the matrix that puts
- * it there is derived natively from the frame the handle currently points at —
- * which changes with no re-commit behind it, so it cannot be computed here.
- * Children ride that same matrix, which is what keeps an overlay locked to the
- * image it marks up.
- */
 function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const p = node.props
   const local = localPaint(w, node)
@@ -554,7 +515,6 @@ function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   w.patch(childCountAt, writeNodes(w, node.children, { paint, opacity: alpha }))
 }
 
-/** Write a node list; returns how many nodes were actually written. */
 function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
   let count = 0
   for (let node of nodes) {
@@ -562,8 +522,7 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
     if (kind === undefined) {
       continue
     }
-    // A `ref` is a handle onto this node: it can have written props since the
-    // last commit, and they sit over the ones the element carries.
+    // A `ref` can have written props since the last commit, and they sit over the element's.
     const ref = node.props.ref
     if (isNodeHandle(ref)) {
       w.refs.push(ref)

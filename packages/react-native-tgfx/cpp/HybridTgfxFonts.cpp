@@ -28,7 +28,6 @@ std::string registerTypeface(std::shared_ptr<::tgfx::Typeface> typeface,
   return name;
 }
 
-/// A `file://` URI names a path; anything else already is one.
 std::string stripFileScheme(const std::string& path) {
   constexpr std::string_view kScheme = "file://";
   if (path.rfind(kScheme, 0) == 0) {
@@ -63,9 +62,7 @@ std::shared_ptr<NamePromise> HybridTgfxFonts::registerFromFile(const std::string
 
 std::shared_ptr<NamePromise> HybridTgfxFonts::registerFromBytes(
     const std::shared_ptr<ArrayBuffer>& bytes, const std::string& family) {
-  // A JS-owned ArrayBuffer only lives for this call, so the copy happens here
-  // rather than on the thread pool — and the typeface reads from it for its
-  // whole life, so it has to be a copy the registry owns.
+  // A JS-owned ArrayBuffer only lives for this call, and the typeface reads it for its whole life.
   auto data = bytes == nullptr || bytes->size() == 0
                   ? nullptr
                   : ::tgfx::Data::MakeWithCopy(bytes->data(), bytes->size());
@@ -97,7 +94,6 @@ std::vector<std::string> HybridTgfxFonts::getFamilyNames() {
 
 namespace {
 
-/// The one-run list a string-based call lays out as.
 std::vector<tgfxrn::TextRun> runsOf(const std::string& text, const tgfxrn::TextSpec& spec) {
   tgfxrn::TextRun run;
   run.text = text;

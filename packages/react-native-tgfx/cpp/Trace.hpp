@@ -1,6 +1,4 @@
-// Scoped atrace markers, so the render thread is attributable in a Perfetto
-// capture without native sampling (which Samsung's SELinux policy denies even
-// with perf_event_paranoid = -1). No-op off Android.
+// Scoped atrace markers, so the render thread is attributable in Perfetto. No-op off Android.
 #pragma once
 
 #if defined(__ANDROID__)

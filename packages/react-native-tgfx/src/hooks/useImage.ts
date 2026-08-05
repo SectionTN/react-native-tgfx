@@ -7,7 +7,6 @@ import type {
 } from '../specs/TgfxImage.nitro'
 import { loadSource } from './source'
 
-/** The native image factory. Created once, on first use. */
 let factory: TgfxImageFactory | null = null
 function images(): TgfxImageFactory {
   factory ??=
@@ -71,17 +70,11 @@ export function imageFromNativeBuffer(
 }
 
 export interface ImageState {
-  /** The native handle, or `null` while loading and after a failure. */
   readonly data: TgfxImage | null
-  /** Why the current source failed, or `null`. */
   readonly error: Error | null
-  /** True from the moment a source starts loading until it settles. */
   readonly loading: boolean
 }
 
-// Handed straight to the caller on first render, so a mutation would leak into
-// every component mounted after it. Frozen rather than rebuilt: the shared
-// identity is what lets React bail out of the redundant initial re-render.
 const PENDING: ImageState = Object.freeze({
   data: null,
   error: null,
@@ -107,14 +100,12 @@ export function useImageState(source: number | string): ImageState {
 
   useEffect(() => {
     let active = true
-    // A stale image under a new source is worse than an empty one.
     setState(PENDING)
     let loaded: TgfxImage | null = null
     const aborter = new AbortController()
 
     async function load(): Promise<void> {
-      // The whole point of the handle: a local file's bytes are read and decoded
-      // natively and never cross into JS.
+      // The point of the handle: a local file is decoded natively and never crosses into JS.
       loaded = await loadSource(source, images(), aborter.signal)
 
       if (!active) {
@@ -125,7 +116,6 @@ export function useImageState(source: number | string): ImageState {
     }
 
     load().catch((e: unknown) => {
-      // An abandoned load reports its own cancellation; nobody is waiting on it.
       if (!active) {
         return
       }
@@ -136,8 +126,7 @@ export function useImageState(source: number | string): ImageState {
     return () => {
       active = false
       aborter.abort()
-      // Deterministic, rather than waiting for the JS handle to be collected:
-      // the native side is holding decoded pixels.
+      // Deterministic rather than waiting for GC: the native side holds decoded pixels.
       loaded?.dispose()
     }
   }, [source])

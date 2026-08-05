@@ -1,8 +1,4 @@
-/**
- * Colour filters, blend modes and image filters (#134). Every filter here is
- * built once, when the scene compiles — nothing on this screen rebuilds a
- * filter per frame.
- */
+// Colour filters, blend modes and image filters (#134), all built once when the scene compiles.
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   BlendColor,
@@ -31,18 +27,15 @@ const MODES: BlendMode[] = [
   'luminosity',
 ];
 
-/** Rec. 709 luma into every channel. */
 const GREYSCALE = [
   0.213, 0.715, 0.072, 0, 0, 0.213, 0.715, 0.072, 0, 0, 0.213, 0.715, 0.072, 0,
   0, 0, 0, 0, 1, 0,
 ];
 
-/** Swap red and blue, leave green and alpha alone. */
 const CHANNEL_SWAP = [
   0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
 ];
 
-/** Boost saturation ~1.8x around the luma axis. */
 const SATURATE = (() => {
   const s = 1.8;
   const [r, g, b] = [0.213, 0.715, 0.072];

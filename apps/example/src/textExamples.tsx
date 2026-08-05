@@ -1,8 +1,4 @@
-/**
- * Everything <Text> gained: a bundled family in regular/bold/italic, a wrapped
- * and aligned paragraph, measurement, gradient-filled text, text on a path, and
- * the two scripts that are honest about their limits (emoji, RTL).
- */
+// Everything <Text> gained: families, wrapping, measurement, gradients, text on a path, RTL.
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   Canvas,
@@ -24,8 +20,6 @@ import {
 
 const FAMILY = 'PT Serif';
 
-// Ruled per line from measureText's `lines`: each rule is that line's own width
-// and offset, not a guess from the block height.
 const RULED_TEXT =
   'measureText reports every line it laid out: width, x, baseline.';
 
@@ -41,8 +35,6 @@ export function TextSection() {
     ],
   });
 
-  // measureText runs the same layout the renderer does, so the box behind the
-  // label is exactly the label's box rather than a guess.
   const label = 'measured';
   const box = measureText(label, { fontSize: 22, fontFamily: FAMILY, fontWeight: 'bold' });
 

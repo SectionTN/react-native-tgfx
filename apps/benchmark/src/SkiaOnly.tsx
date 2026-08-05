@@ -1,7 +1,4 @@
-/**
- * The smallest possible Skia screen: one Canvas, static circles, no reanimated,
- * no worklets, nothing else. If this crashes, Skia is at fault on its own.
- */
+// The smallest possible Skia screen: if this crashes, Skia is at fault on its own.
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Canvas, Circle } from '@shopify/react-native-skia';
 

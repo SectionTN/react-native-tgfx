@@ -4,7 +4,6 @@ import { resolveColor } from './colors'
 import { resolveNumber, resolveValue } from './values'
 import type { SceneWriter } from './writer'
 
-/** Mirrored by TextAlign in cpp/TextLayout.hpp. */
 const ALIGN = { left: 0, center: 1, right: 2 } as const
 
 export function alignCode(align: unknown): number {
@@ -69,8 +68,7 @@ function writeRun(
   w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
   // 0, not 400: the paragraph's weight is what an unset span inherits.
   w.push(p.fontWeight !== undefined ? weightValue(p.fontWeight) : 0)
-  // 0 inherit, 1 italic, 2 upright — a plain flag could not say "unset", and an
-  // implicit run always is.
+  // 0 inherit, 1 italic, 2 upright — a flag could not say "unset", and an implicit run always is.
   w.push(p.fontStyle === 'italic' ? 1 : p.fontStyle === 'normal' ? 2 : 0)
   w.push(resolveNumber(p.letterSpacing, 0))
   w.push(resolveNumber(p.fontSize, 0))

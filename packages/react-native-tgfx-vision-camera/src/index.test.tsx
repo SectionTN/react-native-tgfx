@@ -2,7 +2,6 @@ import { expect, mock, test } from 'bun:test'
 import React from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
 
-/** Every sink `createHybridObject` handed out, in order. */
 const sinks: FakeSink[] = []
 
 class FakeSink {
@@ -62,8 +61,7 @@ test('one sink per mount, and a re-render does not mint another', async () => {
     tree.update(<Host id={2} />)
   })
   expect(sinks.length).toBe(before + 1)
-  // The same instance saw both attaches — a fresh sink per render would leave
-  // the first one attached to the output with nobody left to detach it.
+  // The same instance saw both attaches; a fresh sink would strand the first on the output.
   expect(sinks.at(-1)!.attached).toEqual([1, 2])
   await act(async () => {
     tree.unmount()

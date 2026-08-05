@@ -52,9 +52,7 @@ export function blendCode(mode: unknown): number {
 /** A colour transform applied per pixel. Read once at commit; never animated. */
 export interface ColorFilterInput {
   kind: 'matrix' | 'blend'
-  /** `matrix`: the 4x5 row-major matrix Skia's `ColorMatrix` takes. */
   matrix?: number[]
-  /** `blend`: the constant colour blended over the drawing, and how. */
   color?: Color
   mode?: BlendMode
 }
@@ -65,16 +63,13 @@ export interface ColorFilterInput {
  */
 export interface ImageFilterInput {
   kind: 'blur' | 'dropShadow'
-  /** Gaussian sigma; `blurX`/`blurY` override it per axis. */
   blur?: number
   blurX?: number
   blurY?: number
-  /** How the blur kernel samples outside the drawing. Defaults to `'decal'`. */
   tileMode?: TileMode
   dx?: number
   dy?: number
   color?: Color
-  /** Draw only the shadow, dropping the content that cast it. */
   shadowOnly?: boolean
 }
 

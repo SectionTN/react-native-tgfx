@@ -20,7 +20,6 @@ test('the package itself being absent, in every runtime shape', () => {
     isModuleNotFound(new Error(`Cannot find module '${NAME}'`), NAME)
   ).toBe(true)
   expect(isModuleNotFound(new Error('Cannot find module'), NAME)).toBe(true)
-  // Node's ESM loader: a different code, and "package" rather than "module".
   expect(
     isModuleNotFound(
       Object.assign(
@@ -39,7 +38,6 @@ test('the package itself being absent, in every runtime shape', () => {
 })
 
 test('the package being installed but broken', () => {
-  // A transitive peer missing from inside Reanimated's own init.
   expect(
     isModuleNotFound(
       withCode(`Cannot find package 'react-native-worklets' from '/app'`),

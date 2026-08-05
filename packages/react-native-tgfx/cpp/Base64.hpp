@@ -1,5 +1,3 @@
-// Minimal base64 decoder used to turn `<Image image={base64}>` payloads into
-// raw encoded image bytes for tgfx::Image::MakeFromEncoded.
 #pragma once
 
 #include <array>

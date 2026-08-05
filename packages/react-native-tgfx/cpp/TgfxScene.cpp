@@ -30,11 +30,7 @@
 
 namespace tgfxrn {
 
-/// Cursor over the binary draw program written by src/compiler/writer.ts.
-///
-/// Fields are read strictly in write order, so resolving an animated field is a
-/// pointer bump: the patch table lists word indices in increasing order, and
-/// `patchAt` walks it alongside the read cursor.
+/// Cursor over the binary draw program from src/compiler/writer.ts; fields are read in write order.
 struct SceneReader {
   SceneReader(std::span<const double> words, std::span<const double> patches,
               const std::vector<std::string>& strings)
@@ -47,7 +43,6 @@ struct SceneReader {
   size_t patchAt = 0;
   bool ok = true;
 
-  /// Words the cursor has not reached yet — an upper bound on any wire count.
   size_t remaining() const {
     return at < words.size() ? words.size() - at : 0;
   }
@@ -73,8 +68,7 @@ struct SceneReader {
 
   AnimF nextAnim() {
     AnimF f;
-    // Compared as a double: casting the wire value to size_t would be undefined
-    // behaviour for a NaN or negative one, and NaN fails this compare anyway.
+    // Compared as a double: casting a NaN or negative wire value to size_t is UB.
     if (patchAt + 1 < patches.size() &&
         patches[patchAt] == static_cast<double>(at)) {
       double slot = patches[patchAt + 1];
@@ -103,15 +97,11 @@ namespace {
 /// Bounds readNode and so drawCmd too; DrawCmd is 544 B, so 256 deep is ~139 KB of stack.
 constexpr int kMaxNodeDepth = 256;
 
-/// A wire count clamped to what is left in the buffer. The read loops are all
-/// bounded by `r.ok`, so a corrupt count cannot over-read — but reserving on the
-/// raw value would ask for terabytes before the first word is read.
+/// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
 size_t boundedCount(const SceneReader& r, int count) {
   return std::min(static_cast<size_t>(std::max(0, count)), r.remaining());
 }
 
-/// Every colour/image filter ever constructed. Only readFilters touches it, and
-/// readFilters only runs at setScene — see filterBuildCount().
 std::atomic<size_t> gFilterBuilds{0};
 
 /// Node kinds, mirrored from src/compiler/writer.ts.
@@ -133,8 +123,7 @@ tgfx::SamplingOptions samplingOf(int code) {
   }
 }
 
-/// Blend modes travel as the index into tgfx's own enum; BLEND_MODES in
-/// src/compiler/filters.ts is the same list in the same order.
+/// Blend modes travel as the index into tgfx's enum; BLEND_MODES mirrors that list.
 tgfx::BlendMode blendModeOf(int code) {
   constexpr int kLast = static_cast<int>(tgfx::BlendMode::PlusDarker);
   if (code < 0 || code > kLast) {
@@ -152,11 +141,7 @@ tgfx::TileMode tileModeOf(int code) {
   }
 }
 
-/// The source and destination rects `fit` implies, centered in their bounds.
-///
-/// This is Flutter's applyBoxFit + inscribe, which is what Skia's `<Image fit>`
-/// and `<ImageShader fit>` implement — so `cover` crops the *source* instead of
-/// overflowing the destination, and no clip is needed to contain it.
+/// Flutter's applyBoxFit + inscribe: `cover` crops the source, so no clip is needed.
 struct FitRects {
   tgfx::Rect src;
   tgfx::Rect dst;
@@ -212,7 +197,6 @@ FitRects fitRects(Fit fit, const tgfx::Rect& source, const tgfx::Rect& dest) {
       sh = dh = std::min(ih, oh);
       break;
     case Fit::ScaleDown:
-      // Fill, clamped so the image is never drawn larger than it is.
       if (dh > ih) {
         dw = ih * (iw / ih);
         dh = ih;
@@ -226,19 +210,10 @@ FitRects fitRects(Fit fit, const tgfx::Rect& source, const tgfx::Rect& dest) {
   return {inscribe(sw, sh, source), inscribe(dw, dh, dest)};
 }
 
-/// Frame pixels to this node's own coordinates: un-mirror, counter-rotate, then
-/// fit the result over the whole canvas.
-///
-/// The one matrix a <CameraFrame> concats. The frame and every child are drawn
-/// through it, so an overlay expressed in frame pixels — a detector's contour,
-/// a box round a face — cannot drift from the image it marks up, whatever the
-/// surface size is. That is the property the native-only camera path had, kept
-/// now that the scene draws over the frame.
+/// Frame pixels to node coordinates, so an overlay in frame pixels cannot drift.
 tgfx::Matrix cameraMatrix(const DrawCmd& cmd, tgfx::Canvas* canvas, float w, float h) {
   tgfx::Matrix m = tgfx::Matrix::I();
   if (cmd.mirror) {
-    // The buffer's pixels are flipped along the vertical axis relative to the
-    // output (`frame.isMirrored`); a selfie draws the wrong way round without it.
     m.postScale(-1, 1);
     m.postTranslate(w, 0);
   }
@@ -260,9 +235,6 @@ tgfx::Matrix cameraMatrix(const DrawCmd& cmd, tgfx::Canvas* canvas, float w, flo
                   ? tgfx::Rect::MakeWH(static_cast<float>(surface->width()),
                                        static_cast<float>(surface->height()))
                   : tgfx::Rect::MakeWH(ow, oh);
-  // The surface is in device pixels; an enclosing <Group>'s transform and the
-  // view's pixel ratio are both in the canvas matrix, so inverting it is what
-  // gives the canvas rect in the coordinates this node's children write in.
   tgfx::Matrix inverse;
   if (canvas->getMatrix().invert(&inverse)) {
     inverse.mapRect(&dest);
@@ -271,11 +243,7 @@ tgfx::Matrix cameraMatrix(const DrawCmd& cmd, tgfx::Canvas* canvas, float w, flo
   if (fitted.src.width() <= 0 || fitted.src.height() <= 0) {
     return m;
   }
-  // Map the fitted source onto its destination and draw the *whole* frame
-  // through it: `cover` then overflows the canvas rather than being cropped
-  // into it, which is what puts the offscreen part offscreen instead of
-  // scaling it down. Same result as drawImageRect for the frame, but it is one
-  // matrix, so the children can share it.
+  // Draw the whole frame through the fit matrix, so cover overflows instead of scaling.
   m.postTranslate(-fitted.src.left, -fitted.src.top);
   m.postScale(fitted.dst.width() / fitted.src.width(),
               fitted.dst.height() / fitted.src.height());
@@ -283,18 +251,10 @@ tgfx::Matrix cameraMatrix(const DrawCmd& cmd, tgfx::Canvas* canvas, float w, flo
   return m;
 }
 
-/// The registry image for `handle`, mipmapped when the sampling asks for it.
-/// `external` reports a hardware-buffer handle, whose image the caller must
-/// re-resolve every frame instead of caching.
-///
-/// Never decodes: the registry schedules that off-thread and moves its epoch
-/// when it lands, so this is safe to call from a render thread.
+/// The registry image for `handle`. Never decodes, so a render thread may call it.
 std::shared_ptr<tgfx::Image> resolveImage(int handle,
                                           const tgfx::SamplingOptions& sampling,
                                           bool* external = nullptr) {
-  // An integer lookup into the registry, not a hash of the payload: a re-commit
-  // of an unchanged scene costs nothing here, and a hash collision cannot draw
-  // somebody else's bitmap.
   auto image = ImageRegistry::instance().acquire(handle, external);
   if (image == nullptr) {
     if (handle != 0) {
@@ -333,9 +293,6 @@ void readStops(SceneReader& r, std::vector<tgfx::Color>& colors,
     positions.push_back(static_cast<float>(r.next()));
   }
 }
-
-// ---------------- per-frame helpers (render thread) ----------------
-
 tgfx::Rect rectOf(const DrawCmd& c, std::span<const double> v) {
   return tgfx::Rect::MakeXYWH(c.x.resolve(v), c.y.resolve(v), c.w.resolve(v),
                               c.h.resolve(v));
@@ -375,7 +332,6 @@ tgfx::Matrix matrixFromOps(const std::vector<TransformOpCmd>& ops,
   return tgfx::Matrix::MakeAll(m.a, m.c, m.e, m.b, m.d, m.f);
 }
 
-/// A live colour channel, 0..1, quantised the same way the packed form was.
 uint8_t channelOf(const AnimF& f, std::span<const double> v) {
   return static_cast<uint8_t>(std::clamp(f.resolve(v), 0.0f, 1.0f) * 255.0f +
                               0.5f);
@@ -417,8 +373,6 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
   }
   paint.setAntiAlias(pc.antiAlias);
   paint.setAlpha(color.alpha * pc.alpha.resolve(v));
-  // Built at setScene; this is a store and two shared_ptr copies, never a
-  // filter construction. A null filter copies without touching a refcount.
   paint.setBlendMode(pc.blend);
   paint.setColorFilter(pc.colorFilter);
   paint.setImageFilter(pc.imageFilter);
@@ -450,8 +404,6 @@ std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
   resolvedChildren.reserve(children.size());
   for (const auto& child : children) {
     auto shader = child.resolve(values);
-    // A frame that has not arrived yet, or an asset still decoding: the shader
-    // cannot run without every child, so this node skips the frame.
     if (shader == nullptr) {
       return nullptr;
     }
@@ -492,12 +444,8 @@ void SceneRenderer::readTextSpec(SceneReader& r, TextSpec& spec) {
   spec.letterSpacing = static_cast<float>(r.next());
 }
 
-/// The run list: a count, then each run's text and the style it overrides.
-/// A plain <Text> writes exactly one run that overrides nothing.
 void SceneRenderer::readTextRuns(SceneReader& r, TextCmd& text) {
   int count = r.nextInt();
-  // A malformed count would otherwise reserve or loop unboundedly; the program
-  // is trusted, but it is trusted because this checks it.
   if (count < 1 || count > kMaxTextRuns) {
     TGFXRN_LOGW("text node has %d runs, which is outside 1..%d", count, kMaxTextRuns);
     r.ok = false;
@@ -519,15 +467,7 @@ void SceneRenderer::readTextRuns(SceneReader& r, TextCmd& text) {
 }
 
 const TextLayout& TextCmd::resolve(float size) const {
-  // Quantised, not exact. Typeface::getScalerContext takes a per-typeface global
-  // lock, keys its cache on the raw float, and never erases: a continuously
-  // animated size misses on every frame and grows that map for the life of the
-  // process. A quarter of a pixel is finer than the rasteriser's own grid and
-  // bounds the key space to four entries per pixel of range.
-  //
-  // It does not make an animated size cheap — past a quantum per frame this
-  // re-lays out as often as the old path rebuilt its blob, and costs more. See
-  // the measured table in TextLayout.hpp, and #145 for the fix.
+  // Quantised: getScalerContext keys its cache on the raw float and never erases. See #145.
   size = std::round(size * 4) / 4;
   if (size == layoutSize) {
     return layout;
@@ -556,8 +496,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
   }
   if (kind == 6) {
     std::string body = r.nextString();
-    // File-scope helpers: GLSL ES has no nested functions, so they cannot ride
-    // in the body that native wraps in tgfxRuntimeMain.
+    // File-scope helpers: GLSL ES has no nested functions.
     std::string preamble = r.nextString();
     int functionCount = r.nextInt();
     std::vector<std::string> functionNames;
@@ -589,7 +528,6 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
         }
       }
     }
-    // `uniform shader` children, each a shader payload in its own right.
     int childCount = r.nextInt();
     std::vector<ChildShaderCmd> children;
     children.reserve(boundedCount(r, childCount));
@@ -612,7 +550,6 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
       cmd->slots = std::move(slots);
       cmd->children = std::move(children);
       out->runtime = std::move(cmd);
-      // Built per frame from the command instead, so nothing is baked here.
       return nullptr;
     }
     std::vector<std::shared_ptr<tgfx::Shader>> staticChildren;
@@ -626,7 +563,6 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
                                            std::move(staticChildren));
   }
   if (kind == 7) {
-    // <ImageShader>: an image as the paint source for any shape.
     ImageShaderCmd cmd;
     cmd.handle = r.nextInt();
     cmd.tileX = tileModeOf(r.nextInt());
@@ -644,9 +580,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
     bool external = false;
     auto image = resolveImage(cmd.handle, cmd.sampling, &external);
     if ((external || image == nullptr) && cmd.handle != 0 && out != nullptr) {
-      // Baking the shader here would freeze whatever the registry happened to
-      // hold at compile time: the first camera frame for a hardware buffer, and
-      // nothing at all for an asset the byte budget had dropped.
+      // Baking here would freeze whatever the registry held at compile time.
       out->imageShader = std::make_shared<ImageShaderCmd>(cmd);
       return nullptr;
     }
@@ -734,9 +668,7 @@ void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
     gFilterBuilds++;
   }
   if (paint.imageFilter != nullptr && paint.blend != tgfx::BlendMode::SrcOver) {
-    // tgfx would take this layer itself and composite it back SrcOver, losing
-    // the blend mode. Taking it here, with both on the layer paint, costs the
-    // same one saveLayer per draw and gets the order right.
+    // Taking the layer here keeps the blend mode tgfx would otherwise composite away.
     paint.layer = std::make_shared<tgfx::Paint>();
     paint.layer->setBlendMode(paint.blend);
     paint.layer->setImageFilter(std::move(paint.imageFilter));
@@ -750,8 +682,7 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   int flags = r.nextInt();
   paint.stroke = (flags & 1) != 0;
   paint.antiAlias = (flags & 2) != 0;
-  // Bit 8: the colour is animated and travels as four live channels. The packed
-  // word above is the last committed value and is what stands without it.
+  // Bit 8: the colour is animated and travels as four live channels.
   paint.animColor = (flags & 8) != 0;
   if (paint.animColor) {
     for (auto& channel : paint.rgba) {
@@ -762,8 +693,7 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.cap = r.nextInt();
   paint.join = r.nextInt();
   paint.alpha = r.nextAnim();
-  // Bit 4: the paint carries a filter block. Unset is the common case and
-  // costs no words at all.
+  // Bit 4: the paint carries a filter block; unset costs no words at all.
   if ((flags & 4) != 0) {
     readFilters(r, paint);
   }
@@ -794,7 +724,6 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         animated = animated || op.a.slot >= 0 || op.b.slot >= 0;
         cmd.ops.push_back(op);
       }
-      // No slot in the ops => the matrix can never change, so fold it here.
       if (!animated && !cmd.ops.empty()) {
         cmd.hasMatrix = true;
         cmd.matrix = matrixFromOps(cmd.ops, {});
@@ -811,12 +740,10 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       return r.ok;
     }
     case KFill:
-      // No geometry: it covers whatever the clip is at draw time.
       cmd.kind = DrawCmd::Fill;
       break;
     case KCameraFrame: {
-      // Like a group, but the transform is derived at draw time from the frame
-      // the handle points at, which changes with no re-commit behind it.
+      // Like a group, but the transform comes from the live frame, with no re-commit.
       cmd.kind = DrawCmd::CameraFrame;
       cmd.imageHandle = r.nextInt();
       cmd.fit = static_cast<Fit>(r.nextInt());
@@ -897,17 +824,11 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         float sh = static_cast<float>(r.next());
         cmd.srcRect = tgfx::Rect::MakeXYWH(sx, sy, sw, sh);
       }
-      // The handle is always carried: `cmd.image` is only a cache of what the
-      // registry could give us at compile time, and it is empty in two cases
-      // that both have to keep drawing — a hardware buffer, whose image changes
-      // between frames, and an asset the byte budget had dropped, whose
-      // re-decode lands later.
+      // `cmd.image` is only a compile-time cache, empty for a buffer or an evicted asset.
       cmd.imageHandle = handle;
       bool external = false;
       cmd.image = resolveImage(handle, cmd.sampling, &external);
       if (external) {
-        // Caching it would pin the producer's buffer and freeze the first frame
-        // on screen; the draw path re-resolves the handle instead.
         cmd.image = nullptr;
       }
       break;
@@ -941,8 +862,6 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       break;
     }
     case KGlyphs: {
-      // Its own kind rather than a <Text> variant: there is no string, no line
-      // breaking and no fallback — the caller has already done all of that.
       cmd.kind = DrawCmd::Text;
       cmd.x = r.nextAnim();
       cmd.y = r.nextAnim();
@@ -960,9 +879,6 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       for (auto& glyph : cmd.text->glyphs) {
         int id = r.nextInt();
         if (id < 0 || id > 0xFFFF) {
-          // Narrowing would draw a real but unrelated glyph; .notdef is at least
-          // a visible box. Warned once per node: one bad array is one mistake,
-          // not 65536 of them.
           if (!warnedId) {
             warnedId = true;
             TGFXRN_LOGW("glyph id %d is outside 0..65535; drawing .notdef", id);
@@ -993,9 +909,7 @@ void SceneRenderer::setScene(std::span<const double> words,
     TGFXRN_LOGW("draw program has an unexpected header");
     return;
   }
-  // Every one of these is a JS-written double, so casting a NaN, a negative or
-  // an out-of-range one to size_t would be undefined behaviour. Bounding by the
-  // buffer length also keeps the spans below from wrapping.
+  // A NaN, negative or out-of-range JS double is not a size_t; bound by the buffer.
   auto index = [limit = static_cast<double>(words.size())](double v,
                                                            size_t& out) {
     if (!std::isfinite(v) || v < 0 || v > limit) {
@@ -1040,7 +954,6 @@ void SceneRenderer::setScene(std::span<const double> words,
   }
   if (reader.at != reader.words.size() ||
       reader.patchAt != reader.patches.size()) {
-    // Anything unread means the writer and this reader disagree on a field.
     TGFXRN_LOGW("draw program not fully consumed: %zu/%zu words, %zu/%zu patch words",
                 reader.at, reader.words.size(), reader.patchAt,
                 reader.patches.size());
@@ -1054,7 +967,6 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             std::span<const double> v,
                             tgfx::Paint& paint) const {
   if (cmd.kind == DrawCmd::Group) {
-    // A group's only canvas state is its transform (opacity folds at compile time).
     bool transformed = cmd.hasMatrix || !cmd.ops.empty();
     if (transformed) {
       canvas->save();
@@ -1070,9 +982,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
   }
 
   if (cmd.kind == DrawCmd::CameraFrame) {
-    // Resolved every frame, never cached: the handle is a hardware-buffer
-    // import whose image the producer swaps between frames, and caching it here
-    // would pin the producer's buffer and freeze the first frame on screen.
+    // Never cached: the producer swaps the buffer behind the handle between frames.
     auto image = resolveImage(cmd.imageHandle, cmd.sampling);
     if (image == nullptr || image->width() <= 0 || image->height() <= 0) {
       return;
@@ -1093,15 +1003,13 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     return;
   }
 
-  // Only alpha and strokeWidth can move per frame; everything else in the paint
-  // was fixed at setScene, so a static paint is handed over untouched.
+  // Only alpha and strokeWidth move per frame; a static paint is handed over untouched.
   const tgfx::Paint* p = &cmd.paint.cached;
   if (cmd.paint.animated()) {
     applyPaint(cmd.paint, v, paint);
     p = &paint;
   }
-  // Replaces the layer tgfx would otherwise take for the image filter alone;
-  // see PaintCmd::layer. Not an extra offscreen, the same one.
+  // Replaces the layer tgfx would take for the image filter — the same one, not an extra.
   if (cmd.paint.layer != nullptr) {
     canvas->saveLayer(cmd.paint.layer.get());
   }
@@ -1140,10 +1048,6 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       canvas->drawPath(cmd.path, *p);
       break;
     case DrawCmd::Image: {
-      // An image resolved at setScene is used straight from the cache and costs
-      // nothing. The two that could not be cached — a hardware buffer, and an
-      // asset evicted before the scene compiled — are resolved here, per frame,
-      // because for both the answer changes with no re-commit behind it.
       std::shared_ptr<tgfx::Image> live;
       if (cmd.image == nullptr && cmd.imageHandle != 0) {
         live = resolveImage(cmd.imageHandle, cmd.sampling);
@@ -1152,8 +1056,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       if (image == nullptr || image->width() <= 0) {
         break;
       }
-      // `fit` crops the source rather than overflowing the destination, so this
-      // needs no clip and no save/restore even for cover.
+      // `fit` crops the source, so cover needs no clip and no save/restore.
       auto source = cmd.srcRect.isEmpty()
                         ? tgfx::Rect::MakeWH(static_cast<float>(image->width()),
                                              static_cast<float>(image->height()))
@@ -1166,10 +1069,6 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       if (cmd.text == nullptr) {
         break;
       }
-      // The blob is laid out once per distinct (quantised) size and drawn by
-      // reference, so a static label costs a refcount bump per frame rather than
-      // the two vectors and the blob that drawSimpleText -> TextBlob::MakeFrom
-      // allocated on every single draw.
       const auto& layout = cmd.text->resolve(cmd.fontSize.resolve(v));
       float x = cmd.x.resolve(v);
       float y = cmd.y.resolve(v);
@@ -1181,15 +1080,12 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
           canvas->drawTextBlob(run.blob, x, y, *p);
           continue;
         }
-        // A <Span> colour replaces the node's, and nothing else about the paint:
-        // a stroked, blurred paragraph keeps both through a coloured span.
         tgfx::Paint spanPaint = *p;
         spanPaint.setColor(tgfx::Color::FromRGBA(
             static_cast<uint8_t>((run.color >> 16) & 0xFF),
             static_cast<uint8_t>((run.color >> 8) & 0xFF), static_cast<uint8_t>(run.color & 0xFF),
             static_cast<uint8_t>((run.color >> 24) & 0xFF)));
-        // The node's *opacity*, not its resolved alpha: that already has the
-        // node colour's own alpha folded in, which the span colour replaces.
+        // The node's opacity, not its resolved alpha: the span colour replaces that.
         spanPaint.setAlpha(spanPaint.getAlpha() * cmd.paint.alpha.resolve(v));
         canvas->drawTextBlob(run.blob, x, y, spanPaint);
       }
@@ -1214,7 +1110,6 @@ void SceneRenderer::render(tgfx::Canvas* canvas,
   if (program == nullptr) {
     return;
   }
-  // Scratch for the commands whose paint actually moves; the rest use their own.
   tgfx::Paint paint;
   for (const auto& cmd : *program) {
     drawCmd(canvas, cmd, values, paint);

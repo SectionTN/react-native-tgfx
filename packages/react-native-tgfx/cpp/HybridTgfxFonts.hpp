@@ -1,5 +1,3 @@
-// The JS face of the FontRegistry: registers typefaces from app assets and
-// measures text through exactly the layout the renderer draws.
 #pragma once
 
 #include <memory>

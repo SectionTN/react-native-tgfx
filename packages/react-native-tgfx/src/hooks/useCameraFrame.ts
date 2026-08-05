@@ -27,7 +27,6 @@ export interface FrameLike {
 
 /** How the buffer is oriented, read off the frame rather than assumed. */
 export interface CameraFramePosture {
-  /** Clockwise degrees that cancel `frame.orientation`. */
   rotation: number
   mirror: boolean
   width: number
@@ -35,11 +34,8 @@ export interface CameraFramePosture {
 }
 
 export interface CameraFrameSource<F extends FrameLike = FrameLike> {
-  /** The handle to give `<CameraFrame>`, `null` until the first frame lands. */
   image: TgfxImage | null
-  /** Spread onto `<CameraFrame>`; `width`/`height` are 0 before frame one. */
   posture: CameraFramePosture
-  /** A worklet. Give it to the producer, e.g. `useFrameOutput({ onFrame })`. */
   onFrame: (frame: F) => void
 }
 
@@ -62,7 +58,6 @@ export interface CameraFrameOptions<F extends FrameLike = FrameLike> {
   rotation?: (frame: F) => number
 }
 
-/** `frame.orientation` to the clockwise rotation that cancels it. */
 const ROTATION: Record<string, 0 | 90 | 180 | 270> = {
   up: 0,
   right: 270,
@@ -70,13 +65,6 @@ const ROTATION: Record<string, 0 | 90 | 180 | 270> = {
   left: 90,
 }
 
-/**
- * The producer's format string to tgfx's. Cameras are YUV, but nothing about
- * this hook is: a screen recorder, a video decoder or a test source can hand
- * over RGBA, and importing that as BT.601 would read the planes as luma and
- * chroma. Rec.709 and Rec.2020 sources need their own matrix — the wrong one
- * is a hue shift, not an error.
- */
 function defaultFormat(pixelFormat: string): PixelFormat {
   'worklet'
   const f = pixelFormat.toLowerCase()
@@ -153,13 +141,11 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
       '[tgfx] react-native-worklets does not export scheduleOnRN, which useCameraFrame needs.'
     )
   }
-  // Destructured so the callback depends on the functions, not the options
-  // object — an inline `{}` at the call site would re-register every render.
+  // Destructured, or an inline `{}` at the call site would re-register every render.
   const formatOf = options?.format
   const rotationOf = options?.rotation
   const [image, setImage] = useState<TgfxImage | null>(null)
   const [posture, setPosture] = useState<CameraFramePosture>(UPRIGHT)
-  // Worklet-runtime state: read and written where the frames arrive, never here.
   const handle = mod.useSharedValue!<TgfxImage | null>(null)
   const posted = mod.useSharedValue!('')
 
@@ -176,15 +162,11 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
   const onFrame = useCallback(
     (frame: F) => {
       'worklet'
-      // Acquired *inside* the try: everything that can throw has to be, or a
-      // throw skips the dispose() below and stalls the producer's bounded pool.
+      // Acquired inside the try: a throw would skip the dispose() and stall the bounded pool.
       let buffer: NativeBufferLike | null = null
       try {
         buffer = frame.getNativeBuffer()
-        // Read the format off the frame rather than hardcoding it: a device
-        // reporting `yuv-420-8-bit-full` imported as limited crushes the blacks,
-        // and a non-YUV producer imported as BT.601 reads its channels as luma
-        // and chroma.
+        // Read off the frame: `-full` imported as limited crushes the blacks.
         const format: PixelFormat =
           formatOf != null ? formatOf(frame) : defaultFormat(frame.pixelFormat)
         if (handle.value == null) {
@@ -212,8 +194,6 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
 
         onEachFrame?.(frame)
       } finally {
-        // The handle took its own reference, so the producer's slot is free the
-        // moment this returns.
         buffer?.release()
         frame.dispose()
       }
@@ -232,10 +212,7 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
 
   useEffect(() => {
     return () => {
-      // An external registry entry is never evicted, so an undisposed handle
-      // leaks the texture and the hardware buffer it retains for the life of
-      // the process. A frame still in flight lands on a stale handle, which
-      // native logs and ignores.
+      // An external entry is never evicted, so an undisposed handle leaks for the process's life.
       handle.value?.dispose()
       handle.value = null
     }

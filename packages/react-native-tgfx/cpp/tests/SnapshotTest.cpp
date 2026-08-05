@@ -1,12 +1,4 @@
-// Host test for the readback tail in cpp/Snapshot.hpp: the async GPU→CPU copy,
-// the straight-alpha conversion, the encode, and the native file write that
-// backs Canvas.save().
-//
-// Every assertion is gated on real drawn pixels — the source frame is checked
-// for the colour that was actually drawn before anything is encoded, so a
-// silently blank surface fails instead of passing an all-zero round trip.
-//
-// Build and run: see cpp/tests/CMakeLists.txt.
+// Host test for the readback tail in cpp/Snapshot.hpp, gated on real drawn pixels throughout.
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -39,8 +31,7 @@ int failures = 0;
 
 constexpr int kWidth = 64;
 constexpr int kHeight = 48;
-// Half-transparent, so a premultiplied readback that skipped the straight-alpha
-// conversion would come back visibly darker.
+// Half-transparent, so a readback that skipped the straight-alpha conversion comes back darker.
 constexpr uint8_t kR = 200;
 constexpr uint8_t kG = 60;
 constexpr uint8_t kB = 30;
@@ -51,7 +42,6 @@ tgfx::Device* device() {
   return shared.get();
 }
 
-/// One filled rect covering the left half of the surface.
 std::shared_ptr<tgfx::Surface> drawFrame(tgfx::Context* context) {
   auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
   auto* canvas = surface->getCanvas();
@@ -62,8 +52,6 @@ std::shared_ptr<tgfx::Surface> drawFrame(tgfx::Context* context) {
   return surface;
 }
 
-/// The renderer's collect step, minus the display link: issue the readback,
-/// let the GPU finish, then copy it out exactly as TgfxRenderer does.
 std::shared_ptr<tgfx::Data> readBack(tgfx::Context* context,
                                      const std::shared_ptr<tgfx::Surface>& surface,
                                      tgfx::ImageInfo* info) {
@@ -83,7 +71,6 @@ std::shared_ptr<tgfx::Data> readBack(tgfx::Context* context,
   return copy;
 }
 
-/// Decode `bytes` and return them as tightly packed straight-alpha RGBA.
 std::vector<uint8_t> decode(const std::shared_ptr<tgfx::Data>& bytes, int* width,
                             int* height) {
   auto codec = tgfx::ImageCodec::MakeFrom(bytes);
@@ -102,8 +89,6 @@ std::vector<uint8_t> decode(const std::shared_ptr<tgfx::Data>& bytes, int* width
   return pixels;
 }
 
-/// True when `pixels` holds the drawn colour on the left and nothing on the
-/// right — the gate that makes every assertion below about a real frame.
 bool looksLikeTheFrame(const std::vector<uint8_t>& pixels, int width, int height,
                        int tolerance) {
   if (pixels.size() != static_cast<size_t>(width) * height * 4) {
@@ -134,7 +119,6 @@ void snapshotRoundTripsThroughPng() {
     return;
   }
 
-  // Gate: the raw readback really carries the drawn colour, at straight alpha.
   tgfxrn::SnapshotRequest rawRequest;
   rawRequest.format = "raw";
   std::shared_ptr<tgfx::Data> raw;
@@ -158,7 +142,6 @@ void snapshotRoundTripsThroughPng() {
                                  static_cast<const uint8_t*>(raw->data()) + raw->size());
   CHECK(looksLikeTheFrame(rawPixels, kWidth, kHeight, 2));
 
-  // PNG is lossless, so it must decode back to the very same frame.
   tgfxrn::SnapshotRequest pngRequest;
   std::shared_ptr<tgfx::Data> png;
   tgfxrn::finishSnapshot(pixels, info, pngRequest,
@@ -198,7 +181,6 @@ void saveWritesADecodableFile() {
                            CHECK(error.empty());
                            handedBack = std::move(data);
                          });
-  // save() must not hand the bytes back: that is the whole reason it exists.
   CHECK(handedBack == nullptr);
 
   auto onDisk = tgfx::Data::MakeFromFile(request.path);
@@ -236,8 +218,6 @@ void badRequestsReportInsteadOfProducingABlankImage() {
   CHECK(error.find("save") != std::string::npos);
 }
 
-/// The `rect` half of a request, in isolation: snapshotSourceRect is what turns a
-/// logical-pixel crop into the device rect handed to Surface::asyncReadPixels.
 void fractionalRectsRoundInsteadOfTruncating() {
   auto bounds = tgfx::Rect::MakeWH(kWidth, kHeight);
   CHECK(tgfxrn::snapshotSourceRect({}, 2.0f, bounds) == bounds);
@@ -247,8 +227,7 @@ void fractionalRectsRoundInsteadOfTruncating() {
   request.y = 3.1f;
   request.width = 12.4f;
   request.height = 9.3f;
-  // Device rect (8.4, 6.2)–(33.2, 24.8). asyncReadPixels casts to size_t, so
-  // unrounded this would read 24×18 and resolve the promise with those numbers.
+  // Device rect (8.4, 6.2)-(33.2, 24.8); unrounded this reads 24x18 and resolves with those.
   auto source = tgfxrn::snapshotSourceRect(request, 2.0f, bounds);
   CHECK(source == tgfx::Rect::MakeLTRB(8, 6, 33, 25));
   CHECK(source.width() == std::round(source.width()));
@@ -259,7 +238,6 @@ void fractionalRectsRoundInsteadOfTruncating() {
   clipped.y = 0;
   clipped.width = 40;
   clipped.height = 10;
-  // Past the right edge at ratio 2: clamped, not read out of bounds.
   CHECK(tgfxrn::snapshotSourceRect(clipped, 2.0f, bounds) ==
         tgfx::Rect::MakeLTRB(48, 0, 64, 20));
 
@@ -269,7 +247,6 @@ void fractionalRectsRoundInsteadOfTruncating() {
   outside.width = 10;
   outside.height = 10;
   CHECK(tgfxrn::snapshotSourceRect(outside, 2.0f, bounds).isEmpty());
-  // Sub-pixel crops round away to nothing rather than reading a zero-sized rect.
   tgfxrn::SnapshotRequest sliver;
   sliver.x = 1;
   sliver.y = 1;
@@ -278,10 +255,6 @@ void fractionalRectsRoundInsteadOfTruncating() {
   CHECK(tgfxrn::snapshotSourceRect(sliver, 1.0f, bounds).isEmpty());
 }
 
-/// `rect` + `scale` end to end, mirroring TgfxRenderer::startSnapshots' scaled
-/// path: crop in device pixels, blit into a scratch surface at `scale`, read
-/// that back. The crop is deliberately off-centre and asymmetric, so ignoring
-/// either the offset or the scale moves the drawn colour off its expected pixel.
 void cropAndScaleLandWhereTheyWereAsked() {
   auto* context = device()->lockContext();
   auto surface = drawFrame(context);
@@ -294,8 +267,7 @@ void cropAndScaleLandWhereTheyWereAsked() {
   request.width = 24;
   request.height = 24;
   request.scale = 1.5f;
-  // Ratio 2 → device rect (16, 0)–(64, 48): the colour fills device x 0–32, so
-  // exactly its right third lands in the crop, at the crop's left edge.
+  // Ratio 2 gives device (16, 0)-(64, 48): the colour's right third lands at the crop's left.
   auto source = tgfxrn::snapshotSourceRect(request, 2.0f, bounds);
   CHECK(source == tgfx::Rect::MakeLTRB(16, 0, 64, 48));
 
@@ -351,18 +323,13 @@ void cropAndScaleLandWhereTheyWereAsked() {
   auto near = [](int value, int expected) {
     return value >= expected - 2 && value <= expected + 2;
   };
-  // Device x 16–32 → crop x 0–16 → scaled x 0–24. Everything right of that was
-  // transparent canvas.
   int y = outHeight / 2;
   CHECK(near(at(8, y, 0), kR));
   CHECK(near(at(8, y, 1), kG));
   CHECK(near(at(8, y, 2), kB));
   CHECK(near(at(8, y, 3), kA));
-  // Ignore the crop offset and the whole frame is scaled instead: colour would
-  // run to x = 48 and this would not be transparent.
   CHECK(at(30, y, 3) == 0);
   CHECK(at(60, y, 3) == 0);
-  // Ignore the scale and the colour stops at x = 16, so this would be.
   CHECK(near(at(20, y, 3), kA));
 }
 

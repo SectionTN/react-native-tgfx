@@ -3,13 +3,10 @@ import { HARNESS_TIMEOUT_MS, runCppHarness } from '../testing/cppHarness'
 
 // Script alphabet: w = wakeUp, t = idle tick, T = tick during an in-flight frame.
 const PROGRAMS = [
-  // Idle pauses: three grace ticks, then the link is paused.
   'ttttt',
-  // A wake after the pause draws again on the next tick.
   'ttttwt',
   // #36: a wake during a long frame must survive it, and no skipped tick counts as idle.
   'twTTTTTTt',
-  // The same, with no wake at all: an in-flight frame is not idleness either.
   'tTTTTTTTTt',
 ] as const
 
@@ -50,9 +47,7 @@ test(
   () => {
     const [idle, wakeAfterPause, wakeDuringFrame, longFrame] = run()
 
-    // The power optimisation, direction one: a still canvas pauses the link.
     expect(idle).toBe('DDDPP')
-    // Direction two: setScene wakes it, and the very next tick draws.
     expect(wakeAfterPause).toBe('DDDPwD')
 
     // The regression: a frame-spanned tick neither pauses the link nor eats the wake.

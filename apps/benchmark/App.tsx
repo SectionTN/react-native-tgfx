@@ -10,8 +10,7 @@ export default function App({
   plan?: string;
   step?: string;
 }) {
-  // Required lazily: the benchmark and parity screens pull in reanimated, and
-  // `skiaonly` exists precisely to run without it.
+  // Required lazily: `skiaonly` exists precisely to run without reanimated.
   if (mode === 'skiaonly') {
     const n = Number(step ?? 0);
     let screen = <SkiaOnly />;

@@ -1,8 +1,4 @@
-/**
- * Imperative node handles: useNode() + <Rect ref> changed from event handlers,
- * with no React render behind any of it. The render counter is the point — it
- * stays where it is however much the scene moves.
- */
+// Imperative node handles: useNode() + <Rect ref> with no React render — the counter stays put.
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -25,7 +21,6 @@ import {
 const H = 160;
 const COLORS = ['#4F8EF7', '#FF9500', '#34C759', '#AF52DE', '#FF3B30'];
 
-/** A spot the pan gesture moves, so the uniform write is the only thing driving it. */
 const SPOT = `
 uniform float2 uCenter;
 uniform float uRadius;
@@ -43,15 +38,11 @@ export function ImperativeSection() {
   const stage = useNode();
   const fx = useNode();
 
-  // A colour that animates with no JS per frame: four channels, one of them a
-  // SharedValue. A colour string or packed number cannot do this — it is one
-  // integer, and a value slot carries one float.
   const red = useSharedValue(0.2);
   useEffect(() => {
     red.value = withRepeat(withTiming(1, { duration: 1200 }), -1, true);
   }, [red]);
 
-  // Not state: React must not learn about any of this.
   const geometry = useRef({ x: 20, width: 70, color: 0 });
   const renders = useRef(0);
   renders.current += 1;
@@ -70,8 +61,6 @@ export function ImperativeSection() {
     box.set({ width: g.width });
   };
 
-  // The first colour write buys four slots and re-encodes once; every one after
-  // it is a value patch, with no re-encode at all.
   const recolor = () => {
     const g = geometry.current;
     g.color = (g.color + 1) % COLORS.length;
@@ -84,8 +73,6 @@ export function ImperativeSection() {
     label.set({ x: 20 });
   };
 
-  // A drag is the case the API exists for. `set` is a worklet, so this never
-  // leaves the UI thread: no touch event crosses to JS, and no frame waits on it.
   const pan = Gesture.Pan()
     .onBegin(e => {
       'worklet';
@@ -96,8 +83,6 @@ export function ImperativeSection() {
       dot.set({ cx: e.x, cy: e.y });
     });
 
-  // Both of these are slot writes from the UI thread: a transform operand on a
-  // <Group>, and a shader uniform. Neither wakes the JS thread.
   const spin = Gesture.Pan().onUpdate(e => {
     'worklet';
     stage.set({ rotate: e.translationX / 120 });

@@ -1,13 +1,4 @@
-/**
- * Color resolution. Every public color input (hex string, `rgb()/rgba()`,
- * `hsl()/hsla()`, a CSS color name, or a packed number) is normalized to a
- * single packed 32-bit integer in `0xAARRGGBB` order, which the native C++
- * engine unpacks into a `tgfx::Color`. Keeping this purely numeric over the
- * bridge avoids string parsing in native code on every draw.
- *
- * An input that cannot be parsed resolves to opaque black and warns once in
- * `__DEV__`, matching how a missing color already degrades.
- */
+// Every colour input is normalized to a packed 0xAARRGGBB integer; an unparseable one is black.
 import { resolveNumber, type MaybeSharedValue } from './values'
 
 /**
@@ -188,7 +179,6 @@ function clampByte(n: number): number {
 }
 
 function pack(a: number, r: number, g: number, b: number): number {
-  // >>> 0 keeps the result an unsigned 32-bit integer.
   return (
     ((clampByte(a) << 24) |
       (clampByte(r) << 16) |
@@ -305,13 +295,9 @@ function fromHsl(str: string): number | undefined {
   )
 }
 
-// Scenes reuse a handful of colors across every node, and this runs once per
-// node per commit, so parsing is cached by the raw string.
 const CACHE = new Map<string, number>()
 const CACHE_LIMIT = 512
 
-// A bad color is a source-code bug, so warn once per distinct input rather than
-// once per node per frame. Capped so a scene generating garbage cannot grow it.
 const WARNED = new Set<string>()
 
 /** Test hooks, so tests can assert the cache caches and retains. */
@@ -358,8 +344,7 @@ function parseColor(str: string): number {
   }
   if (value === undefined) {
     warnUnparseable(str)
-    // Opaque black matches `PaintCmd::color`'s default, so an unparseable color
-    // degrades the same way a missing one does instead of vanishing.
+    // Opaque black is `PaintCmd::color`'s default, so a bad colour degrades like a missing one.
     return 0xff000000
   }
   return value
@@ -409,8 +394,7 @@ export function resolveColor(input: Color | undefined): number {
     return cached
   }
   const value = parseColor(input.trim().toLowerCase())
-  // Keep the first CACHE_LIMIT entries resident rather than evicting: a scene
-  // just past the cap would otherwise refill and clear every frame.
+  // Keep the first entries rather than evicting: a scene past the cap would refill every frame.
   if (CACHE.size < CACHE_LIMIT) {
     CACHE.set(input, value)
   }

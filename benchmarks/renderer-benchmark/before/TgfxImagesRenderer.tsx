@@ -1,12 +1,4 @@
-// The "before" side of the bitmap A/B — see before/README.md. The relative
-// imports are written for its destination, src/renderers/, not for here.
-//
-// Identical to src/renderers/TgfxImagesRenderer.tsx except for the one thing
-// under test: `<Image image>` takes the base64 payload directly, which is what
-// `main` accepts (`ImageProps.image: Animated<string>`). Everything else — the
-// scene, the four textures, the node census published to the acceptance gate —
-// is the same on both sides, so the only difference the numbers can be
-// attributed to is the transport.
+// The "before" side of the bitmap A/B (see before/README.md): `<Image image>` takes base64 directly.
 import React from 'react'
 import { Canvas, Image, Rect, useImage } from 'react-native-tgfx'
 import { TEXTURES } from '../assets/textures'

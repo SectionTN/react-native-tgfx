@@ -1,40 +1,10 @@
-/**
- * Translates a practical subset of SkSL — the shading language Skia's
- * `RuntimeEffect` uses — into the GLSL ES that tgfx's fragment builder emits.
- * On Metal that GLSL is cross-compiled to MSL by tgfx, so one source works on
- * both platforms.
- *
- * Supported: `uniform` declarations including `uniform shader`, SkSL's
- * `half*`/`float*` type spellings, top-level declarations above `main` (helpers,
- * `const`, `struct`), and a `main` taking the fragment position. Not supported:
- * matrices beyond 4x4, and array uniforms.
- *
- * A `uniform shader` becomes a child slot: `name.eval(coord)` and the equivalent
- * `sample(name, coord)` are both rewritten to `TGFX_CHILD_<index>(coord)`, which
- * native emits as a function wrapping the child fragment processor bound to that
- * index. `paint.ts` writes one shader payload per slot, in declaration order.
- */
-
 /** Cached and shared between callers, so every field is read-only. */
 export interface TranspiledShader {
-  /** GLSL statements forming the body of `vec4 main(vec2 <param>)`. */
   readonly body: string
-  /**
-   * Everything declared above `main`, emitted at file scope ahead of the entry
-   * point. GLSL ES has no nested functions, so a helper cannot ride in `body` —
-   * and a `const` a helper reads cannot be left behind there either.
-   */
   readonly preamble: string
-  /**
-   * Names declared in `preamble`, in declaration order. Native mangles each one
-   * per processor so two shaders declaring the same name can share a program.
-   */
   readonly functionNames: readonly string[]
-  /** Uniform names in declaration order. */
   readonly uniformNames: readonly string[]
-  /** Component count per uniform, keyed by name (1, 2, 3 or 4). */
   readonly uniformSizes: Readonly<Record<string, number>>
-  /** `uniform shader` names in declaration order; empty for most sources. */
   readonly childNames: readonly string[]
 }
 
@@ -56,7 +26,6 @@ const TYPES: Record<string, { glsl: string; size: number }> = {
   float4x4: { glsl: 'mat4', size: 16 },
 }
 
-/** Rewrite SkSL type spellings to their GLSL equivalents. */
 function toGlslTypes(src: string): string {
   return src
     .replace(/\bhalf([234])\b/g, 'vec$1')
@@ -65,7 +34,6 @@ function toGlslTypes(src: string): string {
     .replace(/\bfloat([234])\b/g, 'vec$1')
 }
 
-/** Extract the balanced `{ ... }` block starting at `open`. */
 function blockAt(src: string, open: number): string {
   let depth = 0
   for (let i = open; i < src.length; i++) {
@@ -81,7 +49,6 @@ function blockAt(src: string, open: number): string {
   throw new Error('[tgfx] shader: unbalanced braces')
 }
 
-/** True when `src` holds a `,` outside any parentheses. */
 function hasBareComma(src: string): boolean {
   let depth = 0
   for (const c of src) {
@@ -96,10 +63,6 @@ function hasBareComma(src: string): boolean {
   return false
 }
 
-/**
- * Cut the text above `main` into its top-level declarations, each ending at a
- * `;` or at the `}` closing a block (plus the `;` a `struct` carries).
- */
 function topLevelChunks(src: string): string[] {
   const chunks: string[] = []
   let depth = 0
@@ -132,11 +95,6 @@ function topLevelChunks(src: string): string[] {
   return chunks
 }
 
-/**
- * The name a top-level declaration introduces. Every one of them is emitted at
- * file scope and so has to be mangled natively, or two shaders sharing a
- * program collide on it.
- */
 function declaredName(chunk: string): string {
   const struct = /\bstruct\s+(\w+)/.exec(chunk)
   if (struct != null) {
@@ -160,8 +118,6 @@ function declaredName(chunk: string): string {
   return declarator[1] as string
 }
 
-// The source is a stable string prop, so the parse is done once per distinct
-// shader rather than once per node per commit.
 const CACHE = new Map<string, TranspiledShader>()
 
 export function transpileShader(source: string): TranspiledShader {
@@ -170,8 +126,6 @@ export function transpileShader(source: string): TranspiledShader {
     return hit
   }
   const result = transpile(source)
-  // Sources are usually module-level literals, but nothing stops one being
-  // interpolated per render, so cap the map rather than grow it forever.
   if (CACHE.size >= 64) {
     CACHE.clear()
   }
@@ -183,8 +137,7 @@ function transpile(source: string): TranspiledShader {
   const uniformNames: string[] = []
   const uniformSizes: Record<string, number> = {}
   const childNames: string[] = []
-  // Comments are stripped first so a commented-out `uniform` is not collected
-  // and a child's name in prose does not trip the guard below.
+  // Stripped first, so a commented-out `uniform` is not collected and prose cannot trip the guard.
   const withoutComments = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ' ')
   const withoutUniforms = withoutComments.replace(
     /\buniform\s+(\w+)\s+(\w+)\s*;/g,
@@ -215,8 +168,7 @@ function transpile(source: string): TranspiledShader {
   const body = blockAt(withoutUniforms, open)
   const before = withoutUniforms.slice(0, signature.index)
   const after = withoutUniforms.slice(open + body.length + 2)
-  // Only what precedes `main` is lifted, so a helper below it would be dropped
-  // and the body would call something no one declares.
+  // Only what precedes `main` is lifted, so a helper below it would be dropped.
   if (after.trim() !== '') {
     throw new Error(
       `[tgfx] shader: declarations must come before main(), found after it: '${after.trim()}'`
@@ -226,24 +178,18 @@ function transpile(source: string): TranspiledShader {
   const param = /\b(?:half2|float2|vec2)\s+(\w+)/.exec(signature[1] ?? '')
   const bind = param != null ? `vec2 ${param[1]} = fragCoord;\n` : ''
 
-  // A declaration the uniform pass could not consume — an array, or any shape
-  // its regex misses — would otherwise be emitted verbatim and fail in the
-  // driver at draw time with nothing pointing back here.
+  // A declaration the uniform pass could not consume would be emitted verbatim and fail in the driver.
   if (/\buniform\b/.test(before)) {
     throw new Error(
       '[tgfx] shader: unsupported uniform declaration — only scalar, vector and square-matrix uniforms are supported, not arrays'
     )
   }
-  // Everything above `main` goes to file scope, where GLSL ES needs it: a
-  // helper emitted there cannot see a `const` left behind in the body.
   const chunks = topLevelChunks(before)
   const names = chunks.map(declaredName)
 
   let glsl = toGlslTypes(`${bind}${body}`).trim()
   let functions = toGlslTypes(chunks.join('')).trim()
-  // `name.eval(coord)` and its Skia-flavoured spelling `sample(name, coord)`
-  // both become `TGFX_CHILD_0(coord)`. Done after the type rewrite so a child
-  // named like a type spelling cannot be mangled.
+  // Both spellings become `TGFX_CHILD_0(coord)`, after the type rewrite so a child cannot be mangled.
   childNames.forEach((name, index) => {
     const calls = [
       new RegExp(`\\b${name}\\s*\\.\\s*eval\\s*\\(`, 'g'),

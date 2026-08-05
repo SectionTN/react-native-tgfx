@@ -90,8 +90,7 @@ export function Spider({ variant, className }: { variant: Variant; className?: s
     let stopped = false
     let box = { width: 0, height: 0 }
 
-    // Absolutely positioned, so it has no box until layout runs; observe instead
-    // of measuring eagerly or the canvas is sized 1px wide.
+    // Absolutely positioned, so observe instead of measuring eagerly or the canvas is 1px wide.
     const size = () => {
       const rect = canvas.getBoundingClientRect()
       if (rect.width < 1 || rect.height < 1) return

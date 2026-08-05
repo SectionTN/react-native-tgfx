@@ -5,7 +5,6 @@ import type { TextMeasurement, TgfxFonts } from '../specs/TgfxFonts.nitro'
 import type { FontProps, ParagraphProps } from '../types'
 import { loadSource } from './source'
 
-/** The native font manager. Created once, on first use. */
 let manager: TgfxFonts | null = null
 function fonts(): TgfxFonts {
   manager ??= NitroModules.createHybridObject<TgfxFonts>('TgfxFonts')
@@ -52,13 +51,10 @@ export function loadFonts(
 }
 
 export interface FontsState {
-  /** True once every face has registered. */
   readonly ready: boolean
-  /** Why registration failed, or `null`. `ready` stays false in that case. */
   readonly error: Error | null
 }
 
-// Shared identity, so React can bail out of the redundant initial re-render.
 const PENDING: FontsState = Object.freeze({ ready: false, error: null })
 
 /**
@@ -73,8 +69,6 @@ export function useFontsState(
   families: Record<string, FontSource[]>
 ): FontsState {
   const [state, setState] = useState<FontsState>(PENDING)
-  // The record is almost always an object literal, so a new identity every
-  // render; the families and their sources are what actually identify it.
   const key = JSON.stringify(families)
 
   useEffect(() => {

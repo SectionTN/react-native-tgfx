@@ -1,5 +1,4 @@
-// JNI bridge for the Android tgfx view. Creates an EGL-backed tgfx::Window from
-// the Java Surface and forwards scene/draw/lifecycle calls to TgfxRenderer.
+// JNI bridge for the Android tgfx view: an EGL tgfx::Window from the Java Surface.
 #include <android/native_window_jni.h>
 #include <jni.h>
 
@@ -17,9 +16,7 @@
 
 namespace {
 
-// Captured in setWakeTarget(): a wake can originate on the camera producer's
-// thread or on the image registry's decode worker, neither of which is a Java
-// thread, so the JVM has to be reachable from any of them.
+// A wake can originate on a camera or decode thread, neither of which is a Java thread.
 JavaVM* gVm = nullptr;
 
 JNIEnv* wakeEnv() {
@@ -34,14 +31,11 @@ JNIEnv* wakeEnv() {
   return gVm->AttachCurrentThreadAsDaemon(&env, nullptr) == JNI_OK ? env : nullptr;
 }
 
-// Owns the renderer plus the ANativeWindow reference acquired from the Surface,
-// so we can release the window only after the EGL window has been torn down.
 struct AndroidTgfxView {
   tgfxrn::TgfxRenderer renderer;
   ANativeWindow* nativeWindow = nullptr;
 
-  // The TgfxRenderTarget to post a draw on, for a change no staging call
-  // announced. Global, because the wake does not come from a Java thread.
+  // The TgfxRenderTarget to post a draw on. Global: the wake is not from a Java thread.
   jobject wakeTarget = nullptr;
   jmethodID requestRender = nullptr;
 
@@ -70,10 +64,6 @@ std::string toString(JNIEnv* env, jstring value) {
   return result;
 }
 
-/// Delivers a snapshot result to a `TgfxNative.SnapshotCallback`. The callback
-/// arrives on a native worker thread, so it attaches to the JVM for the one
-/// call; the buffer handed over is only valid for its duration, which is why
-/// the Kotlin side copies it into a Nitro-owned ArrayBuffer there and then.
 class SnapshotSink {
  public:
   SnapshotSink(JNIEnv* env, jobject callback) {
@@ -205,17 +195,12 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
   if (view == nullptr || sceneBuffer == nullptr) {
     return;
   }
-  // The ArrayBuffer belongs to JS and is only valid for this call, so the
-  // renderer copies the words before returning.
+  // The ArrayBuffer is only valid for this call, so the renderer copies the words.
   auto* words = static_cast<const double*>(
       env->GetDirectBufferAddress(sceneBuffer));
   auto bytes = env->GetDirectBufferCapacity(sceneBuffer);
   if (words == nullptr || bytes <= 0) {
-    // Returning here also drops the string-table delta, which JS has already
-    // committed to and cannot resend — the engine's table stays a commit behind
-    // for the life of the view. Only reachable on a null/empty buffer, and the
-    // next delta warns in applyStringTable, so it is left as is; do not add a
-    // third early return above renderer.setScene without routing the delta in.
+    // Drops the string-table delta too, which JS cannot resend; do not add a third early return.
     return;
   }
   std::vector<std::string> strings;
@@ -300,8 +285,6 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setWakeTarget(JNIEnv* env, jobject, jlong
                 "buffer will not schedule a draw");
     return;
   }
-  // Only posts a runnable, so it is safe to run under the registry's listener
-  // lock and from whichever thread changed the image.
   view->renderer.setWakeCallback([view] {
     JNIEnv* wake = wakeEnv();
     if (wake != nullptr) {
@@ -351,7 +334,6 @@ JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_destroy(JNIEnv* env, jobject, jlong ptr) {
   auto* view = asView(ptr);
   if (view != nullptr) {
-    // Before the global ref goes: the callback reads it.
     view->renderer.setWakeCallback(nullptr);
     if (view->wakeTarget != nullptr) {
       env->DeleteGlobalRef(view->wakeTarget);

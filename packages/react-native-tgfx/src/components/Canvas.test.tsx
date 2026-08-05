@@ -136,8 +136,6 @@ test('unmounting still tears the root down', async () => {
   expect(scenes.at(-1)![3]).toBe(0)
 })
 
-// ---- Imperative node handles ----
-
 // A single <Rect> starts at word 4: [kind, x, y, width, height, ...paint].
 const X = 5
 const { useNode } = require('../imperative') as typeof import('../imperative')
@@ -164,8 +162,7 @@ test('a written prop reaches the engine without a React render or a re-encode', 
 
   await act(async () => box.set({ x: 120 }))
 
-  // Slots exist for every patchable prop the element carries, so even the first
-  // write is a value patch.
+  // Slots exist for every patchable prop the element carries, so even the first write patches.
   expect(scenes).toEqual([])
   expect(pushed).toEqual([[120, 0, 10, 10]])
 })
@@ -191,8 +188,7 @@ test('a prop with no slot re-encodes every write', async () => {
   expect(pushed).toEqual([])
 })
 
-// Colour costs four slots and a per-frame paint rebuild, so the first write
-// buys them and every one after it is a patch — the `opacity` bargain.
+// Colour costs four slots and a per-frame rebuild, so the first write buys them — the opacity bargain.
 test('colour re-encodes once, then patches', async () => {
   await render(<Handled />)
   scenes = []
@@ -204,7 +200,6 @@ test('colour re-encodes once, then patches', async () => {
   await act(async () => box.set({ color: '#00ff00' }))
 
   expect(scenes.length).toBe(1)
-  // [x, y, width, height, r, g, b, a] — green, opaque.
   expect(pushed).toEqual([[0, 0, 10, 10, 0, 1, 0, 1]])
 })
 
@@ -236,8 +231,7 @@ test('a write from a worklet patches the slot and never touches JS', async () =>
     delete globals._WORKLET
   }
 
-  // On the UI thread the write itself wakes the driver's mapper, so nothing is
-  // pushed from here and nothing is re-encoded.
+  // On the UI thread the write wakes the driver's mapper, so nothing is pushed from here.
   expect(scenes).toEqual([])
   expect(pushed).toEqual([])
   await act(async () => box.set({ y: 5 }))
@@ -268,7 +262,6 @@ test('redraw() forces a frame without a commit', async () => {
   expect(scenes).toEqual([])
 })
 
-// The reconciler path attaches the ref itself, which must not disturb it.
 function Boxed({ handle }: { handle: NodeHandleLike }): React.ReactElement {
   return <Rect ref={handle} x={0} y={0} width={10} height={10} color="red" />
 }
@@ -292,8 +285,7 @@ test('a handle works through the reconciler path too', async () => {
   expect(pushed).toEqual([[90, 0, 10, 10]])
 })
 
-// `Text`'s wrap width is patchable-looking but the compiler writes it as a
-// literal, so an override is not proof of a slot: every write has to re-encode.
+// `Text`'s wrap width looks patchable but is written as a literal, so every write re-encodes.
 function Labelled(): React.ReactElement {
   box = useNode()
   return (
@@ -311,7 +303,6 @@ test('a slot-shaped prop the compiler writes as a literal re-encodes every time'
   await act(async () => box.set({ width: 300 }))
 
   expect(scenes.length).toBe(2)
-  // [kind, x, y, textIndex, fontSize, ...font, width]
   expect(scenes.at(-1)!).toContain(300)
 })
 
@@ -340,12 +331,10 @@ test('a write made while the node is unmounted does not outlive its remount', as
     await new Promise((resolve) => setTimeout(resolve, 20))
   })
 
-  // 0xFFFF0000: the JSX red, not the green written while it was gone.
   expect(scenes.at(-1)!).toContain(4294901760)
 })
 
-// A layout effect runs before the passive effect the canvas compiles in, so
-// this write happens while the handle has no program behind it yet.
+// A layout effect runs before the passive effect the canvas compiles in, so there is no program yet.
 function EarlyWrite(): React.ReactElement {
   box = useNode()
   useLayoutEffect(() => {
@@ -363,8 +352,6 @@ test('a write made before the first compile survives it', async () => {
 
   expect(scenes.at(-1)!).toContain(4278255360)
 })
-
-// ---- Transform operands and shader uniforms ----
 
 const { Group } = require('./Group') as typeof import('./Group')
 const { Fill } = require('./drawings') as typeof import('./drawings')
@@ -395,8 +382,7 @@ test('a transform operand re-encodes once, then patches', async () => {
   expect(pushed).toEqual([[2]])
 })
 
-// A `ref` alone must not make the matrix live: one slot in a group's ops costs
-// it a matrix rebuild on every frame.
+// A `ref` alone must not make the matrix live: one slot costs a matrix rebuild every frame.
 test('an unwritten transform stays folded into a literal matrix', async () => {
   await render(<Spun />)
 
@@ -424,7 +410,6 @@ test('an operand the group does not declare is appended', async () => {
   await act(async () => box.set({ scale: 4 }))
 
   expect(scenes.length).toBe(1)
-  // One SharedValue behind both axes of the scale op, so one slot.
   expect(pushed).toEqual([[4]])
 })
 
@@ -451,8 +436,7 @@ function Shaded(): React.ReactElement {
   )
 }
 
-// A `ref` on a <Shader> has one job, so its uniforms are live from the first
-// compile: even the first write is a patch.
+// A `ref` on a <Shader> has one job, so its uniforms are live from the first compile.
 test('shader uniforms are slot-patched, never re-encoded', async () => {
   await render(<Shaded />)
   scenes = []
@@ -483,8 +467,6 @@ test('a uniform write from a worklet never touches JS', async () => {
   expect(pushed.at(-1)).toEqual([1, 2, 9])
 })
 
-// ---- Regressions from the branch review ----
-
 const sv = (value: number) => ({
   value,
   _isReanimatedSharedValue: true as const,
@@ -509,8 +491,7 @@ function CallerUniform(): React.ReactElement {
   )
 }
 
-// A ref exists to make *some* uniform patchable; it must not quietly take over
-// one the caller is already animating, which would leave it driven by nothing.
+// A ref must not take over a uniform the caller is already animating, leaving it driven by nothing.
 test("a ref does not evict a caller's own SharedValue uniform", async () => {
   caller = sv(0.9)
   await render(<CallerUniform />)
@@ -521,7 +502,6 @@ test("a ref does not evict a caller's own SharedValue uniform", async () => {
   caller.value = 0.5
   await act(async () => box.set({ uniforms: { uB: 8 } }))
 
-  // 0.5, not 0: the caller's value still reaches the engine.
   expect(pushed.at(-1)).toEqual([0.5, 8])
 })
 
@@ -542,9 +522,7 @@ function WidenedUniform(): React.ReactElement {
   )
 }
 
-// Widening one uniform shifts every later one's base. The recompile that hands
-// over the wider run does not reseed from the JSX, so without carrying the
-// values across, the write is lost and the neighbour reads a stale offset.
+// Widening shifts every later base, and the recompile does not reseed from the JSX.
 test('widening a uniform keeps its own write and its neighbour', async () => {
   await render(<WidenedUniform />)
   scenes = []
@@ -554,7 +532,6 @@ test('widening a uniform keeps its own write and its neighbour', async () => {
   const words = scenes.at(-1)!
   expect(words).toContain(7)
   expect(words).toContain(8)
-  // uB still 3, not 0 and not uA's leftover.
   expect(words).toContain(3)
 })
 
@@ -562,8 +539,7 @@ test('an animated colour channel is unwrapped, not stored as NaN', async () => {
   await render(<Handled />)
   const red = sv(1)
 
-  // First write opts colour in and seeds through the parser; the second takes
-  // the worklet fast path, which is where the unwrap was missing.
+  // The first write seeds through the parser; the second takes the worklet fast path.
   await act(async () => box.set({ color: [red, 0, 0, 1] }))
   await act(async () => box.set({ color: [red, 0, 0, 1] }))
 
@@ -580,8 +556,7 @@ function Untransformable(): React.ReactElement {
   )
 }
 
-// Only a <Group> is written with a matrix. A recompile could never give this
-// operand a slot, so asking for one would re-encode on every write, forever.
+// Only a <Group> gets a matrix, so asking for a recompile would re-encode on every write, forever.
 test('a transform write to a non-Group is dropped without re-encoding', async () => {
   await render(<Untransformable />)
   scenes = []
@@ -593,8 +568,6 @@ test('a transform write to a non-Group is dropped without re-encoding', async ()
   expect(scenes).toEqual([])
   expect(pushed).toEqual([])
 })
-
-// ---- Regressions from the re-review of the fix commit ----
 
 const THREE = `
 uniform float uA;
@@ -620,26 +593,20 @@ function GrowingUniforms(): React.ReactElement {
   )
 }
 
-// The value carried to the compile that hands over a run must be consumed by
-// it. Left in place it outranks the slot on the next compile and undoes every
-// write made since.
+// The carried value must be consumed by the compile that hands over the run, or it outranks the slot.
 test('a uniform does not snap back to the value that won it its slot', async () => {
   await render(<GrowingUniforms />)
 
   await act(async () => box.set({ uniforms: { uA: 1 } }))
   await act(async () => box.set({ uniforms: { uA: 9 } }))
-  // Needs a run of its own, so it recompiles — and uA must survive that.
   await act(async () => box.set({ uniforms: { uC: 5 } }))
   pushed = []
   await act(async () => box.set({ uniforms: { uB: 11 } }))
 
-  // The values array is the handle's slots in writer order: uA, uB, uC.
-  // uA is 9, not the 1 that won it its run.
   expect(pushed.at(-1)).toEqual([9, 11, 5])
 })
 
-// Growth appends rather than relocating: a run already handed out keeps its
-// offset, so nothing has to read back a slot the UI thread may own.
+// Growth appends rather than relocating, so nothing reads back a slot the UI thread may own.
 test('growing one uniform leaves its neighbours where they are', async () => {
   await render(<GrowingUniforms />)
 
@@ -663,8 +630,7 @@ function ShaderOnly(): React.ReactElement {
   )
 }
 
-// A <Shader> is reached through applyUniforms alone, which reads neither
-// `overrides` nor `ops` — so anything else would re-encode and change nothing.
+// A <Shader> is reached through applyUniforms alone, so anything else re-encodes for nothing.
 test('a non-uniform write to a shader handle is dropped, not re-encoded', async () => {
   await render(<ShaderOnly />)
   scenes = []
@@ -677,8 +643,7 @@ test('a non-uniform write to a shader handle is dropped, not re-encoded', async 
   expect(pushed).toEqual([])
 })
 
-// The commit is the source of truth for uniforms too: a value written to a name
-// the JSX does not declare has to go with everything else.
+// The commit is the source of truth for uniforms too, including names the JSX does not declare.
 test('a React commit drops an imperatively grown uniform', async () => {
   await render(<GrowingUniforms />)
 
@@ -693,13 +658,10 @@ test('a React commit drops an imperatively grown uniform', async () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
   })
 
-  // uA is back to the shader's own default, and holds no slot at all.
   pushed = []
   await act(async () => box.set({ uniforms: { uB: 3 } }))
   expect(pushed.at(-1)).toEqual([3])
 })
-
-// ---- Regressions from the third review pass ----
 
 const ONE = `
 uniform float uA;
@@ -719,9 +681,7 @@ function ShaderInGroup(): React.ReactElement {
   )
 }
 
-// A run granted from pool bookkeeping alone may never reach the program. The
-// carried value has to survive that, or the equal-value guard never fires and
-// every write re-encodes the whole scene forever.
+// A run granted from bookkeeping alone may never reach the program, and the value must survive.
 test('a uniform whose run never reaches the program stops re-encoding', async () => {
   await render(<ShaderInGroup />)
   scenes = []
@@ -730,7 +690,6 @@ test('a uniform whose run never reaches the program stops re-encoding', async ()
     await act(async () => box.set({ uniforms: { uA: 3 } }))
   }
 
-  // The first write asks for a run; the rest compare equal and stop.
   expect(scenes.length).toBeLessThanOrEqual(1)
 })
 
@@ -746,8 +705,7 @@ function UniformsOnNode(): React.ReactElement {
   )
 }
 
-// apply() never reads uniforms, so the re-encode would be byte-identical and
-// the write would land nowhere — once per write, forever.
+// apply() never reads uniforms, so the re-encode is byte-identical and the write lands nowhere.
 test('uniforms written to a drawing-node handle are dropped, not re-encoded', async () => {
   await render(<UniformsOnNode />)
   scenes = []
@@ -760,8 +718,7 @@ test('uniforms written to a drawing-node handle are dropped, not re-encoded', as
   expect(pushed).toEqual([])
 })
 
-// A zero, negative or NaN scale reaches the GPU as "could not allocate a scaled
-// target", which blames the device for the caller's argument.
+// A bad scale reaches the GPU as "could not allocate a scaled target", blaming the device.
 test('a non-positive snapshot scale is rejected at the boundary', async () => {
   const handle = React.createRef<import('../types').CanvasHandle>()
   await render(<Canvas ref={handle}>{null}</Canvas>)

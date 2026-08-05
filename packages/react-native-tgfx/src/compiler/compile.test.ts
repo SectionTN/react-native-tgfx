@@ -11,7 +11,6 @@ const sharedValue = (value: number) => ({
   _isReanimatedSharedValue: true as const,
 })
 
-/** Stands in for a native TgfxImage: the compiler only reads `.handle`. */
 const handle = (id: number) => ({ handle: id })
 
 function compile(roots: Node[]) {
@@ -28,8 +27,7 @@ test('encodes a rect with its paint', () => {
   expect(words[0]).toBe(SCENE_VERSION)
   expect(strings).toEqual([])
   expect(values).toEqual([])
-  // header(3) rootCount kind x y w h + paint(color flags sw cap join alpha
-  // shader) + patch table (count only)
+  // header(3) rootCount kind x y w h + paint(7) + patch table (count only)
   expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
   expect(Array.from(used.subarray(3, 9))).toEqual([1, Kind.Rect, 1, 2, 3, 4])
   expect(used[9]).toBe(0xffff0000) // packed AARRGGBB
@@ -45,13 +43,10 @@ test('records a patch for every animated field, and reuses one slot', () => {
   expect(values).toEqual([radius])
   const patchStart = used[2]
   expect(used[patchStart]).toBe(2)
-  // Both patched words point at the same slot, and at cx and r respectively.
   expect(used[patchStart + 1]).toBe(5)
   expect(used[patchStart + 2]).toBe(0)
   expect(used[patchStart + 3]).toBe(7)
   expect(used[patchStart + 4]).toBe(0)
-  // The literal carries the current value, not a placeholder: it is what native
-  // renders until the first setValues lands.
   expect(used[5]).toBe(7)
   expect(used[6]).toBe(5)
 })
@@ -87,8 +82,7 @@ test('multiplies group opacity into the child alpha', () => {
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, opacity: 0.5 }),
     ]),
   ])
-  // group(kind ops=0 children=1) rect(kind x y w h) paint(color flags sw cap
-  // join alpha)
+  // group(kind ops=0 children=1) rect(kind x y w h) paint(color flags sw cap join alpha)
   expect(used[17]).toBeCloseTo(0.25)
 })
 
@@ -100,7 +94,6 @@ test('keeps an animated group opacity as a live alpha slot', () => {
     ]),
   ])
   expect(values).toEqual([fade])
-  // group(kind ops=0 children=1) rect(kind x y w h) paint(... alpha at 17)
   expect(used[17]).toBeCloseTo(0.4)
   const patchStart = used[2]!
   expect(used[patchStart]).toBe(1)
@@ -143,7 +136,6 @@ test('folds <Paint opacity> into the alpha', () => {
       node(NodeType.Paint, { opacity: 0.25 }),
     ]),
   ])
-  // rect(kind x y w h) paint(color flags sw cap join alpha)
   expect(used[14]).toBeCloseTo(0.25)
 })
 
@@ -173,7 +165,6 @@ test('writes an alpha word for images so they inherit group opacity', () => {
       }),
     ]),
   ])
-  // The whole point of the handle: no image payload in the string table.
   expect(strings).toEqual([])
   expect(used.length).toBe(3 + 1 + 3 + IMAGE_WORDS + 1)
   expect(used[12]).toBe(9) // the native handle, not a string index
@@ -285,7 +276,6 @@ test('a <CameraFrame> turns a rotation into clockwise quarter turns', () => {
   expect(turns(90)).toBe(1)
   expect(turns(180)).toBe(2)
   expect(turns(270)).toBe(3)
-  // A frame reporting orientation 'left' asks for -90; it must not wrap to -1.
   expect(turns(-90)).toBe(3)
   expect(turns(360)).toBe(0)
   expect(turns(undefined)).toBe(0)
@@ -297,13 +287,11 @@ test('a <CameraFrame> child inherits its opacity, like a group', () => {
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
     ]),
   ])
-  // The frame's own alpha, then the child rect's.
   expect(used[15]).toBeCloseTo(0.5)
   expect(used[28]).toBeCloseTo(0.5)
 })
 
-// The invariant the native dedupe key rests on: strings are indices, so the
-// words alone cannot tell a content change apart. See cpp/SceneHash.hpp.
+// Strings are indices, so the words alone cannot tell a content change apart. See cpp/SceneHash.hpp.
 test('a text-only change leaves the word buffer byte-identical', () => {
   const usedBytes = (buffer: ArrayBuffer) =>
     new Uint8Array(buffer).slice(0, new Float64Array(buffer)[1]! * 8)
@@ -342,9 +330,7 @@ test('a text node carries its font block and its paragraph block', () => {
     }),
   ])
   expect(strings).toEqual(['PT Serif', 'hi', '', '…'])
-  // x y size | family weight italic spacing | runs: count text family weight
-  // italic spacing size hasColor color | width align lh maxLines ellipsis
-  // The run's italic is 0 — inherit — so the node's own italic still applies.
+  // x y size | family weight italic spacing | run: count text family weight italic spacing size hasColor color | width align lh maxLines ellipsis
   expect(Array.from(used.subarray(5, 25))).toEqual([
     1, 2, 16, 0, 700, 1, 1.5, 1, 1, 2, 0, 0, 0, 0, 0, 0, 120, 1, 22, 2,
   ])
@@ -355,10 +341,7 @@ test('an omitted font block defaults to normal, upright and unwrapped', () => {
   const { used, strings } = compile([
     node(NodeType.Text, { x: 0, y: 0, text: 'hi' }),
   ])
-  // The family and the ellipsis are both the empty string, interned once.
   expect(strings).toEqual(['', 'hi'])
-  // size | family weight italic spacing | one run that overrides nothing |
-  // width align lh maxLines ellipsis
   expect(Array.from(used.subarray(7, 25))).toEqual([
     14, 0, 400, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   ])
@@ -385,14 +368,12 @@ test('a text path carries the path, the text and the font block', () => {
     0,
     0,
   ])
-  // One run: count, text, family, weight, italic, spacing, size, colour flag+value
   expect(Array.from(used.subarray(11, 19))).toEqual([1, 2, 3, 0, 0, 0, 0, 0])
   expect(used[19]).toBe(0) // colour
   expect(used[20]).toBe(4) // startOffset
 })
 
-// Golden encoding: paint-bearing children add paint but never enter the stream.
-// Word 0 is the version, which every bump would otherwise strand this golden on.
+// Golden encoding: paint-bearing children add paint but never enter the stream. Word 0 is the version.
 const MIXED_GROUP_WORDS = [
   SCENE_VERSION,
   60,
@@ -502,8 +483,6 @@ test('a constant shared value renders at its value, not at zero', () => {
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
     ]),
   ])
-  // A shared value that never changes never gets a setValues, so a zero literal
-  // would leave the group permanently invisible.
   expect(used[17]).toBeCloseTo(1)
 })
 
@@ -514,8 +493,7 @@ test('a non-finite shared value falls back rather than writing NaN', () => {
   expect(used[5]).toBe(0)
 })
 
-// The engine draws a compiled paint as-is, so a `<Line>` — which has no
-// interior to fill — has to carry the stroke style and its width from here.
+// A `<Line>` has no interior to fill, so it has to carry the stroke style and width from here.
 test('compiles a line as a stroke that keeps its stroke width', () => {
   const { used } = compile([
     node(NodeType.Line, { x1: 0, y1: 0, x2: 10, y2: 5, strokeWidth: 4 }),
@@ -530,8 +508,7 @@ test('leaves a non-line node filled by default', () => {
   expect(used[10]! & 1).toBe(0)
 })
 
-// Paint block layout, mirrored by readPaint in cpp/TgfxScene.cpp:
-// color, flags, strokeWidth, cap, join, alpha, shader.
+// Paint block, mirrored by readPaint: color, flags, strokeWidth, cap, join, alpha, shader.
 const RECT_STROKE_WIDTH_WORD = 11
 const RECT_ALPHA_WORD = 14
 
@@ -562,7 +539,6 @@ test('animates a strokeWidth inherited from a group', () => {
     ]),
   ])
   expect(values).toEqual([width])
-  // group(kind ops=0 children=1) rect(kind x y w h) paint(color flags sw ...)
   const strokeWidthWord = 14
   const patchStart = used[2]!
   expect(used[patchStart]).toBe(1)
@@ -578,8 +554,7 @@ test('keeps a static strokeWidth a literal with no patch', () => {
   expect(used[used[2]!]).toBe(0)
 })
 
-// nextAnim matches patches positionally, so the reader only stays in step if
-// strokeWidth stays one word and its patch keeps ascending word order.
+// nextAnim matches patches positionally, so strokeWidth must stay one word in ascending order.
 test('an animated strokeWidth costs no extra word and stays ordered', () => {
   const props = { x: 0, y: 0, width: 1, height: 1, opacity: sharedValue(0.5) }
   const staticScene = compile([node(NodeType.Rect, props)])
@@ -616,10 +591,8 @@ half4 main(float2 p) {
   const patchStart = used[2]
   expect(used[patchStart]).toBe(1)
   const at = used[patchStart + 1]
-  // The patched word is the uniform's literal, kept as the pre-setValues value.
   expect(used[at]).toBe(0.75)
   expect(used[patchStart + 2]).toBe(0)
-  // The static vector is written straight through, unpatched.
   expect(Array.from(used.subarray(at + 3, at + 5))).toEqual([8, 9])
 })
 
@@ -642,8 +615,7 @@ test('a uniform vector may mix animated and static components', () => {
   expect(used[at + 1]).toBe(9)
 })
 
-// A one-sided bump leaves every test green and fails on device as a blank
-// canvas, so the two constants are checked against each other directly.
+// A one-sided bump is green here and a blank canvas on device, so the two constants are compared.
 test('the native wire version matches SCENE_VERSION', async () => {
   const hpp = await Bun.file(
     new URL('../../cpp/TgfxScene.hpp', import.meta.url)
@@ -654,7 +626,6 @@ test('the native wire version matches SCENE_VERSION', async () => {
 
 test('a Fill writes its paint and no geometry', () => {
   const { used } = compile([node(NodeType.Fill, { color: '#ff0000' })])
-  // header(3) rootCount kind + paint(7) + patch count
   expect(used.length).toBe(3 + 1 + 1 + 7 + 1)
   expect(used[4]).toBe(Kind.Fill)
   expect(used[5]).toBe(0xffff0000)
@@ -688,15 +659,11 @@ test('a shader child of a <Shader> is written after its uniforms', () => {
       ]),
     ]),
   ])
-  // header(3) + rootCount + kind + x,y,w,h + paint(6) puts the shader code at
-  // 15: kind 6, body, preamble, 0 functions, 0 uniforms, then the child count
-  // and one nested shader payload. A count written anywhere else desyncs
-  // everything after it.
+  // Shader code starts at 15: kind 6, body, preamble, 0 functions, 0 uniforms, then the child count.
   expect([...used.slice(15, 23)]).toEqual([6, 0, 1, 0, 0, 1, 7, 77])
 })
 
-// The rewritten body calls TGFX_CHILD_0. With no child bound, native has
-// nothing to emit for it and the shape would silently not paint.
+// The rewritten body calls TGFX_CHILD_0, which native cannot emit with no child bound.
 test('a child declaration with no shader child throws', () => {
   expect(() =>
     compile([
@@ -720,8 +687,7 @@ test('more shader children than declarations throws', () => {
   ).toThrow(/but 2 shader children were given/)
 })
 
-// Filter block layout, mirrored by readFilters in cpp/TgfxScene.cpp: blend
-// mode, then the colour and image filter, each a kind code (-1 = none).
+// Filter block, mirrored by readFilters: blend mode, then colour and image filter (-1 = none).
 const RECT_FLAGS_WORD = 10
 const RECT_FILTERS_WORD = 15
 
@@ -730,7 +696,6 @@ test('an unfiltered paint writes no filter block and no flag bit', () => {
     node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
   ])
   expect(used[RECT_FLAGS_WORD]! & 4).toBe(0)
-  // The word after alpha is the shader code, not a blend mode.
   expect(used[RECT_FILTERS_WORD]).toBe(-1)
   expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
 })
@@ -760,7 +725,6 @@ test('writes a blend mode as its tgfx enum index', () => {
     }),
   ])
   expect(used[RECT_FLAGS_WORD]! & 4).toBe(4)
-  // blend, no colour filter, no image filter, then the shader code.
   expect(
     Array.from(used.subarray(RECT_FILTERS_WORD, RECT_FILTERS_WORD + 4))
   ).toEqual([24, -1, -1, -1])
@@ -799,7 +763,6 @@ test('writes a <BlendColor> child as a packed colour and a mode', () => {
       node(NodeType.BlendColor, { color: '#ff0000', mode: 'screen' }),
     ]),
   ])
-  // Circle has one geometry word fewer than Rect.
   const at = RECT_FILTERS_WORD - 1
   expect(Array.from(used.subarray(at, at + 5))).toEqual([
     3, 1, 0xffff0000, 14, -1,
@@ -855,8 +818,7 @@ test('inherits a filter from a <Group> into every descendant', () => {
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
     ]),
   ])
-  // group(kind, opCount, childCount) then two rects of kind + 4 geometry +
-  // 6 paint head + 6 filter + 1 shader words.
+  // group(kind, opCount, childCount) then two rects of kind + 4 geometry + 6 paint + 6 filter + 1.
   const first = 3 + 1 + 3 + 5 + 6
   const second = first + 6 + 1 + 11
   expect(Array.from(used.subarray(first, first + 4))).toEqual([24, -1, 0, 2])
@@ -875,7 +837,6 @@ test('two filters of the same class on one paint warn in development', () => {
         node(NodeType.Blur, { blur: 7 }),
       ]),
     ])
-    // One of each class together is the supported case, and must stay quiet.
     compile([
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
         node(NodeType.Blur, { blur: 2 }),
@@ -918,7 +879,6 @@ test('spans become the run list, and the text prop steps aside', () => {
     },
   ])
   expect(strings).toEqual(['', 'plain ', 'bold'])
-  // Two runs: (text, family, weight, italic, spacing, size, hasColor, colour)
   expect(used[12]).toBe(2)
   expect(Array.from(used.subarray(13, 21))).toEqual([1, 0, 0, 0, 0, 0, 0, 0])
   expect(Array.from(used.subarray(21, 29))).toEqual([
@@ -934,7 +894,6 @@ test('a span says whether it inherits the italic, forces it, or forces upright',
         children: [node(NodeType.Span, { text: 'hi', fontStyle })],
       },
     ])
-    // count, text, family, weight, italic
     return used[16]
   }
   expect(runs(undefined)).toBe(0)
@@ -1003,8 +962,6 @@ test('a live channel writes four patched colour words after the flags', () => {
     }),
   ])
   expect(values).toEqual([green])
-  // The packed word still carries the snapshot, so a reader that ignores the
-  // bit draws the last committed colour rather than nothing.
   expect(used[9]).toBe(0xff008000)
   expect(used[10]).toBe(2 | 8)
   expect(Array.from(used.subarray(11, 15))).toEqual([0, 0.5, 0, 1])
