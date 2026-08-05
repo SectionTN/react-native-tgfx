@@ -23,4 +23,16 @@ public final class NitroTgfxAutolinking {
   public static func isTgfxViewRecyclable() -> Bool {
     return HybridTgfxView.self is any RecyclableView.Type
   }
+  
+  public static func createTgfxVideoFactory() -> bridge.std__shared_ptr_HybridTgfxVideoFactorySpec_ {
+    let hybridObject = HybridTgfxVideoFactory()
+    return { () -> bridge.std__shared_ptr_HybridTgfxVideoFactorySpec_ in
+      let __cxxWrapped = hybridObject.getCxxWrapper()
+      return __cxxWrapped.getCxxPart()
+    }()
+  }
+  
+  public static func isTgfxVideoFactoryRecyclable() -> Bool {
+    return HybridTgfxVideoFactory.self is any RecyclableView.Type
+  }
 }

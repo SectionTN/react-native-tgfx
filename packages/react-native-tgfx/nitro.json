@@ -40,6 +40,16 @@
         "language": "c++",
         "implementationClassName": "HybridTgfxSlotsFactory"
       }
+    },
+    "TgfxVideoFactory": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridTgfxVideoFactory"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridTgfxVideoFactory"
+      }
     }
   },
   "ignorePaths": [

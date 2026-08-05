@@ -70,7 +70,10 @@ export {
   useImageState,
 } from './hooks/useImage'
 export type { ImageState } from './hooks/useImage'
+export { loadVideo, useVideo } from './hooks/useVideo'
+export type { Video, VideoOptions } from './hooks/useVideo'
 export type { PixelFormat } from './specs/TgfxImage.nitro'
+export type { TgfxVideo } from './specs/TgfxVideo.nitro'
 
 export { TgfxNativeView } from './views/TgfxNativeView'
 export type { TgfxViewRef } from './views/TgfxNativeView'

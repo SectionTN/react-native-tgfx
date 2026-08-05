@@ -13,6 +13,7 @@
 #include "TgfxRenderer.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
+#include "tgfx/platform/android/HardwareBufferJNI.h"
 
 namespace {
 
@@ -342,6 +343,18 @@ Java_com_margelo_nitro_tgfx_TgfxNative_destroy(JNIEnv* env, jobject, jlong ptr) 
     view->releaseWindow();
     delete view;
   }
+}
+
+// The AHardwareBuffer behind a java.hardware.HardwareBuffer, for the image path.
+// Valid only while the Java object is open: it owns the reference, not us.
+JNIEXPORT jlong JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_hardwareBufferPointer(JNIEnv* env, jobject,
+                                                             jobject buffer) {
+  if (buffer == nullptr) {
+    return 0;
+  }
+  // tgfx's, not the NDK's: the symbol only exists from API 26, and this resolves it at runtime.
+  return reinterpret_cast<jlong>(tgfx::HardwareBufferFromJavaObject(env, buffer));
 }
 
 }  // extern "C"

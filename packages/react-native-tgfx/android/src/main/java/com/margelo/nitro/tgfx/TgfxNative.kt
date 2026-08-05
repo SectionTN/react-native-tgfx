@@ -1,7 +1,11 @@
 package com.margelo.nitro.tgfx
 
+import android.graphics.SurfaceTexture
+import android.hardware.HardwareBuffer
+import android.os.Build
 import android.view.Surface
 import androidx.annotation.Keep
+import androidx.annotation.RequiresApi
 import com.facebook.proguard.annotations.DoNotStrip
 import java.nio.ByteBuffer
 
@@ -46,4 +50,34 @@ internal object TgfxNative {
 
   external fun hasPendingSnapshot(ptr: Long): Boolean
   external fun destroy(ptr: Long)
+
+  /** The `AHardwareBuffer*` a [HardwareBuffer] wraps; valid only while that object is open. */
+  @RequiresApi(Build.VERSION_CODES.O)
+  external fun hardwareBufferPointer(buffer: HardwareBuffer): Long
+
+  /** A tgfx SurfaceTextureReader a video decoder renders into; see TgfxVideoStream.cpp. */
+  external fun videoStreamCreate(
+    width: Int,
+    height: Int,
+    listener: SurfaceTexture.OnFrameAvailableListener
+  ): Long
+
+  /** A fresh Surface onto the stream's SurfaceTexture; the caller releases it. */
+  external fun videoStreamSurface(ptr: Long): Surface?
+
+  external fun videoStreamNotify(ptr: Long)
+
+  /** Points the stream's image at its newest frame; returns the image id, 0 if none. */
+  external fun videoStreamUpdate(ptr: Long): Int
+
+  /** Drops the reader, whose textures belong to a GPU context that is going away. */
+  external fun videoStreamRelease(ptr: Long)
+
+  /** A fresh reader on the same image id; the decoder must be re-pointed at the Surface. */
+  external fun videoStreamRebuild(
+    ptr: Long,
+    listener: SurfaceTexture.OnFrameAvailableListener
+  ): Surface?
+
+  external fun videoStreamDestroy(ptr: Long)
 }

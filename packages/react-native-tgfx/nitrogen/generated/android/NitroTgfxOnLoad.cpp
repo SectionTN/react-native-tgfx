@@ -15,6 +15,8 @@
 #include <fbjni/fbjni.h>
 #include <NitroModules/HybridObjectRegistry.hpp>
 
+#include "JHybridTgfxVideoSpec.hpp"
+#include "JHybridTgfxVideoFactorySpec.hpp"
 #include "JHybridTgfxViewSpec.hpp"
 #include "views/JHybridTgfxViewStateUpdater.hpp"
 #include <NitroModules/DefaultConstructableObject.hpp>
@@ -38,12 +40,22 @@ struct JHybridTgfxViewSpecImpl: public jni::JavaClass<JHybridTgfxViewSpecImpl, J
     return javaPart->getJHybridTgfxViewSpec();
   }
 };
+struct JHybridTgfxVideoFactorySpecImpl: public jni::JavaClass<JHybridTgfxVideoFactorySpecImpl, JHybridTgfxVideoFactorySpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/tgfx/HybridTgfxVideoFactory;";
+  static std::shared_ptr<JHybridTgfxVideoFactorySpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridTgfxVideoFactorySpecImpl::javaobject()>();
+    jni::local_ref<JHybridTgfxVideoFactorySpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridTgfxVideoFactorySpec();
+  }
+};
 
 void registerAllNatives() {
   using namespace margelo::nitro;
   using namespace margelo::nitro::tgfx;
 
   // Register native JNI methods
+  margelo::nitro::tgfx::JHybridTgfxVideoSpec::CxxPart::registerNatives();
+  margelo::nitro::tgfx::JHybridTgfxVideoFactorySpec::CxxPart::registerNatives();
   margelo::nitro::tgfx::JHybridTgfxViewSpec::CxxPart::registerNatives();
   margelo::nitro::tgfx::views::JHybridTgfxViewStateUpdater::registerNatives();
 
@@ -79,6 +91,12 @@ void registerAllNatives() {
                     "The HybridObject \"HybridTgfxSlotsFactory\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridTgfxSlotsFactory>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TgfxVideoFactory",
+    []() -> std::shared_ptr<HybridObject> {
+      return JHybridTgfxVideoFactorySpecImpl::create();
     }
   );
 }

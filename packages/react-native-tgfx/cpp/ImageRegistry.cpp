@@ -84,6 +84,26 @@ ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image) {
   return {handle, stored.width, stored.height};
 }
 
+ImageHandle ImageRegistry::addStream(std::function<std::shared_ptr<tgfx::Image>()> produce,
+                                     int width, int height) {
+  if (produce == nullptr) {
+    return {};
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  int32_t handle = nextHandle_++;
+  Entry entry;
+  entry.width = width;
+  entry.height = height;
+  entry.produce = std::move(produce);
+  // Never touched into the LRU: the frames are the producer's, not ours to budget.
+  auto& stored = entries_.emplace(handle, std::move(entry)).first->second;
+  return {handle, stored.width, stored.height};
+}
+
+void ImageRegistry::invalidate() {
+  bumpEpoch();
+}
+
 bool ImageRegistry::replaceExternal(int32_t handle,
                                     std::shared_ptr<tgfx::Image> image) {
   if (image == nullptr) {
@@ -126,7 +146,7 @@ void ImageRegistry::remove(int32_t handle) {
 }
 
 std::shared_ptr<tgfx::Image> ImageRegistry::acquire(int32_t handle, bool* external) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
   auto it = entries_.find(handle);
   if (it == entries_.end()) {
     return nullptr;
@@ -134,6 +154,12 @@ std::shared_ptr<tgfx::Image> ImageRegistry::acquire(int32_t handle, bool* extern
   auto& entry = it->second;
   if (external != nullptr) {
     *external = entry.external();
+  }
+  if (entry.produce != nullptr) {
+    // Outside the lock: the producer takes its own, and this runs on the render thread.
+    auto produce = entry.produce;
+    lock.unlock();
+    return produce();
   }
   if (entry.external()) {
     return entry.decoded;
