@@ -11,6 +11,7 @@ import android.os.Looper
 import android.view.Surface
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
+import com.facebook.react.bridge.LifecycleEventListener
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
 import java.io.File
@@ -28,15 +29,43 @@ import java.util.concurrent.FutureTask
 class HybridTgfxVideo(
   private val player: MediaPlayer,
   private val stream: Long,
-  private val surface: Surface,
-  @Suppress("unused") private val listener: Any,
+  private var surface: Surface,
+  private val listener: SurfaceTexture.OnFrameAvailableListener,
   override val duration: Double,
   override val framerate: Double,
   override val rotation: Double,
   override val width: Double,
   override val height: Double,
-) : HybridTgfxVideoSpec() {
+) : HybridTgfxVideoSpec(), LifecycleEventListener {
   private var released = false
+
+  init {
+    NitroModules.applicationContext?.addLifecycleEventListener(this)
+  }
+
+  /**
+   * The canvas builds a new GPU context when the app comes back, and a reader's
+   * textures belong to the context that first drew them — drawing one against the
+   * new context is a null dereference inside tgfx. So the reader goes away with
+   * the old context and the decoder is re-pointed at a fresh one on resume.
+   */
+  override fun onHostPause() {
+    if (!released) {
+      TgfxNative.videoStreamRelease(stream)
+    }
+  }
+
+  override fun onHostResume() {
+    if (released) return
+    val next = TgfxNative.videoStreamRebuild(stream, listener) ?: return
+    player.setSurface(next)
+    surface.release()
+    surface = next
+  }
+
+  override fun onHostDestroy() {
+    release()
+  }
 
   override val currentTime: Double
     get() = if (released) 0.0 else player.currentPosition.toDouble()
@@ -72,6 +101,7 @@ class HybridTgfxVideo(
   override fun release() {
     if (released) return
     released = true
+    NitroModules.applicationContext?.removeLifecycleEventListener(this)
     player.setSurface(null)
     player.release()
     surface.release()

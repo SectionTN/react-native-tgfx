@@ -66,6 +66,14 @@ exactly this. Two things about it are easy to get wrong:
   expires frames before the renderer ever draws them, and the video freezes on
   the first.
 
+- **The reader does not survive the app going away and coming back.** A canvas
+  builds a fresh `EGLWindow`, and so a fresh GPU context, when its surface is
+  recreated; a reader's textures belong to the context that first drew them.
+  Drawing one against the new context dereferences a null `tgfx::Context` deep
+  inside `ResourceTask::execute` and takes the process down. So the video drops
+  its reader on `onHostPause` and rebuilds it — new reader, new Surface, decoder
+  re-pointed — on `onHostResume`. Nothing draws in between.
+
 Hence the registry's *stream* entry (`ImageRegistry::addStream`): the image is
 produced inside `acquire()`, on the render thread, at draw time. A pull that
 finds a new frame only moves the epoch so the canvas redraws; the buffer itself

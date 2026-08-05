@@ -70,5 +70,14 @@ internal object TgfxNative {
   /** Points the stream's image at its newest frame; returns the image id, 0 if none. */
   external fun videoStreamUpdate(ptr: Long): Int
 
+  /** Drops the reader, whose textures belong to a GPU context that is going away. */
+  external fun videoStreamRelease(ptr: Long)
+
+  /** A fresh reader on the same image id; the decoder must be re-pointed at the Surface. */
+  external fun videoStreamRebuild(
+    ptr: Long,
+    listener: SurfaceTexture.OnFrameAvailableListener
+  ): Surface?
+
   external fun videoStreamDestroy(ptr: Long)
 }
