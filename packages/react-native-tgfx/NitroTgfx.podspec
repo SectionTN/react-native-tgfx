@@ -41,7 +41,7 @@ Pod::Spec.new do |s|
   # bridging header — those are unsupported for framework/module pod targets), so
   # the Swift HybridTgfxView can see TgfxMetalView in-module. Its C++ guts stay
   # in the .mm; the header itself is pure Obj-C.
-  s.public_header_files = "ios/TgfxMetalView.h"
+  s.public_header_files = ["ios/TgfxMetalView.h", "ios/TgfxVideoFrame.h"]
 
   s.pod_target_xcconfig = {
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",

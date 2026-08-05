@@ -18,36 +18,21 @@ mock.module('react-native-worklets', () => ({
   },
 }))
 
-class FakeImage {
-  handle = 3
-  width = 640
-  height = 480
-  buffers: [bigint, string][] = []
-  disposed = false
-  setNativeBuffer(pointer: bigint, format: string): void {
-    this.buffers.push([pointer, format])
-  }
-  dispose(): void {
-    this.disposed = true
-  }
-}
-
 class FakeVideo {
   duration = 5000
   framerate = 30
   rotation = 90
   width = 640
   height = 480
-  pixelFormat = 'bt709-limited'
   currentTime = 0
   paused = true
   looping = false
   volume = 1
   released = false
   seeks: number[] = []
-  frames: bigint[] = []
-  acquireFrame(): bigint {
-    return this.frames.shift() ?? 0n
+  frames: number[] = []
+  updateFrame(): number {
+    return this.frames.shift() ?? 0
   }
   seek(millis: number): void {
     this.seeks.push(millis)
@@ -57,7 +42,6 @@ class FakeVideo {
   }
 }
 
-let made: FakeImage[] = []
 let opened: FakeVideo[] = []
 let loadFails = false
 
@@ -67,7 +51,6 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  made = []
   opened = []
   loadFails = false
   tick = null
@@ -80,11 +63,6 @@ beforeEach(() => {
       const video = new FakeVideo()
       opened.push(video)
       return video
-    },
-    fromNativeBuffer() {
-      const image = new FakeImage()
-      made.push(image)
-      return image
     },
   })
 })
@@ -138,27 +116,30 @@ test('metadata comes off the player once it is open', async () => {
   expect(probe.current.size).toEqual({ width: 640, height: 480 })
 })
 
-test('the first frame creates the handle and every later one re-points it', async () => {
+test('the first frame reaches React, and a later one with the same id does not', async () => {
   const probe = await mount()
-  probe.video.frames.push(0x1000n, 0x2000n)
+  probe.video.frames.push(7, 7)
 
   await probe.pump()
-  expect(made).toHaveLength(1)
-  expect(probe.current.currentFrame).toBe(made[0] as never)
+  const frame = probe.current.currentFrame
+  expect(frame).toEqual({ handle: 7, width: 640, height: 480 })
 
+  // The id is stable, so a re-render per frame would be pure waste.
   await probe.pump()
-  expect(made).toHaveLength(1)
-  expect(made[0]!.buffers).toEqual([[0x2000n, 'bt709-limited']])
+  expect(probe.current.currentFrame).toBe(frame as never)
 })
 
 // A tick with nothing decoded must leave the last frame up, not blank the canvas.
-test('a tick with no new frame leaves the handle alone', async () => {
+test('a tick with no new frame leaves the frame alone', async () => {
   const probe = await mount()
-  probe.video.frames.push(0x1000n)
+  probe.video.frames.push(7)
   await probe.pump()
   await probe.pump()
-  expect(made).toHaveLength(1)
-  expect(made[0]!.buffers).toHaveLength(0)
+  expect(probe.current.currentFrame).toEqual({
+    handle: 7,
+    width: 640,
+    height: 480,
+  })
 })
 
 test('currentTime follows the player on every tick', async () => {
@@ -180,14 +161,13 @@ test('options reach the player, and a new seek seeks again', async () => {
 })
 
 // A device has a handful of hardware decoders; one leaked per mount runs out fast.
-test('unmounting releases the player and disposes the handle', async () => {
+test('unmounting releases the player, which owns the frame', async () => {
   const probe = await mount()
-  probe.video.frames.push(0x1000n)
+  probe.video.frames.push(7)
   await probe.pump()
 
   await probe.unmount()
   expect(probe.video.released).toBe(true)
-  expect(made[0]!.disposed).toBe(true)
 })
 
 test('a failing source is a warning, not a crash', async () => {
@@ -206,17 +186,20 @@ test('an unresolvable asset is a warning, not a crash', async () => {
   expect(opened).toHaveLength(0)
 })
 
-// Releasing the player closes the buffer the handle points at, so the handle goes first.
-test('unmount disposes the handle before releasing the player', async () => {
-  const order: string[] = []
+// A frame from the released player must never be pulled again.
+test('the pump stops after unmount', async () => {
   const probe = await mount()
-  probe.video.frames.push(0x1000n)
+  probe.video.frames.push(7)
   await probe.pump()
-  made[0]!.dispose = () => order.push('dispose')
-  probe.video.release = () => order.push('release')
-
   await probe.unmount()
-  expect(order).toEqual(['dispose', 'release'])
+
+  let pulled = false
+  probe.video.updateFrame = () => {
+    pulled = true
+    return 7
+  }
+  await probe.pump()
+  expect(pulled).toBe(false)
 })
 
 test('a require()d asset is resolved to its uri', async () => {

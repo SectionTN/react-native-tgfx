@@ -55,7 +55,6 @@ namespace margelo::nitro::tgfx {
     double getRotation() override;
     double getWidth() override;
     double getHeight() override;
-    PixelFormat getPixelFormat() override;
     double getCurrentTime() override;
     bool getPaused() override;
     void setPaused(bool paused) override;
@@ -67,7 +66,7 @@ namespace margelo::nitro::tgfx {
   public:
     // Methods
     void seek(double millis) override;
-    uint64_t acquireFrame() override;
+    double updateFrame() override;
     void release() override;
 
   private:

@@ -28,7 +28,7 @@ export function VideoSection() {
           />
         )}
         {currentFrame == null && (
-          <Text x={12} y={96} text="opening…" size={16} color="#8e8e93" />
+          <Text x={12} y={96} text="opening…" fontSize={16} color="#8e8e93" />
         )}
       </Canvas>
       <RNText style={styles.meta}>

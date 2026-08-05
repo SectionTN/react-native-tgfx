@@ -18,8 +18,6 @@ namespace margelo::nitro::tgfx { class HybridTgfxViewSpec; }
 namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 // Forward declaration of `NativeSnapshot` to properly resolve imports.
 namespace margelo::nitro::tgfx { struct NativeSnapshot; }
-// Forward declaration of `PixelFormat` to properly resolve imports.
-namespace margelo::nitro::tgfx { enum class PixelFormat; }
 
 // Include C++ defined types
 #include "HybridTgfxVideoFactorySpec.hpp"
@@ -27,7 +25,6 @@ namespace margelo::nitro::tgfx { enum class PixelFormat; }
 #include "HybridTgfxViewSpec.hpp"
 #include "NativeSnapshot.hpp"
 #include "NativeSnapshotOptions.hpp"
-#include "PixelFormat.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>

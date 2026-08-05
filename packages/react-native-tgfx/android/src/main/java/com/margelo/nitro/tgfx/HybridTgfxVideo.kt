@@ -1,50 +1,41 @@
 package com.margelo.nitro.tgfx
 
 import android.content.Context
-import android.graphics.ImageFormat
-import android.hardware.HardwareBuffer
-import android.media.Image
-import android.media.ImageReader
+import android.graphics.SurfaceTexture
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaPlayer
 import android.net.Uri
-import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.Surface
 import androidx.annotation.Keep
-import androidx.annotation.RequiresApi
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
 import com.margelo.nitro.core.Promise
 import java.io.File
-
-/** A decoded frame plus the buffer handed to the caller; both live until we close them. */
-private class Frame(val image: Image, val buffer: HardwareBuffer?) {
-  fun close() {
-    buffer?.close()
-    image.close()
-  }
-}
+import java.util.concurrent.FutureTask
 
 /**
- * Android `TgfxVideo`: MediaPlayer decodes into an ImageReader, so each frame is
- * already an `AHardwareBuffer` and reaches the GPU without a copy.
+ * Android `TgfxVideo`: MediaPlayer decodes into a tgfx SurfaceTextureReader, so
+ * each frame reaches the GPU as the texture it decoded into.
+ *
+ * Not the `AHardwareBuffer` path camera frames take: a video decoder hands back
+ * vendor-private buffer formats that tgfx cannot import.
  */
 @Keep
 @DoNotStrip
-@RequiresApi(Build.VERSION_CODES.Q)
 class HybridTgfxVideo(
   private val player: MediaPlayer,
-  private val reader: ImageReader,
+  private val stream: Long,
+  private val surface: Surface,
+  @Suppress("unused") private val listener: Any,
   override val duration: Double,
   override val framerate: Double,
   override val rotation: Double,
   override val width: Double,
   override val height: Double,
-  override val pixelFormat: PixelFormat,
 ) : HybridTgfxVideoSpec() {
-  // Two deep: the caller's handle still points at the previous frame until it swaps.
-  private var pending: Frame? = null
-  private var previous: Frame? = null
   private var released = false
 
   override val currentTime: Double
@@ -73,15 +64,9 @@ class HybridTgfxVideo(
     if (!released) player.seekTo(millis.toInt())
   }
 
-  override fun acquireFrame(): ULong {
-    if (released) return 0uL
-    val image = reader.acquireLatestImage() ?: return 0uL
-    val buffer = image.hardwareBuffer
-    previous?.close()
-    previous = pending
-    pending = Frame(image, buffer)
-    if (buffer == null) return 0uL
-    return TgfxNative.hardwareBufferPointer(buffer).toULong()
+  override fun updateFrame(): Double {
+    if (released) return 0.0
+    return TgfxNative.videoStreamUpdate(stream).toDouble()
   }
 
   override fun release() {
@@ -89,11 +74,8 @@ class HybridTgfxVideo(
     released = true
     player.setSurface(null)
     player.release()
-    previous?.close()
-    pending?.close()
-    previous = null
-    pending = null
-    reader.close()
+    surface.release()
+    TgfxNative.videoStreamDestroy(stream)
   }
 
   protected fun finalize() {
@@ -105,51 +87,88 @@ class HybridTgfxVideo(
 @Keep
 @DoNotStrip
 class HybridTgfxVideoFactory : HybridTgfxVideoFactorySpec() {
-  override fun load(uri: String): Promise<HybridTgfxVideoSpec> = Promise.parallel {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-      throw IllegalStateException(
-        "[tgfx] loadVideo needs Android 10 (API 29) or newer for zero-copy frames; " +
-          "this device is API ${Build.VERSION.SDK_INT}."
-      )
+  /**
+   * Wakes the stream: tgfx only regenerates a texture once it hears a frame
+   * landed. The pointer is set after construction because the reader needs the
+   * listener to exist before it can be created.
+   */
+  @Keep
+  @DoNotStrip
+  private class FrameListener : SurfaceTexture.OnFrameAvailableListener {
+    @Volatile
+    var stream = 0L
+
+    @Keep
+    @DoNotStrip
+    override fun onFrameAvailable(surfaceTexture: SurfaceTexture) {
+      val ptr = stream
+      if (ptr != 0L) {
+        TgfxNative.videoStreamNotify(ptr)
+      }
     }
+  }
+
+  override fun load(uri: String): Promise<HybridTgfxVideoSpec> = Promise.parallel {
     val context = NitroModules.applicationContext
       ?: throw IllegalStateException("[tgfx] loadVideo: no application context")
     open(context, source(uri))
   }
 
+  private fun <T> onMainThread(work: () -> T): T {
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+      return work()
+    }
+    val task = FutureTask(work)
+    Handler(Looper.getMainLooper()).post(task)
+    return task.get()
+  }
+
   private fun source(uri: String): Uri =
     if (uri.startsWith("/")) Uri.fromFile(File(uri)) else Uri.parse(uri)
 
-  @RequiresApi(Build.VERSION_CODES.Q)
   private fun open(context: Context, uri: Uri): HybridTgfxVideoSpec {
     val format = videoFormat(context, uri)
       ?: throw IllegalStateException("[tgfx] loadVideo: $uri has no video track")
     val width = format.getInteger(MediaFormat.KEY_WIDTH)
     val height = format.getInteger(MediaFormat.KEY_HEIGHT)
 
-    val reader = ImageReader.newInstance(
-      width, height, ImageFormat.PRIVATE, 4, HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE
-    )
+    val listener = FrameListener()
+    // On the main looper: SurfaceTexture delivers onFrameAvailable to the thread that
+    // registered the listener, and this runs on a worker that has no looper at all.
+    val stream = onMainThread { TgfxNative.videoStreamCreate(width, height, listener) }
+    if (stream == 0L) {
+      throw IllegalStateException("[tgfx] loadVideo: could not create a frame stream")
+    }
+    listener.stream = stream
+
+    val surface = TgfxNative.videoStreamSurface(stream)
+    if (surface == null) {
+      TgfxNative.videoStreamDestroy(stream)
+      throw IllegalStateException("[tgfx] loadVideo: the frame stream has no surface")
+    }
+
     val player = MediaPlayer()
     try {
       player.setDataSource(context, uri)
-      player.setSurface(reader.surface)
+      player.setSurface(surface)
       player.prepare()
     } catch (e: Throwable) {
       player.release()
-      reader.close()
+      surface.release()
+      TgfxNative.videoStreamDestroy(stream)
       throw e
     }
 
     return HybridTgfxVideo(
       player = player,
-      reader = reader,
+      stream = stream,
+      surface = surface,
+      listener = listener,
       duration = player.duration.coerceAtLeast(0).toDouble(),
       framerate = optionalNumber(format, MediaFormat.KEY_FRAME_RATE) ?: 30.0,
       rotation = optionalNumber(format, MediaFormat.KEY_ROTATION) ?: 0.0,
       width = width.toDouble(),
       height = height.toDouble(),
-      pixelFormat = colorFormat(format, height),
     )
   }
 
@@ -176,22 +195,6 @@ class HybridTgfxVideoFactory : HybridTgfxVideoFactorySpec() {
       format.getInteger(key).toDouble()
     } catch (e: ClassCastException) {
       format.getFloat(key).toDouble()
-    }
-  }
-
-  @RequiresApi(Build.VERSION_CODES.N)
-  private fun colorFormat(format: MediaFormat, height: Int): PixelFormat {
-    val full = optionalNumber(format, MediaFormat.KEY_COLOR_RANGE)?.toInt() ==
-      MediaFormat.COLOR_RANGE_FULL
-    return when (optionalNumber(format, MediaFormat.KEY_COLOR_STANDARD)?.toInt()) {
-      MediaFormat.COLOR_STANDARD_BT709 ->
-        if (full) PixelFormat.BT709_FULL else PixelFormat.BT709_LIMITED
-      MediaFormat.COLOR_STANDARD_BT601_PAL, MediaFormat.COLOR_STANDARD_BT601_NTSC ->
-        if (full) PixelFormat.BT601_FULL else PixelFormat.BT601_LIMITED
-      MediaFormat.COLOR_STANDARD_BT2020 ->
-        if (full) PixelFormat.BT2020_FULL else PixelFormat.BT2020_LIMITED
-      // Unset in most containers: SD was authored 601, HD 709, which is the convention decoders assume.
-      else -> if (height >= 720) PixelFormat.BT709_LIMITED else PixelFormat.BT601_LIMITED
     }
   }
 }

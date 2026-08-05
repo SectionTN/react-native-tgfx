@@ -8,8 +8,15 @@ private func quarterTurns(_ degrees: Double) -> Double {
   return (quarters < 0 ? quarters + 4 : quarters) * 90
 }
 
+/// `tgfxrn::FrameFormat`, which is what the registry shim takes.
+private enum FrameFormat: Int32 {
+  case bt601Limited = 1
+  case bt709Limited = 3
+  case bt2020Limited = 5
+}
+
 /// The matrix the track was encoded with — imported as the wrong one, the colours shift.
-private func yCbCrMatrix(of track: AVAssetTrack) -> PixelFormat {
+private func yCbCrMatrix(of track: AVAssetTrack) -> FrameFormat {
   guard let description = track.formatDescriptions.first else {
     return .bt709Limited
   }
@@ -46,7 +53,9 @@ final class HybridTgfxVideo: HybridTgfxVideoSpec {
   let rotation: Double
   let width: Double
   let height: Double
-  let pixelFormat: PixelFormat
+  private let frameFormat: FrameFormat
+  // The registry id this video's frames land in, allocated on the first one.
+  private var imageHandle: Int32 = 0
 
   var currentTime: Double {
     let seconds = player.currentTime().seconds
@@ -81,7 +90,7 @@ final class HybridTgfxVideo: HybridTgfxVideoSpec {
     // The decoded buffer's size, unrotated — `rotation` is reported separately.
     width = Double(abs(track.naturalSize.width))
     height = Double(abs(track.naturalSize.height))
-    pixelFormat = yCbCrMatrix(of: track)
+    frameFormat = yCbCrMatrix(of: track)
 
     // Bi-planar YUV is what the decoder already produces; tgfx samples it directly.
     let attributes: [String: Any] = [
@@ -118,6 +127,9 @@ final class HybridTgfxVideo: HybridTgfxVideoSpec {
     }
     player.pause()
     player.replaceCurrentItem(with: nil)
+    // An external entry is never evicted, so nothing else would ever free it.
+    TgfxVideoFrameRemove(imageHandle)
+    imageHandle = 0
     retained = nil
   }
 
@@ -129,7 +141,7 @@ final class HybridTgfxVideo: HybridTgfxVideoSpec {
       toleranceBefore: .zero, toleranceAfter: .zero)
   }
 
-  func acquireFrame() throws -> UInt64 {
+  func updateFrame() throws -> Double {
     let hostTime = output.itemTime(forHostTime: CACurrentMediaTime())
     var buffer: CVPixelBuffer?
     if output.hasNewPixelBuffer(forItemTime: hostTime) {
@@ -142,9 +154,14 @@ final class HybridTgfxVideo: HybridTgfxVideoSpec {
       return 0
     }
     seeked = false
-    // The store is the retain: the caller's handle takes its own reference before the next call.
+    let handle = TgfxVideoFrameSet(imageHandle, buffer, frameFormat.rawValue)
+    if handle == 0 {
+      return 0
+    }
+    imageHandle = handle
+    // The store is the retain: tgfx samples the buffer until the next frame replaces it.
     retained = buffer
-    return UInt64(UInt(bitPattern: Unmanaged.passUnretained(buffer).toOpaque()))
+    return Double(handle)
   }
 }
 

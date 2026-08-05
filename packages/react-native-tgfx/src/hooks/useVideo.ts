@@ -3,9 +3,8 @@ import { Image as RNImage } from 'react-native'
 import { NitroModules } from 'react-native-nitro-modules'
 import type { MaybeSharedValue } from '../compiler/values'
 import { requireReanimated, worklets } from '../reanimated/peer'
-import type { TgfxImage } from '../specs/TgfxImage.nitro'
 import type { TgfxVideo, TgfxVideoFactory } from '../specs/TgfxVideo.nitro'
-import { imageFromNativeBuffer } from './useImage'
+import type { ImageLike } from '../types'
 
 let factory: TgfxVideoFactory | null = null
 function videos(): TgfxVideoFactory {
@@ -45,10 +44,14 @@ export interface VideoOptions {
 
 export interface Video {
   /**
-   * The newest decoded frame, `null` until the first one lands. Feed it to
+   * The video's frame, `null` until the first one is decoded. Feed it to
    * `<Image>`, or to `<CameraFrame>` when {@link rotation} is not 0.
+   *
+   * One object for the life of the video: later frames replace what it points
+   * at natively, so this identity is stable and nothing re-commits per frame.
+   * It is owned by the player and must not be disposed.
    */
-  readonly currentFrame: TgfxImage | null
+  readonly currentFrame: ImageLike | null
   /** Playback position in milliseconds, written on the UI thread every frame. */
   readonly currentTime: MaybeSharedValue<number>
   /** Total length in milliseconds. 0 until the video is open. */
@@ -73,21 +76,20 @@ const EMPTY_SIZE = Object.freeze({ width: 0, height: 0 })
  *
  * Decoding is the platform's — AVPlayer on iOS, MediaPlayer on Android — so
  * audio, seeking and looping come from the player rather than from this package,
- * and every frame reaches the GPU as the hardware buffer it decoded into. No
- * pixels cross into JS, and no React render happens per frame: the first frame
- * creates the handle and every later one re-points it, which is a pointer swap
- * that schedules a redraw on its own.
+ * and every frame reaches the GPU as the texture or buffer it decoded into. A
+ * frame never enters JS in any form: it lands in a native registry entry whose
+ * id never changes, so a new frame costs no React render and no scene
+ * re-commit, and it schedules a redraw on its own.
  *
  * Frames are pulled on the UI thread, so a busy JS thread does not stall
  * playback. That is what needs react-native-reanimated here.
  *
- * The player is released, and the handle disposed, when `source` changes or the
+ * The player, and the frame it owns, are released when `source` changes or the
  * component unmounts — a device has only a handful of hardware decoders.
  *
  * @remarks
- * Android needs API 29 or newer: below it there is no way to get a frame out of
- * the decoder without a CPU copy, and `load` rejects rather than doing one
- * silently.
+ * Android decodes into a SurfaceTexture rather than a hardware buffer: a video
+ * decoder there hands back vendor-private buffer formats tgfx cannot import.
  */
 export function useVideo(
   source: number | string,
@@ -106,14 +108,17 @@ export function useVideo(
   const { seek, paused = false, looping = false, volume = 0 } = options ?? {}
 
   const [video, setVideo] = useState<TgfxVideo | null>(null)
-  const [currentFrame, setCurrentFrame] = useState<TgfxImage | null>(null)
+  const [currentFrame, setCurrentFrame] = useState<ImageLike | null>(null)
   const currentTime = mod.useSharedValue!(0)
   const player = mod.useSharedValue!<TgfxVideo | null>(null)
-  const handle = mod.useSharedValue!<TgfxImage | null>(null)
+  const posted = mod.useSharedValue!(0)
 
-  const onImage = useCallback((image: TgfxImage) => {
-    setCurrentFrame(image)
-  }, [])
+  const onFirstFrame = useCallback(
+    (handle: number, width: number, height: number) => {
+      setCurrentFrame({ handle, width, height })
+    },
+    []
+  )
 
   useEffect(() => {
     let active = true
@@ -143,13 +148,11 @@ export function useVideo(
     return () => {
       active = false
       player.value = null
-      // Handle first: releasing the player closes the buffer the handle still points at.
-      handle.value?.dispose()
-      handle.value = null
+      posted.value = 0
       // A player left to the GC keeps a hardware decoder, of which a device has a handful.
       opened?.release()
     }
-  }, [source, player, handle])
+  }, [source, player, posted])
 
   useEffect(() => {
     if (video != null) {
@@ -182,17 +185,14 @@ export function useVideo(
       return
     }
     // 0 means "nothing decoded since the last call" — the frame stays as it is.
-    const buffer = current.acquireFrame()
-    if (buffer) {
-      if (handle.value == null) {
-        handle.value = imageFromNativeBuffer(buffer, current.pixelFormat)
-        scheduleOnRN(onImage, handle.value)
-      } else {
-        handle.value.setNativeBuffer(buffer, current.pixelFormat)
-      }
+    const handle = current.updateFrame()
+    // The id never changes, so React hears about it once rather than every frame.
+    if (handle !== 0 && posted.value !== handle) {
+      posted.value = handle
+      scheduleOnRN(onFirstFrame, handle, current.width, current.height)
     }
     currentTime.value = current.currentTime
-  }, [player, handle, currentTime, onImage, scheduleOnRN])
+  }, [player, posted, currentTime, onFirstFrame, scheduleOnRN])
 
   mod.useFrameCallback!(tick)
 

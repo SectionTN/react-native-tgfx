@@ -7,11 +7,9 @@
 
 #include "JHybridTgfxVideoSpec.hpp"
 
-// Forward declaration of `PixelFormat` to properly resolve imports.
-namespace margelo::nitro::tgfx { enum class PixelFormat; }
 
-#include "PixelFormat.hpp"
-#include "JPixelFormat.hpp"
+
+
 
 namespace margelo::nitro::tgfx {
 
@@ -68,11 +66,6 @@ namespace margelo::nitro::tgfx {
     auto __result = method(_javaPart);
     return __result;
   }
-  PixelFormat JHybridTgfxVideoSpec::getPixelFormat() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPixelFormat>()>("getPixelFormat");
-    auto __result = method(_javaPart);
-    return __result->toCpp();
-  }
   double JHybridTgfxVideoSpec::getCurrentTime() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<double()>("getCurrentTime");
     auto __result = method(_javaPart);
@@ -111,10 +104,10 @@ namespace margelo::nitro::tgfx {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* millis */)>("seek");
     method(_javaPart, millis);
   }
-  uint64_t JHybridTgfxVideoSpec::acquireFrame() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jlong()>("acquireFrame_cxx");
+  double JHybridTgfxVideoSpec::updateFrame() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<double()>("updateFrame");
     auto __result = method(_javaPart);
-    return static_cast<uint64_t>(__result);
+    return __result;
   }
   void JHybridTgfxVideoSpec::release() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("release");

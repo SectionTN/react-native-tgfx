@@ -13,10 +13,9 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `PixelFormat` to properly resolve imports.
-namespace margelo::nitro::tgfx { enum class PixelFormat; }
 
-#include "PixelFormat.hpp"
+
+
 
 namespace margelo::nitro::tgfx {
 
@@ -50,7 +49,6 @@ namespace margelo::nitro::tgfx {
       virtual double getRotation() = 0;
       virtual double getWidth() = 0;
       virtual double getHeight() = 0;
-      virtual PixelFormat getPixelFormat() = 0;
       virtual double getCurrentTime() = 0;
       virtual bool getPaused() = 0;
       virtual void setPaused(bool paused) = 0;
@@ -62,7 +60,7 @@ namespace margelo::nitro::tgfx {
     public:
       // Methods
       virtual void seek(double millis) = 0;
-      virtual uint64_t acquireFrame() = 0;
+      virtual double updateFrame() = 0;
       virtual void release() = 0;
 
     protected:

@@ -15,7 +15,6 @@ public protocol HybridTgfxVideoSpec_protocol: HybridObject {
   var rotation: Double { get }
   var width: Double { get }
   var height: Double { get }
-  var pixelFormat: PixelFormat { get }
   var currentTime: Double { get }
   var paused: Bool { get set }
   var looping: Bool { get set }
@@ -23,7 +22,7 @@ public protocol HybridTgfxVideoSpec_protocol: HybridObject {
 
   // Methods
   func seek(millis: Double) throws -> Void
-  func acquireFrame() throws -> UInt64
+  func updateFrame() throws -> Double
   func release() throws -> Void
 }
 

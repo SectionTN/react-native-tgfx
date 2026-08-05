@@ -1,14 +1,12 @@
-import type { HybridObject, UInt64 } from 'react-native-nitro-modules'
-import type { PixelFormat } from './TgfxImage.nitro'
+import type { HybridObject } from 'react-native-nitro-modules'
 
 /**
  * A decoding video, driven by the platform player — AVPlayer on iOS,
  * MediaPlayer on Android — so audio, looping and seeking cost this package no
  * decoder of its own.
  *
- * Frames leave here as raw hardware buffers rather than as images: the caller
- * feeds one to a {@link TgfxImage} handle, which is the same zero-copy path a
- * camera frame takes. Nothing about a frame ever reaches JS as pixels.
+ * A frame never reaches JS at all, as pixels or as a pointer: the decoder writes
+ * into a registry entry natively and JS only ever sees its id.
  */
 export interface TgfxVideo
   extends HybridObject<{
@@ -22,8 +20,6 @@ export interface TgfxVideo
   readonly rotation: number
   readonly width: number
   readonly height: number
-  /** How the decoder's planes map to RGB — read off the track, not assumed. */
-  readonly pixelFormat: PixelFormat
   /** Playback position in milliseconds. */
   readonly currentTime: number
 
@@ -35,15 +31,15 @@ export interface TgfxVideo
   seek(millis: number): void
 
   /**
-   * The newest decoded frame as a hardware buffer pointer — an
-   * `AHardwareBuffer*` on Android, a `CVPixelBufferRef` on iOS — or 0 when no
-   * new frame has been decoded since the last call.
+   * Point this video's image at its newest decoded frame and return that image's
+   * registry id, or 0 when nothing new has been decoded since the last call.
    *
-   * The buffer stays retained until the *next* call, which is long enough to
-   * hand it to `TgfxImage.setNativeBuffer`, and that takes its own reference.
-   * Never store the pointer: after the next call it is somebody else's memory.
+   * The id is stable for the life of the video — a new frame replaces what the
+   * id points at, so a scene referencing it costs no re-commit — and the frame
+   * is whatever the decoder produced: a `CVPixelBuffer` on iOS, a
+   * `SurfaceTexture` stream on Android, neither of them copied.
    */
-  acquireFrame(): UInt64
+  updateFrame(): number
 
   /**
    * Stop playback and free the decoder and its buffers now, rather than at the

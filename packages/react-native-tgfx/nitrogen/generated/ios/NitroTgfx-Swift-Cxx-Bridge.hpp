@@ -70,13 +70,13 @@ namespace margelo::nitro::tgfx::bridge::swift {
     return Result<void>::withError(error);
   }
   
-  // pragma MARK: Result<uint64_t>
-  using Result_uint64_t_ = Result<uint64_t>;
-  inline Result_uint64_t_ create_Result_uint64_t_(uint64_t value) noexcept {
-    return Result<uint64_t>::withValue(std::move(value));
+  // pragma MARK: Result<double>
+  using Result_double_ = Result<double>;
+  inline Result_double_ create_Result_double_(double value) noexcept {
+    return Result<double>::withValue(std::move(value));
   }
-  inline Result_uint64_t_ create_Result_uint64_t_(const std::exception_ptr& error) noexcept {
-    return Result<uint64_t>::withError(error);
+  inline Result_double_ create_Result_double_(const std::exception_ptr& error) noexcept {
+    return Result<double>::withError(error);
   }
   
   // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>

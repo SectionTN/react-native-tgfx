@@ -19,7 +19,6 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridGetter("rotation", &HybridTgfxVideoSpec::getRotation);
       prototype.registerHybridGetter("width", &HybridTgfxVideoSpec::getWidth);
       prototype.registerHybridGetter("height", &HybridTgfxVideoSpec::getHeight);
-      prototype.registerHybridGetter("pixelFormat", &HybridTgfxVideoSpec::getPixelFormat);
       prototype.registerHybridGetter("currentTime", &HybridTgfxVideoSpec::getCurrentTime);
       prototype.registerHybridGetter("paused", &HybridTgfxVideoSpec::getPaused);
       prototype.registerHybridSetter("paused", &HybridTgfxVideoSpec::setPaused);
@@ -28,7 +27,7 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridGetter("volume", &HybridTgfxVideoSpec::getVolume);
       prototype.registerHybridSetter("volume", &HybridTgfxVideoSpec::setVolume);
       prototype.registerHybridMethod("seek", &HybridTgfxVideoSpec::seek);
-      prototype.registerHybridMethod("acquireFrame", &HybridTgfxVideoSpec::acquireFrame);
+      prototype.registerHybridMethod("updateFrame", &HybridTgfxVideoSpec::updateFrame);
       prototype.registerHybridMethod("release", &HybridTgfxVideoSpec::release);
     });
   }

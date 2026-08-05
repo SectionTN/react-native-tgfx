@@ -47,10 +47,6 @@ abstract class HybridTgfxVideoSpec: HybridObject() {
   
   @get:DoNotStrip
   @get:Keep
-  abstract val pixelFormat: PixelFormat
-  
-  @get:DoNotStrip
-  @get:Keep
   abstract val currentTime: Double
   
   @get:DoNotStrip
@@ -76,14 +72,9 @@ abstract class HybridTgfxVideoSpec: HybridObject() {
   @Keep
   abstract fun seek(millis: Double): Unit
   
-  abstract fun acquireFrame(): ULong
-  
   @DoNotStrip
   @Keep
-  private fun acquireFrame_cxx(): Long {
-    val __result = acquireFrame()
-    return __result.toLong()
-  }
+  abstract fun updateFrame(): Double
   
   @DoNotStrip
   @Keep

@@ -12,10 +12,9 @@
 // Forward declaration of `HybridTgfxVideoSpec_cxx` to properly resolve imports.
 namespace NitroTgfx { class HybridTgfxVideoSpec_cxx; }
 
-// Forward declaration of `PixelFormat` to properly resolve imports.
-namespace margelo::nitro::tgfx { enum class PixelFormat; }
 
-#include "PixelFormat.hpp"
+
+
 
 #include "NitroTgfx-Swift-Cxx-Umbrella.hpp"
 
@@ -78,10 +77,6 @@ namespace margelo::nitro::tgfx {
     inline double getHeight() noexcept override {
       return _swiftPart.getHeight();
     }
-    inline PixelFormat getPixelFormat() noexcept override {
-      auto __result = _swiftPart.getPixelFormat();
-      return static_cast<PixelFormat>(__result);
-    }
     inline double getCurrentTime() noexcept override {
       return _swiftPart.getCurrentTime();
     }
@@ -112,8 +107,8 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
-    inline uint64_t acquireFrame() override {
-      auto __result = _swiftPart.acquireFrame();
+    inline double updateFrame() override {
+      auto __result = _swiftPart.updateFrame();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

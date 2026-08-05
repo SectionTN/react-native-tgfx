@@ -4,7 +4,6 @@ import type { BlendMode } from './compiler/filters'
 import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
 import type { NodeHandle } from './imperative'
-import type { TgfxImage } from './specs/TgfxImage.nitro'
 
 export type { Color, ColorComponents } from './compiler/colors'
 export type { BlendMode } from './compiler/filters'
@@ -18,6 +17,18 @@ export type { PixelFormat, TgfxImage } from './specs/TgfxImage.nitro'
  * static or animated on the UI thread.
  */
 export type SharedValueLike<T> = { value: T }
+
+/**
+ * What a drawable image has to expose: a registry id and its size. A
+ * {@link TgfxImage} from `useImage` is one, and so is a video's frame from
+ * `useVideo` — that one is owned natively and has no handle to dispose.
+ */
+export interface ImageLike {
+  readonly handle: number
+  readonly width: number
+  readonly height: number
+}
+
 export type Animated<T> = T | SharedValueLike<T>
 
 /** Paint attributes shared by every drawing component, `<Group>`, and `<Paint>`. */
@@ -94,7 +105,7 @@ export interface ImageProps extends PaintProps {
   width: Animated<number>
   height: Animated<number>
   /** A native image handle from `useImage`. `null` draws nothing. */
-  image: TgfxImage | null
+  image: ImageLike | null
   /** Defaults to `'contain'`. Same semantics as Skia's `fit`. */
   fit?: Fit
   /** Defaults to `'linear'`. Use `'mipmap'` for large images in small boxes. */
@@ -109,7 +120,7 @@ export interface CameraFrameProps extends PaintProps {
    * new frame with `image.setNativeBuffer(...)`. `null` draws nothing at all,
    * children included — there is no frame to place them against.
    */
-  image: TgfxImage | null
+  image: ImageLike | null
   /**
    * How the frame is scaled into the canvas. Defaults to `'cover'`, which fills
    * the canvas and lets the overflowing axis run off it.
@@ -136,7 +147,7 @@ export interface CameraFrameProps extends PaintProps {
  * directly under the shape, the way a gradient goes.
  */
 export interface ImageShaderProps {
-  image: TgfxImage | null
+  image: ImageLike | null
   /** How the image repeats outside its bounds. Both default to `'clamp'`. */
   tx?: TileMode
   ty?: TileMode

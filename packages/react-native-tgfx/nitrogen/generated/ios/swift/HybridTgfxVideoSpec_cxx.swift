@@ -156,13 +156,6 @@ open class HybridTgfxVideoSpec_cxx {
     }
   }
   
-  public final var pixelFormat: Int32 {
-    @inline(__always)
-    get {
-      return self.__implementation.pixelFormat.rawValue
-    }
-  }
-  
   public final var currentTime: Double {
     @inline(__always)
     get {
@@ -216,14 +209,14 @@ open class HybridTgfxVideoSpec_cxx {
   }
   
   @inline(__always)
-  public final func acquireFrame() -> bridge.Result_uint64_t_ {
+  public final func updateFrame() -> bridge.Result_double_ {
     do {
-      let __result = try self.__implementation.acquireFrame()
+      let __result = try self.__implementation.updateFrame()
       let __resultCpp = __result
-      return bridge.create_Result_uint64_t_(__resultCpp)
+      return bridge.create_Result_double_(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_uint64_t_(__exceptionPtr)
+      return bridge.create_Result_double_(__exceptionPtr)
     }
   }
   
