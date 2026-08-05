@@ -64,6 +64,7 @@ export type {
 } from './hooks/useFonts'
 export {
   imageFromNativeBuffer,
+  loadImage,
   setImageCacheLimit,
   useImage,
   useImageState,

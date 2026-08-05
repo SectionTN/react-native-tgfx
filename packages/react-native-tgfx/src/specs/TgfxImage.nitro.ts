@@ -65,10 +65,19 @@ export interface TgfxImageFactory extends HybridObject<{
   ios: 'c++'
   android: 'c++'
 }> {
-  /** A local file path or `file://` URI. The bytes never reach JS. */
+  /**
+   * A local file path or `file://` URI. The bytes never reach JS.
+   *
+   * PNG/JPEG/WebP stay on disk and are re-read after an eviction. An `.svg` is
+   * read once and parsed into a picture that replays at whatever size it is
+   * drawn, so {@link TgfxImage.width} on one is nominal, not a resolution cap.
+   */
   fromFile(path: string): Promise<TgfxImage>
 
-  /** Encoded (PNG/JPEG/WebP) bytes, zero-copy across the Nitro boundary. */
+  /**
+   * Encoded (PNG/JPEG/WebP) bytes or an SVG document, zero-copy across the Nitro
+   * boundary. Which one it is comes from the bytes, not from a file extension.
+   */
   fromBytes(bytes: ArrayBuffer): Promise<TgfxImage>
 
   /** Base64-encoded bytes, for `data:` URIs and raw base64 sources. */

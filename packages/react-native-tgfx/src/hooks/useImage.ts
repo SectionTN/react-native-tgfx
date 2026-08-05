@@ -69,6 +69,16 @@ export function imageFromNativeBuffer(
   ).fromNativeBuffer(buffer, format)
 }
 
+/**
+ * Load an image source into a native handle, outside React.
+ *
+ * Same sources as {@link useImageState}, `.svg` included. The caller owns the
+ * handle and must `dispose()` it; the hooks do that for you.
+ */
+export function loadImage(source: number | string): Promise<TgfxImage> {
+  return loadSource(source, images())
+}
+
 export interface ImageState {
   readonly data: TgfxImage | null
   readonly error: Error | null

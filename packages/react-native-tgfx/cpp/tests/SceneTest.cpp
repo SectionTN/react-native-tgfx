@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <span>
 #include <string>
 #include <utility>
@@ -13,10 +14,13 @@
 #include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
 #include "TextLayout.hpp"
+#include "SvgImage.hpp"
 #include "SvgPath.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
+#include "tgfx/core/Data.h"
 #include "tgfx/core/EncodedFormat.h"
+#include "tgfx/core/Image.h"
 #include "tgfx/core/ImageCodec.h"
 #include "tgfx/core/ImageInfo.h"
 #include "core/codecs/jpeg/JpegCodec.h"
@@ -1894,6 +1898,84 @@ void anExifRotatedJpegDecodesUpright() {
   tgfxrn::ImageRegistry::instance().remove(handle.handle);
 }
 
+/// A 24x24 document whose viewBox is half its declared size, so a scale that ignored either
+/// one would land the square somewhere else.
+constexpr const char* kSvgDoc =
+    R"(<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 12 12">
+         <rect x="0" y="0" width="12" height="12" fill="#3366cc"/>
+       </svg>)";
+
+void anSvgDocumentBecomesAnImageHandle() {
+  auto data = tgfx::Data::MakeWithCopy(kSvgDoc, std::strlen(kSvgDoc));
+  CHECK(tgfxrn::looksLikeSvg(*data));
+  CHECK(!tgfxrn::looksLikeSvg(*tgfx::Data::MakeWithCopy("\x89PNG\r\n", 6)));
+
+  // The declared 24x24, not the 12x12 viewBox: a scale that read either alone would disagree.
+  auto image = tgfxrn::svgImage(data);
+  CHECK(image != nullptr && image->width() == 24 && image->height() == 24);
+  if (image == nullptr) {
+    return;
+  }
+
+  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image));
+  CHECK(handle.handle != 0 && handle.width == 24 && handle.height == 24);
+  Writer w;
+  w.push(1);
+  w.pushImage(handle.handle, 0, 0, kWidth, kHeight);
+  auto got = pixelAt(render(w.finish(), {}, {}), kWidth / 2, kHeight / 2);
+  CHECK(got[0] == 0x33 && got[1] == 0x66 && got[2] == 0xcc);
+  tgfxrn::ImageRegistry::instance().remove(handle.handle);
+}
+
+/// The reason there is no explicit SVG raster size: a handle built at the document's own size
+/// replays the picture at draw resolution, so drawing it 8x larger stays crisp. If tgfx ever
+/// starts resampling the nominal raster instead, the upscaled edge widens and this fails.
+void anSvgHandleStaysCrispWhenDrawnLargerThanItsSize() {
+  // Two draws, so Image::MakeFrom cannot take its single-draw unwrap path — this has to be a
+  // real PictureImage, which is the case the resampling worry was about.
+  const char* doc =
+      R"(<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8">
+           <path d="M0 0 L8 0 L0 8 Z" fill="#000000"/>
+           <rect x="6" y="6" width="2" height="2" fill="#000000"/>
+         </svg>)";
+  auto draw = [](std::shared_ptr<tgfx::Image> image) {
+    auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image));
+    Writer w;
+    w.push(1);
+    w.pushImage(handle.handle, 0, 0, kWidth, kHeight);
+    auto pixels = render(w.finish(), {}, {});
+    tgfxrn::ImageRegistry::instance().remove(handle.handle);
+    return pixels;
+  };
+  auto eightPx = tgfxrn::svgImage(tgfx::Data::MakeWithCopy(doc, std::strlen(doc)));
+  CHECK(eightPx != nullptr && eightPx->width() == 8);
+  if (eightPx == nullptr) {
+    return;
+  }
+  auto drawn = draw(std::move(eightPx));
+
+  // Partly-covered pixels along the diagonal, on the row through the middle. Antialiasing gives
+  // one; resampling an 8px raster into a 64px box would smear it across about eight.
+  int soft = 0;
+  for (int x = 0; x < kWidth; x++) {
+    auto alpha = drawn[static_cast<size_t>((kHeight / 2 * kWidth + x) * 4 + 3)];
+    if (alpha > 24 && alpha < 231) {
+      soft++;
+    }
+  }
+  CHECK(soft <= 2);
+}
+
+void malformedSvgIsRejectedRatherThanDrawn() {
+  CHECK(tgfxrn::svgImage(tgfx::Data::MakeWithCopy("<svg><rect", 10)) == nullptr);
+  // Well-formed XML, but not an <svg> root.
+  CHECK(tgfxrn::svgImage(tgfx::Data::MakeWithCopy("<html></html>", 13)) == nullptr);
+  // Parses, but has no size to draw into.
+  const char* sizeless = R"(<svg xmlns="http://www.w3.org/2000/svg"/>)";
+  CHECK(tgfxrn::svgImage(tgfx::Data::MakeWithCopy(sizeless, std::strlen(sizeless))) == nullptr);
+  CHECK(tgfxrn::svgImage(nullptr) == nullptr);
+}
+
 void aParagraphKeepsItsItalicThroughTheRuns() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -2194,6 +2276,9 @@ int main() {
   aBufferSwapSchedulesADraw();
   aDisposedHandleDrawsNothing();
   anExifRotatedJpegDecodesUpright();
+  anSvgDocumentBecomesAnImageHandle();
+  anSvgHandleStaysCrispWhenDrawnLargerThanItsSize();
+  malformedSvgIsRejectedRatherThanDrawn();
   aParagraphKeepsItsItalicThroughTheRuns();
   theEllipsisBelongsToTheRunItFollows();
   aSpanCarriesItsOwnFace();

@@ -19,6 +19,7 @@ const jpeg = require('./assets/sample.jpg');
 const webp = require('./assets/sample.webp');
 const sprites = require('./assets/sprites.png');
 const tile = require('./assets/tile.png');
+const logo = require('./assets/logo.svg');
 // Stored 240x120 landscape, with an EXIF marker saying "rotate 90 CW".
 const portrait = require('./assets/portrait-exif.jpg');
 
@@ -292,11 +293,53 @@ export function ExifOrientation() {
   );
 }
 
+/**
+ * An SVG document through the ordinary `useImage`. The file declares 24x24 over a
+ * 0 0 48 48 viewBox, so the handle reports 24x24 — yet the 120px draw is as crisp
+ * as the 24px one, because the picture is replayed at draw size, not resampled.
+ */
+export function SvgSources() {
+  const svg = useImage(logo);
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<Image> — one SVG handle, drawn 1x and 5x'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 148 }]}>
+        <Fill color="#f2f2f7" />
+        {svg != null && (
+          <>
+            <Image x={0} y={0} width={120} height={120} image={svg} />
+            <Image x={132} y={48} width={24} height={24} image={svg} />
+            <Text
+              x={168}
+              y={62}
+              text={`handle ${svg.width}x${svg.height}`}
+              fontSize={13}
+              color="#3a3a3c"
+            />
+            <Text
+              x={168}
+              y={82}
+              text="crisp at 120 all the same"
+              fontSize={12}
+              color="#8e8e93"
+            />
+          </>
+        )}
+        <Text x={0} y={140} text="drawn 120" fontSize={12} color="#8e8e93" />
+        <Text x={132} y={140} text="drawn 24" fontSize={12} color="#8e8e93" />
+      </Canvas>
+    </View>
+  );
+}
+
 export function ImageSection() {
   return (
     <>
       <FitModes />
       <CodecFormats />
+      <SvgSources />
       <ExifOrientation />
       <SamplingModes />
       <SpriteSheet />
