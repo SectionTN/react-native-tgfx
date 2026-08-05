@@ -16,11 +16,10 @@ namespace {
 
 struct VideoStream {
   std::shared_ptr<tgfx::SurfaceTextureReader> reader;
-  // Allocated on the first frame and kept: the scene refers to it, so it must not move.
+  // Stable for the video's life: the scene refers to it, so it must not move.
   int32_t handle = 0;
-  // Set by the decoder, cleared by the pump. Acquiring without it would hand out a
-  // buffer that expires the previous one before the renderer ever drew it — a 30 fps
-  // video pulled on a 120 Hz UI thread would show one frame and then freeze.
+  // Set by the decoder, cleared by the pump, and the only thing that schedules a
+  // redraw. Without it a 30 fps video would repaint every canvas at display rate.
   std::atomic<bool> available{false};
 };
 
@@ -40,8 +39,21 @@ JNIEXPORT jlong JNICALL Java_com_margelo_nitro_tgfx_TgfxNative_videoStreamCreate
   }
   auto* stream = new VideoStream();
   stream->reader = std::move(reader);
-  // The reader has content from the moment the decoder writes its first frame.
-  stream->available.store(true, std::memory_order_release);
+  // Produced at draw time, not pushed: a SurfaceTexture buffer is good for one
+  // texture generation, so an image made ahead of the draw expires unused — and a
+  // paused video, whose last frame is then redrawn, would go black.
+  // Captures the reader, not the stream: a draw already inside this when the video
+  // is released would otherwise be reading freed memory.
+  auto source = stream->reader;
+  stream->handle = tgfxrn::ImageRegistry::instance()
+                       .addStream(
+                           [source]() -> std::shared_ptr<tgfx::Image> {
+                             auto buffer = source->acquireNextBuffer();
+                             return buffer != nullptr ? tgfx::Image::MakeFrom(std::move(buffer))
+                                                      : nullptr;
+                           },
+                           width, height)
+                       .handle;
   return reinterpret_cast<jlong>(stream);
 }
 
@@ -66,22 +78,9 @@ JNIEXPORT jint JNICALL Java_com_margelo_nitro_tgfx_TgfxNative_videoStreamUpdate(
   if (stream == nullptr) {
     return 0;
   }
-  if (!stream->available.exchange(false, std::memory_order_acq_rel)) {
-    return 0;
-  }
-  auto buffer = stream->reader->acquireNextBuffer();
-  if (buffer == nullptr) {
-    return 0;
-  }
-  auto image = tgfx::Image::MakeFrom(std::move(buffer));
-  if (image == nullptr) {
-    return 0;
-  }
-  auto& registry = tgfxrn::ImageRegistry::instance();
-  if (stream->handle == 0) {
-    stream->handle = registry.addExternal(std::move(image)).handle;
-  } else if (!registry.replaceExternal(stream->handle, std::move(image))) {
-    return 0;
+  // Only a frame the decoder actually produced costs a redraw.
+  if (stream->available.exchange(false, std::memory_order_acq_rel)) {
+    tgfxrn::ImageRegistry::instance().invalidate();
   }
   return stream->handle;
 }

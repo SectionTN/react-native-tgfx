@@ -84,10 +84,11 @@ packed `0xAARRGGBB` number.
   string into a native `TgfxImage` handle. Local files are decoded natively and
   their bytes never enter JS; nothing is base64-encoded on the JS thread.
 - `useVideo(source, { seek, paused, looping, volume })` — plays a video into a
-  `TgfxImage` handle: `{ currentFrame, currentTime, duration, framerate,
-  rotation, size }`. AVPlayer/MediaPlayer decode, frames reach the GPU as the
-  hardware buffer they decoded into, and they are pulled on the UI thread, so a
-  busy JS thread does not stall playback. Needs Reanimated; Android needs API 29.
+  drawable handle: `{ currentFrame, currentTime, duration, framerate, rotation,
+  size }`. AVPlayer/MediaPlayer decode, a frame never enters JS as pixels or as
+  a pointer, and frames are pulled on the UI thread, so a busy JS thread does
+  not stall playback. `currentFrame` is one stable object, owned by the player.
+  Needs Reanimated. See [docs/video.md](docs/video.md).
 - `setImageCacheLimit(bytes)` — byte budget for decoded images (64 MB). A
   decoded image is resident twice, as CPU pixels and as the GPU texture uploaded
   from them, so this is applied to both the pixel cache and tgfx's context cache.

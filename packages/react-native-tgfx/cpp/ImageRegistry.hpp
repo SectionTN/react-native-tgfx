@@ -44,6 +44,19 @@ class ImageRegistry {
 
   bool replaceExternal(int32_t handle, std::shared_ptr<tgfx::Image> image);
 
+  /**
+   * Register a source that produces its current image on demand, for a video
+   * stream. `produce` runs on the render thread inside acquire(), because a
+   * platform stream's buffer is only good for one texture generation: produced
+   * ahead of the draw, it would expire before the draw ever used it, and the
+   * canvas would go black the moment playback stopped feeding it new ones.
+   */
+  ImageHandle addStream(std::function<std::shared_ptr<tgfx::Image>()> produce, int width,
+                        int height);
+
+  /// Move the epoch, so canvases redraw. For a stream that has a new frame ready.
+  void invalidate();
+
   void remove(int32_t handle);
 
   /// The image behind `handle`, or nullptr when unknown or evicted. Never decodes.
@@ -84,6 +97,8 @@ class ImageRegistry {
     size_t bytes = 0;
     std::list<int32_t>::iterator at{};
     bool resident = false;
+    /// Set for a stream entry; `decoded` stays null and the image comes from here.
+    std::function<std::shared_ptr<tgfx::Image>()> produce;
 
     bool external() const {
       return codec == nullptr;
