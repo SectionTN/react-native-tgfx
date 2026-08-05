@@ -1,7 +1,10 @@
 package com.margelo.nitro.tgfx
 
+import android.hardware.HardwareBuffer
+import android.os.Build
 import android.view.Surface
 import androidx.annotation.Keep
+import androidx.annotation.RequiresApi
 import com.facebook.proguard.annotations.DoNotStrip
 import java.nio.ByteBuffer
 
@@ -46,4 +49,8 @@ internal object TgfxNative {
 
   external fun hasPendingSnapshot(ptr: Long): Boolean
   external fun destroy(ptr: Long)
+
+  /** The `AHardwareBuffer*` a [HardwareBuffer] wraps; valid only while that object is open. */
+  @RequiresApi(Build.VERSION_CODES.O)
+  external fun hardwareBufferPointer(buffer: HardwareBuffer): Long
 }

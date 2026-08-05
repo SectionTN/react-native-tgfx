@@ -38,9 +38,13 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridTgfxImageFactorySpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxSlotsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxSlotsFactorySpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxVideoSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxVideoFactorySpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridTgfxViewComponent.cpp
   # Android-specific Nitrogen C++ sources
+  ../nitrogen/generated/android/c++/JHybridTgfxVideoSpec.cpp
+  ../nitrogen/generated/android/c++/JHybridTgfxVideoFactorySpec.cpp
   ../nitrogen/generated/android/c++/JHybridTgfxViewSpec.cpp
   ../nitrogen/generated/android/c++/views/JHybridTgfxViewStateUpdater.cpp
 )

@@ -22,6 +22,7 @@ import {
 import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
 import { TextSection } from './src/textExamples';
+import { VideoSection } from './src/videoExamples';
 import {
   BarChart,
   CircleField,
@@ -186,6 +187,7 @@ function Demo() {
 
       <FilterSection />
       <ImageSection />
+      <VideoSection />
       <Section label="Runtime shader · helper function (sdCircle)" height={140}>
         <SdCirclePanel x={0} y={0} width={168} height={120} />
         <HelperCollisionPanels x={182} y={0} width={168} height={120} />

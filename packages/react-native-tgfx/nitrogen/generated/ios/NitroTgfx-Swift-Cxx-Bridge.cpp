@@ -8,16 +8,34 @@
 #include "NitroTgfx-Swift-Cxx-Bridge.hpp"
 
 // Include C++ implementation defined types
+#include "HybridTgfxVideoFactorySpecSwift.hpp"
+#include "HybridTgfxVideoSpecSwift.hpp"
 #include "HybridTgfxViewSpecSwift.hpp"
 #include "NitroTgfx-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
 namespace margelo::nitro::tgfx::bridge::swift {
 
-  // pragma MARK: std::function<void(const NativeSnapshot& /* result */)>
-  Func_void_NativeSnapshot create_Func_void_NativeSnapshot(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = NitroTgfx::Func_void_NativeSnapshot::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const NativeSnapshot& result) mutable -> void {
+  // pragma MARK: std::shared_ptr<HybridTgfxVideoSpec>
+  std::shared_ptr<HybridTgfxVideoSpec> create_std__shared_ptr_HybridTgfxVideoSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    NitroTgfx::HybridTgfxVideoSpec_cxx swiftPart = NitroTgfx::HybridTgfxVideoSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::tgfx::HybridTgfxVideoSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridTgfxVideoSpec_(std__shared_ptr_HybridTgfxVideoSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::tgfx::HybridTgfxVideoSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::tgfx::HybridTgfxVideoSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridTgfxVideoSpec\" is not implemented in Swift!");
+    }
+    #endif
+    NitroTgfx::HybridTgfxVideoSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& /* result */)>
+  Func_void_std__shared_ptr_HybridTgfxVideoSpec_ create_Func_void_std__shared_ptr_HybridTgfxVideoSpec_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = NitroTgfx::Func_void_std__shared_ptr_HybridTgfxVideoSpec_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::shared_ptr<HybridTgfxVideoSpec>& result) mutable -> void {
       swiftClosure.call(result);
     };
   }
@@ -27,6 +45,30 @@ namespace margelo::nitro::tgfx::bridge::swift {
     auto swiftClosure = NitroTgfx::Func_void_std__exception_ptr::fromUnsafe(swiftClosureWrapper);
     return [swiftClosure = std::move(swiftClosure)](const std::exception_ptr& error) mutable -> void {
       swiftClosure.call(error);
+    };
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridTgfxVideoFactorySpec>
+  std::shared_ptr<HybridTgfxVideoFactorySpec> create_std__shared_ptr_HybridTgfxVideoFactorySpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    NitroTgfx::HybridTgfxVideoFactorySpec_cxx swiftPart = NitroTgfx::HybridTgfxVideoFactorySpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::tgfx::HybridTgfxVideoFactorySpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridTgfxVideoFactorySpec_(std__shared_ptr_HybridTgfxVideoFactorySpec_ cppType) {
+    std::shared_ptr<margelo::nitro::tgfx::HybridTgfxVideoFactorySpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::tgfx::HybridTgfxVideoFactorySpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridTgfxVideoFactorySpec\" is not implemented in Swift!");
+    }
+    #endif
+    NitroTgfx::HybridTgfxVideoFactorySpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::function<void(const NativeSnapshot& /* result */)>
+  Func_void_NativeSnapshot create_Func_void_NativeSnapshot(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = NitroTgfx::Func_void_NativeSnapshot::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const NativeSnapshot& result) mutable -> void {
+      swiftClosure.call(result);
     };
   }
   

@@ -14,6 +14,7 @@
 #include "HybridTgfxImageFactory.hpp"
 #include "HybridTgfxFonts.hpp"
 #include "HybridTgfxSlotsFactory.hpp"
+#include "HybridTgfxVideoFactorySpecSwift.hpp"
 
 @interface NitroTgfxAutolinking : NSObject
 @end
@@ -56,6 +57,13 @@
                     "The HybridObject \"HybridTgfxSlotsFactory\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridTgfxSlotsFactory>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TgfxVideoFactory",
+    []() -> std::shared_ptr<HybridObject> {
+      std::shared_ptr<HybridTgfxVideoFactorySpec> hybridObject = NitroTgfx::NitroTgfxAutolinking::createTgfxVideoFactory();
+      return hybridObject;
     }
   );
 }

@@ -10,16 +10,26 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `ArrayBufferHolder` to properly resolve imports.
 namespace NitroModules { class ArrayBufferHolder; }
+// Forward declaration of `HybridTgfxVideoFactorySpec` to properly resolve imports.
+namespace margelo::nitro::tgfx { class HybridTgfxVideoFactorySpec; }
+// Forward declaration of `HybridTgfxVideoSpec` to properly resolve imports.
+namespace margelo::nitro::tgfx { class HybridTgfxVideoSpec; }
 // Forward declaration of `HybridTgfxViewSpec` to properly resolve imports.
 namespace margelo::nitro::tgfx { class HybridTgfxViewSpec; }
 // Forward declaration of `NativeSnapshot` to properly resolve imports.
 namespace margelo::nitro::tgfx { struct NativeSnapshot; }
 
 // Forward declarations of Swift defined types
+// Forward declaration of `HybridTgfxVideoFactorySpec_cxx` to properly resolve imports.
+namespace NitroTgfx { class HybridTgfxVideoFactorySpec_cxx; }
+// Forward declaration of `HybridTgfxVideoSpec_cxx` to properly resolve imports.
+namespace NitroTgfx { class HybridTgfxVideoSpec_cxx; }
 // Forward declaration of `HybridTgfxViewSpec_cxx` to properly resolve imports.
 namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 
 // Include C++ defined types
+#include "HybridTgfxVideoFactorySpec.hpp"
+#include "HybridTgfxVideoSpec.hpp"
 #include "HybridTgfxViewSpec.hpp"
 #include "NativeSnapshot.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
@@ -39,6 +49,113 @@ namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
  */
 namespace margelo::nitro::tgfx::bridge::swift {
 
+  // pragma MARK: std::shared_ptr<HybridTgfxVideoSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridTgfxVideoSpec>`.
+   */
+  using std__shared_ptr_HybridTgfxVideoSpec_ = std::shared_ptr<HybridTgfxVideoSpec>;
+  std::shared_ptr<HybridTgfxVideoSpec> create_std__shared_ptr_HybridTgfxVideoSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridTgfxVideoSpec_(std__shared_ptr_HybridTgfxVideoSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridTgfxVideoSpec>
+  using std__weak_ptr_HybridTgfxVideoSpec_ = std::weak_ptr<HybridTgfxVideoSpec>;
+  inline std__weak_ptr_HybridTgfxVideoSpec_ weakify_std__shared_ptr_HybridTgfxVideoSpec_(const std::shared_ptr<HybridTgfxVideoSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<void>
+  using Result_void_ = Result<void>;
+  inline Result_void_ create_Result_void_() noexcept {
+    return Result<void>::withValue();
+  }
+  inline Result_void_ create_Result_void_(const std::exception_ptr& error) noexcept {
+    return Result<void>::withError(error);
+  }
+  
+  // pragma MARK: Result<uint64_t>
+  using Result_uint64_t_ = Result<uint64_t>;
+  inline Result_uint64_t_ create_Result_uint64_t_(uint64_t value) noexcept {
+    return Result<uint64_t>::withValue(std::move(value));
+  }
+  inline Result_uint64_t_ create_Result_uint64_t_(const std::exception_ptr& error) noexcept {
+    return Result<uint64_t>::withError(error);
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>`.
+   */
+  using std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec___ = std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>;
+  inline std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>> create_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec___() noexcept {
+    return Promise<std::shared_ptr<HybridTgfxVideoSpec>>::create();
+  }
+  inline PromiseHolder<std::shared_ptr<HybridTgfxVideoSpec>> wrap_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec___(std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>> promise) noexcept {
+    return PromiseHolder<std::shared_ptr<HybridTgfxVideoSpec>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>&)>`.
+   */
+  using Func_void_std__shared_ptr_HybridTgfxVideoSpec_ = std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__shared_ptr_HybridTgfxVideoSpec__Wrapper final {
+  public:
+    explicit Func_void_std__shared_ptr_HybridTgfxVideoSpec__Wrapper(std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& /* result */)>>(std::move(func))) {}
+    inline void call(std::shared_ptr<HybridTgfxVideoSpec> result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::shared_ptr<HybridTgfxVideoSpec>& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__shared_ptr_HybridTgfxVideoSpec_ create_Func_void_std__shared_ptr_HybridTgfxVideoSpec_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__shared_ptr_HybridTgfxVideoSpec__Wrapper wrap_Func_void_std__shared_ptr_HybridTgfxVideoSpec_(Func_void_std__shared_ptr_HybridTgfxVideoSpec_ value) noexcept {
+    return Func_void_std__shared_ptr_HybridTgfxVideoSpec__Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  /**
+   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
+   */
+  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__exception_ptr_Wrapper final {
+  public:
+    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
+    inline void call(std::exception_ptr error) const noexcept {
+      _function->operator()(error);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
+    return Func_void_std__exception_ptr_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridTgfxVideoFactorySpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridTgfxVideoFactorySpec>`.
+   */
+  using std__shared_ptr_HybridTgfxVideoFactorySpec_ = std::shared_ptr<HybridTgfxVideoFactorySpec>;
+  std::shared_ptr<HybridTgfxVideoFactorySpec> create_std__shared_ptr_HybridTgfxVideoFactorySpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridTgfxVideoFactorySpec_(std__shared_ptr_HybridTgfxVideoFactorySpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridTgfxVideoFactorySpec>
+  using std__weak_ptr_HybridTgfxVideoFactorySpec_ = std::weak_ptr<HybridTgfxVideoFactorySpec>;
+  inline std__weak_ptr_HybridTgfxVideoFactorySpec_ weakify_std__shared_ptr_HybridTgfxVideoFactorySpec_(const std::shared_ptr<HybridTgfxVideoFactorySpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>>
+  using Result_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec____ = Result<std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>>;
+  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec____(const std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridTgfxVideoSpec____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridTgfxVideoSpec>>>>::withError(error);
+  }
+  
   // pragma MARK: std::vector<std::string>
   /**
    * Specialized version of `std::vector<std::string>`.
@@ -95,28 +212,6 @@ namespace margelo::nitro::tgfx::bridge::swift {
     return Func_void_NativeSnapshot_Wrapper(std::move(value));
   }
   
-  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
-  /**
-   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
-   */
-  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
-  /**
-   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
-   */
-  class Func_void_std__exception_ptr_Wrapper final {
-  public:
-    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
-    inline void call(std::exception_ptr error) const noexcept {
-      _function->operator()(error);
-    }
-  private:
-    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
-    return Func_void_std__exception_ptr_Wrapper(std::move(value));
-  }
-  
   // pragma MARK: std::shared_ptr<Promise<void>>
   /**
    * Specialized version of `std::shared_ptr<Promise<void>>`.
@@ -162,15 +257,6 @@ namespace margelo::nitro::tgfx::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridTgfxViewSpec>
   using std__weak_ptr_HybridTgfxViewSpec_ = std::weak_ptr<HybridTgfxViewSpec>;
   inline std__weak_ptr_HybridTgfxViewSpec_ weakify_std__shared_ptr_HybridTgfxViewSpec_(const std::shared_ptr<HybridTgfxViewSpec>& strong) noexcept { return strong; }
-  
-  // pragma MARK: Result<void>
-  using Result_void_ = Result<void>;
-  inline Result_void_ create_Result_void_() noexcept {
-    return Result<void>::withValue();
-  }
-  inline Result_void_ create_Result_void_(const std::exception_ptr& error) noexcept {
-    return Result<void>::withError(error);
-  }
   
   // pragma MARK: Result<std::shared_ptr<Promise<NativeSnapshot>>>
   using Result_std__shared_ptr_Promise_NativeSnapshot___ = Result<std::shared_ptr<Promise<NativeSnapshot>>>;

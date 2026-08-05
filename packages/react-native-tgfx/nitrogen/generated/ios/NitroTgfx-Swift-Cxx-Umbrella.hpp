@@ -8,17 +8,26 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `HybridTgfxVideoFactorySpec` to properly resolve imports.
+namespace margelo::nitro::tgfx { class HybridTgfxVideoFactorySpec; }
+// Forward declaration of `HybridTgfxVideoSpec` to properly resolve imports.
+namespace margelo::nitro::tgfx { class HybridTgfxVideoSpec; }
 // Forward declaration of `HybridTgfxViewSpec` to properly resolve imports.
 namespace margelo::nitro::tgfx { class HybridTgfxViewSpec; }
 // Forward declaration of `NativeSnapshotOptions` to properly resolve imports.
 namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 // Forward declaration of `NativeSnapshot` to properly resolve imports.
 namespace margelo::nitro::tgfx { struct NativeSnapshot; }
+// Forward declaration of `PixelFormat` to properly resolve imports.
+namespace margelo::nitro::tgfx { enum class PixelFormat; }
 
 // Include C++ defined types
+#include "HybridTgfxVideoFactorySpec.hpp"
+#include "HybridTgfxVideoSpec.hpp"
 #include "HybridTgfxViewSpec.hpp"
 #include "NativeSnapshot.hpp"
 #include "NativeSnapshotOptions.hpp"
+#include "PixelFormat.hpp"
 #include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/Result.hpp>
@@ -37,6 +46,10 @@ namespace margelo::nitro::tgfx { struct NativeSnapshot; }
 #include <NitroModules/DateToChronoDate.hpp>
 
 // Forward declarations of Swift defined types
+// Forward declaration of `HybridTgfxVideoFactorySpec_cxx` to properly resolve imports.
+namespace NitroTgfx { class HybridTgfxVideoFactorySpec_cxx; }
+// Forward declaration of `HybridTgfxVideoSpec_cxx` to properly resolve imports.
+namespace NitroTgfx { class HybridTgfxVideoSpec_cxx; }
 // Forward declaration of `HybridTgfxViewSpec_cxx` to properly resolve imports.
 namespace NitroTgfx { class HybridTgfxViewSpec_cxx; }
 
