@@ -14,19 +14,40 @@ set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 # failing) sync step.
 file(MAKE_DIRECTORY "${TGFX_DIR}/third_party/shaderc/third_party/glslang")
 
-# vendor_tools' vendor-build guesses its source dir from argv[1], which breaks
-# under the workspace symlink (node_modules/react-native-tgfx -> packages/...).
-# Force `-s ${CONFIG_DIR}` so it finds vendor.json at the tgfx root. Not a patch:
-# tgfx gitignores third_party/, which depsync re-fetches, so nothing is tracked.
+# Two edits to vendor_tools' vendor.cmake. Not patches: tgfx gitignores
+# third_party/, which depsync re-fetches, so nothing here is tracked.
+#
+# 1. vendor-build guesses its source dir from argv[1], which breaks under the
+#    workspace symlink (node_modules/react-native-tgfx -> packages/...). Force
+#    `-s ${CONFIG_DIR}` so it finds vendor.json at the tgfx root.
+# 2. Its arch table has no `i686` case, so the x86 ABI falls through to `arm`
+#    and every vendored archive is built into — and read back from —
+#    third_party/out/*/android/arm. The link then fails with "is incompatible
+#    with elf_i386". x86_64/armeabi-v7a/arm64-v8a map correctly already.
 set(_vendor_cml "${TGFX_DIR}/third_party/vendor_tools/vendor.cmake")
 if (EXISTS "${_vendor_cml}")
   file(READ "${_vendor_cml}" _vendor_cml_content)
+  set(_vendor_cml_original "${_vendor_cml_content}")
   if (NOT _vendor_cml_content MATCHES "vendor-build -s ")
     string(REPLACE
       "node \${VENDOR_TOOLS_DIR}/vendor-build "
       "node \${VENDOR_TOOLS_DIR}/vendor-build -s \${CONFIG_DIR} "
       _vendor_cml_content "${_vendor_cml_content}")
+  endif ()
+  if (NOT _vendor_cml_content MATCHES "i686")
+    string(REPLACE
+      "    elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL \"x86_64\")\n        set(ARCH x64)\n    else ()"
+      "    elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL \"x86_64\")\n        set(ARCH x64)\n    elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL \"i686\")\n        set(ARCH x86)\n    else ()"
+      _vendor_cml_content "${_vendor_cml_content}")
+  endif ()
+  if (NOT _vendor_cml_content STREQUAL _vendor_cml_original)
     file(WRITE "${_vendor_cml}" "${_vendor_cml_content}")
+  endif ()
+  if (ANDROID_ABI STREQUAL "x86" AND NOT _vendor_cml_content MATCHES "i686")
+    message(FATAL_ERROR
+      "vendor.cmake still has no i686 arch case, so the x86 ABI would link the \
+armeabi-v7a archives. Upstream must have reshaped the arch table; re-check the \
+string(REPLACE) above.")
   endif ()
 endif ()
 

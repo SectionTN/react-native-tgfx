@@ -45,6 +45,7 @@
     "cpp/third_party/tgfx/mac"
   ],
   "scripts": {
+    "postinstall": "node scripts/sync-tgfx-deps.js",
     "prepack": "npx --no-install tsc --build --force && ls lib/index.js lib/index.d.ts LICENSE NOTICE > /dev/null",
     "typecheck": "tsc --noEmit",
     "test": "bun test",

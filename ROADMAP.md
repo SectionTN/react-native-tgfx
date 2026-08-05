@@ -120,8 +120,9 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   from both builds. The `-s` / shaderc-stub fixes still edit `third_party/`,
   which tgfx gitignores and depsync re-fetches, so they cannot be patch files;
   upstreaming them to vendor_tools is the only fix left.
-- 🟠 **Multi-ABI Android.** Currently built/tested for `arm64-v8a` only; add
-  `x86_64`/`armeabi-v7a` for emulators and older devices.
+- 🟠 **Multi-ABI Android.** All four ABIs link (`arm64-v8a`, `armeabi-v7a`,
+  `x86`, `x86_64`); only `arm64-v8a` is run on a device and built in CI, so the
+  others are compile-tested only.
 - 🟠 **npm publish readiness.** `package.json` `files` includes `cpp` (would
   publish the whole tgfx submodule). Define a binary-distribution strategy and
   set up `release-it`/versioning.
