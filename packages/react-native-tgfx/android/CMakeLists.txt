@@ -17,6 +17,15 @@ if (EXISTS "${TGFX_LIB}")
   set_target_properties(tgfx PROPERTIES IMPORTED_LOCATION "${TGFX_LIB}")
 else ()
 
+# Without this the failure is tgfx's own `include(./third_party/vendor_tools/vendor.cmake)`, which names no cause.
+if (NOT EXISTS "${TGFX_DIR}/third_party/vendor_tools/vendor.cmake")
+  message(FATAL_ERROR
+    "tgfx's vendored dependencies are missing from ${TGFX_DIR}/third_party.\n"
+    "Fetch them with git and network access, then build the prebuilt archives:\n\n"
+    "  cd ${TGFX_DIR} && npx depsync\n"
+    "  bash packages/react-native-tgfx/scripts/build-tgfx-android.sh\n")
+endif ()
+
 # --- Build tgfx from source (OpenGL ES backend for Android) ---
 # tgfx's CMake unconditionally tries to git-sync shaderc's sub-deps, but shaderc
 # is only compiled for the Metal/Vulkan/WebGPU backends. The OpenGL backend used
