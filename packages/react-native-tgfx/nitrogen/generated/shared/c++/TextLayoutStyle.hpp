@@ -43,6 +43,8 @@ namespace margelo::nitro::tgfx {
     std::string fontFamily     SWIFT_PRIVATE;
     double fontWeight     SWIFT_PRIVATE;
     bool italic     SWIFT_PRIVATE;
+    bool fauxBold     SWIFT_PRIVATE;
+    bool fauxItalic     SWIFT_PRIVATE;
     double letterSpacing     SWIFT_PRIVATE;
     double width     SWIFT_PRIVATE;
     double align     SWIFT_PRIVATE;
@@ -52,7 +54,7 @@ namespace margelo::nitro::tgfx {
 
   public:
     TextLayoutStyle() = default;
-    explicit TextLayoutStyle(double fontSize, std::string fontFamily, double fontWeight, bool italic, double letterSpacing, double width, double align, double lineHeight, double maxLines, std::string ellipsis): fontSize(fontSize), fontFamily(fontFamily), fontWeight(fontWeight), italic(italic), letterSpacing(letterSpacing), width(width), align(align), lineHeight(lineHeight), maxLines(maxLines), ellipsis(ellipsis) {}
+    explicit TextLayoutStyle(double fontSize, std::string fontFamily, double fontWeight, bool italic, bool fauxBold, bool fauxItalic, double letterSpacing, double width, double align, double lineHeight, double maxLines, std::string ellipsis): fontSize(fontSize), fontFamily(fontFamily), fontWeight(fontWeight), italic(italic), fauxBold(fauxBold), fauxItalic(fauxItalic), letterSpacing(letterSpacing), width(width), align(align), lineHeight(lineHeight), maxLines(maxLines), ellipsis(ellipsis) {}
 
   public:
     friend bool operator==(const TextLayoutStyle& lhs, const TextLayoutStyle& rhs) = default;
@@ -72,6 +74,8 @@ namespace margelo::nitro {
         JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontFamily"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontWeight"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "italic"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fauxBold"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fauxItalic"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "letterSpacing"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "width"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "align"))),
@@ -86,6 +90,8 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fontFamily"), JSIConverter<std::string>::toJSI(runtime, arg.fontFamily));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fontWeight"), JSIConverter<double>::toJSI(runtime, arg.fontWeight));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "italic"), JSIConverter<bool>::toJSI(runtime, arg.italic));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "fauxBold"), JSIConverter<bool>::toJSI(runtime, arg.fauxBold));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "fauxItalic"), JSIConverter<bool>::toJSI(runtime, arg.fauxItalic));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "letterSpacing"), JSIConverter<double>::toJSI(runtime, arg.letterSpacing));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "width"), JSIConverter<double>::toJSI(runtime, arg.width));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "align"), JSIConverter<double>::toJSI(runtime, arg.align));
@@ -106,6 +112,8 @@ namespace margelo::nitro {
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontFamily")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontWeight")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "italic")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fauxBold")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fauxItalic")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "letterSpacing")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "width")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "align")))) return false;

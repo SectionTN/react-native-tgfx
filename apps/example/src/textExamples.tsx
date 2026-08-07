@@ -80,6 +80,30 @@ export function TextSection() {
         />
       </Panel>
 
+      <Panel label="Forced synthetic emphasis · fauxBold / fauxItalic" height={80}>
+        <Text x={0} y={30} text="Regular" fontSize={22} fontFamily={FAMILY} color="#111" />
+        <Text x={96} y={30} text="fauxBold" fontSize={22} fontFamily={FAMILY} fauxBold color="#111" />
+        <Text
+          x={216}
+          y={30}
+          text="fauxItalic"
+          fontSize={22}
+          fontFamily={FAMILY}
+          fauxItalic
+          color="#111"
+        />
+        <Text
+          x={0}
+          y={64}
+          text="both at once"
+          fontSize={22}
+          fontFamily={FAMILY}
+          fauxBold
+          fauxItalic
+          color="#111"
+        />
+      </Panel>
+
       <Panel label="Paragraph · wrap + align + line height" height={230}>
         <Text
           x={0}

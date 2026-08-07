@@ -41,6 +41,8 @@ tgfxrn::TextSpec specOf(const TextLayoutStyle& style) {
   spec.family = style.fontFamily;
   spec.weight = static_cast<int>(style.fontWeight);
   spec.italic = style.italic;
+  spec.fauxBold = style.fauxBold;
+  spec.fauxItalic = style.fauxItalic;
   spec.letterSpacing = static_cast<float>(style.letterSpacing);
   spec.wrapWidth = static_cast<float>(style.width);
   spec.align = static_cast<tgfxrn::TextAlign>(

@@ -35,6 +35,28 @@ test('encodes a rect with its paint', () => {
   expect(used[15]).toBe(-1) // no shader
 })
 
+test('a miter limit costs a flag bit and a word, and nothing when unset', () => {
+  const shape = (strokeMiter?: number) =>
+    compile([
+      node(NodeType.Rect, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        style: 'stroke',
+        strokeJoin: 'miter',
+        strokeMiter,
+      }),
+    ])
+  const plain = shape()
+  expect(plain.used[10]).toBe(1 | 2)
+  const limited = shape(10)
+  expect(limited.used[10]).toBe(1 | 2 | 16)
+  // colour flags | width cap join miter alpha
+  expect(Array.from(limited.used.subarray(11, 16))).toEqual([1, 0, 0, 10, 1])
+  expect(limited.used.length).toBe(plain.used.length + 1)
+})
+
 test('records a patch for every animated field, and reuses one slot', () => {
   const radius = sharedValue(7)
   const { used, values } = compile([
@@ -345,6 +367,18 @@ test('an omitted font block defaults to normal, upright and unwrapped', () => {
   expect(Array.from(used.subarray(7, 25))).toEqual([
     14, 0, 400, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   ])
+})
+
+test('the font style word packs italic and the two faux bits', () => {
+  const style = (p: Record<string, unknown>) =>
+    compile([node(NodeType.Text, { x: 0, y: 0, text: 'hi', ...p })]).used[10]
+  expect(style({})).toBe(0)
+  expect(style({ fontStyle: 'italic' })).toBe(1)
+  expect(style({ fauxBold: true })).toBe(2)
+  expect(style({ fauxItalic: true })).toBe(4)
+  expect(style({ fontStyle: 'italic', fauxBold: true, fauxItalic: true })).toBe(
+    7
+  )
 })
 
 test('a text path carries the path, the text and the font block', () => {

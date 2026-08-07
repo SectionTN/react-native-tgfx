@@ -33,7 +33,6 @@ import {
   Wave,
 } from './src/customShapes';
 import { AnimatedSection } from './src/animatedExamples';
-import { GraphSection } from './src/graphExamples';
 import { ImperativeSection } from './src/imperativeExample';
 import { SnapshotSection } from './src/snapshotExample';
 import {
@@ -92,6 +91,20 @@ function Demo() {
           strokeWidth={5}
           strokeJoin="round"
         />
+      </Section>
+
+      <Section label="Miter limit · same spike, cut back at 1, kept at 20">
+        {[1, 20].map((limit, i) => (
+          <Path
+            key={limit}
+            path={`M${i * 140 + 30} 56 L${i * 140 + 44} 8 L${i * 140 + 58} 56`}
+            color="#FF3B30"
+            style="stroke"
+            strokeWidth={10}
+            strokeJoin="miter"
+            strokeMiter={limit}
+          />
+        ))}
       </Section>
 
       <Section label="Gradients">
@@ -205,13 +218,6 @@ function Demo() {
           Animated · Reanimated UI-thread driver (zero JS / frame)
         </RNText>
         <AnimatedSection />
-      </View>
-
-      <View style={styles.section}>
-        <RNText style={styles.sectionLabel}>
-          Line graph · react-native-graph v1.3.0 port (morph, scrub, indicator)
-        </RNText>
-        <GraphSection />
       </View>
 
       <ImperativeSection />

@@ -44,6 +44,8 @@ export interface PaintProps {
   strokeWidth?: Animated<number>
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
+  /** Past this length-over-width ratio a `'miter'` join falls back to bevel. Defaults to 4. */
+  strokeMiter?: number
   /** Paint-wide alpha multiplier in [0, 1]; only one per chain can animate. */
   opacity?: Animated<number>
   antiAlias?: boolean
@@ -183,6 +185,9 @@ export interface FontProps {
   /** Picks the nearest face in the family; synthesised when none is close. */
   fontWeight?: FontWeight
   fontStyle?: 'normal' | 'italic'
+  /** Force the embolden/shear the face match only applies when nothing close enough exists. */
+  fauxBold?: boolean
+  fauxItalic?: boolean
   /** Extra px between glyphs. */
   letterSpacing?: number
 }

@@ -69,7 +69,7 @@ struct FontStack {
 };
 
 std::unique_ptr<FontStack> buildStack(const std::string& family, int weight, bool italic,
-                                      float size) {
+                                      float size, bool forceBold, bool forceItalic) {
   auto& registry = FontRegistry::instance();
   auto match = registry.match(family, weight, italic);
   if (match.typeface == nullptr || size <= 0) {
@@ -77,11 +77,14 @@ std::unique_ptr<FontStack> buildStack(const std::string& family, int weight, boo
   }
   auto stack = std::make_unique<FontStack>();
   tgfx::Font primary(match.typeface, size);
-  primary.setFauxBold(match.fauxBold);
-  primary.setFauxItalic(match.fauxItalic);
+  primary.setFauxBold(match.fauxBold || forceBold);
+  primary.setFauxItalic(match.fauxItalic || forceItalic);
   stack->fonts.push_back(std::move(primary));
   for (const auto& typeface : registry.fallbacks()) {
-    stack->fonts.emplace_back(typeface, size);
+    // Only what the caller forced: `match` describes the primary face, not this one.
+    auto& fallback = stack->fonts.emplace_back(typeface, size);
+    fallback.setFauxBold(forceBold);
+    fallback.setFauxItalic(forceItalic);
   }
   return stack;
 }
@@ -253,10 +256,13 @@ Paragraph buildParagraph(const std::vector<TextRun>& runs, const TextSpec& spec,
   out.metrics.resize(runs.size());
   for (size_t i = 0; i < runs.size(); i++) {
     const auto& run = runs[i];
+    // A faux bit reaches a run only on the axis it inherits: a span that set its own opts out.
     auto stack = buildStack(run.family.empty() ? spec.family : run.family,
                             run.weight != 0 ? run.weight : spec.weight,
                             run.italic == 0 ? spec.italic : run.italic == 1,
-                            run.size > 0 ? run.size : size);
+                            run.size > 0 ? run.size : size,
+                            run.weight == 0 && spec.fauxBold,
+                            run.italic == 0 && spec.fauxItalic);
     if (stack != nullptr) {
       out.metrics[i] = stack->fonts[0].getMetrics();
       out.empty = false;
@@ -393,7 +399,8 @@ TextLayout layoutText(const std::vector<TextRun>& runs, const TextSpec& spec, fl
 
 std::vector<double> glyphIdsFor(const std::string& text, const TextSpec& spec, float size) {
   std::vector<double> ids;
-  auto stack = buildStack(spec.family, spec.weight, spec.italic, size);
+  auto stack = buildStack(spec.family, spec.weight, spec.italic, size, spec.fauxBold,
+                          spec.fauxItalic);
   if (stack == nullptr) {
     return ids;
   }
@@ -412,7 +419,8 @@ std::vector<double> glyphIdsFor(const std::string& text, const TextSpec& spec, f
 TextLayout layoutGlyphs(const std::vector<PlacedGlyph>& glyphs, const TextSpec& spec,
                         float size) {
   TextLayout layout;
-  auto stack = buildStack(spec.family, spec.weight, spec.italic, size);
+  auto stack = buildStack(spec.family, spec.weight, spec.italic, size, spec.fauxBold,
+                          spec.fauxItalic);
   if (stack == nullptr || glyphs.empty()) {
     return layout;
   }

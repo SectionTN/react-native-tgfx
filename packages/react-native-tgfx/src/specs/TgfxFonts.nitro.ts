@@ -12,6 +12,9 @@ export interface TextLayoutStyle {
   /** CSS weight, 100-1000. */
   fontWeight: number
   italic: boolean
+  /** Force synthetic emphasis, on top of whatever the family match already synthesises. */
+  fauxBold: boolean
+  fauxItalic: boolean
   letterSpacing: number
   /** Wrap width in px; 0 means no wrapping. */
   width: number

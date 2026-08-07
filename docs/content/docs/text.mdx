@@ -28,6 +28,7 @@ Shared by `Text` and `TextPath`:
 | `fontFamily` | a family registered with [`useFonts`](#usefonts), or one the platform knows |
 | `fontWeight` | `'normal' \| 'bold' \| 100…900`; picks the nearest face in the family, synthesising when none is close |
 | `fontStyle` | `'normal' \| 'italic'` |
+| `fauxBold`, `fauxItalic` | force the synthesised emphasis on, for a family whose nearest face is close enough that matching would not synthesise it |
 | `letterSpacing` | extra px between glyphs |
 
 ## Paragraph props
@@ -68,6 +69,10 @@ Anything a span does not set is the paragraph's.
 | `color` | the node's paint colour, for this run only |
 | `fontSize` | the paragraph's size — **static**, see below |
 | `fontFamily`, `fontWeight`, `fontStyle`, `letterSpacing` | the paragraph's face |
+
+A span has no `fauxBold`/`fauxItalic` of its own — the paragraph's reach it, but only
+on an axis it inherits. A span that sets `fontWeight` opts out of `fauxBold`, and one
+that sets `fontStyle` opts out of `fauxItalic`, so its own face is drawn as asked.
 
 <Owned by="native">
 Each colour is one blob and one draw call; consecutive spans that take the node's
