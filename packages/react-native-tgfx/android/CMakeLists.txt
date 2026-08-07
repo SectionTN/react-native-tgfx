@@ -7,6 +7,16 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 
+# Prebuilt tgfx + its vendored static libs, one merged archive per ABI, built
+# at publish time by scripts/build-tgfx-android.sh — an npm install compiles
+# only the glue code below, never tgfx itself. Absent (a git checkout of the
+# monorepo), fall back to building tgfx from source.
+set(TGFX_LIB "${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libtgfx.a")
+if (EXISTS "${TGFX_LIB}")
+  add_library(tgfx STATIC IMPORTED)
+  set_target_properties(tgfx PROPERTIES IMPORTED_LOCATION "${TGFX_LIB}")
+else ()
+
 # --- Build tgfx from source (OpenGL ES backend for Android) ---
 # tgfx's CMake unconditionally tries to git-sync shaderc's sub-deps, but shaderc
 # is only compiled for the Metal/Vulkan/WebGPU backends. The OpenGL backend used
@@ -104,6 +114,8 @@ consumes the codec options.")
   endif ()
 endforeach ()
 
+endif ()
+
 # --- Our shared C++ engine + JNI bridge ---
 add_library(${PACKAGE_NAME} SHARED
         src/main/cpp/cpp-adapter.cpp
@@ -124,18 +136,22 @@ add_library(${PACKAGE_NAME} SHARED
 # Add Nitrogen specs :)
 include(${CMAKE_SOURCE_DIR}/../nitrogen/generated/android/NitroTgfx+autolinking.cmake)
 
-# Set up includes (local, shared engine, tgfx, nlohmann/json)
+# Set up includes (local, shared engine, tgfx)
 target_include_directories(${PACKAGE_NAME} PRIVATE
         "src/main/cpp"
         "../cpp"
         "${TGFX_DIR}/include"
-        "${TGFX_DIR}/third_party/json/single_include"
 )
 
 find_library(LOG_LIB log)
 find_library(ANDROID_LIB android)
 find_library(EGL_LIB EGL)
 find_library(GLES_LIB GLESv2)
+# tgfx's in-tree build linked GLESv3 (ES3 entry points like
+# glVertexAttribDivisor) and jnigraphics (AndroidBitmap_*) itself; the prebuilt
+# archive needs them supplied here.
+find_library(GLES3_LIB GLESv3)
+find_library(JNIGRAPHICS_LIB jnigraphics)
 
 # Link all libraries together
 target_link_libraries(
@@ -144,5 +160,7 @@ target_link_libraries(
         ${ANDROID_LIB}
         ${EGL_LIB}
         ${GLES_LIB}
-        tgfx                                      # <-- tgfx static lib
+        ${GLES3_LIB}
+        ${JNIGRAPHICS_LIB}
+        tgfx                                      # <-- tgfx static lib (prebuilt or source)
 )

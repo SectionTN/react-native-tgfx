@@ -9,7 +9,8 @@
   "scripts": {
     "specs": "bun --cwd packages/react-native-tgfx run specs",
     "typecheck": "bun --cwd packages/react-native-tgfx run typecheck",
-    "example": "bun --cwd apps/example"
+    "example": "bun --cwd apps/example",
+    "release": "bash scripts/release.sh"
   },
   "devDependencies": {
     "@release-it/conventional-changelog": "^12.0.0",

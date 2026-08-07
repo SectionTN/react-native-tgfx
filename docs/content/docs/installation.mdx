@@ -16,16 +16,10 @@ npm install react-native-tgfx@alpha react-native-nitro-modules
 The current release is `0.0.1`, published under the `alpha` dist-tag rather than
 `latest`, so the tag is not optional.
 
-tgfx keeps its vendored dependencies in a gitignored directory, so the tarball
-cannot carry them and a `postinstall` fetches them instead — a few hundred MB of
-git clones, on the first install only. It needs `git` and network access, and it
-does not run under `npm install --ignore-scripts`; without it the Android
-configure step fails on a missing `third_party/vendor_tools/vendor.cmake`. Run it
-by hand in that case:
-
-```bash
-cd node_modules/react-native-tgfx/cpp/third_party/tgfx && npx depsync
-```
+The package ships tgfx as prebuilt static libraries for every CPU ABI on both
+platforms — an `armeabi-v7a`/`arm64-v8a`/`x86`/`x86_64` archive on Android and a
+device + simulator (`arm64` and `x86_64`) `xcframework` on iOS. Nothing is
+fetched or compiled at install time; there is no postinstall script.
 
 ## 2. Install Reanimated *and* worklets
 
@@ -64,21 +58,12 @@ Worklets need this transform to produce their bytecode. The stack points at
 
 ## 4. Build
 
-<Owned by="native">
-The first release build compiles tgfx from source — it is a graphics engine, and
-on a laptop it took close to fifty minutes. Later builds reuse the compiled
-output and take minutes.
-</Owned>
-
 ```bash
 npx react-native run-android
 ```
 
-All four ABIs build: `arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`. tgfx and
-its vendored libraries are compiled once per ABI, so the first build of each
-costs the same as the first `arm64-v8a` one — pass
-`-PreactNativeArchitectures=arm64-v8a` while developing on a device, and leave
-the default list for release.
+tgfx arrives prebuilt per ABI, so only the thin native glue compiles — a normal
+React Native library build, not a graphics-engine one.
 
 [#139](https://github.com/riteshshukla04/react-native-tgfx/issues/139) still
 tracks a `Couldn't determine Hermesc location` failure in the release bundle
@@ -86,19 +71,11 @@ step.
 
 ### iOS
 
-iOS needs one manual step before `pod install`, because the podspec links a
-static library that is not shipped in the package:
-
-```bash
-bash node_modules/react-native-tgfx/scripts/build-tgfx-ios.sh
-```
-
 ```bash
 cd ios && pod install
 ```
 
-Set `PLATFORM=OS64` before running it for a device build, and re-run it whenever
-the package is updated.
+The podspec links the shipped `libtgfx.xcframework`; no extra step.
 
 ## Optional: the camera
 

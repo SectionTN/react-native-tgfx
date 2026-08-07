@@ -108,11 +108,12 @@ git submodule update --init --recursive
 cd packages/react-native-tgfx/cpp/third_party/tgfx && depsync
 ```
 
-Android builds tgfx automatically via CMake. For iOS, build the tgfx static lib
-once before `pod install`:
+Both platforms link tgfx as a prebuilt static lib (npm installs ship it; a git
+checkout builds it once):
 
 ```bash
-bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh   # SIMULATORARM64 by default
+bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh       # device + simulator slices
+bash packages/react-native-tgfx/scripts/build-tgfx-android.sh   # all 4 ABIs, or pass a subset
 ```
 
 ## On-device rendering tests

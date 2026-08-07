@@ -231,12 +231,3 @@ and leave it alone.
 `CanvasHandle.redraw()` is the escape hatch for state the scene *points at*
 rather than holds — an image handle re-pointed at new pixels, say. `set()`
 already redraws on its own.
-
-## What is not here
-
-There is no imperative add, remove or reorder of nodes: the scene compiles once
-per commit, so node count comes from the element tree. A scene whose node count
-varies at runtime — an unknown number of detected faces, a particle field — still
-has to declare its maximum up front and neutralise the unused ones: a zero-size
-shape draws nothing, and a zeroed uniform slot is a face the shader skips. The
-[camera](/docs/camera) face blur is that pattern in full.

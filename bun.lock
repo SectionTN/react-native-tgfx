@@ -153,7 +153,7 @@
     },
     "packages/react-native-tgfx": {
       "name": "react-native-tgfx",
-      "version": "0.0.1",
+      "version": "0.0.2-alpha.0",
       "dependencies": {
         "react-reconciler": "0.33.0",
       },
@@ -179,14 +179,16 @@
         "react-native": "*",
         "react-native-nitro-modules": "*",
         "react-native-reanimated": "*",
+        "react-native-worklets": "*",
       },
       "optionalPeers": [
         "react-native-reanimated",
+        "react-native-worklets",
       ],
     },
     "packages/react-native-tgfx-vision-camera": {
       "name": "react-native-tgfx-vision-camera",
-      "version": "0.0.1-alpha.0",
+      "version": "0.0.1-alpha.1",
       "devDependencies": {
         "@eslint/js": "^9.39.4",
         "@typescript-eslint/eslint-plugin": "^8.48.2",

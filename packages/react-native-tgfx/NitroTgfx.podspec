@@ -47,14 +47,13 @@ Pod::Spec.new do |s|
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
     "HEADER_SEARCH_PATHS" => [
       "\"#{tgfx_dir}/include\"",
-      "\"#{tgfx_dir}/third_party/json/single_include\"",
       "\"$(PODS_TARGET_SRCROOT)/cpp\"",
     ].join(" "),
     "OTHER_LDFLAGS" => "-lc++",
   }
 
   # Prebuilt tgfx (+ vendored deps) static library, device + simulator slices.
-  # Build it first with:
+  # Ships in the npm package; in a git checkout build it once with:
   #   bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
   s.vendored_frameworks = "ios/libs/libtgfx.xcframework"
 
