@@ -20,6 +20,7 @@ const PLATE = 'M10 10 L100 10 L100 100 L10 100 Z';
 const DISC =
   'M55 30 C69 30 80 41 80 55 C80 69 69 80 55 80 C41 80 30 69 30 55 C30 41 41 30 55 30 Z';
 const ROUTE = 'M12 80 q60 -70 110 0 t100 -10';
+const ARCH = 'M20 90 C20 10 100 10 100 90';
 
 export function PathSection() {
   const holed = pathOp(PLATE, DISC, 'difference');
@@ -30,9 +31,10 @@ export function PathSection() {
   const [cut, setCut] = useState(0.6);
   const head = pathPointAtLength(ROUTE, routeLength * cut);
 
-  const glyph = pathTransform(DISC, [0.6, 0, 0, 0.6, 120, 8]);
-  const tight = pathBounds(glyph, true);
-  const loose = pathBounds(glyph);
+  // A cubic whose control points sit 20px above the ink, so the two boxes differ visibly.
+  const arch = pathTransform(ARCH, [1, 0, 0, 1, 20, 0]);
+  const tight = pathBounds(arch, true);
+  const loose = pathBounds(arch);
 
   return (
     <>
@@ -65,7 +67,7 @@ export function PathSection() {
           style="stroke"
           strokeWidth={1}
         />
-        <Path path={glyph} color="#1C1C1E" />
+        <Path path={arch} color="#0A84FF" style="stroke" strokeWidth={4} />
       </Panel>
 
       <Panel label={`pathSegment + pathPointAtLength — ${Math.round(cut * 100)}% along`} height={120}>

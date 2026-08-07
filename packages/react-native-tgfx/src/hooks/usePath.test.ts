@@ -65,7 +65,11 @@ test('the hybrid object is created once and reused', () => {
     created++
     return native
   }
+  // Whatever ran before, no further call may reach createHybridObject again.
   pathLength('a')
+  const after = created
   pathLength('b')
-  expect(created).toBe(0)
+  pathBounds('c')
+  expect(created).toBe(after)
+  expect(created).toBeLessThanOrEqual(1)
 })

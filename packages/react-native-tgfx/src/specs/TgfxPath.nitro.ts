@@ -38,7 +38,7 @@ export interface TgfxPath extends HybridObject<{
    */
   bounds(path: string, tight: boolean): PathBounds
 
-  /** Whether the point is inside the path, honouring its fill type. */
+  /** Whether the point is inside the path, under the winding fill `parseSvgPath` gives it. */
   contains(path: string, x: number, y: number): boolean
 
   /** Apply an affine matrix, in the `[a, b, c, d, tx, ty]` order `Matrix::MakeAll` takes. */

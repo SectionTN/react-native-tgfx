@@ -32,7 +32,7 @@ export function pathBounds(path: string, tight = false): PathBounds {
   return paths().bounds(path, tight)
 }
 
-/** Whether the point falls inside the path, honouring its fill type. */
+/** Whether the point falls inside the path, under non-zero winding — what `<Path>` draws. */
 export function pathContains(path: string, x: number, y: number): boolean {
   return paths().contains(path, x, y)
 }

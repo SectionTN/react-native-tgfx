@@ -52,8 +52,9 @@ worth it for laying out around a glyph outline, not for a coarse cull.
 pathContains(path: string, x: number, y: number): boolean
 ```
 
-Honours the path's fill rule. Points are in the path's own coordinates, so undo
-whatever `transform` the `<Group>` around it applies before asking.
+Uses non-zero winding, which is what `<Path>` draws — SVG path data carries no
+fill rule, so there is none to honour. Points are in the path's own coordinates,
+so undo whatever `transform` the `<Group>` around it applies before asking.
 
 ## Transform
 

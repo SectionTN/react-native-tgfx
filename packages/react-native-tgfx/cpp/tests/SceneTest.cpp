@@ -2275,6 +2275,16 @@ void pathUtilitiesAgreeWithTheGeometryTheyWrap() {
   CHECK(!tgfxrn::pathContains(ring, 30, 30));
   CHECK(tgfxrn::pathContains(ring, 3, 3));
 
+  // A lens and an oval have almost no endpoint area, so nesting cannot be ranked by area.
+  for (const char* hull : {"M0 50 Q50 0 100 50 Q50 100 0 50 Z",
+                           "M0 30 C0 -10 80 -10 80 30 C80 70 0 70 0 30 Z"}) {
+    for (const char* op : {"difference", "xor"}) {
+      auto punched = tgfxrn::pathCombine(hull, "M35 25 L55 25 L55 45 L35 45 Z", op);
+      CHECK(!tgfxrn::pathContains(punched, 45, 35));
+      CHECK(tgfxrn::pathContains(punched, 50, 50));
+    }
+  }
+
   auto both = tgfxrn::pathCombine(big, small, "intersect");
   CHECK(std::abs(boxOf(both).width() - 20) < 0.01f);
 
@@ -2300,6 +2310,14 @@ void pathUtilitiesAgreeWithTheGeometryTheyWrap() {
   CHECK(tgfxrn::pathSegment(line, 60, 20).empty());
   CHECK(tgfxrn::pathLength("") == 0);
   CHECK(!tgfxrn::pathPointAtLength("", 1).ok);
+
+  // Every contour counts, not just the first: PathMeasure walks them one at a time.
+  const std::string twoLines = "M0 0 L100 0 M0 10 L100 10";
+  CHECK(std::abs(tgfxrn::pathLength(twoLines) - 200) < 0.01f);
+  auto second = tgfxrn::pathPointAtLength(twoLines, 150);
+  CHECK(second.ok && std::abs(second.x - 50) < 0.01f && std::abs(second.y - 10) < 0.01f);
+  CHECK(std::abs(tgfxrn::pathLength(tgfxrn::pathSegment(twoLines, 0, 1000)) - 200) < 0.01f);
+  CHECK(std::abs(tgfxrn::pathLength(holed) - (160 + 80)) < 0.01f);
 }
 
 /// <Glyphs> draws exactly the ids it is handed, where it is told: no shaping, no fallback.
