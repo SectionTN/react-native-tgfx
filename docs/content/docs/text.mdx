@@ -70,6 +70,10 @@ Anything a span does not set is the paragraph's.
 | `fontSize` | the paragraph's size — **static**, see below |
 | `fontFamily`, `fontWeight`, `fontStyle`, `letterSpacing` | the paragraph's face |
 
+A span has no `fauxBold`/`fauxItalic` of its own — the paragraph's reach it, but only
+on an axis it inherits. A span that sets `fontWeight` opts out of `fauxBold`, and one
+that sets `fontStyle` opts out of `fauxItalic`, so its own face is drawn as asked.
+
 <Owned by="native">
 Each colour is one blob and one draw call; consecutive spans that take the node's
 own paint are packed into a single blob, so a paragraph with no coloured span

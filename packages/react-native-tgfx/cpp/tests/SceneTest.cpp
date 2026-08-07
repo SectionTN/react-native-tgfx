@@ -1751,6 +1751,15 @@ void theFauxBitsEmboldenAndShearAMatchedFace() {
   CHECK(draw(2) != plain);
   CHECK(draw(4) != plain);
   CHECK(draw(2) != draw(4));
+
+  // A run that overrode the axis keeps its own face: 2 forces upright, 1 forces italic.
+  auto span = [&](int style, int runItalic) {
+    Writer w;
+    writeText(w, 28, -1, 0, 0, 0, 0, 400, style, runItalic);
+    return render(w.finish(), strings, {});
+  };
+  CHECK(span(4, 2) == span(0, 2));
+  CHECK(span(4, 0) != span(0, 0));
   registry.clear();
 }
 
@@ -1862,6 +1871,14 @@ void anEmojiFallsBackInsteadOfVanishing() {
   auto pixels = render(w.finish(), strings, {});
   CHECK(!tgfxrn::FontRegistry::instance().fallbacks().empty());
   CHECK(anyPixelSet(pixels));
+
+  // A forced faux bit has to reach the fallback too, or one string draws at two weights.
+  const std::vector<std::string> mixed{"a\xE4\xB8\xAD", "Helvetica", ""};
+  Writer plainRun;
+  writeText(plainRun, 28, -1, 0);
+  Writer boldRun;
+  writeText(boldRun, 28, -1, 0, 0, 0, 0, 400, 2);
+  CHECK(render(boldRun.finish(), mixed, {}) != render(plainRun.finish(), mixed, {}));
 }
 
 void textOnAPathFollowsTheCurve() {

@@ -81,7 +81,10 @@ std::unique_ptr<FontStack> buildStack(const std::string& family, int weight, boo
   primary.setFauxItalic(match.fauxItalic || forceItalic);
   stack->fonts.push_back(std::move(primary));
   for (const auto& typeface : registry.fallbacks()) {
-    stack->fonts.emplace_back(typeface, size);
+    // Only what the caller forced: `match` describes the primary face, not this one.
+    auto& fallback = stack->fonts.emplace_back(typeface, size);
+    fallback.setFauxBold(forceBold);
+    fallback.setFauxItalic(forceItalic);
   }
   return stack;
 }
@@ -253,10 +256,13 @@ Paragraph buildParagraph(const std::vector<TextRun>& runs, const TextSpec& spec,
   out.metrics.resize(runs.size());
   for (size_t i = 0; i < runs.size(); i++) {
     const auto& run = runs[i];
+    // A faux bit reaches a run only on the axis it inherits: a span that set its own opts out.
     auto stack = buildStack(run.family.empty() ? spec.family : run.family,
                             run.weight != 0 ? run.weight : spec.weight,
                             run.italic == 0 ? spec.italic : run.italic == 1,
-                            run.size > 0 ? run.size : size, spec.fauxBold, spec.fauxItalic);
+                            run.size > 0 ? run.size : size,
+                            run.weight == 0 && spec.fauxBold,
+                            run.italic == 0 && spec.fauxItalic);
     if (stack != nullptr) {
       out.metrics[i] = stack->fonts[0].getMetrics();
       out.empty = false;
