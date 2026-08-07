@@ -185,12 +185,7 @@ export interface FontProps {
   /** Picks the nearest face in the family; synthesised when none is close. */
   fontWeight?: FontWeight
   fontStyle?: 'normal' | 'italic'
-  /**
-   * Force synthetic emphasis — an embolden pass and a shear — on top of whatever
-   * face the family gives. Already applied automatically when the match is far
-   * from what `fontWeight`/`fontStyle` asked for; these are for families whose
-   * nearest face is close enough to skip that but still not the weight you want.
-   */
+  /** Force the embolden/shear the face match only applies when nothing close enough exists. */
   fauxBold?: boolean
   fauxItalic?: boolean
   /** Extra px between glyphs. */
