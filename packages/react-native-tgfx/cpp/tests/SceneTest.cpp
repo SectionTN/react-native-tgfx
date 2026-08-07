@@ -472,14 +472,14 @@ void writeRun(Writer& w, int textIndex, int familyIndex = 2, int weight = 0, int
 
 void writeTextNode(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
                    double wrapWidth = 0, int align = 0, double lineHeight = 0,
-                   int weight = 400, int italic = 0, int runItalic = 0) {
+                   int weight = 400, int style = 0, int runItalic = 0) {
   w.push(8);  // Text
   w.pushAnim(4);
   w.pushAnim(44);
   w.pushAnim(fontSize, fontSizeSlot);
   w.push(1);  // font family string index
   w.push(weight);
-  w.push(italic);
+  w.push(style);  // 1 italic, 2 faux bold, 4 faux italic
   w.push(0);  // letterSpacing
   writeRun(w, textIndex, 2, 0, runItalic);
   w.push(wrapWidth);
@@ -492,9 +492,9 @@ void writeTextNode(Writer& w, double fontSize, int fontSizeSlot, int textIndex =
 
 void writeText(Writer& w, double fontSize, int fontSizeSlot, int textIndex = 0,
                double wrapWidth = 0, int align = 0, double lineHeight = 0, int weight = 400,
-               int italic = 0, int runItalic = 0) {
+               int style = 0, int runItalic = 0) {
   w.push(1);
-  writeTextNode(w, fontSize, fontSizeSlot, textIndex, wrapWidth, align, lineHeight, weight, italic,
+  writeTextNode(w, fontSize, fontSizeSlot, textIndex, wrapWidth, align, lineHeight, weight, style,
                 runItalic);
 }
 
@@ -788,6 +788,36 @@ void twoShadersWithChildrenDoNotCollide() {
   auto onRight = pixelAt(drawn, 48, 16);
   CHECK(onLeft[0] == first[0] && onLeft[1] == first[1]);
   CHECK(onRight[0] == second[0] && onRight[1] == second[1]);
+}
+
+/// A miter limit under the join's ratio cuts the spike back to a bevel; over it, the spike stands.
+void aMiterLimitCutsBackASharpSpike() {
+  auto spike = [](double limit) {
+    Writer w;
+    w.push(1);
+    w.push(6);  // Path
+    w.push(0);  // path string index
+    w.push(0xff000000);
+    w.push(1 | 2 | (limit > 0 ? 16 : 0));  // stroke, antiAlias, and a miter limit when asked
+    w.pushAnim(6);                         // strokeWidth
+    w.push(0);                             // butt cap
+    w.push(0);                             // miter join
+    if (limit > 0) {
+      w.push(limit);
+    }
+    w.pushAnim(1);  // alpha
+    w.push(-1);     // no shader
+    return render(w.finish(), {"M4 60 L32 6 L60 60"}, {});
+  };
+  auto bevelled = spike(1);
+  auto mitered = spike(20);
+  CHECK(anyPixelSet(bevelled));
+  CHECK(bevelled != mitered);
+  // The join's ratio here is ~2.2, so the spike runs well past where a bevel would cut it off.
+  CHECK(opaqueAt(mitered, 32, 2));
+  CHECK(!opaqueAt(bevelled, 32, 2));
+  // The default, with no limit word at all, is 4 — over that ratio, so it keeps the spike.
+  CHECK(opaqueAt(spike(0), 32, 2));
 }
 
 void fillCoversTheWholeCanvas() {
@@ -1703,6 +1733,27 @@ void aRegisteredFontDrawsAndBoldDiffersFromRegular() {
   registry.clear();
 }
 
+/// The faux bits force synthesis even where the family has a face good enough to skip it.
+void theFauxBitsEmboldenAndShearAMatchedFace() {
+  auto& registry = tgfxrn::FontRegistry::instance();
+  registry.clear();
+  registry.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Regular.ttf"),
+               "Demo Serif");
+  const std::vector<std::string> strings{"Wg", "Demo Serif", ""};
+
+  auto draw = [&](int style) {
+    Writer w;
+    writeText(w, 28, -1, 0, 0, 0, 0, 400, style);
+    return render(w.finish(), strings, {});
+  };
+  auto plain = draw(0);
+  CHECK(anyPixelSet(plain));
+  CHECK(draw(2) != plain);
+  CHECK(draw(4) != plain);
+  CHECK(draw(2) != draw(4));
+  registry.clear();
+}
+
 void aParagraphWrapsAlignsAndStacks() {
   tgfxrn::FontRegistry::instance().clear();
   const std::vector<std::string> strings{"one two three four", "Helvetica", ""};
@@ -2257,6 +2308,7 @@ int main() {
   twoChildrenOnOneShaderBothPaint();
   aRuntimeShaderChildNestsInOneProgram();
   twoShadersWithChildrenDoNotCollide();
+  aMiterLimitCutsBackASharpSpike();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
@@ -2300,6 +2352,7 @@ int main() {
   recompilingAfterARegistrationPicksUpTheNewFace();
   aRegisteredFamilyMatchesByWeightAndStyle();
   aRegisteredFontDrawsAndBoldDiffersFromRegular();
+  theFauxBitsEmboldenAndShearAMatchedFace();
   aParagraphWrapsAlignsAndStacks();
   anExplicitNewlineBreaksTheLine();
   theMeasuredWidthIsTheDrawnWidth();

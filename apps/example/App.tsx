@@ -94,6 +94,20 @@ function Demo() {
         />
       </Section>
 
+      <Section label="Miter limit (1 · default 4 · 20)">
+        {[1, 4, 20].map((limit, i) => (
+          <Path
+            key={limit}
+            path={`M${i * 120 + 8} 54 L${i * 120 + 44} 6 L${i * 120 + 80} 54`}
+            color="#FF3B30"
+            style="stroke"
+            strokeWidth={10}
+            strokeJoin="miter"
+            strokeMiter={limit}
+          />
+        ))}
+      </Section>
+
       <Section label="Gradients">
         <RoundedRect x={0} y={0} width={170} height={64} r={16}>
           <LinearGradient

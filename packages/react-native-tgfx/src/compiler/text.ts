@@ -28,7 +28,12 @@ export function weightValue(weight: unknown): number {
 export function writeFont(w: SceneWriter, p: Record<string, unknown>): void {
   w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
   w.push(weightValue(p.fontWeight))
-  w.push(p.fontStyle === 'italic' ? 1 : 0)
+  // Bit 1 italic, 2 forced faux bold, 4 forced faux italic — one word instead of three.
+  w.push(
+    (p.fontStyle === 'italic' ? 1 : 0) |
+      (p.fauxBold === true ? 2 : 0) |
+      (p.fauxItalic === true ? 4 : 0)
+  )
   w.push(resolveNumber(p.letterSpacing, 0))
 }
 
@@ -87,6 +92,8 @@ export function fontStyleOf(
     fontFamily: props.fontFamily ?? '',
     fontWeight: weightValue(props.fontWeight),
     italic: props.fontStyle === 'italic',
+    fauxBold: props.fauxBold ?? false,
+    fauxItalic: props.fauxItalic ?? false,
     letterSpacing: props.letterSpacing ?? 0,
     width: props.width ?? 0,
     align: alignCode(props.textAlign),

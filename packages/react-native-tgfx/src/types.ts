@@ -44,6 +44,8 @@ export interface PaintProps {
   strokeWidth?: Animated<number>
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
+  /** Past this length-over-width ratio a `'miter'` join falls back to bevel. Defaults to 4. */
+  strokeMiter?: number
   /** Paint-wide alpha multiplier in [0, 1]; only one per chain can animate. */
   opacity?: Animated<number>
   antiAlias?: boolean
@@ -183,6 +185,14 @@ export interface FontProps {
   /** Picks the nearest face in the family; synthesised when none is close. */
   fontWeight?: FontWeight
   fontStyle?: 'normal' | 'italic'
+  /**
+   * Force synthetic emphasis — an embolden pass and a shear — on top of whatever
+   * face the family gives. Already applied automatically when the match is far
+   * from what `fontWeight`/`fontStyle` asked for; these are for families whose
+   * nearest face is close enough to skip that but still not the weight you want.
+   */
+  fauxBold?: boolean
+  fauxItalic?: boolean
   /** Extra px between glyphs. */
   letterSpacing?: number
 }

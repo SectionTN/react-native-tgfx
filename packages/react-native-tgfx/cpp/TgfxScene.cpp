@@ -368,6 +368,7 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
       case 2: paint.setLineJoin(tgfx::LineJoin::Bevel); break;
       default: paint.setLineJoin(tgfx::LineJoin::Miter); break;
     }
+    paint.setMiterLimit(pc.miter);
   } else {
     paint.setStyle(tgfx::PaintStyle::Fill);
   }
@@ -440,7 +441,10 @@ std::shared_ptr<tgfx::Shader> ImageShaderCmd::build(
 void SceneRenderer::readTextSpec(SceneReader& r, TextSpec& spec) {
   spec.family = r.nextString();
   spec.weight = r.nextInt();
-  spec.italic = r.nextInt() != 0;
+  int style = r.nextInt();
+  spec.italic = (style & 1) != 0;
+  spec.fauxBold = (style & 2) != 0;
+  spec.fauxItalic = (style & 4) != 0;
   spec.letterSpacing = static_cast<float>(r.next());
 }
 
@@ -692,6 +696,8 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   paint.strokeWidth = r.nextAnim();
   paint.cap = r.nextInt();
   paint.join = r.nextInt();
+  // Bit 16: a miter limit other than tgfx's default of 4.
+  paint.miter = (flags & 16) != 0 ? static_cast<float>(r.next()) : 4;
   paint.alpha = r.nextAnim();
   // Bit 4: the paint carries a filter block; unset costs no words at all.
   if ((flags & 4) != 0) {

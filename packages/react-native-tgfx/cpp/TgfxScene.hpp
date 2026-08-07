@@ -30,7 +30,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 16;
+inline constexpr double kSceneVersion = 17;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -100,6 +100,7 @@ struct PaintCmd {
   AnimF strokeWidth{1, -1};
   int cap = 0;
   int join = 0;
+  float miter = 4;
   bool antiAlias = true;
   AnimF alpha{1, -1};
   std::shared_ptr<tgfx::Shader> shader;  // built once for static gradients

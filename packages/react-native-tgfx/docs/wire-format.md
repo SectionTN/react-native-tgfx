@@ -55,3 +55,7 @@ against the live value array each frame.
   (r, g, b, a in 0..1) between the flags and the stroke width. The packed colour
   word is still there and still correct, but an older reader would take the first
   channel for the stroke width.
+- **17** — a paint whose flags carry bit 16 writes a miter limit between the join
+  and the alpha, and the font block's italic word became a style bitfield (1
+  italic, 2 faux bold, 4 faux italic). Text that sets neither faux bit is
+  byte-identical to 16, but a paint with a miter limit shifts everything after it.

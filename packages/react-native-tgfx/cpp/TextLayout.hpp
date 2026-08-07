@@ -34,6 +34,9 @@ struct TextSpec {
   std::string family;
   int weight = 400;
   bool italic = false;
+  /// Forced on top of whatever FontRegistry::match already synthesises for a far match.
+  bool fauxBold = false;
+  bool fauxItalic = false;
   float letterSpacing = 0;
   /// Wrap width in px. 0 means no wrapping: only explicit '\n' breaks a line.
   float wrapWidth = 0;

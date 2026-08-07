@@ -34,6 +34,7 @@ export interface PaintInput {
   strokeWidth?: number | MaybeSharedValue<number>
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
+  strokeMiter?: number
   opacity?: number | MaybeSharedValue<number>
   antiAlias?: boolean
   blendMode?: BlendMode
@@ -251,6 +252,8 @@ export function writePaint(
     props.strokeCap !== undefined ? props.strokeCap : inherited.strokeCap
   const join =
     props.strokeJoin !== undefined ? props.strokeJoin : inherited.strokeJoin
+  const miter =
+    props.strokeMiter !== undefined ? props.strokeMiter : inherited.strokeMiter
   const antiAlias =
     props.antiAlias !== undefined ? props.antiAlias : inherited.antiAlias
   const gradient =
@@ -269,7 +272,8 @@ export function writePaint(
     (forceStroke || style === 'stroke' ? 1 : 0) |
       (antiAlias !== false ? 2 : 0) |
       (filtered ? 4 : 0) |
-      (channels != null ? 8 : 0)
+      (channels != null ? 8 : 0) |
+      (miter !== undefined ? 16 : 0)
   )
   if (channels != null) {
     for (let i = 0; i < 4; i++) {
@@ -279,6 +283,9 @@ export function writePaint(
   w.pushAnim(strokeWidth, 1)
   w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
   w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])
+  if (miter !== undefined) {
+    w.push(resolveNumber(miter, 4))
+  }
   w.pushAnim(alpha, 1)
   if (filtered) {
     writeFilters(w, blendMode, colorFilter, imageFilter)
@@ -307,6 +314,9 @@ export function pickPaintInput(props: Record<string, unknown>): PaintInput {
   }
   if (props.strokeJoin !== undefined) {
     out.strokeJoin = props.strokeJoin as PaintInput['strokeJoin']
+  }
+  if (props.strokeMiter !== undefined) {
+    out.strokeMiter = props.strokeMiter as number
   }
   if (props.opacity !== undefined) {
     out.opacity = props.opacity as PaintInput['opacity']
