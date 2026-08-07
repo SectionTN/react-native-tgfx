@@ -35,6 +35,12 @@
         "implementationClassName": "HybridTgfxFonts"
       }
     },
+    "TgfxPath": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTgfxPath"
+      }
+    },
     "TgfxSlotsFactory": {
       "all": {
         "language": "c++",

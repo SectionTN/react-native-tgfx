@@ -15,6 +15,7 @@
 #include "ImageRegistry.hpp"
 #include "TextLayout.hpp"
 #include "SvgImage.hpp"
+#include "PathOps.hpp"
 #include "SvgPath.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
@@ -2251,6 +2252,56 @@ void textComesBackAsAPath() {
   CHECK(wrapped.getBounds().height() > bounds.height());
 }
 
+void pathUtilitiesAgreeWithTheGeometryTheyWrap() {
+  const std::string big = "M0 0 L40 0 L40 40 L0 40 Z";
+  const std::string small = "M10 10 L30 10 L30 30 L10 30 Z";
+
+  auto boxOf = [](const std::string& d) { return tgfxrn::pathBounds(d, false); };
+  CHECK(boxOf(big).width() == 40 && boxOf(big).height() == 40);
+  CHECK(boxOf(big).left == 0 && boxOf(big).top == 0);
+
+  // Difference punches the small square out, so the centre stops being inside.
+  auto holed = tgfxrn::pathCombine(big, small, "difference");
+  CHECK(tgfxrn::pathContains(big, 20, 20));
+  CHECK(!tgfxrn::pathContains(holed, 20, 20));
+  CHECK(tgfxrn::pathContains(holed, 5, 5));
+  CHECK(boxOf(holed).width() == 40);
+
+  // Curves take the same reversal path as lines, so a round hole has to survive it too.
+  auto ring = tgfxrn::pathCombine(
+      "M0 0 L60 0 L60 60 L0 60 Z",
+      "M30 10 C41 10 50 19 50 30 C50 41 41 50 30 50 C19 50 10 41 10 30 C10 19 19 10 30 10 Z",
+      "difference");
+  CHECK(!tgfxrn::pathContains(ring, 30, 30));
+  CHECK(tgfxrn::pathContains(ring, 3, 3));
+
+  auto both = tgfxrn::pathCombine(big, small, "intersect");
+  CHECK(std::abs(boxOf(both).width() - 20) < 0.01f);
+
+  // An unknown op appends rather than guessing, so the union of the boxes stands.
+  CHECK(std::abs(boxOf(tgfxrn::pathCombine(big, small, "wat")).width() - 40) < 0.01f);
+
+  // [a, b, c, d, tx, ty]: scale 2 and shift 5, as SVG writes it.
+  auto moved = tgfxrn::pathTransform(big, {2, 0, 0, 2, 5, 5});
+  CHECK(std::abs(boxOf(moved).left - 5) < 0.01f);
+  CHECK(std::abs(boxOf(moved).width() - 80) < 0.01f);
+  CHECK(tgfxrn::pathTransform(big, {1, 0}) == tgfxrn::pathTransform(big, {1, 0, 0, 1, 0, 0}));
+
+  const std::string line = "M0 0 L100 0";
+  CHECK(std::abs(tgfxrn::pathLength(line) - 100) < 0.01f);
+  auto at = tgfxrn::pathPointAtLength(line, 25);
+  CHECK(at.ok && std::abs(at.x - 25) < 0.01f && std::abs(at.y) < 0.01f);
+  CHECK(std::abs(at.angle) < 0.01f);  // straight along +x
+  // Distance is pinned to the path, not extrapolated past its end.
+  CHECK(std::abs(tgfxrn::pathPointAtLength(line, 500).x - 100) < 0.01f);
+
+  auto middle = tgfxrn::pathSegment(line, 20, 60);
+  CHECK(std::abs(tgfxrn::pathLength(middle) - 40) < 0.01f);
+  CHECK(tgfxrn::pathSegment(line, 60, 20).empty());
+  CHECK(tgfxrn::pathLength("") == 0);
+  CHECK(!tgfxrn::pathPointAtLength("", 1).ok);
+}
+
 /// <Glyphs> draws exactly the ids it is handed, where it is told: no shaping, no fallback.
 void placedGlyphsDrawWhereTheyArePut() {
   tgfxrn::FontRegistry::instance().clear();
@@ -2354,6 +2405,7 @@ int main() {
   aColouredSpanSplitsTheBlobs();
   everyLineIsMeasured();
   textComesBackAsAPath();
+  pathUtilitiesAgreeWithTheGeometryTheyWrap();
   placedGlyphsDrawWhereTheyArePut();
   aBlendModeCompositesAgainstWhatIsBelow();
   aBlendModeSurvivesAnImageFilter();

@@ -55,6 +55,21 @@ export {
   useFonts,
   useFontsState,
 } from './hooks/useFonts'
+export {
+  pathBounds,
+  pathContains,
+  pathLength,
+  pathOp,
+  pathPointAtLength,
+  pathSegment,
+  pathTransform,
+} from './hooks/usePath'
+export type {
+  PathBounds,
+  PathMatrix,
+  PathOp,
+  PathPoint,
+} from './hooks/usePath'
 export type {
   FontsState,
   FontSource,

@@ -140,6 +140,8 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/FontRegistry.cpp
         ../cpp/TextLayout.cpp
         ../cpp/HybridTgfxFonts.cpp
+        ../cpp/PathOps.cpp
+        ../cpp/HybridTgfxPath.cpp
 )
 
 # Add Nitrogen specs :)

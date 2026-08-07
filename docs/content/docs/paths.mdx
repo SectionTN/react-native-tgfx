@@ -1,0 +1,91 @@
+---
+title: Path geometry
+description: Boolean ops, bounds, hit tests, transforms and measurement on SVG path data.
+---
+
+`<Path path>` takes SVG path data, and these utilities take and return the same
+strings. They run the geometry the renderer itself uses, so anything they hand
+back draws identically when you feed it straight to `<Path>`.
+
+All of them are synchronous: they parse, compute, and serialise on the calling
+thread. That is fine for a tap handler or a layout pass, and wasteful in a render
+loop — compute once and keep the result.
+
+```tsx
+import { Path, pathOp } from 'react-native-tgfx'
+
+const plate = 'M0 0 L120 0 L120 120 L0 120 Z'
+const hole = 'M40 40 L80 40 L80 80 L40 80 Z'
+
+<Path path={pathOp(plate, hole, 'difference')} color="#4F8EF7" />
+```
+
+## Boolean ops
+
+```ts
+pathOp(a: string, b: string, op: 'union' | 'difference' | 'intersect' | 'xor'): string
+```
+
+`'difference'` removes `b` from `a`; the rest are symmetric. Any other value
+appends the two paths unaltered, which is tgfx's own default.
+
+This is the cheap way to punch a hole: a `<Mask>` would cost an offscreen layer
+every frame, while this costs one call at build time and draws as a plain path.
+
+The result is normalised so non-zero winding fills the intended region — inner
+contours come back wound against their parent. SVG path data has nowhere to put
+a fill rule, so without that step a hole would fill in solid when drawn.
+
+## Bounds
+
+```ts
+pathBounds(path: string, tight?: boolean): { x, y, width, height }
+```
+
+The default bounds the control points, which is cheap and never smaller than the
+ink. Pass `tight` to evaluate the curves and get the box the ink actually fills —
+worth it for laying out around a glyph outline, not for a coarse cull.
+
+## Hit testing
+
+```ts
+pathContains(path: string, x: number, y: number): boolean
+```
+
+Honours the path's fill rule. Points are in the path's own coordinates, so undo
+whatever `transform` the `<Group>` around it applies before asking.
+
+## Transform
+
+```ts
+pathTransform(path: string, matrix: [a, b, c, d, tx, ty]): string
+```
+
+The same six-number affine order SVG and CSS use. Fewer than six entries returns
+the path unchanged rather than guessing at the rest.
+
+## Measurement
+
+```ts
+pathLength(path: string): number
+pathPointAtLength(path: string, distance: number): { x, y, angle }
+pathSegment(path: string, start: number, stop: number): string
+```
+
+`pathLength` sums every contour. `pathPointAtLength` clamps `distance` into
+`[0, length]` and reports the tangent as an angle in radians, which is exactly
+what placing and rotating a marker along a route needs:
+
+```tsx
+const route = 'M8 170 q90 -70 170 0 t160 -6'
+const at = pathPointAtLength(route, pathLength(route) * progress)
+
+<Group transform={[{ translateX: at.x }, { translateY: at.y }, { rotate: at.angle }]}>
+  <Path path={arrow} color="#FF3B30" />
+</Group>
+```
+
+`pathSegment` returns the piece between two distances as its own path — a
+progressively drawn route, or a trimmed stroke. It returns an empty string when
+`start >= stop` or the path has no length, which is what tgfx refuses rather
+than guesses at.
