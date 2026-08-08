@@ -18,8 +18,12 @@ import {
 import {
   Canvas,
   Circle,
+  Fill,
   Group,
+  Path,
   RoundedRect,
+  Text,
+  renderToPdf,
   type CanvasHandle,
   type SnapshotOptions,
 } from 'react-native-tgfx';
@@ -102,6 +106,38 @@ export function SnapshotSection() {
     }
   };
 
+  const exportPdf = async () => {
+    setStatus('writing pdf…');
+    const path = SAVE_PATH.replace(/\.[a-z]+$/, '') + '.pdf';
+    try {
+      const started = Date.now();
+      await renderToPdf(
+        path,
+        [0, 1].map(page => ({
+          width: 612,
+          height: 792,
+          element: (
+            <>
+              <Fill color="#ffffff" />
+              <Text x={48} y={80} text={`Page ${page + 1}`} fontSize={28} color="#1c1c1e" />
+              <Path
+                path="M48 140 L180 240 L312 170 L444 260 L564 120"
+                color="#0a84ff"
+                style="stroke"
+                strokeWidth={4}
+              />
+              <RoundedRect x={48} y={300} width={516} height={120} r={16} color="#e5e5ea" />
+            </>
+          ),
+        })),
+        { title: 'tgfx example', author: 'react-native-tgfx' }
+      );
+      setStatus(`wrote ${path} in ${Date.now() - started} ms`);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
+
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>Snapshot / save (animating)</RNText>
@@ -146,6 +182,9 @@ export function SnapshotSection() {
         <Pressable style={styles.button} onPress={saveToDisk}>
           <RNText style={styles.buttonText}>save()</RNText>
         </Pressable>
+        <Pressable style={styles.button} onPress={exportPdf}>
+          <RNText style={styles.buttonText}>pdf</RNText>
+        </Pressable>
       </View>
       <RNText style={styles.status}>{status}</RNText>
 
@@ -173,7 +212,7 @@ export function SnapshotSection() {
 const styles = StyleSheet.create({
   section: { paddingHorizontal: 16, paddingVertical: 10 },
   label: { fontSize: 13, fontWeight: '600', color: '#3A3A3C', marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10 },
   button: {
     backgroundColor: '#1C1C1E',
     paddingHorizontal: 16,

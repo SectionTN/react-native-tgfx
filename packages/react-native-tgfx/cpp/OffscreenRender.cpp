@@ -56,6 +56,27 @@ constexpr int kMaxDimension = 8192;
 
 }  // namespace
 
+OffscreenContext::OffscreenContext() {
+  device_ = offscreenDevice(false);
+  context_ = device_ == nullptr ? nullptr : device_->lockContext();
+  if (context_ == nullptr) {
+    // A null context means the device lost it for good, so try once with a fresh one.
+    device_ = offscreenDevice(true);
+    context_ = device_ == nullptr ? nullptr : device_->lockContext();
+  }
+  if (context_ == nullptr) {
+    throw std::runtime_error("tgfx: found no GPU to render with");
+  }
+  // The whole policy: flushAndSubmit purges down to this, so nothing else has to.
+  context_->setCacheLimit(ImageRegistry::instance().cacheLimit());
+}
+
+OffscreenContext::~OffscreenContext() {
+  if (context_ != nullptr) {
+    device_->unlock();
+  }
+}
+
 std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
                                                   const std::vector<std::string>& strings,
                                                   int width, int height, float pixelRatio,
@@ -73,27 +94,8 @@ std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
   int pixelWidth = static_cast<int>(scaledWidth + 0.5);
   int pixelHeight = static_cast<int>(scaledHeight + 0.5);
 
-  auto device = offscreenDevice(false);
-  // A null context means the device lost it for good, so try once with a fresh one.
-  auto* context = device == nullptr ? nullptr : device->lockContext();
-  if (context == nullptr) {
-    device = offscreenDevice(true);
-    context = device == nullptr ? nullptr : device->lockContext();
-  }
-  if (context == nullptr) {
-    throw std::runtime_error("tgfx: renderToImage found no GPU to render with");
-  }
-
-  // Unlocked on every path out, including the throws below.
-  struct Unlock {
-    tgfx::Device* device;
-    ~Unlock() {
-      device->unlock();
-    }
-  } unlock{device.get()};
-
-  // The whole policy: flushAndSubmit purges down to this, so nothing else has to.
-  context->setCacheLimit(ImageRegistry::instance().cacheLimit());
+  OffscreenContext locked;
+  auto* context = locked.get();
 
   auto surface = tgfx::Surface::Make(context, pixelWidth, pixelHeight);
   if (surface == nullptr) {

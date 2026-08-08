@@ -17,7 +17,10 @@
 #include "SvgImage.hpp"
 #include "PathOps.hpp"
 #include "SvgPath.hpp"
+#include <fstream>
+
 #include "OffscreenRender.hpp"
+#include "PdfExport.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Data.h"
@@ -3374,6 +3377,67 @@ void hitTestReportsWhatIsUnderThePoint() {
   CHECK(exact[0] == 1 && exact[1] == 0);
 }
 
+/// A PDF page is vectors, not pixels: the file exists, is a PDF, and holds every page.
+void aPdfIsWrittenWithAPagePerScene() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(10);
+  w.pushAnim(10);
+  w.pushAnim(80);
+  w.pushAnim(60);
+  w.pushPaint(0xff3366cc, false);
+  auto program = w.finish();
+
+  std::string path = std::string(TGFXRN_TEST_TMP_DIR) + "/scene.pdf";
+  std::remove(path.c_str());
+  tgfxrn::PdfMetadata info;
+  info.title = "tgfx test";
+  info.author = "SceneTest";
+  tgfxrn::writePdf(path, {{program, {}, 200, 120}, {program, {}, 120, 200}}, info);
+
+  std::ifstream file(path, std::ios::binary);
+  CHECK(file.good());
+  std::string bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  CHECK(bytes.size() > 400);
+  CHECK(bytes.rfind("%PDF-", 0) == 0);
+  CHECK(bytes.find("%%EOF") != std::string::npos);
+  // Two pages, and the metadata rode along.
+  CHECK(bytes.find("/Count 2") != std::string::npos);
+  CHECK(bytes.find("tgfx test") != std::string::npos);
+  std::remove(path.c_str());
+
+  // A failure must leave whatever was already there alone, not a truncated file.
+  {
+    std::ofstream seed(path, std::ios::binary);
+    seed << "not a pdf, but somebody's";
+    seed.close();
+    bool threw = false;
+    try {
+      tgfxrn::writePdf(path, {{program, {}, 200, 120}, {program, {}, 0, 120}}, {});
+    } catch (const std::runtime_error&) {
+      threw = true;
+    }
+    CHECK(threw);
+    std::ifstream after(path, std::ios::binary);
+    std::string kept((std::istreambuf_iterator<char>(after)), std::istreambuf_iterator<char>());
+    CHECK(kept == "not a pdf, but somebody's");
+  }
+  std::remove(path.c_str());
+
+  // And with nothing there before, a failure leaves nothing behind.
+  bool threw = false;
+  try {
+    tgfxrn::writePdf(path, {{program, {}, 0, 120}}, {});
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  CHECK(threw);
+  std::ifstream missing(path, std::ios::binary);
+  CHECK(!missing.good());
+  std::remove((path + ".tgfx-partial").c_str());
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -3412,6 +3476,7 @@ int main() {
   aLiveHandleRefusesToBeDerivedFrom();
   aRecordedGroupReplaysWhatItDrew();
   hitTestReportsWhatIsUnderThePoint();
+  aPdfIsWrittenWithAPagePerScene();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

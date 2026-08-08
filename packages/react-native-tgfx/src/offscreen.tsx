@@ -23,6 +23,92 @@ export interface RenderToImageOptions {
   opaque?: boolean
 }
 
+export interface PdfPage {
+  /** Page size in points. 612 x 792 is US Letter, 595 x 842 is A4. */
+  width: number
+  height: number
+  element: ReactNode
+}
+
+export interface PdfMetadata {
+  title?: string
+  author?: string
+  subject?: string
+  creator?: string
+}
+
+/**
+ * Write a scene to a PDF, one page per element. Geometry and text stay
+ * **vectors** — only images rasterize — so a chart drawn with the same
+ * components that render on screen exports as a real document rather than a
+ * screenshot.
+ *
+ * Like {@link renderToImage}, each page is a still: animated props are read at
+ * their committed value.
+ */
+export async function renderToPdf(
+  path: string,
+  pages: PdfPage[],
+  metadata: PdfMetadata = {}
+): Promise<void> {
+  if (pages.length === 0) {
+    throw new Error('[tgfx] renderToPdf: needs at least one page')
+  }
+  const buffers: ArrayBuffer[] = []
+  const strings: string[] = []
+  const stringCounts: number[] = []
+  const sizes: number[] = []
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i]!
+    const scene = compilePage(page.element, `renderToPdf: page ${i}`)
+    buffers.push(scene.buffer)
+    // One at a time, not spread: a text-heavy report would exceed the argument limit.
+    for (const text of scene.strings) {
+      strings.push(text)
+    }
+    stringCounts.push(scene.strings.length)
+    sizes.push(page.width, page.height)
+  }
+  return images().savePdf(path, buffers, strings, stringCounts, sizes, [
+    metadata.title ?? '',
+    metadata.author ?? '',
+    metadata.subject ?? '',
+    metadata.creator ?? 'react-native-tgfx',
+  ])
+}
+
+/// Shared with renderToImage: the same reconciler, the same teardown ordering.
+function compilePage(
+  element: ReactNode,
+  what: string
+): {
+  buffer: ArrayBuffer
+  strings: string[]
+} {
+  // Boxed: a `let` assigned only inside the callback narrows to `never` below.
+  const out: { scene: { buffer: ArrayBuffer; strings: string[] } | null } = {
+    scene: null,
+  }
+  const root = new TgfxRoot((buffer, strings) => {
+    out.scene = { buffer, strings }
+  })
+  try {
+    root.renderSync(<>{element}</>)
+    // React swallows a throwing component, so an empty root is how that surfaces.
+    if (root.container.root.length === 0) {
+      throw new Error(`[tgfx] ${what}: the scene compiled to nothing`)
+    }
+  } finally {
+    // Muted first: tearing down commits an empty program that would replace the scene.
+    root.container.muted = true
+    root.unmount()
+  }
+  if (out.scene == null) {
+    throw new Error(`[tgfx] ${what}: the scene compiled to nothing`)
+  }
+  return out.scene
+}
+
 /**
  * Draw a scene to an image without mounting a `<Canvas>`.
  *
@@ -38,28 +124,7 @@ export async function renderToImage(
   element: ReactNode,
   options: RenderToImageOptions
 ): Promise<TgfxImage> {
-  // Boxed: a `let` assigned only inside the callback narrows to `never` below.
-  const out: { scene: { buffer: ArrayBuffer; strings: string[] } | null } = {
-    scene: null,
-  }
-  const root = new TgfxRoot((buffer, strings) => {
-    out.scene = { buffer, strings }
-  })
-  try {
-    root.renderSync(<>{element}</>)
-    // React swallows a throwing component, so an empty root is how that surfaces.
-    if (root.container.root.length === 0) {
-      throw new Error('[tgfx] renderToImage: the scene compiled to nothing')
-    }
-  } finally {
-    // Muted first: tearing down commits an empty program that would replace the scene.
-    root.container.muted = true
-    root.unmount()
-  }
-  if (out.scene == null) {
-    throw new Error('[tgfx] renderToImage: the scene compiled to nothing')
-  }
-  const { buffer, strings } = out.scene
+  const { buffer, strings } = compilePage(element, 'renderToImage')
   return images().fromScene(
     buffer,
     // Decoded, not the packed delta setScene takes: this program has no prior table.

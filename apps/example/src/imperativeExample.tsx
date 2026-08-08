@@ -15,6 +15,7 @@ import {
   RoundedRect,
   Shader,
   Text,
+  useCanvasPress,
   useNode,
   type CanvasHandle,
 } from 'react-native-tgfx';
@@ -39,14 +40,22 @@ function HitTesting() {
   const card = useNode();
   const [hit, setHit] = useState('tap a shape');
 
-  const onTouch = (event: { nativeEvent: { locationX: number; locationY: number } }) => {
-    const { locationX, locationY } = event.nativeEvent;
-    const hits = canvas.current?.hitTest(locationX, locationY, { precise: true }) ?? [];
-    const named = hits.map(entry =>
-      entry.node === disc ? 'circle' : entry.node === card ? 'card' : `unnamed ${entry.path.join('.')}`
-    );
-    setHit(named.length === 0 ? 'nothing there' : `top: ${named[0]} · all: ${named.join(', ')}`);
-  };
+  // The declarative half: handlers per node, topmost wins, plus a look at every hit.
+  const onTouch = useCanvasPress(
+    canvas,
+    [
+      [card, () => setHit('card (via useCanvasPress)')],
+      [disc, () => setHit('circle (via useCanvasPress)')],
+    ],
+    {
+      precise: true,
+      onPress: ({ nodes }) => {
+        if (!nodes.some(node => node === card || node === disc)) {
+          setHit(nodes.length === 0 ? 'nothing there' : 'an unnamed node');
+        }
+      },
+    }
+  );
 
   return (
     <View style={styles.section}>

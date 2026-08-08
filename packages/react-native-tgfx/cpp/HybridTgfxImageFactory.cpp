@@ -8,6 +8,7 @@
 #include "HybridTgfxImage.hpp"
 #include "ImageRegistry.hpp"
 #include "OffscreenRender.hpp"
+#include "PdfExport.hpp"
 #include "Log.hpp"
 #include "SvgImage.hpp"
 #include "TgfxFrameSink.hpp"
@@ -121,6 +122,55 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromBase64(const std::stri
     }
     auto data = ::tgfx::Data::MakeWithCopy(decoded.data(), decoded.size());
     return registerData(std::move(data), "the given base64 payload");
+  });
+}
+
+std::shared_ptr<Promise<void>> HybridTgfxImageFactory::savePdf(
+    const std::string& path, const std::vector<std::shared_ptr<ArrayBuffer>>& pages,
+    const std::vector<std::string>& strings, const std::vector<double>& stringCounts,
+    const std::vector<double>& sizes, const std::vector<std::string>& metadata) {
+  if (pages.empty() || sizes.size() != pages.size() * 2 || stringCounts.size() != pages.size()) {
+    throw std::runtime_error("tgfx: renderToPdf was given a malformed page list");
+  }
+  // Unpacked here, not on the worker: a JS-owned ArrayBuffer is only valid for this call.
+  std::vector<tgfxrn::PdfPage> unpacked;
+  unpacked.reserve(pages.size());
+  size_t stringAt = 0;
+  for (size_t i = 0; i < pages.size(); i++) {
+    tgfxrn::PdfPage page;
+    const auto& buffer = pages[i];
+    if (buffer != nullptr && buffer->size() % sizeof(double) != 0) {
+      throw std::runtime_error("tgfx: renderToPdf was given a truncated draw program");
+    }
+    if (buffer != nullptr && buffer->size() >= sizeof(double)) {
+      const auto* data = reinterpret_cast<const double*>(buffer->data());
+      page.words.assign(data, data + buffer->size() / sizeof(double));
+    }
+    if (page.words.empty()) {
+      throw std::runtime_error("tgfx: renderToPdf was given a page with no draw program");
+    }
+    // Compared as a double: a huge count saturates the cast and wraps the sum below.
+    if (!(stringCounts[i] >= 0) ||
+        stringCounts[i] > static_cast<double>(strings.size() - stringAt)) {
+      throw std::runtime_error("tgfx: renderToPdf was given a malformed string table");
+    }
+    size_t count = static_cast<size_t>(stringCounts[i]);
+    page.strings.assign(strings.begin() + static_cast<long>(stringAt),
+                        strings.begin() + static_cast<long>(stringAt + count));
+    stringAt += count;
+    page.width = static_cast<float>(sizes[i * 2]);
+    page.height = static_cast<float>(sizes[i * 2 + 1]);
+    unpacked.push_back(std::move(page));
+  }
+  tgfxrn::PdfMetadata info;
+  if (metadata.size() >= 4) {
+    info.title = metadata[0];
+    info.author = metadata[1];
+    info.subject = metadata[2];
+    info.creator = metadata[3];
+  }
+  return Promise<void>::async([path, unpacked = std::move(unpacked), info]() {
+    tgfxrn::writePdf(path, unpacked, info);
   });
 }
 

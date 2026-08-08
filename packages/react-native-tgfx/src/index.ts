@@ -3,7 +3,23 @@
 export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'
 export { Mask } from './components/Mask'
-export { renderToImage, type RenderToImageOptions } from './offscreen'
+export {
+  useCanvasPress,
+  type CanvasPress,
+  type CanvasPressOptions,
+} from './hooks/useCanvasPress'
+export {
+  useOffscreenImage,
+  useDerivedImage,
+  type Derivation,
+} from './hooks/useOffscreen'
+export {
+  renderToImage,
+  renderToPdf,
+  type RenderToImageOptions,
+  type PdfPage,
+  type PdfMetadata,
+} from './offscreen'
 export {
   CameraFrame,
   Circle,

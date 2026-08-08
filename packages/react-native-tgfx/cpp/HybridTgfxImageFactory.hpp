@@ -20,6 +20,12 @@ class HybridTgfxImageFactory : public HybridTgfxImageFactorySpec {
       const std::string& data) override;
   std::shared_ptr<HybridTgfxImageSpec> fromNativeBuffer(uint64_t buffer,
                                                         PixelFormat format) override;
+  std::shared_ptr<Promise<void>> savePdf(const std::string& path,
+                                         const std::vector<std::shared_ptr<ArrayBuffer>>& pages,
+                                         const std::vector<std::string>& strings,
+                                         const std::vector<double>& stringCounts,
+                                         const std::vector<double>& sizes,
+                                         const std::vector<std::string>& metadata) override;
   std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(
       const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings,
       double width, double height, double pixelRatio, bool opaque) override;

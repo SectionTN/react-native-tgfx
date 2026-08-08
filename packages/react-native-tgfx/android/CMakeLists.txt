@@ -80,7 +80,7 @@ set(TGFX_BUILD_LAYERS OFF CACHE BOOL "" FORCE)
 # TGFX_USE_PNG_ENCODE/TGFX_USE_JPEG_DECODE, which are already on below.
 # +545 KB of stripped arm64 libNitroTgfx, measured (4.89 MB -> 5.45 MB).
 set(TGFX_BUILD_SVG ON CACHE BOOL "" FORCE)
-set(TGFX_BUILD_PDF OFF CACHE BOOL "" FORCE)
+set(TGFX_BUILD_PDF ON CACHE BOOL "" FORCE)
 set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
 # tgfx only declares its embedded codec options for desktop targets (its
 # CMakeLists gates them on `NOT ANDROID AND NOT OHOS`), because Android normally
@@ -135,6 +135,7 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/SvgImage.cpp
         ../cpp/TgfxRenderer.cpp
         ../cpp/OffscreenRender.cpp
+        ../cpp/PdfExport.cpp
         ../cpp/ImageRegistry.cpp
         ../cpp/TgfxFrameSink.cpp
         ../cpp/HybridTgfxImageFactory.cpp

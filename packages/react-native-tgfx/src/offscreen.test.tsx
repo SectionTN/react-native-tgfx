@@ -2,6 +2,15 @@ import { beforeEach, expect, test } from 'bun:test'
 import React from 'react'
 import { nativeMocks } from './testing/nativeMocks'
 
+let pdfCalls: {
+  path: string
+  pages: number
+  strings: string[]
+  stringCounts: number[]
+  sizes: number[]
+  metadata: string[]
+}[] = []
+
 let calls: {
   words: Float64Array
   strings: string[]
@@ -14,7 +23,19 @@ let calls: {
 // Set through the shared registry: a second mock.module would fight the first.
 beforeEach(() => {
   calls = []
+  pdfCalls = []
   nativeMocks.hybridObject = () => ({
+    savePdf: (
+      path: string,
+      pages: ArrayBuffer[],
+      strings: string[],
+      stringCounts: number[],
+      sizes: number[],
+      metadata: string[]
+    ) => {
+      pdfCalls.push({ path, pages: pages.length, strings, stringCounts, sizes, metadata })
+      return Promise.resolve()
+    },
     fromScene: (
       words: ArrayBuffer,
       strings: string[],
@@ -36,7 +57,7 @@ beforeEach(() => {
   })
 })
 
-const { renderToImage } = await import('./offscreen')
+const { renderToImage, renderToPdf } = await import('./offscreen')
 const { Rect, Path } = await import('./components/drawings')
 
 test('renderToImage compiles the tree and hands over the options', async () => {
@@ -106,4 +127,30 @@ test('renderToImage leaves nothing mounted between calls', async () => {
   expect(calls.length).toBe(2)
   expect(calls[0]!.words[3]).toBe(1)
   expect(calls[1]!.words[3]).toBe(1)
+})
+
+test('renderToPdf compiles a program per page and keeps the string tables apart', async () => {
+  await renderToPdf(
+    '/tmp/out.pdf',
+    [
+      { width: 612, height: 792, element: <Path path="M0 0 L1 0 Z" /> },
+      { width: 595, height: 842, element: <Rect x={0} y={0} width={1} height={1} /> },
+    ],
+    { title: 'Report', author: 'me' }
+  )
+  expect(pdfCalls.length).toBe(1)
+  const call = pdfCalls[0]!
+  expect(call.path).toBe('/tmp/out.pdf')
+  expect(call.pages).toBe(2)
+  expect(call.sizes).toEqual([612, 792, 595, 842])
+  // Only the first page has a string, so the counts have to say which is whose.
+  expect(call.strings).toEqual(['M0 0 L1 0 Z'])
+  expect(call.stringCounts).toEqual([1, 0])
+  expect(call.metadata[0]).toBe('Report')
+  expect(call.metadata[3]).toBe('react-native-tgfx')
+})
+
+test('renderToPdf rejects an empty page list', async () => {
+  await expect(renderToPdf('/tmp/out.pdf', [])).rejects.toThrow('at least one page')
+  expect(pdfCalls.length).toBe(0)
 })

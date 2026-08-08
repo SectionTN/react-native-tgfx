@@ -147,6 +147,25 @@ export interface TgfxImageFactory extends HybridObject<{
   fromNativeBuffer(buffer: UInt64, format: PixelFormat): TgfxImage
 
   /**
+   * Render one or more compiled draw programs into a PDF at `path`. Geometry
+   * and text stay vectors; only images rasterize.
+   *
+   * The arrays run in parallel, one entry per page, because Nitro has no
+   * nested-array type: `pages[i]` is that page's program, `stringCounts[i]` how
+   * many of the concatenated `strings` belong to it, and `sizes[i * 2]` and
+   * `sizes[i * 2 + 1]` its width and height. `metadata` is title, author,
+   * subject, creator.
+   */
+  savePdf(
+    path: string,
+    pages: ArrayBuffer[],
+    strings: string[],
+    stringCounts: number[],
+    sizes: number[],
+    metadata: string[]
+  ): Promise<void>
+
+  /**
    * Render a compiled draw program to an offscreen GPU surface and register the
    * result as an image. No `<Canvas>` need be mounted: the surface belongs to no
    * view, so the pixels are read back to the CPU and re-uploaded wherever they

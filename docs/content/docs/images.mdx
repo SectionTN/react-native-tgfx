@@ -246,6 +246,20 @@ render once and reuse the handle.
 Animated props are read at their committed value. There is no view driving them,
 and the result is a single still frame.
 
+### useOffscreenImage
+
+The declarative half: it renders on mount, hands back the handle, and disposes
+it when the component unmounts or the inputs change.
+
+```tsx
+const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 })
+return <Canvas>{badge && <Image image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
+```
+
+`null` on the first frame, then the handle. The `element` is a dependency, so
+memoise it unless the scene really changed — an inline tree re-renders every
+commit.
+
 The caller owns the handle and must `dispose()` it. The result is **not** covered
 by `setImageCacheLimit`: it is registered as an external image, so it is never
 evicted and lives until you dispose it. Its size is reported to the JS garbage
@@ -302,3 +316,61 @@ which governs eviction, and a derived handle is never evicted.
 
 A handle backed by something someone else recycles — a camera frame, or a video
 stream — has no stable source, and these methods throw on it.
+
+### useDerivedImage
+
+The declarative half, which disposes the derivative with the component and
+returns `null` while the source is still loading, so it composes with
+`useImage` directly.
+
+```tsx
+const photo = useImage(require('./photo.jpg'))
+const thumb = useDerivedImage(photo, { type: 'scaled', width: 200, height: 200 })
+```
+
+The derivation is `{ type: 'subset' | 'scaled' | 'oriented' | 'blurred' }` plus
+that type's arguments — the same four the handle exposes.
+
+## renderToPdf
+
+Write a scene to a PDF, one page per element. Geometry and text stay **vectors**
+— only images rasterize — so a chart drawn with the same components that render
+on screen exports as a real document rather than a screenshot.
+
+```tsx
+import { renderToPdf } from 'react-native-tgfx'
+
+await renderToPdf(
+  `${RNFS.DocumentDirectoryPath}/report.pdf`,
+  [
+    { width: 612, height: 792, element: <Cover /> },
+    { width: 612, height: 792, element: <Chart data={data} /> },
+  ],
+  { title: 'Quarterly report', author: 'Acme' }
+)
+```
+
+Sizes are in points: 612 x 792 is US Letter, 595 x 842 is A4. Metadata takes
+`title`, `author`, `subject` and `creator`; `creator` defaults to
+`react-native-tgfx`.
+
+Like `renderToImage`, each page is a still — animated props are read at their
+committed value, since there is no view driving them.
+
+Two limits come from the format itself. PDF supports **affine transforms only**,
+so a perspective component in a `<Group transform>` is dropped rather than
+approximated. And anything that needs an offscreen surface rasterizes — an
+`<Image>`, a blur or other image filter, a `<Mask>`, a `<Group layer>`; plain
+shapes, strokes and text stay resolution-independent.
+
+`<CameraFrame>` has no surface to size itself against on a page, so it falls
+back to one frame-pixel per point at the page origin. Draw an `<Image>` instead.
+
+The write is atomic: the document goes to a scratch file and is renamed on
+success, so a failure part-way through leaves whatever was already at `path`
+untouched rather than replacing it with a truncated document. An unwritable
+path throws with the path in the message.
+
+An export holds the shared offscreen GPU context for the whole document, so a
+long image-heavy one delays other `renderToImage` calls. Measured: 50 vector
+pages take ~33 ms, 50 pages each carrying their own 1024px bitmap take ~4.9 s.

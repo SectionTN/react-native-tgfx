@@ -515,6 +515,28 @@ frame is answered against the tree that is still on screen, while the handles
 were already remapped — so a hit can be named against the previous layout for a
 single frame.
 
+### useCanvasPress
+
+The declarative half. Give it the handles you care about and what to run for
+each, and it dispatches a tap instead of handing you coordinates.
+
+```tsx
+const canvas = useRef<CanvasHandle>(null)
+const bar = useNode()
+const onTouch = useCanvasPress(canvas, [[bar, () => select(bar)]])
+
+<View onStartShouldSetResponder={() => true} onResponderRelease={onTouch}>
+  <Canvas ref={canvas}>
+    <Rect ref={bar} x={10} y={10} width={40} height={80} color="#0a84ff" />
+  </Canvas>
+</View>
+```
+
+Only the **topmost** hit with a handler fires — a tap belongs to one target, not
+to everything beneath it — and a hit with no handler falls through to the one
+under it. Pass `onPress` to see every hit including unnamed nodes, and `precise`
+to test the filled region.
+
 ## Types
 
 The package exports its prop types alongside the components — `CanvasProps`,

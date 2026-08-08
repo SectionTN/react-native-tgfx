@@ -8,11 +8,11 @@ set(TGFX_USE_METAL ON CACHE BOOL "" FORCE)
 set(TGFX_USE_OPENGL OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_LAYERS OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_SVG ON CACHE BOOL "" FORCE)
-set(TGFX_BUILD_PDF OFF CACHE BOOL "" FORCE)
+set(TGFX_BUILD_PDF ON CACHE BOOL "" FORCE)
 set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
 
-add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../SvgImage.cpp ../ImageRegistry.cpp ../OffscreenRender.cpp
+add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../SvgImage.cpp ../ImageRegistry.cpp ../OffscreenRender.cpp ../PdfExport.cpp
                ../FontRegistry.cpp ../TextLayout.cpp ../PathOps.cpp)
 # tgfx's src too: the EXIF test names JpegCodec rather than going through
 # ImageCodec::MakeFrom, which would fall through to the platform decoder and
@@ -21,6 +21,7 @@ target_include_directories(SceneTest PRIVATE ".." "${TGFX_DIR}/include" "${TGFX_
 # Real font faces to register, shared with the example app so the tests exercise
 # files that ship in this repo rather than whatever the host happens to install.
 target_compile_definitions(SceneTest PRIVATE
+    TGFXRN_TEST_TMP_DIR="${CMAKE_BINARY_DIR}"
     TGFXRN_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../../../apps/example/src/assets/fonts")
 target_link_libraries(SceneTest tgfx)
 

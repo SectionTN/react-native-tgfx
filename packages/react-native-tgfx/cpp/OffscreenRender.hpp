@@ -8,10 +8,32 @@
 #include <vector>
 
 namespace tgfx {
+class Context;
+class Device;
 class Image;
 }
 
 namespace tgfxrn {
+
+/**
+ * Holds the shared windowless GPU context for as long as it lives, replacing a
+ * device that lost its context for good. Throws if there is no usable GPU.
+ */
+class OffscreenContext {
+ public:
+  OffscreenContext();
+  ~OffscreenContext();
+  OffscreenContext(const OffscreenContext&) = delete;
+  OffscreenContext& operator=(const OffscreenContext&) = delete;
+
+  tgfx::Context* get() const {
+    return context_;
+  }
+
+ private:
+  std::shared_ptr<tgfx::Device> device_;
+  tgfx::Context* context_ = nullptr;
+};
 
 /**
  * Renders `words` at `width` x `height` logical points scaled by `pixelRatio`,
