@@ -238,3 +238,32 @@ function GlowMultiplied() {
 ```
 
 A soft blue halo darkening the amber underneath it rather than covering it.
+
+## Mask
+
+`<Mask>` hides its children through another drawing — the CSS-mask equivalent.
+`mode="alpha"` (the default) keeps what the mask is opaque under; `"luminance"`
+keeps what it is bright under.
+
+```tsx
+import { Circle, Image, Mask, RadialGradient, Rect } from 'react-native-tgfx'
+
+<Mask
+  mode="luminance"
+  mask={
+    <Rect x={0} y={0} width={256} height={256}>
+      <RadialGradient center={{ x: 128, y: 128 }} r={128} colors={['white', 'black']} />
+    </Rect>
+  }
+>
+  <Image image={photo} x={0} y={0} width={256} height={256} />
+</Mask>
+```
+
+The mask arrives as a prop rather than a child, as in react-native-skia, so the
+two subtrees stay distinguishable.
+
+A mask composites its content into one offscreen and the mask into another, so it
+costs two render targets — and the mask's target is sized to the clip, not to the
+mask geometry, because the blend has to reach every pixel the content covers.
+Reach for it when a shape or a gradient cannot do the job.
