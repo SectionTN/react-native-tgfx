@@ -30,7 +30,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 20;
+inline constexpr double kSceneVersion = 21;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -72,9 +72,10 @@ struct ChildShaderCmd {
   std::shared_ptr<tgfx::Shader> shader;
   std::shared_ptr<ImageShaderCmd> image;
   std::shared_ptr<RuntimeShaderCmd> runtime;
+  std::shared_ptr<struct BlendShaderCmd> blend;
 
   bool dynamic() const {
-    return image != nullptr || runtime != nullptr;
+    return image != nullptr || runtime != nullptr || blend != nullptr;
   }
 
   std::shared_ptr<tgfx::Shader> resolve(std::span<const double> values) const;
@@ -86,6 +87,14 @@ struct RuntimeShaderCmd {
   std::vector<std::string> functionNames;
   std::vector<tgfx::RuntimeShaderUniform> uniforms;
   std::vector<AnimF> slots;
+  std::vector<ChildShaderCmd> children;
+
+  std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
+};
+
+/// A <Blend> whose children cannot all be folded at commit — a video frame or an animated uniform.
+struct BlendShaderCmd {
+  tgfx::BlendMode mode = tgfx::BlendMode::SrcOver;
   std::vector<ChildShaderCmd> children;
 
   std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
@@ -107,6 +116,8 @@ struct PaintCmd {
   std::shared_ptr<RuntimeShaderCmd> runtime;
   /// Set only for an <ImageShader> on a hardware-buffer handle; otherwise the shader stands.
   std::shared_ptr<ImageShaderCmd> imageShader;
+  /// Set when a <Blend> child is dynamic, so the fold has to happen per frame.
+  std::shared_ptr<BlendShaderCmd> blendShader;
   /// Filters and blend mode, built once by setScene: their inputs are literals.
   tgfx::BlendMode blend = tgfx::BlendMode::SrcOver;
   std::shared_ptr<tgfx::ColorFilter> colorFilter;
@@ -117,7 +128,8 @@ struct PaintCmd {
 
   bool animated() const {
     return animColor || alpha.slot >= 0 || runtime != nullptr ||
-           imageShader != nullptr || (stroke && strokeWidth.slot >= 0);
+           imageShader != nullptr || blendShader != nullptr ||
+           (stroke && strokeWidth.slot >= 0);
   }
 };
 
@@ -226,6 +238,8 @@ class SceneRenderer {
   void readTextRuns(SceneReader& reader, TextCmd& text);
   void readPaint(SceneReader& reader, PaintCmd& paint);
   void readFilters(SceneReader& reader, PaintCmd& paint);
+  std::shared_ptr<tgfx::ColorFilter> readColorFilter(SceneReader& reader, int depth);
+  std::shared_ptr<tgfx::ImageFilter> readImageFilter(SceneReader& reader, int depth);
   std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader, PaintCmd* out,
                                            int depth = 0);
 

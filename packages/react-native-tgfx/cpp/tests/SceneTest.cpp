@@ -1084,6 +1084,182 @@ void theLateFilterKindsAllDraw() {
   CHECK(shape({-1}, {1, 4, 4, 3, 3, 0xff000000, 3}) != innerLit);
 }
 
+/// <Blend> folds shader children; <ColorShader> is the leaf that makes it testable.
+void blendFoldsItsShaderChildren() {
+  auto shape = [](const std::vector<double>& shader) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(64);
+    w.pushAnim(64);
+    w.push(0xffffffff);
+    w.push(2);
+    w.pushAnim(1);
+    w.push(0);
+    w.push(0);
+    w.pushAnim(1);
+    for (double word : shader) {
+      w.push(word);
+    }
+    return render(w.finish(), {}, {});
+  };
+
+  // A lone colour shader paints its colour.
+  auto red = shape({9, 0xffff0000});
+  CHECK(pixelAt(red, 32, 32)[0] > 200);
+  CHECK(pixelAt(red, 32, 32)[1] < 40);
+
+  // Multiply of red over a half-grey: red survives, green and blue are cut.
+  const int multiply = 24;
+  auto folded = shape({8, multiply, 2, 9, 0xffff0000, 9, 0xff808080});
+  auto pixel = pixelAt(folded, 32, 32);
+  CHECK(pixel[0] > 100 && pixel[0] < 200);
+  CHECK(pixel[1] < 40);
+
+  // The mode matters, and a single child folds to just that child.
+  CHECK(shape({8, 14, 2, 9, 0xffff0000, 9, 0xff808080}) != folded);  // screen
+  CHECK(shape({8, multiply, 1, 9, 0xffff0000}) == red);
+}
+
+/// Two filters of a class compose rather than the last one winning.
+void filtersOfOneClassCompose() {
+  auto shape = [](const std::vector<double>& colorFilter) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(12);
+    w.pushAnim(12);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushFilteredPaint(0xff3366cc, {3, colorFilter, {-1}});
+    return render(w.finish(), {}, {});
+  };
+  // Greyscale, then swap R and B: composing is not the same as either alone.
+  const std::vector<double> grey = {
+      0, 0.21, 0.72, 0.07, 0, 0, 0.21, 0.72, 0.07, 0, 0,
+      0.21, 0.72, 0.07, 0, 0, 0, 0, 0, 1, 0};
+  const std::vector<double> swap = {
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+
+  auto greyOnly = shape(grey);
+  auto swapOnly = shape(swap);
+  std::vector<double> composed = {4};
+  composed.insert(composed.end(), grey.begin(), grey.end());
+  composed.insert(composed.end(), swap.begin(), swap.end());
+  auto both = shape(composed);
+
+  CHECK(greyOnly != swapOnly);
+  CHECK(both != swapOnly);  // the greyscale really did run first
+  // Grey then swap is still grey, so the composed result matches the grey one.
+  CHECK(both == greyOnly);
+
+  // Two blurs compose into one image filter rather than the last one winning.
+  auto blurred = [](const std::vector<double>& imageFilter) {
+    Writer w;
+    w.push(1);
+    w.push(1);
+    w.pushAnim(20);
+    w.pushAnim(20);
+    w.pushAnim(24);
+    w.pushAnim(24);
+    w.pushFilteredPaint(0xff3366cc, {3, {-1}, imageFilter});
+    return render(w.finish(), {}, {});
+  };
+  auto once = blurred({0, 2, 2, 3});
+  auto twice = blurred({2, 0, 2, 2, 3, 0, 2, 2, 3});
+  CHECK(anyPixelSet(twice));
+  CHECK(twice != once);
+  CHECK(inkPixels(twice) > inkPixels(once));  // blurring twice spreads further
+}
+
+/// A <Blend> child that resolves per frame must keep doing so inside the fold.
+void blendKeepsItsDynamicChildrenLive() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto first = registerSolid(cellColor(13), 32, 32);
+  auto second = registerSolid(cellColor(31), 32, 32);
+  auto external = registry.addExternal(registry.acquire(first.handle));
+  CHECK(external.handle != 0);
+
+  // mode `dst` keeps the first child only, so the image is what lands on screen.
+  const int dst = 2;
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1);
+  w.push(8);  // Blend
+  w.push(dst);
+  w.push(2);
+  w.push(7);  // an external image shader
+  w.push(external.handle);
+  w.push(0);
+  w.push(0);
+  w.push(1);
+  w.push(0);
+  w.push(9);  // and a colour, which `dst` discards
+  w.push(0xff00ff00);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+
+  auto expectedFirst = cellColor(13);
+  auto before = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(before[0] == expectedFirst[0] && before[1] == expectedFirst[1]);
+
+  // Swapping the buffer behind the handle must reach the next frame, with no re-commit.
+  CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
+  auto expectedSecond = cellColor(31);
+  auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
+}
+
+/// An animated runtime uniform has to survive being wrapped in a <Blend>.
+void blendKeepsAnAnimatedUniformLive() {
+  const std::vector<std::string> strings = {
+      "return vec4(uLevel, 0.0, 0.0, 1.0);", "", "uLevel"};
+  const int dst = 2;
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1);
+  w.push(8);  // Blend
+  w.push(dst);
+  w.push(2);
+  w.push(6);  // runtime shader, one animated uniform
+  w.push(0);
+  w.push(1);
+  w.push(0);
+  w.push(1);
+  w.push(2);
+  w.push(1);
+  w.pushAnim(0, 0);
+  w.push(0);
+  w.push(9);  // a colour `dst` discards
+  w.push(0xff00ff00);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+  CHECK(pixelAt(drawFrame(renderer, {0.0}), 16, 16)[0] < 40);
+  CHECK(pixelAt(drawFrame(renderer, {1.0}), 16, 16)[0] > 200);
+}
+
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -2662,6 +2838,10 @@ int main() {
   aLayerCompositesTheSubtreeOnce();
   pathEffectsReshapeTheGeometry();
   theLateFilterKindsAllDraw();
+  blendFoldsItsShaderChildren();
+  filtersOfOneClassCompose();
+  blendKeepsItsDynamicChildrenLive();
+  blendKeepsAnAnimatedUniformLive();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

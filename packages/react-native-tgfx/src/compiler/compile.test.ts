@@ -1028,29 +1028,26 @@ test('inherits a filter from a <Group> into every descendant', () => {
   expect(Array.from(used.subarray(second, second + 4))).toEqual([24, -1, 0, 2])
 })
 
-test('two filters of the same class on one paint warn in development', () => {
-  ;(globalThis as { __DEV__?: boolean }).__DEV__ = true
-  const warn = console.warn
-  const messages: string[] = []
-  console.warn = (message: string) => messages.push(message)
-  try {
-    compile([
-      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
-        node(NodeType.Blur, { blur: 2 }),
-        node(NodeType.Blur, { blur: 7 }),
-      ]),
-    ])
-    compile([
-      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
-        node(NodeType.Blur, { blur: 2 }),
-        node(NodeType.ColorMatrix, { matrix: new Array(20).fill(0) }),
-      ]),
-    ])
-  } finally {
-    console.warn = warn
-  }
-  expect(messages.length).toBe(1)
-  expect(messages[0]).toContain('two image filters')
+test('two filters of the same class on one paint compose in order', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Blur, { blur: 2 }),
+      node(NodeType.Blur, { blur: 7 }),
+    ]),
+  ])
+  // blend | colourKind(none) | imageKind 2 = compose | blur 2 | blur 7
+  expect(Array.from(used.subarray(15, 25))).toEqual([
+    3, -1, 2, 0, 2, 2, 3, 0, 7, 7,
+  ])
+
+  // Different classes still sit side by side rather than composing.
+  const mixed = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Blur, { blur: 2 }),
+      node(NodeType.Luma, {}),
+    ]),
+  ])
+  expect(Array.from(mixed.used.subarray(15, 21))).toEqual([3, 2, 0, 2, 2, 3])
 })
 
 test('a filter on the node itself overrides the one it inherits', () => {

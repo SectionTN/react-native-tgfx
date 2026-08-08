@@ -234,6 +234,28 @@ the result, which is what you usually mean:
 That offscreen costs a render target, so reach for it when the double-blend is
 visible, not by default.
 
+## Shader composition
+
+`<Blend>` folds its shader children together with a blend mode, left to right:
+the first child is the destination and each next one blends over it.
+`<ColorShader>` is the leaf that makes a solid colour usable as an input.
+
+```tsx
+import { Blend, ColorShader, RadialGradient, Rect, Turbulence } from 'react-native-tgfx'
+
+<Rect x={0} y={0} width={256} height={256}>
+  <Blend mode="multiply">
+    <RadialGradient center={{ x: 128, y: 128 }} r={128} colors={['blue', 'yellow']} />
+    <Turbulence freqX={0.05} freqY={0.05} octaves={4} />
+  </Blend>
+</Rect>
+```
+
+Nesting is allowed: a `<Blend>` can be a child of another `<Blend>`. A child that
+resolves per frame — an animated `<Shader>` uniform, or a `<ImageShader>` on a
+video or camera handle — keeps doing so inside the fold; only a tree of entirely
+static children is folded once at commit.
+
 ## Gradients and noise
 
 Children of a shape or `<Paint>`. They draw nothing on their own.
@@ -248,6 +270,8 @@ Children of a shape or `<Paint>`. They draw nothing on their own.
 | `Turbulence` | same props as `FractalNoise` |
 | `Shader` | `source`, `uniforms` — see [shaders](/docs/shaders) |
 | `ImageShader` | `image`, `tx`, `ty`, `sampling`, `rect`, `fit` — see [images](/docs/images#imageshader) |
+| `Blend` | `mode` — folds its shader children, see [above](#shader-composition) |
+| `ColorShader` | `color` |
 
 `colors` is `Color[]` and `positions` is `number[]`. `SweepGradient`'s `start`
 and `end` are **degrees**, as in Skia, defaulting to a full 0–360 turn. Noise

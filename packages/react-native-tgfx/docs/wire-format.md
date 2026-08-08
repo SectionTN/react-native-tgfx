@@ -72,3 +72,8 @@ against the live value array each frame.
   shadow-only word became a flags word (1 shadow only, 2 inner). Neither shifts a
   word, so the cursor stays aligned either way: an older reader simply drops a
   luma filter, and renders an inner shadow as an ordinary shadow-only one.
+- **21** — adds shader kinds 8 (blend: a mode, a child count, then that many nested
+  shader payloads) and 9 (colour: one packed word). An older reader would take the
+  blend mode for a gradient's first coordinate. Also adds colour-filter kind 4 and
+  image-filter kind 2 (compose: two nested filter payloads), which an older reader
+  would take for a matrix and a blur respectively.

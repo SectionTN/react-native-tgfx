@@ -1,5 +1,6 @@
 import { isColorComponents, resolveColor, type Color } from './colors'
 import {
+  blendCode,
   hasFilters,
   writeFilters,
   type BlendMode,
@@ -53,6 +54,8 @@ export interface GradientInput {
     | 'turbulence'
     | 'runtime'
     | 'image'
+    | 'blend'
+    | 'color'
   image?: unknown
   tx?: TileMode
   ty?: TileMode
@@ -74,6 +77,10 @@ export interface GradientInput {
   source?: string
   uniforms?: Record<string, UniformValue>
   children?: GradientInput[]
+  /** `<Blend>` only: how its children fold together. */
+  mode?: BlendMode
+  /** `<ColorShader>` only. */
+  color?: Color
 }
 
 const CAPS = { butt: 0, round: 1, square: 2 } as const
@@ -88,6 +95,8 @@ const SHADER_KIND = {
   turbulence: 5,
   runtime: 6,
   image: 7,
+  blend: 8,
+  color: 9,
 } as const
 
 const NO_SHADER = -1
@@ -129,6 +138,18 @@ function writeStops(w: SceneWriter, g: GradientInput): void {
 function writeGradient(w: SceneWriter, g: GradientInput): void {
   w.push(SHADER_KIND[g.kind])
   switch (g.kind) {
+    case 'color':
+      w.push(resolveColor(resolveValue(g.color)))
+      return
+    case 'blend': {
+      const children = g.children ?? []
+      w.push(blendCode(g.mode))
+      w.push(children.length)
+      for (const child of children) {
+        writeGradient(w, child)
+      }
+      return
+    }
     case 'image': {
       w.push(imageHandle(g.image))
       w.push(tileCode(g.tx))

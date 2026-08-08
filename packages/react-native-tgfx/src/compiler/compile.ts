@@ -157,6 +157,24 @@ function extractGradient(
       rect: p.rect as SrcRect | undefined,
     }
   }
+  if (node.type === NodeType.ColorShader) {
+    return { kind: 'color', colors: [], color: p.color as Color }
+  }
+  if (node.type === NodeType.Blend) {
+    const children: GradientInput[] = []
+    for (const child of node.children) {
+      const shader = extractGradient(w, child)
+      if (shader != null) {
+        children.push(shader)
+      }
+    }
+    return {
+      kind: 'blend',
+      colors: [],
+      mode: p.mode as BlendMode,
+      children,
+    }
+  }
   if (node.type === NodeType.Shader) {
     const children: GradientInput[] = []
     for (const child of node.children) {
@@ -251,19 +269,23 @@ function paintFromChild(
   return gradient != null ? { gradient } : extractFilter(child)
 }
 
+/// Two filters of a class compose in declaration order: the earlier one runs first.
 function addPaintSource(
   paint: Partial<PaintInput>,
   contribution: Partial<PaintInput>
 ): void {
-  if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    for (const key of ['colorFilter', 'imageFilter'] as const) {
-      if (contribution[key] != null && paint[key] != null) {
-        console.warn(
-          `[tgfx] two ${
-            key === 'colorFilter' ? 'colour' : 'image'
-          } filters on one paint; only the last one is drawn. A paint carries at most one of each class, and they do not compose.`
-        )
-      }
+  const color = contribution.colorFilter
+  if (color != null && paint.colorFilter != null) {
+    contribution = {
+      ...contribution,
+      colorFilter: { kind: 'compose', inner: paint.colorFilter, outer: color },
+    }
+  }
+  const image = contribution.imageFilter
+  if (image != null && paint.imageFilter != null) {
+    contribution = {
+      ...contribution,
+      imageFilter: { kind: 'compose', first: paint.imageFilter, then: image },
     }
   }
   Object.assign(paint, contribution)

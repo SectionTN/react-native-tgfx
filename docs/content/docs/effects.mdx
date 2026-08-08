@@ -54,8 +54,13 @@ on a physical iPhone before shipping it. Tracked in
 ## Filters
 
 Children of a shape or `<Paint>`, exactly like gradients. They draw nothing on
-their own, and a shape takes at most one colour filter and one image filter —
-the last one written wins, and a second of the same class warns in development.
+their own. Two filters of the same class **compose** in declaration order: the
+first one written runs first and the next runs over its result. The two classes
+are independent, so a colour filter and an image filter both apply.
+
+Composing image filters costs what the filters cost: two `<Blur>` on one paint
+take two offscreens and roughly twice the frame time of one. Composed colour
+filters are free by comparison — they take no offscreen at all.
 
 | component | props |
 | --- | --- |

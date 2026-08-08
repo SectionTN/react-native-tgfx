@@ -2,7 +2,9 @@ import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
   BlendColorProps,
+  BlendProps,
   BlurProps,
+  ColorShaderProps,
   CornerPathEffectProps,
   DashPathEffectProps,
   LumaProps,
@@ -78,6 +80,12 @@ export const Blur = NodeType.Blur as unknown as FC<BlurProps>
 
 /** Drop shadow under the drawing. Same offscreen cost as `<Blur>`. */
 export const DropShadow = NodeType.DropShadow as unknown as FC<DropShadowProps>
+
+/** Folds its shader children together with `mode`. */
+export const Blend = NodeType.Blend as unknown as FC<BlendProps>
+
+/** A solid colour as a shader input. */
+export const ColorShader = NodeType.ColorShader as unknown as FC<ColorShaderProps>
 
 /** Luminance as alpha. A colour filter, so it costs no offscreen. */
 export const Luma = NodeType.Luma as unknown as FC<LumaProps>

@@ -1,17 +1,21 @@
 // Colour filters, blend modes and image filters (#134), all built once when the scene compiles.
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
+  Blend,
   BlendColor,
   Blur,
   Canvas,
   Circle,
   ColorMatrix,
+  ColorShader,
   DropShadow,
   Fill,
   Image,
   Paint,
   Luma,
   Path,
+  RadialGradient,
+  Rect,
   RoundedRect,
   useImage,
   type BlendMode,
@@ -202,6 +206,46 @@ export function BlendWithFilter() {
   );
 }
 
+function Composition() {
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<Blend> shaders · two <Blur> composing'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Rect x={8} y={10} width={100} height={100}>
+          <RadialGradient
+            center={{ x: 58, y: 60 }}
+            r={54}
+            colors={['#4f8ef7', '#f2c94c']}
+          />
+        </Rect>
+        <Rect x={120} y={10} width={100} height={100}>
+          <Blend mode="multiply">
+            <RadialGradient
+              center={{ x: 170, y: 60 }}
+              r={54}
+              colors={['#4f8ef7', '#f2c94c']}
+            />
+            <ColorShader color="#ff6b6b" />
+          </Blend>
+        </Rect>
+        <Circle cx={270} cy={60} r={30} color="#4f8ef7">
+          <Blur blur={2} />
+        </Circle>
+        <Circle cx={345} cy={60} r={30} color="#4f8ef7">
+          <Blur blur={2} />
+          <Blur blur={6} />
+        </Circle>
+      </Canvas>
+      <RNText style={styles.caption}>
+        The gradient plain, then multiplied with a colour shader; then one blur,
+        then two composing into a softer edge.
+      </RNText>
+    </View>
+  );
+}
+
 function LateFilters() {
   return (
     <View style={styles.section}>
@@ -235,6 +279,7 @@ export function FilterSection() {
     <>
       <BlendModes />
       <LateFilters />
+      <Composition />
       <ColorMatrices />
       <BlendColors />
       <ImageFilters />

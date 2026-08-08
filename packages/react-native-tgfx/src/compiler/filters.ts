@@ -51,10 +51,13 @@ export function blendCode(mode: unknown): number {
 
 /** A colour transform applied per pixel. Read once at commit; never animated. */
 export interface ColorFilterInput {
-  kind: 'matrix' | 'blend' | 'luma'
+  kind: 'matrix' | 'blend' | 'luma' | 'compose'
   matrix?: number[]
   color?: Color
   mode?: BlendMode
+  /** `'compose'` only: `inner` runs first, then `outer` over its result. */
+  inner?: ColorFilterInput
+  outer?: ColorFilterInput
 }
 
 /**
@@ -62,7 +65,10 @@ export interface ColorFilterInput {
  * — tgfx draws through an offscreen layer — so it costs a render target.
  */
 export interface ImageFilterInput {
-  kind: 'blur' | 'dropShadow'
+  kind: 'blur' | 'dropShadow' | 'compose'
+  /** `'compose'` only. Named apart from the shadow's `inner` flag below. */
+  first?: ImageFilterInput
+  then?: ImageFilterInput
   inner?: boolean
   blur?: number
   blurX?: number
@@ -105,8 +111,20 @@ export function writeFilters(
   imageFilter: ImageFilterInput | undefined
 ): void {
   w.push(blendCode(blendMode))
+  writeColorFilter(w, colorFilter)
+  writeImageFilter(w, imageFilter)
+}
+
+function writeColorFilter(
+  w: SceneWriter,
+  colorFilter: ColorFilterInput | undefined
+): void {
   if (colorFilter == null) {
     w.push(NONE)
+  } else if (colorFilter.kind === 'compose') {
+    w.push(4)
+    writeColorFilter(w, colorFilter.inner)
+    writeColorFilter(w, colorFilter.outer)
   } else if (colorFilter.kind === 'luma') {
     w.push(2)
   } else if (colorFilter.kind === 'blend') {
@@ -120,8 +138,20 @@ export function writeFilters(
       w.push(resolveNumber(value))
     }
   }
+}
+
+function writeImageFilter(
+  w: SceneWriter,
+  imageFilter: ImageFilterInput | undefined
+): void {
   if (imageFilter == null) {
     w.push(NONE)
+    return
+  }
+  if (imageFilter.kind === 'compose') {
+    w.push(2)
+    writeImageFilter(w, imageFilter.first)
+    writeImageFilter(w, imageFilter.then)
     return
   }
   const blurX = resolveNumber(imageFilter.blurX ?? imageFilter.blur)
