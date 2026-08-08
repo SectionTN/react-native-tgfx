@@ -489,16 +489,7 @@ export interface DropShadowProps {
 }
 
 /** Replaces every colour with its luminance, carried into the alpha channel. */
-export interface LumaProps {
-  children?: ReactNode
-}
-
-/** Snaps alpha to 0 or 1 either side of `threshold`, for hard-edged masking. */
-export interface AlphaThresholdProps {
-  /** 0-1. Defaults to 0.5. */
-  threshold?: number
-  children?: ReactNode
-}
+export type LumaProps = Record<string, never>
 
 export interface NoiseProps {
   freqX?: number

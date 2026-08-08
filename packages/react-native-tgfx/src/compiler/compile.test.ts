@@ -137,7 +137,7 @@ test('an animated trim and dash phase take value slots', () => {
   expect(used[patchStart + 4]).toBe(1)
 })
 
-test('the late filter kinds encode their own blocks', () => {
+test('a luma filter is one word and needs no block', () => {
   const filtered = (child: Node) =>
     compile([
       {
@@ -151,12 +151,6 @@ test('the late filter kinds encode their own blocks', () => {
   expect(luma.used[10]).toBe(2 | 4) // antiAlias + the filter block
   expect(Array.from(luma.used.subarray(15, 18))).toEqual([3, 2, -1])
 
-  const threshold = filtered(node(NodeType.AlphaThreshold, { threshold: 0.25 }))
-  expect(Array.from(threshold.used.subarray(15, 19))).toEqual([3, 3, 0.25, -1])
-
-  // An unset threshold defaults to the halfway point rather than 0.
-  const bare = filtered(node(NodeType.AlphaThreshold, {}))
-  expect(bare.used[17]).toBe(0.5)
 })
 
 test('a drop shadow packs shadowOnly and inner into one flags word', () => {

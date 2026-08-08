@@ -19,7 +19,6 @@ export {
 } from './components/drawings'
 export {
   BlendColor,
-  AlphaThreshold,
   Blur,
   CornerPathEffect,
   DashPathEffect,
@@ -102,7 +101,6 @@ export type {
   Animated,
   BlendColorProps,
   BlendMode,
-  AlphaThresholdProps,
   BlurProps,
   CornerPathEffectProps,
   DashPathEffectProps,

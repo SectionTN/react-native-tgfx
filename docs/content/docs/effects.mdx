@@ -64,7 +64,6 @@ the last one written wins, and a second of the same class warns in development.
 | `Blur` | `blur`, or `blurX`/`blurY`, plus `tileMode` |
 | `DropShadow` | `dx`, `dy`, `blur` or `blurX`/`blurY`, `color`, `shadowOnly`, `inner` |
 | `Luma` | none — replaces each colour with its luminance |
-| `AlphaThreshold` | `threshold` — 0-1, defaults to `0.5` |
 
 Every filter parameter is read once at commit and **does not animate**. Filters
 are built once, when the scene is compiled, and only applied per frame — an
@@ -187,22 +186,19 @@ hard offset copy.
 a pressed button or a cut-out well wants. It composes with `shadowOnly` the same
 way, so `inner shadowOnly` gives the shadow alone with no fill behind it.
 
-### Luma and AlphaThreshold
+### Luma
 
 `<Luma>` replaces every colour with its luminance, carried into the alpha
 channel — bright pixels stay, dark ones fade out. It is what luminance masking is
 built on.
 
-`<AlphaThreshold>` snaps alpha to fully transparent below `threshold` and fully
-opaque at or above it, which turns a soft edge into a hard one.
-
 ```tsx
-<Circle cx={60} cy={60} r={40} color="#4F8EF7">
-  <AlphaThreshold threshold={0.6} />
+<Circle cx={60} cy={60} r={40} color="#f2a33c">
+  <Luma />
 </Circle>
 ```
 
-Both are colour filters, so unlike `<Blur>` and `<DropShadow>` they cost no
+It is a colour filter, so unlike `<Blur>` and `<DropShadow>` it costs no
 offscreen.
 
 ### Where a filter applies

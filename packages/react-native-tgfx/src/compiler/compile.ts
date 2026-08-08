@@ -214,13 +214,6 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
       }
     case NodeType.Luma:
       return { colorFilter: { kind: 'luma' } }
-    case NodeType.AlphaThreshold:
-      return {
-        colorFilter: {
-          kind: 'alphaThreshold',
-          threshold: p.threshold as number,
-        },
-      }
     case NodeType.Blur:
       return {
         imageFilter: {

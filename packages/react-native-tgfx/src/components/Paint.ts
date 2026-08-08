@@ -2,7 +2,6 @@ import type { FC } from 'react'
 import { NodeType } from '../reconciler/types'
 import type {
   BlendColorProps,
-  AlphaThresholdProps,
   BlurProps,
   CornerPathEffectProps,
   DashPathEffectProps,
@@ -82,10 +81,6 @@ export const DropShadow = NodeType.DropShadow as unknown as FC<DropShadowProps>
 
 /** Luminance as alpha. A colour filter, so it costs no offscreen. */
 export const Luma = NodeType.Luma as unknown as FC<LumaProps>
-
-/** Hard-edges the alpha channel at `threshold`. */
-export const AlphaThreshold =
-  NodeType.AlphaThreshold as unknown as FC<AlphaThresholdProps>
 
 /** Dashes its `<Path>`. Reshapes the geometry, so it needs no offscreen. */
 export const DashPathEffect =

@@ -51,11 +51,10 @@ export function blendCode(mode: unknown): number {
 
 /** A colour transform applied per pixel. Read once at commit; never animated. */
 export interface ColorFilterInput {
-  kind: 'matrix' | 'blend' | 'luma' | 'alphaThreshold'
+  kind: 'matrix' | 'blend' | 'luma'
   matrix?: number[]
   color?: Color
   mode?: BlendMode
-  threshold?: number
 }
 
 /**
@@ -110,9 +109,6 @@ export function writeFilters(
     w.push(NONE)
   } else if (colorFilter.kind === 'luma') {
     w.push(2)
-  } else if (colorFilter.kind === 'alphaThreshold') {
-    w.push(3)
-    w.push(resolveNumber(colorFilter.threshold, 0.5))
   } else if (colorFilter.kind === 'blend') {
     w.push(1)
     w.push(resolveColor(colorFilter.color))

@@ -679,9 +679,6 @@ void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
   } else if (colorKind == 2) {
     paint.colorFilter = tgfx::ColorFilter::Luma();
     gFilterBuilds++;
-  } else if (colorKind == 3) {
-    paint.colorFilter = tgfx::ColorFilter::AlphaThreshold(static_cast<float>(r.next()));
-    gFilterBuilds++;
   }
   int imageKind = r.nextInt();
   if (imageKind == 0) {
