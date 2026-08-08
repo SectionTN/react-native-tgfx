@@ -95,7 +95,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; its frame is ~928 B, so 256 deep is ~232 KiB of stack.
+/// Bounds readNode and so drawCmd too; its frame is ~960 B, so 256 deep is ~240 KiB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
@@ -901,11 +901,22 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         if ((flags & 4) != 0) {
           effects->corner = static_cast<float>(r.next());
         }
-        // A static effect is baked now, so the draw path stays a plain drawPath.
-        if (effects->animated()) {
+        // Bake the longest static prefix now; only what actually moves stays per frame.
+        bool movingTrim = effects->trim && (effects->start.slot >= 0 || effects->end.slot >= 0);
+        bool movingDash = effects->dash && effects->phase.slot >= 0;
+        if (movingTrim) {
           cmd.effects = std::move(effects);
         } else {
-          effects->apply(&cmd.path, {});
+          PathEffectCmd baked = *effects;
+          baked.dash = effects->dash && !movingDash;
+          baked.apply(&cmd.path, {});
+          if (movingDash) {
+            auto rest = std::make_shared<PathEffectCmd>();
+            rest->dash = true;
+            rest->intervals = effects->intervals;
+            rest->phase = effects->phase;
+            cmd.effects = std::move(rest);
+          }
         }
       }
       break;

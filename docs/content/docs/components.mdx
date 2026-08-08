@@ -125,9 +125,14 @@ then corner, then dash. So a dash pattern re-flows as a trim shortens the path
 rather than staying pinned in place.
 
 `intervals` needs an even count of at least two; anything else is skipped and the
-path draws solid, with a warning in dev. A path whose trim and phase are all
-static is reshaped once at commit; animate either and it is reshaped per frame,
-which is the cost of the animation.
+path draws solid, with a warning in dev.
+
+Only what actually moves is re-run. The longest static run of effects is baked
+into the path once at commit, so a static trim in front of a marching dash costs
+nothing per frame. The exception is an animated `start`/`end`: trim runs first,
+so anything after it has to run again too — pairing a moving trim with a
+`<CornerPathEffect>` on a long path is by far the most expensive combination
+here, and a rounded path you trim is cheaper drawn as a pre-rounded `path`.
 
 ## Paint
 

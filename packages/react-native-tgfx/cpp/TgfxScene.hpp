@@ -161,11 +161,6 @@ struct PathEffectCmd {
   AnimF phase{0, -1};
   float corner = 0;
 
-  /// True when a slot moves, so the effect has to be re-applied every frame.
-  bool animated() const {
-    return start.slot >= 0 || end.slot >= 0 || phase.slot >= 0;
-  }
-
   /// Trim first, as react-native-skia bakes it into the path, then corner and dash.
   void apply(tgfx::Path* path, std::span<const double> v) const;
 };

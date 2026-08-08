@@ -1019,6 +1019,33 @@ void pathEffectsReshapeTheGeometry() {
   auto late = drawFrame(renderer, {0.6});
   CHECK(inkPixels(late) < inkPixels(early));
   CHECK(!opaqueAt(late, 10, 32));
+
+  // A static trim in front of a moving phase is baked, so only the dash re-runs.
+  Writer mixed;
+  mixed.push(1);
+  mixed.push(6);
+  mixed.push(0);
+  mixed.push(1 | 2);
+  mixed.push(0);
+  mixed.push(0.5);  // static trim: the first half only
+  mixed.push(2);
+  mixed.push(4);
+  mixed.push(4);
+  mixed.pushAnim(0, 0);
+  mixed.push(0xff000000);
+  mixed.push(1 | 2);
+  mixed.pushAnim(4);
+  mixed.push(0);
+  mixed.push(0);
+  mixed.pushAnim(1);
+  mixed.push(-1);
+  tgfxrn::SceneRenderer marching;
+  marching.setScene(mixed.finish(), {"M4 32 L60 32"});
+  auto atZero = drawFrame(marching, {0.0});
+  auto atFour = drawFrame(marching, {4.0});
+  CHECK(anyPixelSet(atZero));
+  CHECK(atZero != atFour);              // the phase still moves
+  CHECK(!opaqueAt(atZero, 55, 32));     // and the baked trim still bites
 }
 
 void fillCoversTheWholeCanvas() {
