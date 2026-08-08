@@ -489,6 +489,17 @@ export interface DropShadowProps {
 }
 
 /**
+ * Hides its children through another drawing. `'alpha'` keeps what the mask is
+ * opaque under; `'luminance'` keeps what it is bright under.
+ */
+export interface MaskProps {
+  mode?: 'alpha' | 'luminance'
+  /** The drawing whose alpha or luminance does the masking. */
+  mask: ReactNode
+  children?: ReactNode
+}
+
+/**
  * Folds its shader children together with `mode`, left to right: the first is the
  * destination, each next one blends over it. A shader source, not a paint filter.
  */

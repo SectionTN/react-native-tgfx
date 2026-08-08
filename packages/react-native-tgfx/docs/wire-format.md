@@ -77,3 +77,6 @@ against the live value array each frame.
   blend mode for a gradient's first coordinate. Also adds colour-filter kind 4 and
   image-filter kind 2 (compose: two nested filter payloads), which an older reader
   would take for a matrix and a blur respectively.
+- **22** — adds the mask kind (14): a luminance flag, then a mask child list and a
+  content child list, each a count followed by that many nodes. An older reader
+  would take the flag for a transform-op count.

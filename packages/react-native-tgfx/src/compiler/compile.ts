@@ -94,6 +94,7 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Glyphs]: Kind.Glyphs,
   [NodeType.Fill]: Kind.Fill,
   [NodeType.CameraFrame]: Kind.CameraFrame,
+  [NodeType.Mask]: Kind.Mask,
 }
 
 function quarterTurns(input: unknown): number {
@@ -571,6 +572,26 @@ function writeClip(w: SceneWriter, clip: ClipRect | string): void {
   }
 }
 
+/// A mask node: its mode, then the mask child list, then the content list.
+function writeMask(w: SceneWriter, node: Node, ctx: CompileCtx): void {
+  const source = node.children.find((c) => c.type === NodeType.MaskSource)
+  const content = node.children.filter(
+    (c) => c.type !== NodeType.MaskSource && KIND_OF[c.type] !== undefined
+  )
+  const local = localPaint(w, node)
+  const contentCtx: CompileCtx = {
+    paint: mergePaint(ctx.paint, local),
+    opacity: mulOpacity(ctx.opacity, local.opacity),
+  }
+  w.push(Kind.Mask)
+  w.push(node.props.mode === 'luminance' ? 1 : 0)
+  const maskCountAt = w.reserve()
+  // The mask is a matte, not part of the picture: it inherits neither paint nor opacity.
+  w.patch(maskCountAt, writeNodes(w, source?.children ?? [], ROOT_CTX))
+  const contentCountAt = w.reserve()
+  w.patch(contentCountAt, writeNodes(w, content, contentCtx))
+}
+
 function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const p = node.props
   const local = localPaint(w, node)
@@ -635,7 +656,9 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
       w.refs.push(ref)
       node = nodeInternals(ref).apply(node, w.reseed)
     }
-    if (kind === Kind.Group) {
+    if (kind === Kind.Mask) {
+      writeMask(w, node, ctx)
+    } else if (kind === Kind.Group) {
       writeGroup(w, node, ctx)
     } else if (kind === Kind.CameraFrame) {
       writeCameraFrame(w, node, ctx)

@@ -13,6 +13,7 @@ import {
   Image,
   Paint,
   Luma,
+  Mask,
   Path,
   RadialGradient,
   Rect,
@@ -206,6 +207,40 @@ export function BlendWithFilter() {
   );
 }
 
+function Masks() {
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>{'<Mask> — alpha · luminance'}</RNText>
+      <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#ffffff" />
+        <Mask
+          mask={<Circle cx={60} cy={60} r={42} color="#000" />}
+        >
+          <Rect x={10} y={10} width={100} height={100} color="#4f8ef7" />
+        </Mask>
+        <Mask
+          mode="luminance"
+          mask={
+            <Rect x={130} y={10} width={100} height={100}>
+              <RadialGradient
+                center={{ x: 180, y: 60 }}
+                r={52}
+                colors={['#ffffff', '#000000']}
+              />
+            </Rect>
+          }
+        >
+          <Rect x={130} y={10} width={100} height={100} color="#f2a33c" />
+        </Mask>
+      </Canvas>
+      <RNText style={styles.caption}>
+        A square kept only where a circle is opaque, and one faded out by a
+        white-to-black gradient's brightness.
+      </RNText>
+    </View>
+  );
+}
+
 function Composition() {
   return (
     <View style={styles.section}>
@@ -213,6 +248,7 @@ function Composition() {
         {'<Blend> shaders · two <Blur> composing'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#ffffff" />
         <Rect x={8} y={10} width={100} height={100}>
           <RadialGradient
             center={{ x: 58, y: 60 }}
@@ -253,6 +289,7 @@ function LateFilters() {
         {'<DropShadow> under · inner · <Luma>'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#ffffff" />
         <RoundedRect x={8} y={20} width={90} height={80} r={14} color="#f5f7fa">
           <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" />
         </RoundedRect>
@@ -280,6 +317,7 @@ export function FilterSection() {
       <BlendModes />
       <LateFilters />
       <Composition />
+      <Masks />
       <ColorMatrices />
       <BlendColors />
       <ImageFilters />

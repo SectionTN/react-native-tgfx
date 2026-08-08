@@ -168,6 +168,52 @@ test('a drop shadow packs shadowOnly and inner into one flags word', () => {
   expect(at(shadow({ shadowOnly: true, inner: true }))).toBe(3)
 })
 
+test('a mask writes its mode, then the mask list, then the content list', () => {
+  const mask = (props: Record<string, unknown> = {}) =>
+    compile([
+      {
+        ...node(NodeType.Mask, props),
+        children: [
+          {
+            ...node(NodeType.MaskSource, {}),
+            children: [node(NodeType.Circle, { cx: 1, cy: 2, r: 3 })],
+          },
+          node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+        ],
+      },
+    ])
+
+  const alpha = mask()
+  expect(alpha.used[4]).toBe(Kind.Mask)
+  expect(alpha.used[5]).toBe(0) // alpha mode
+  expect(alpha.used[6]).toBe(1) // one mask node
+  expect(alpha.used[7]).toBe(Kind.Circle)
+  expect(mask({ mode: 'luminance' }).used[5]).toBe(1)
+})
+
+test('a mask is a matte: it takes neither the inherited opacity nor the paint', () => {
+  const { used } = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      {
+        ...node(NodeType.Mask, {}),
+        children: [
+          {
+            ...node(NodeType.MaskSource, {}),
+            children: [node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })],
+          },
+          node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+        ],
+      },
+    ]),
+  ])
+  // group | mask kind mode maskCount | mask rect (12 words) | contentCount | content rect
+  expect(used[7]).toBe(Kind.Mask)
+  expect(used[10]).toBe(Kind.Rect)
+  expect(used[20]).toBe(1) // the matte keeps full alpha
+  expect(used[23]).toBe(Kind.Rect)
+  expect(used[33]).toBe(0.5) // the content takes the group's opacity
+})
+
 test('nests groups with their transform ops and child count', () => {
   const { used } = compile([
     node(NodeType.Group, { transform: [{ translateX: 10 }, { scale: 2 }] }, [
