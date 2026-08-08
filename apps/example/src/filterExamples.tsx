@@ -212,6 +212,7 @@ function Masks() {
     <View style={styles.section}>
       <RNText style={styles.label}>{'<Mask> — alpha · luminance'}</RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#ffffff" />
         <Mask
           mask={<Circle cx={60} cy={60} r={42} color="#000" />}
         >
@@ -247,6 +248,7 @@ function Composition() {
         {'<Blend> shaders · two <Blur> composing'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#ffffff" />
         <Rect x={8} y={10} width={100} height={100}>
           <RadialGradient
             center={{ x: 58, y: 60 }}
@@ -287,6 +289,7 @@ function LateFilters() {
         {'<DropShadow> under · inner · <Luma>'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#ffffff" />
         <RoundedRect x={8} y={20} width={90} height={80} r={14} color="#f5f7fa">
           <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" />
         </RoundedRect>

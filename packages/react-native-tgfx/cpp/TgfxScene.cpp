@@ -1266,11 +1266,16 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       maskPaint.setColorFilter(tgfx::ColorFilter::Luma());
     }
     canvas->saveLayer(&maskPaint);
-    // Clear rather than a transparent colour: a zero-alpha fill is dropped, widening nothing.
+    // Clear, not a transparent colour: a zero-alpha fill is dropped and widens nothing.
     tgfx::Paint clear;
     clear.setColor(tgfx::Color::Black());
     clear.setBlendMode(tgfx::BlendMode::Clear);
-    canvas->drawPaint(clear);
+    // As a rect, not drawPaint: under a clip that degrades to an inverse-fill path.
+    if (auto bounds = canvas->getTotalClipBounds()) {
+      canvas->drawRect(*bounds, clear);
+    } else {
+      canvas->drawPaint(clear);
+    }
     for (const auto& child : cmd.maskChildren) {
       drawCmd(canvas, child, v, paint);
     }
