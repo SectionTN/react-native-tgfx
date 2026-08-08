@@ -30,7 +30,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 18;
+inline constexpr double kSceneVersion = 19;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -150,6 +150,21 @@ struct TextCmd {
   mutable TextLayout layout;
 };
 
+/// A <Path>'s dash/corner/trim block; absent unless the path asks for one.
+struct PathEffectCmd {
+  bool trim = false;
+  AnimF start{0, -1};
+  AnimF end{1, -1};
+  std::vector<float> intervals;
+  /// Only ever set for an even count of at least two, which is all MakeDash accepts.
+  bool dash = false;
+  AnimF phase{0, -1};
+  float corner = 0;
+
+  /// Trim first, as react-native-skia bakes it into the path, then corner and dash.
+  void apply(tgfx::Path* path, std::span<const double> v) const;
+};
+
 struct DrawCmd {
   enum Kind {
     Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame
@@ -177,6 +192,8 @@ struct DrawCmd {
 
   tgfx::Path path;
   bool lineAnimated = false;
+  /// Path effects. Held rather than baked when trim or dash phase can move per frame.
+  std::shared_ptr<PathEffectCmd> effects;
   // Null for a hardware-buffer handle: caching the resolved image would pin the producer's buffer.
   std::shared_ptr<tgfx::Image> image;
   int32_t imageHandle = 0;

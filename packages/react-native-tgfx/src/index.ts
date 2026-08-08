@@ -20,6 +20,8 @@ export {
 export {
   BlendColor,
   Blur,
+  CornerPathEffect,
+  DashPathEffect,
   ColorMatrix,
   DiamondGradient,
   DropShadow,
@@ -99,6 +101,8 @@ export type {
   BlendColorProps,
   BlendMode,
   BlurProps,
+  CornerPathEffectProps,
+  DashPathEffectProps,
   CameraFrameProps,
   CanvasHandle,
   CanvasProps,

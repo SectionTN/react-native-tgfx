@@ -348,6 +348,7 @@ function writeDrawing(
       break
     case Kind.Path:
       w.pushString(String(resolveValue(p.path) ?? ''))
+      writePathEffects(w, node, p)
       break
     case Kind.Image:
       w.pushAnim(p.x)
@@ -401,6 +402,50 @@ function writeDrawing(
     writePaint(w, p, ctx.paint, alpha, line)
   } else {
     writePaint(w, NO_PAINT_PROPS, mergePaint(ctx.paint, own), alpha, line)
+  }
+}
+
+/// Flags word, then whatever each effect needs; trim and phase travel as value slots.
+function writePathEffects(
+  w: SceneWriter,
+  node: Node,
+  p: Record<string, unknown>
+): void {
+  let dash: Node | undefined
+  let corner: Node | undefined
+  for (const child of node.children) {
+    if (child.type === NodeType.DashPathEffect) {
+      dash = child
+    } else if (child.type === NodeType.CornerPathEffect) {
+      corner = child
+    }
+  }
+  const trimmed = p.start !== undefined || p.end !== undefined
+  w.push(
+    (trimmed ? 1 : 0) |
+      (dash != null ? 2 : 0) |
+      (corner != null ? 4 : 0) |
+      (p.fillType === 'evenOdd' ? 8 : 0)
+  )
+  if (trimmed) {
+    w.pushAnim(p.start, 0)
+    w.pushAnim(p.end, 1)
+  }
+  if (dash != null) {
+    const intervals = (dash.props.intervals as number[] | undefined) ?? []
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && intervals.length % 2 !== 0) {
+      console.warn(
+        `[tgfx] <DashPathEffect intervals> needs an even count of at least two, got ${intervals.length}. The dash is skipped and the path draws solid.`
+      )
+    }
+    w.push(intervals.length)
+    for (const interval of intervals) {
+      w.push(resolveNumber(interval, 0))
+    }
+    w.pushAnim(dash.props.phase, 0)
+  }
+  if (corner != null) {
+    w.push(resolveNumber(corner.props.r, 0))
   }
 }
 

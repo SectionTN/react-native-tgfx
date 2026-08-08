@@ -50,7 +50,7 @@ A `ref` on `<Canvas>` gives a `CanvasHandle` for reading pixels back — see
 | `Oval` | `x`, `y`, `width`, `height` |
 | `Circle` | `cx`, `cy`, `r` |
 | `Line` | `x1`, `y1`, `x2`, `y2` |
-| `Path` | `path` — SVG path data, `string` |
+| `Path` | `path` — SVG path data, `string`; plus `start`, `end`, `fillType` and the path effects below |
 | `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` — see [images](/docs/images#image) |
 | `Text` | `text`, `x`, `y`, plus the font and paragraph props — see [text](/docs/text) |
 | `TextPath` | `path`, `text`, `startOffset`, plus the font props — see [text](/docs/text) |
@@ -98,6 +98,41 @@ function Backdrop({ width, height }: { width: number; height: number }) {
 
 Coverage comes from the device-space clip, so a transform on an enclosing
 `Group` moves the paint but not the area filled — as in Skia.
+
+### Path effects
+
+`<Path>` can trim itself, dash itself, and round its own corners. Trim is the
+line-drawing animation: `start` and `end` are 0-1 along the path and both are
+animatable, so a `SharedValue` on `end` draws the path on.
+
+```tsx
+import { DashPathEffect, Path } from 'react-native-tgfx'
+
+<Path path={route} style="stroke" strokeWidth={4} end={progress}>
+  <DashPathEffect intervals={[10, 5]} phase={march} />
+</Path>
+```
+
+| prop | what it does |
+| --- | --- |
+| `start`, `end` | the segment to keep, 0-1. `end` below `start` reverses it |
+| `fillType` | `'winding'` (default) or `'evenOdd'` |
+| `<DashPathEffect>` | `intervals` — alternating on/off lengths, even count; `phase` — offset, animatable |
+| `<CornerPathEffect>` | `r` — corner radius, applied before any stroke |
+
+Trim is applied first — react-native-skia bakes it into the path the same way —
+then corner, then dash. So a dash pattern re-flows as a trim shortens the path
+rather than staying pinned in place.
+
+`intervals` needs an even count of at least two; anything else is skipped and the
+path draws solid, with a warning in dev.
+
+Only what actually moves is re-run. The longest static run of effects is baked
+into the path once at commit, so a static trim in front of a marching dash costs
+nothing per frame. The exception is an animated `start`/`end`: trim runs first,
+so anything after it has to run again too — pairing a moving trim with a
+`<CornerPathEffect>` on a long path is by far the most expensive combination
+here, and a rounded path you trim is cheaper drawn as a pre-rounded `path`.
 
 ## Paint
 

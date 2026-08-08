@@ -81,7 +81,60 @@ test('interns strings and references them by index', () => {
   expect(strings).toEqual(['M0 0 L1 1'])
   expect(used[3]).toBe(2) // two roots
   expect(used[5]).toBe(0) // both reference string 0
-  expect(used[14]).toBe(0)
+  expect(used[15]).toBe(0)
+})
+
+test('a plain path writes one zero effect word, and effects ride flag bits', () => {
+  const plain = compile([node(NodeType.Path, { path: 'M0 0 L1 1' })])
+  expect(plain.used[5]).toBe(0) // path string
+  expect(plain.used[6]).toBe(0) // no effects, no fill type
+
+  const evenOdd = compile([
+    node(NodeType.Path, { path: 'M0 0 L1 1', fillType: 'evenOdd' }),
+  ])
+  expect(evenOdd.used[6]).toBe(8)
+  expect(evenOdd.used.length).toBe(plain.used.length)
+
+  const trimmed = compile([
+    node(NodeType.Path, { path: 'M0 0 L1 1', start: 0.2, end: 0.8 }),
+  ])
+  expect(Array.from(trimmed.used.subarray(6, 9))).toEqual([1, 0.2, 0.8])
+
+  const dashed = compile([
+    {
+      ...node(NodeType.Path, { path: 'M0 0 L1 1' }),
+      children: [
+        node(NodeType.DashPathEffect, { intervals: [10, 5], phase: 3 }),
+      ],
+    },
+  ])
+  // flags | count 10 5 phase
+  expect(Array.from(dashed.used.subarray(6, 11))).toEqual([2, 2, 10, 5, 3])
+
+  const rounded = compile([
+    {
+      ...node(NodeType.Path, { path: 'M0 0 L1 1' }),
+      children: [node(NodeType.CornerPathEffect, { r: 4 })],
+    },
+  ])
+  expect(Array.from(rounded.used.subarray(6, 8))).toEqual([4, 4])
+})
+
+test('an animated trim and dash phase take value slots', () => {
+  const start = sharedValue(0.1)
+  const phase = sharedValue(2)
+  const { used, values } = compile([
+    {
+      ...node(NodeType.Path, { path: 'M0 0 L1 1', start, end: 0.9 }),
+      children: [node(NodeType.DashPathEffect, { intervals: [4, 4], phase })],
+    },
+  ])
+  expect(values).toEqual([start, phase])
+  const patchStart = used[2]
+  expect(used[patchStart]).toBe(2)
+  expect(used[patchStart + 1]).toBe(7) // the start word
+  expect(used[patchStart + 2]).toBe(0)
+  expect(used[patchStart + 4]).toBe(1)
 })
 
 test('nests groups with their transform ops and child count', () => {

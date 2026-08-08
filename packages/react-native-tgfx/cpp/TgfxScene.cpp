@@ -18,6 +18,7 @@
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageFilter.h"
 #include "tgfx/core/Paint.h"
+#include "tgfx/core/PathEffect.h"
 #include "tgfx/core/Point.h"
 #include "tgfx/core/RRect.h"
 #include "tgfx/core/Rect.h"
@@ -94,7 +95,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; its frame is ~928 B, so 256 deep is ~232 KiB of stack.
+/// Bounds readNode and so drawCmd too; its frame is ~960 B, so 256 deep is ~240 KiB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
@@ -380,6 +381,29 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
 }
 
 }  // namespace
+
+void PathEffectCmd::apply(tgfx::Path* path, std::span<const double> v) const {
+  // Corner and dash rebuild the path and drop its fill type, so carry it across them.
+  auto fill = path->getFillType();
+  if (trim) {
+    if (auto effect = tgfx::PathEffect::MakeTrim(start.resolve(v), end.resolve(v))) {
+      effect->filterPath(path);
+    }
+  }
+  if (corner > 0) {
+    if (auto effect = tgfx::PathEffect::MakeCorner(corner)) {
+      effect->filterPath(path);
+    }
+  }
+  if (dash) {
+    if (auto effect = tgfx::PathEffect::MakeDash(intervals.data(),
+                                                 static_cast<int>(intervals.size()),
+                                                 phase.resolve(v))) {
+      effect->filterPath(path);
+    }
+  }
+  path->setFillType(fill);
+}
 
 std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
     std::span<const double> values) const {
@@ -850,10 +874,53 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         cmd.path.lineTo(cmd.x2.literal, cmd.y2.literal);
       }
       break;
-    case KPath:
+    case KPath: {
       cmd.kind = DrawCmd::Path;
       cmd.path = parseSvgPath(r.nextString());
+      int flags = r.nextInt();
+      if ((flags & 8) != 0) {
+        cmd.path.setFillType(tgfx::PathFillType::EvenOdd);
+      }
+      if ((flags & 7) != 0) {
+        auto effects = std::make_shared<PathEffectCmd>();
+        effects->trim = (flags & 1) != 0;
+        if (effects->trim) {
+          effects->start = r.nextAnim();
+          effects->end = r.nextAnim();
+        }
+        if ((flags & 2) != 0) {
+          int count = r.nextInt();
+          effects->intervals.reserve(boundedCount(r, count));
+          for (int i = 0; i < count && r.ok; i++) {
+            effects->intervals.push_back(static_cast<float>(r.next()));
+          }
+          // MakeDash also rejects an odd count, so match it rather than build a dead effect.
+          effects->dash = effects->intervals.size() >= 2 && effects->intervals.size() % 2 == 0;
+          effects->phase = r.nextAnim();
+        }
+        if ((flags & 4) != 0) {
+          effects->corner = static_cast<float>(r.next());
+        }
+        // Bake the longest static prefix now; only what actually moves stays per frame.
+        bool movingTrim = effects->trim && (effects->start.slot >= 0 || effects->end.slot >= 0);
+        bool movingDash = effects->dash && effects->phase.slot >= 0;
+        if (movingTrim) {
+          cmd.effects = std::move(effects);
+        } else {
+          PathEffectCmd baked = *effects;
+          baked.dash = effects->dash && !movingDash;
+          baked.apply(&cmd.path, {});
+          if (movingDash) {
+            auto rest = std::make_shared<PathEffectCmd>();
+            rest->dash = true;
+            rest->intervals = effects->intervals;
+            rest->phase = effects->phase;
+            cmd.effects = std::move(rest);
+          }
+        }
+      }
       break;
+    }
     case KImage: {
       cmd.kind = DrawCmd::Image;
       cmd.x = r.nextAnim();
@@ -1113,7 +1180,13 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       }
       break;
     case DrawCmd::Path:
-      canvas->drawPath(cmd.path, *p);
+      if (cmd.effects != nullptr) {
+        tgfx::Path trimmed = cmd.path;
+        cmd.effects->apply(&trimmed, v);
+        canvas->drawPath(trimmed, *p);
+      } else {
+        canvas->drawPath(cmd.path, *p);
+      }
       break;
     case DrawCmd::Image: {
       std::shared_ptr<tgfx::Image> live;

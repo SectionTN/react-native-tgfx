@@ -23,6 +23,7 @@ import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
 import { PathSection } from './src/pathExamples';
 import { GroupSection } from './src/groupExamples';
+import { PathEffectSection } from './src/pathEffectExamples';
 import { TextSection } from './src/textExamples';
 import { VideoSection } from './src/videoExamples';
 import {
@@ -156,6 +157,8 @@ function Demo() {
       <PathSection />
 
       <GroupSection />
+
+      <PathEffectSection />
 
       <Section label="Custom shapes (composed from primitives)" height={150}>
         <Star cx={42} cy={74} outerR={36} points={5} color="#FF9500" />
