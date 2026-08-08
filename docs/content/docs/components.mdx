@@ -164,6 +164,19 @@ a shape it overrides that shape only, including its `opacity`.
 To stroke *and* fill one shape, draw it twice — one fill, one stroke. That is
 what the engine does anyway.
 
+### Background colour
+
+A `backgroundColor` in the canvas's `style` is drawn as the first thing in the
+scene, because the platform view cannot always show it: on Android the canvas is
+a SurfaceView, which punches a hole through the window it sits in. The colour is
+cleared off the view at the same time, so it is painted once on every platform.
+
+It is drawn exactly as `<Fill color={...}>` would be, so it must be a colour
+string `<Fill>` accepts — `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`,
+`hsl()` or a CSS name. A `PlatformColor()`, a `processColor()` number, or
+`'transparent'` is left to the platform view untouched, which on Android means
+it will not appear behind the canvas; draw those with `<Fill>` instead.
+
 ## Group
 
 Applies transforms and inherited paint to its children.

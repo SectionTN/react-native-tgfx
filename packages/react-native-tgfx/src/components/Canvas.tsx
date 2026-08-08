@@ -1,11 +1,20 @@
-import React, { useEffect, useImperativeHandle, useRef, useState } from 'react'
+import React, {
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { callback } from 'react-native-nitro-modules'
 import type { MaybeSharedValue } from '../compiler/values'
+import type { Color } from '../compiler/colors'
 import { packStringTable } from '../compiler/writer'
+import { Fill } from './drawings'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { isLive } from '../reanimated/liveValue'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import { directNodes } from '../reconciler/directNodes'
+import { createNode, NodeType } from '../reconciler/types'
 import type { NativeSnapshotOptions } from '../specs/TgfxView.nitro'
 import type {
   CanvasProps,
@@ -64,6 +73,39 @@ function sameValueSet(
     }
   }
   return true
+}
+
+const NO_VIEW_BACKGROUND = { backgroundColor: 'transparent' } as const
+
+/**
+ * The last `backgroundColor` in a possibly nested style, or undefined. Flattened
+ * here rather than through `StyleSheet` so the component pulls in no runtime.
+ *
+ * Only a string is taken. A `PlatformColor()` is an opaque object the scene
+ * cannot encode, and a bare number is `0xRRGGBBAA` to React Native but
+ * `0xAARRGGBB` to `<Fill>` — both are left to the platform view instead of
+ * being guessed at.
+ */
+function backgroundOf(style: unknown): string | undefined {
+  if (Array.isArray(style)) {
+    // Last wins, and an entry that names the key at all settles it — even as undefined.
+    for (let i = style.length - 1; i >= 0; i--) {
+      const entry = style[i] as Record<string, unknown> | null | undefined
+      if (entry != null && !Array.isArray(entry) && 'backgroundColor' in entry) {
+        return backgroundOf(entry)
+      }
+      if (Array.isArray(entry)) {
+        const found = backgroundOf(entry)
+        if (found !== undefined) {
+          return found
+        }
+      }
+    }
+    return undefined
+  }
+  const value = (style as { backgroundColor?: unknown } | null | undefined)
+    ?.backgroundColor
+  return typeof value === 'string' && value !== 'transparent' ? value : undefined
 }
 
 /**
@@ -152,18 +194,44 @@ export function Canvas({
     []
   )
 
+  // A SurfaceView punches a hole through the window, so the view's own
+  // backgroundColor can never show behind the canvas. Draw it instead, and
+  // clear it on the view so the two can never composite twice.
+  const background = backgroundOf(style)
+  const viewStyle = useMemo(
+    () => (background === undefined ? style : [style, NO_VIEW_BACKGROUND]),
+    [style, background]
+  )
+  const scened = useMemo(
+    () =>
+      background === undefined ? (
+        children
+      ) : (
+        <>
+          <Fill color={background as Color} />
+          {children}
+        </>
+      ),
+    [children, background]
+  )
+
   useEffect(() => {
     const root = rootRef.current
     if (root == null) {
       return
     }
+    // Prepended to the built nodes, not to the elements: a wrapping fragment would
+    // push every scene down `directNodes`' splice path.
     const direct = directNodes(children)
     if (direct !== null) {
+      if (background !== undefined) {
+        direct.unshift(createNode(NodeType.Fill, { color: background }))
+      }
       root.setDirect(direct)
       return
     }
-    root.render(<>{children}</>)
-  }, [children])
+    root.render(<>{scened}</>)
+  }, [children, background, scened])
 
   useEffect(() => {
     return () => {
@@ -188,7 +256,7 @@ export function Canvas({
       <TgfxNativeView
         inHierarchy={composite === 'texture'}
         opaque={opaque}
-        style={style}
+        style={viewStyle}
         hybridRef={hybrid}
       />
       {AnimationDriver != null && view != null && values.length > 0 ? (

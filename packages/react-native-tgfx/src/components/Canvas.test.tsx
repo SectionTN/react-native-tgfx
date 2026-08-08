@@ -124,6 +124,110 @@ test('the paths keep swapping without losing the scene', async () => {
   expect(rootCounts()).not.toContain(0)
 })
 
+// A SurfaceView punches a hole through the window, so the style's colour has to be drawn.
+test("the style's backgroundColor becomes a Fill under the scene", async () => {
+  await render(
+    <Canvas style={{ backgroundColor: '#ff0000' }}>
+      <Rect x={0} y={0} width={10} height={10} color="blue" />
+    </Canvas>
+  )
+  const words = scenes.at(-1)!
+  expect(words[3]).toBe(2) // the fill, then the rect
+  expect(words[4]).toBe(9) // Kind.Fill first
+  expect(words[5]).toBe(0xffff0000)
+
+  scenes = []
+  await render(
+    <Canvas style={[{ padding: 1 }, { backgroundColor: '#00ff00' }]}>
+      <Rect x={0} y={0} width={10} height={10} color="blue" />
+    </Canvas>
+  )
+  expect(scenes.at(-1)![5]).toBe(0xff00ff00) // flattened out of an array style
+
+  scenes = []
+  await render(SCENE)
+  expect(scenes.at(-1)![3]).toBe(1) // no backgroundColor, no extra node
+})
+
+test('a background the scene cannot encode is left to the platform view', async () => {
+  for (const background of [
+    { resource_paths: ['label'] }, // PlatformColor()
+    0xff0000ff, // 0xRRGGBBAA to React Native, 0xAARRGGBB to <Fill>
+    'transparent',
+  ]) {
+    scenes = []
+    await render(
+      <Canvas style={{ backgroundColor: background as string }}>
+        <Rect x={0} y={0} width={10} height={10} color="blue" />
+      </Canvas>
+    )
+    expect(scenes.at(-1)![3]).toBe(1)
+  }
+})
+
+test('a later style entry unsets an earlier backgroundColor', async () => {
+  await render(
+    <Canvas style={[{ backgroundColor: '#ff0000' }, { backgroundColor: undefined }]}>
+      <Rect x={0} y={0} width={10} height={10} color="blue" />
+    </Canvas>
+  )
+  expect(scenes.at(-1)![3]).toBe(1)
+})
+
+test('a background does not recompile the scene on every render', async () => {
+  const tree = await render(
+    <Canvas style={{ backgroundColor: '#ff0000' }}>
+      <Rect x={0} y={0} width={10} height={10} color="blue" />
+    </Canvas>
+  )
+  scenes = []
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      tree.update(
+        <Canvas style={{ backgroundColor: '#ff0000' }}>
+          <Rect x={0} y={0} width={10} height={10} color="blue" />
+        </Canvas>
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+  const withBackground = scenes.length
+
+  const plain = await render(
+    <Canvas>
+      <Rect x={0} y={0} width={10} height={10} color="blue" />
+    </Canvas>
+  )
+  scenes = []
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      plain.update(
+        <Canvas>
+          <Rect x={0} y={0} width={10} height={10} color="blue" />
+        </Canvas>
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+  // A background must cost no more commits than the same scene without one.
+  expect(withBackground).toBe(scenes.length)
+
+  const stable = <Rect x={0} y={0} width={10} height={10} color="blue" />
+  const held = await render(
+    <Canvas style={{ backgroundColor: '#ff0000' }}>{stable}</Canvas>
+  )
+  scenes = []
+  for (let i = 0; i < 5; i++) {
+    await act(async () => {
+      held.update(
+        <Canvas style={{ backgroundColor: '#ff0000' }}>{stable}</Canvas>
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+  expect(scenes.length).toBe(0)
+})
+
 test('unmounting still tears the root down', async () => {
   const tree = await render(SCENE)
   expect(scenes.at(-1)![3]).toBe(1)

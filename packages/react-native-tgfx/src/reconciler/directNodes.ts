@@ -38,7 +38,9 @@ export function directNodes(children: ReactNode): Node[] | null {
         ok = false
         return
       }
-      out.push(...inner)
+      for (let i = 0; i < inner.length; i++) {
+        out.push(inner[i]!)
+      }
       return
     }
     const node = toNode(child)
