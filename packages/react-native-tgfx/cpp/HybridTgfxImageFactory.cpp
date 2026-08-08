@@ -9,6 +9,7 @@
 #include "ImageRegistry.hpp"
 #include "OffscreenRender.hpp"
 #include "PdfExport.hpp"
+#include "SvgExport.hpp"
 #include "Log.hpp"
 #include "SvgImage.hpp"
 #include "TgfxFrameSink.hpp"
@@ -123,6 +124,32 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromBase64(const std::stri
     auto data = ::tgfx::Data::MakeWithCopy(decoded.data(), decoded.size());
     return registerData(std::move(data), "the given base64 payload");
   });
+}
+
+std::shared_ptr<Promise<std::string>> HybridTgfxImageFactory::toSvg(
+    const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings,
+    double width, double height, bool textAsPaths) {
+  if (words != nullptr && words->size() % sizeof(double) != 0) {
+    throw std::runtime_error("tgfx: renderToSvg was given a truncated draw program");
+  }
+  // Copied here, not on the worker: a JS-owned ArrayBuffer is only valid for this call.
+  std::vector<double> program;
+  if (words != nullptr && words->size() >= sizeof(double)) {
+    const auto* data = reinterpret_cast<const double*>(words->data());
+    program.assign(data, data + words->size() / sizeof(double));
+  }
+  if (program.empty()) {
+    throw std::runtime_error("tgfx: renderToSvg was given an empty draw program");
+  }
+  if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0 ||
+      width > 65536 || height > 65536) {
+    throw std::runtime_error("tgfx: renderToSvg needs a finite width and height above zero");
+  }
+  return Promise<std::string>::async(
+      [program = std::move(program), strings, width, height, textAsPaths]() {
+        return tgfxrn::renderSceneToSvg(program, strings, static_cast<float>(width),
+                                        static_cast<float>(height), textAsPaths);
+      });
 }
 
 std::shared_ptr<Promise<void>> HybridTgfxImageFactory::savePdf(

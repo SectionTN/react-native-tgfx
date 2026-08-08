@@ -23,6 +23,39 @@ export interface RenderToImageOptions {
   opaque?: boolean
 }
 
+export interface RenderToSvgOptions {
+  /** The document's viewBox, in points. */
+  width: number
+  height: number
+  /**
+   * Write glyphs as `<path>` outlines instead of `<text>`. Removes the reader's
+   * font dependency at the cost of editability. Defaults to false.
+   */
+  textAsPaths?: boolean
+}
+
+/**
+ * Render a scene to SVG markup, returned as a string.
+ *
+ * The vector counterpart to `snapshot()`: geometry and text stay resolution
+ * independent, so the result opens in a design tool rather than being pixels.
+ * Like the other offscreen entry points, it is a still — animated props resolve
+ * to their committed value.
+ */
+export async function renderToSvg(
+  element: ReactNode,
+  options: RenderToSvgOptions
+): Promise<string> {
+  const { buffer, strings } = compilePage(element, 'renderToSvg')
+  return images().toSvg(
+    buffer,
+    strings,
+    options.width,
+    options.height,
+    options.textAsPaths ?? false
+  )
+}
+
 export interface PdfPage {
   /** Page size in points. 612 x 792 is US Letter, 595 x 842 is A4. */
   width: number

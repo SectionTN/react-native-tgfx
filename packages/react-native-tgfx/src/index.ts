@@ -10,14 +10,19 @@ export {
 } from './hooks/useCanvasPress'
 export {
   useOffscreenImage,
+  useOffscreenSvg,
+  useOffscreenPdf,
+  type PdfExportState,
   useDerivedImage,
   type Derivation,
 } from './hooks/useOffscreen'
 export {
   renderToImage,
   renderToPdf,
+  renderToSvg,
   type RenderToImageOptions,
   type PdfPage,
+  type RenderToSvgOptions,
   type PdfMetadata,
 } from './offscreen'
 export {

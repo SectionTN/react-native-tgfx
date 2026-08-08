@@ -24,6 +24,7 @@ import {
   RoundedRect,
   Text,
   renderToPdf,
+  renderToSvg,
   type CanvasHandle,
   type SnapshotOptions,
 } from 'react-native-tgfx';
@@ -138,6 +139,29 @@ export function SnapshotSection() {
     }
   };
 
+  const exportSvg = async () => {
+    setStatus('writing svg…');
+    try {
+      const started = Date.now();
+      const svg = await renderToSvg(
+        <>
+          <Fill color="#ffffff" />
+          <Path
+            path="M20 120 L70 60 L120 90 L170 30 L220 70"
+            color="#0a84ff"
+            style="stroke"
+            strokeWidth={4}
+          />
+          <RoundedRect x={20} y={140} width={200} height={40} r={10} color="#34c759" />
+        </>,
+        { width: 240, height: 200 }
+      );
+      setStatus(`svg ${svg.length} chars in ${Date.now() - started} ms`);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
+
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>Snapshot / save (animating)</RNText>
@@ -184,6 +208,9 @@ export function SnapshotSection() {
         </Pressable>
         <Pressable style={styles.button} onPress={exportPdf}>
           <RNText style={styles.buttonText}>pdf</RNText>
+        </Pressable>
+        <Pressable style={styles.button} onPress={exportSvg}>
+          <RNText style={styles.buttonText}>svg</RNText>
         </Pressable>
       </View>
       <RNText style={styles.status}>{status}</RNText>

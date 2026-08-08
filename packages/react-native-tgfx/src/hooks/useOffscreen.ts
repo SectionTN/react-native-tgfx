@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { renderToImage, type RenderToImageOptions } from '../offscreen'
+import {
+  renderToImage,
+  renderToPdf,
+  renderToSvg,
+  type PdfMetadata,
+  type PdfPage,
+  type RenderToImageOptions,
+  type RenderToSvgOptions,
+} from '../offscreen'
 import type { TgfxImage } from '../specs/TgfxImage.nitro'
 import type { Orientation, ImageSampling } from '../specs/TgfxImage.nitro'
 
@@ -15,15 +23,19 @@ import type { Orientation, ImageSampling } from '../specs/TgfxImage.nitro'
  * return <Canvas>{badge && <Image image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
  * ```
  *
- * `element` is read on every change, so build it inline only if the scene
- * really did change — otherwise memoise it, or the render repeats every commit.
+ * An inline `element` is a new object every render, so pass `deps` — the values
+ * the scene actually depends on — or memoise the tree. Without either, every
+ * parent render re-exports, and each export takes the shared GPU device lock.
  */
 export function useOffscreenImage(
   element: ReactNode,
-  options: RenderToImageOptions
+  options: RenderToImageOptions,
+  deps?: unknown[]
 ): TgfxImage | null {
   const [image, setImage] = useState<TgfxImage | null>(null)
   const { width, height, pixelRatio, opaque } = options
+  // An inline tree is a new object every render, which would re-export every render.
+  const key = deps == null ? element : JSON.stringify(deps)
 
   useEffect(() => {
     let live = true
@@ -48,7 +60,8 @@ export function useOffscreenImage(
       made?.dispose()
       setImage(null)
     }
-  }, [element, width, height, pixelRatio, opaque])
+    // Keyed on `key`, not `element`: an inline tree would re-export every render.
+  }, [key, width, height, pixelRatio, opaque])
 
   return image
 }
@@ -101,4 +114,96 @@ export function useDerivedImage(
 
   useEffect(() => () => derived?.dispose(), [derived])
   return derived
+}
+
+/**
+ * Render a scene to SVG markup and get the text back when it is ready.
+ *
+ * The declarative half of {@link renderToSvg}: null on the first frame, then
+ * the document. Pass `deps` — the values the scene depends on — or memoise the
+ * tree, or every parent render re-exports.
+ */
+export function useOffscreenSvg(
+  element: ReactNode,
+  options: RenderToSvgOptions,
+  deps?: unknown[]
+): string | null {
+  const [svg, setSvg] = useState<string | null>(null)
+  const { width, height, textAsPaths } = options
+  const key = deps == null ? element : JSON.stringify(deps)
+
+  useEffect(() => {
+    let live = true
+    renderToSvg(element, { width, height, textAsPaths })
+      .then((text) => {
+        if (live) {
+          setSvg(text)
+        }
+      })
+      .catch((error: unknown) => {
+        if (live) {
+          console.warn('[tgfx] useOffscreenSvg:', error)
+        }
+      })
+    return () => {
+      live = false
+      setSvg(null)
+    }
+    // Keyed on `key`, not `element`: an inline tree would re-export every render.
+  }, [key, width, height, textAsPaths])
+
+  return svg
+}
+
+/** What {@link useOffscreenPdf} reports about the file it keeps up to date. */
+export interface PdfExportState {
+  /** The path once written, null until then. */
+  path: string | null
+  pending: boolean
+  error: Error | null
+}
+
+/**
+ * Keep a PDF on disk in step with a scene: it writes on mount and rewrites
+ * whenever `path`, `pages` or `metadata` change.
+ *
+ * The declarative half of {@link renderToPdf} — a file that reflects the scene,
+ * rather than a call you make. Memoise `pages`, or an inline array rewrites the
+ * document every render.
+ */
+export function useOffscreenPdf(
+  path: string,
+  pages: PdfPage[],
+  metadata?: PdfMetadata
+): PdfExportState {
+  const [state, setState] = useState<PdfExportState>({
+    path: null,
+    pending: true,
+    error: null,
+  })
+
+  useEffect(() => {
+    let live = true
+    setState({ path: null, pending: true, error: null })
+    renderToPdf(path, pages, metadata)
+      .then(() => {
+        if (live) {
+          setState({ path, pending: false, error: null })
+        }
+      })
+      .catch((error: unknown) => {
+        if (live) {
+          setState({
+            path: null,
+            pending: false,
+            error: error instanceof Error ? error : new Error(String(error)),
+          })
+        }
+      })
+    return () => {
+      live = false
+    }
+  }, [path, pages, metadata])
+
+  return state
 }

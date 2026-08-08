@@ -1442,6 +1442,11 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
 
 }  // namespace
 
+size_t SceneRenderer::rootCount() const {
+  std::lock_guard<std::mutex> lock(programMutex_);
+  return program_ == nullptr ? 0 : program_->size();
+}
+
 std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
                                            std::span<const double> values) {
   std::shared_ptr<const Program> program;

@@ -2,6 +2,14 @@ import { beforeEach, expect, test } from 'bun:test'
 import React from 'react'
 import { nativeMocks } from './testing/nativeMocks'
 
+let svgCalls: {
+  words: Float64Array
+  strings: string[]
+  width: number
+  height: number
+  textAsPaths: boolean
+}[] = []
+
 let pdfCalls: {
   path: string
   pages: number
@@ -24,7 +32,18 @@ let calls: {
 beforeEach(() => {
   calls = []
   pdfCalls = []
+  svgCalls = []
   nativeMocks.hybridObject = () => ({
+    toSvg: (
+      words: ArrayBuffer,
+      strings: string[],
+      width: number,
+      height: number,
+      textAsPaths: boolean
+    ) => {
+      svgCalls.push({ words: new Float64Array(words), strings, width, height, textAsPaths })
+      return Promise.resolve('<svg/>')
+    },
     savePdf: (
       path: string,
       pages: ArrayBuffer[],
@@ -57,7 +76,7 @@ beforeEach(() => {
   })
 })
 
-const { renderToImage, renderToPdf } = await import('./offscreen')
+const { renderToImage, renderToPdf, renderToSvg } = await import('./offscreen')
 const { Rect, Path } = await import('./components/drawings')
 
 test('renderToImage compiles the tree and hands over the options', async () => {
@@ -153,4 +172,51 @@ test('renderToPdf compiles a program per page and keeps the string tables apart'
 test('renderToPdf rejects an empty page list', async () => {
   await expect(renderToPdf('/tmp/out.pdf', [])).rejects.toThrow('at least one page')
   expect(pdfCalls.length).toBe(0)
+})
+
+test('renderToSvg compiles the tree and passes the viewBox through', async () => {
+  const svg = await renderToSvg(<Path path="M0 0 L4 0 Z" color="#0000ff" />, {
+    width: 300,
+    height: 150,
+    textAsPaths: true,
+  })
+  expect(svg).toBe('<svg/>')
+  expect(svgCalls.length).toBe(1)
+  const call = svgCalls[0]!
+  expect(call.width).toBe(300)
+  expect(call.height).toBe(150)
+  expect(call.textAsPaths).toBe(true)
+  // Decoded, like fromScene: index 0 is the first string, not a carry-over count.
+  expect(call.strings).toEqual(['M0 0 L4 0 Z'])
+  expect(call.words[3]).toBe(1)
+})
+
+test('renderToSvg defaults textAsPaths to false', async () => {
+  await renderToSvg(<Rect x={0} y={0} width={1} height={1} />, {
+    width: 10,
+    height: 10,
+  })
+  expect(svgCalls[0]!.textAsPaths).toBe(false)
+})
+
+test('renderToSvg names itself when the scene is empty', async () => {
+  const Boom = (): React.ReactElement => {
+    throw new Error('boom')
+  }
+  await expect(
+    renderToSvg(<Boom />, { width: 8, height: 8 })
+  ).rejects.toThrow('renderToSvg')
+  expect(svgCalls.length).toBe(0)
+})
+
+test('renderToPdf takes a memoised page list without recompiling per call', async () => {
+  const pages = [
+    { width: 100, height: 100, element: <Rect x={0} y={0} width={1} height={1} /> },
+  ]
+  await renderToPdf('/tmp/a.pdf', pages)
+  await renderToPdf('/tmp/b.pdf', pages)
+  expect(pdfCalls.map((call) => call.path)).toEqual(['/tmp/a.pdf', '/tmp/b.pdf'])
+  // Each export compiles its own program: the pages are elements, not buffers.
+  expect(pdfCalls[0]!.pages).toBe(1)
+  expect(pdfCalls[1]!.pages).toBe(1)
 })

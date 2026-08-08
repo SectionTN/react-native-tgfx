@@ -259,9 +259,12 @@ class SceneRenderer {
 
   void clearCaches();
 
+  /// How many root nodes the last accepted program holds; 0 if it was rejected.
+  size_t rootCount() const;
+
  private:
   std::shared_ptr<const Program> program_;
-  std::mutex programMutex_;
+  mutable std::mutex programMutex_;
 
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
   void readTextSpec(SceneReader& reader, TextSpec& spec);

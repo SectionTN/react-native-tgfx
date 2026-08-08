@@ -147,6 +147,18 @@ export interface TgfxImageFactory extends HybridObject<{
   fromNativeBuffer(buffer: UInt64, format: PixelFormat): TgfxImage
 
   /**
+   * Render a compiled draw program into SVG markup, returned as text. Geometry
+   * and text stay vectors; only what needs an offscreen surface rasterizes.
+   */
+  toSvg(
+    words: ArrayBuffer,
+    strings: string[],
+    width: number,
+    height: number,
+    textAsPaths: boolean
+  ): Promise<string>
+
+  /**
    * Render one or more compiled draw programs into a PDF at `path`. Geometry
    * and text stay vectors; only images rasterize.
    *

@@ -21,6 +21,7 @@
 
 #include "OffscreenRender.hpp"
 #include "PdfExport.hpp"
+#include "SvgExport.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Data.h"
@@ -3438,6 +3439,59 @@ void aPdfIsWrittenWithAPagePerScene() {
   std::remove((path + ".tgfx-partial").c_str());
 }
 
+/// SVG is text: the same scene comes out as markup a reader can parse, not pixels.
+void anSvgIsWrittenAsMarkup() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(10);
+  w.pushAnim(20);
+  w.pushAnim(80);
+  w.pushAnim(60);
+  w.pushPaint(0xff3366cc, false);
+  auto program = w.finish();
+  auto svg = tgfxrn::renderSceneToSvg(program, {}, 200, 120, false);
+
+  CHECK(svg.rfind("<?xml", 0) == 0 || svg.find("<svg") != std::string::npos);
+  CHECK(svg.find("</svg>") != std::string::npos);
+  // The viewBox is what was asked for, and the rect survived as geometry.
+  CHECK(svg.find("200") != std::string::npos && svg.find("120") != std::string::npos);
+  CHECK(svg.find("rect") != std::string::npos || svg.find("path") != std::string::npos);
+
+  // With a real font, the flag turns <text> into outlines.
+  auto& fonts = tgfxrn::FontRegistry::instance();
+  fonts.clear();
+  fonts.add(tgfx::Typeface::MakeFromPath(std::string(kFontDir) + "/PT_Serif-Web-Regular.ttf"),
+            "Svg Serif");
+  Writer t;
+  writeText(t, 28, -1);
+  auto textProgram = t.finish();
+  const std::vector<std::string> textStrings{"Wg", "Svg Serif", ""};
+  auto asText = tgfxrn::renderSceneToSvg(textProgram, textStrings, 200, 120, false);
+  auto asPaths = tgfxrn::renderSceneToSvg(textProgram, textStrings, 200, 120, true);
+  CHECK(asText.find("<text") != std::string::npos);
+  CHECK(asPaths.find("<text") == std::string::npos);
+  CHECK(asPaths.find("<path") != std::string::npos);
+  fonts.clear();
+
+  // A program the reader rejects is an error, not a well-formed empty document.
+  bool rejected = false;
+  try {
+    tgfxrn::renderSceneToSvg({program.data(), 4}, {}, 200, 120, false);
+  } catch (const std::runtime_error&) {
+    rejected = true;
+  }
+  CHECK(rejected);
+
+  bool threw = false;
+  try {
+    tgfxrn::renderSceneToSvg(program, {}, 0, 120, false);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  CHECK(threw);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -3477,6 +3531,7 @@ int main() {
   aRecordedGroupReplaysWhatItDrew();
   hitTestReportsWhatIsUnderThePoint();
   aPdfIsWrittenWithAPagePerScene();
+  anSvgIsWrittenAsMarkup();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

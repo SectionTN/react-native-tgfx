@@ -252,7 +252,7 @@ The declarative half: it renders on mount, hands back the handle, and disposes
 it when the component unmounts or the inputs change.
 
 ```tsx
-const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 })
+const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 }, [n])
 return <Canvas>{badge && <Image image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
 ```
 
@@ -374,3 +374,66 @@ path throws with the path in the message.
 An export holds the shared offscreen GPU context for the whole document, so a
 long image-heavy one delays other `renderToImage` calls. Measured: 50 vector
 pages take ~33 ms, 50 pages each carrying their own 1024px bitmap take ~4.9 s.
+
+### useOffscreenPdf
+
+The declarative half: a file that stays in step with the scene, rewritten
+whenever the path, pages or metadata change.
+
+```tsx
+const { path, pending, error } = useOffscreenPdf(target, pages, { title })
+```
+
+Memoise `pages` — an inline array rewrites the document on every render.
+
+## renderToSvg
+
+Render a scene to SVG markup, returned as a string — the vector counterpart to
+`snapshot()`. Drawing-app export, sharing a chart as vectors, feeding a design
+tool.
+
+```tsx
+import { renderToSvg } from 'react-native-tgfx'
+
+const svg = await renderToSvg(<Chart data={data} />, { width: 400, height: 300 })
+```
+
+| option | meaning |
+| --- | --- |
+| `width`, `height` | the document's width and height, in points; content outside is clipped |
+| `textAsPaths` | write glyphs as `<path>` outlines instead of `<text>` — drops the reader's font dependency. Defaults to false |
+
+Needs no build-flag change: the SVG module is already compiled in, since it is
+what renders `.svg` image sources.
+
+Like the other offscreen entry points it is a still, so animated props resolve
+to their committed value.
+
+**What does not survive the format.** SVG has no equivalent of the `Clear` blend
+mode, so a `<Mask>` exports as a black box rather than masked content — do not
+export a scene containing one. Conic gradients and composed or runtime image
+filters are unsupported too, and transforms are affine-only, so a perspective
+`<Group transform>` is flattened. An `<Image>` embeds as pixels; plain shapes,
+strokes and text stay resolution-independent.
+
+`textAsPaths` re-emits every glyph outline with no reuse between them. Measured
+on 500 text nodes: **14 ms and 314 KB** as `<text>`, **691 ms and 17.9 MB** as
+outlines. That whole time is spent holding the shared offscreen GPU context, so
+it delays other `renderToImage`, `renderToPdf` and `renderToSvg` calls — and the
+result crosses the bridge as one JS string. Reach for it when the reader will
+not have your fonts, not by default.
+
+### useOffscreenSvg
+
+The declarative half: `null` on the first frame, then the markup.
+
+```tsx
+const svg = useOffscreenSvg(<Chart data={data} />, { width: 400, height: 300 }, [data])
+```
+
+The third argument is the dependency list. Without it the hook keys on the
+element, which is a new object every render — measured at 55 native exports over
+109 parent renders, each taking the GPU lock. Pass the values the scene actually
+depends on, or memoise the tree. `useOffscreenImage` takes the same argument and
+needs it more: without one it re-exports fast enough to trip React's update-depth
+limit.
