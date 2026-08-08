@@ -350,6 +350,8 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
   paint.setColor(color);
   if (pc.runtime != nullptr) {
     paint.setShader(pc.runtime->build(v));
+  } else if (pc.blendShader != nullptr) {
+    paint.setShader(pc.blendShader->build(v));
   } else if (pc.imageShader != nullptr) {
     paint.setShader(pc.imageShader->build(
         resolveImage(pc.imageShader->handle, pc.imageShader->sampling)));
@@ -407,6 +409,9 @@ void PathEffectCmd::apply(tgfx::Path* path, std::span<const double> v) const {
 
 std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
     std::span<const double> values) const {
+  if (blend != nullptr) {
+    return blend->build(values);
+  }
   if (image != nullptr) {
     return image->build(resolveImage(image->handle, image->sampling));
   }
@@ -414,6 +419,21 @@ std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
     return runtime->build(values);
   }
   return shader;
+}
+
+std::shared_ptr<tgfx::Shader> BlendShaderCmd::build(
+    std::span<const double> values) const {
+  std::shared_ptr<tgfx::Shader> folded;
+  for (const auto& child : children) {
+    auto shader = child.resolve(values);
+    if (shader == nullptr) {
+      continue;
+    }
+    folded = folded == nullptr
+                 ? std::move(shader)
+                 : tgfx::Shader::MakeBlend(mode, std::move(folded), std::move(shader));
+  }
+  return folded;
 }
 
 std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
@@ -566,6 +586,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
       child.shader = readShader(r, &childPaint, depth + 1);
       child.image = std::move(childPaint.imageShader);
       child.runtime = std::move(childPaint.runtime);
+      child.blend = std::move(childPaint.blendShader);
       dynamicChild = dynamicChild || child.dynamic();
       children.push_back(std::move(child));
     }
@@ -620,18 +641,30 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
   if (kind == 8) {
     auto mode = blendModeOf(r.nextInt());
     int count = r.nextInt();
-    std::shared_ptr<tgfx::Shader> folded;
+    std::vector<ChildShaderCmd> children;
+    children.reserve(boundedCount(r, count));
+    bool dynamicChild = false;
     for (int i = 0; i < count && r.ok; i++) {
-      // Children may bake into `out` (an image or runtime shader), which cannot fold here.
-      auto child = readShader(r, nullptr, depth + 1);
-      if (child == nullptr) {
-        continue;
-      }
-      folded = folded == nullptr ? std::move(child)
-                                 : tgfx::Shader::MakeBlend(mode, std::move(folded),
-                                                           std::move(child));
+      ChildShaderCmd child;
+      PaintCmd childPaint;
+      child.shader = readShader(r, &childPaint, depth + 1);
+      child.image = std::move(childPaint.imageShader);
+      child.runtime = std::move(childPaint.runtime);
+      child.blend = std::move(childPaint.blendShader);
+      dynamicChild = dynamicChild || child.dynamic();
+      children.push_back(std::move(child));
     }
-    return folded;
+    if (dynamicChild && out != nullptr) {
+      auto cmd = std::make_shared<BlendShaderCmd>();
+      cmd->mode = mode;
+      cmd->children = std::move(children);
+      out->blendShader = std::move(cmd);
+      return nullptr;
+    }
+    BlendShaderCmd folded;
+    folded.mode = mode;
+    folded.children = std::move(children);
+    return folded.build({});
   }
   if (kind == 4 || kind == 5) {
     float fx = static_cast<float>(r.next());

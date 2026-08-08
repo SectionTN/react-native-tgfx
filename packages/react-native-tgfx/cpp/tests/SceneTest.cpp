@@ -1174,6 +1174,92 @@ void filtersOfOneClassCompose() {
   CHECK(inkPixels(twice) > inkPixels(once));  // blurring twice spreads further
 }
 
+/// A <Blend> child that resolves per frame must keep doing so inside the fold.
+void blendKeepsItsDynamicChildrenLive() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto first = registerSolid(cellColor(13), 32, 32);
+  auto second = registerSolid(cellColor(31), 32, 32);
+  auto external = registry.addExternal(registry.acquire(first.handle));
+  CHECK(external.handle != 0);
+
+  // mode `dst` keeps the first child only, so the image is what lands on screen.
+  const int dst = 2;
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1);
+  w.push(8);  // Blend
+  w.push(dst);
+  w.push(2);
+  w.push(7);  // an external image shader
+  w.push(external.handle);
+  w.push(0);
+  w.push(0);
+  w.push(1);
+  w.push(0);
+  w.push(9);  // and a colour, which `dst` discards
+  w.push(0xff00ff00);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+
+  auto expectedFirst = cellColor(13);
+  auto before = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(before[0] == expectedFirst[0] && before[1] == expectedFirst[1]);
+
+  // Swapping the buffer behind the handle must reach the next frame, with no re-commit.
+  CHECK(registry.replaceExternal(external.handle, registry.acquire(second.handle)));
+  auto expectedSecond = cellColor(31);
+  auto after = pixelAt(drawFrame(renderer, {}), 16, 16);
+  CHECK(after[0] == expectedSecond[0] && after[1] == expectedSecond[1]);
+}
+
+/// An animated runtime uniform has to survive being wrapped in a <Blend>.
+void blendKeepsAnAnimatedUniformLive() {
+  const std::vector<std::string> strings = {
+      "return vec4(uLevel, 0.0, 0.0, 1.0);", "", "uLevel"};
+  const int dst = 2;
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1);
+  w.push(8);  // Blend
+  w.push(dst);
+  w.push(2);
+  w.push(6);  // runtime shader, one animated uniform
+  w.push(0);
+  w.push(1);
+  w.push(0);
+  w.push(1);
+  w.push(2);
+  w.push(1);
+  w.pushAnim(0, 0);
+  w.push(0);
+  w.push(9);  // a colour `dst` discards
+  w.push(0xff00ff00);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+  CHECK(pixelAt(drawFrame(renderer, {0.0}), 16, 16)[0] < 40);
+  CHECK(pixelAt(drawFrame(renderer, {1.0}), 16, 16)[0] > 200);
+}
+
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -2754,6 +2840,8 @@ int main() {
   theLateFilterKindsAllDraw();
   blendFoldsItsShaderChildren();
   filtersOfOneClassCompose();
+  blendKeepsItsDynamicChildrenLive();
+  blendKeepsAnAnimatedUniformLive();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
