@@ -51,10 +51,11 @@ export function blendCode(mode: unknown): number {
 
 /** A colour transform applied per pixel. Read once at commit; never animated. */
 export interface ColorFilterInput {
-  kind: 'matrix' | 'blend'
+  kind: 'matrix' | 'blend' | 'luma' | 'alphaThreshold'
   matrix?: number[]
   color?: Color
   mode?: BlendMode
+  threshold?: number
 }
 
 /**
@@ -63,6 +64,7 @@ export interface ColorFilterInput {
  */
 export interface ImageFilterInput {
   kind: 'blur' | 'dropShadow'
+  inner?: boolean
   blur?: number
   blurX?: number
   blurY?: number
@@ -106,6 +108,11 @@ export function writeFilters(
   w.push(blendCode(blendMode))
   if (colorFilter == null) {
     w.push(NONE)
+  } else if (colorFilter.kind === 'luma') {
+    w.push(2)
+  } else if (colorFilter.kind === 'alphaThreshold') {
+    w.push(3)
+    w.push(resolveNumber(colorFilter.threshold, 0.5))
   } else if (colorFilter.kind === 'blend') {
     w.push(1)
     w.push(resolveColor(colorFilter.color))
@@ -130,7 +137,11 @@ export function writeFilters(
     w.push(blurX)
     w.push(blurY)
     w.push(resolveColor(imageFilter.color))
-    w.push(imageFilter.shadowOnly === true ? 1 : 0)
+    // Bit 1 shadow only, bit 2 inside the shape instead of under it.
+    w.push(
+      (imageFilter.shadowOnly === true ? 1 : 0) |
+        (imageFilter.inner === true ? 2 : 0)
+    )
     return
   }
   w.push(0)

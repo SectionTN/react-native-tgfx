@@ -1048,6 +1048,61 @@ void pathEffectsReshapeTheGeometry() {
   CHECK(!opaqueAt(atZero, 55, 32));     // and the baked trim still bites
 }
 
+/// Luma, alpha threshold and the inner shadow: the filter kinds #179 was missing.
+void theLateFilterKindsAllDraw() {
+  // paint: colour | flags(bit 4 = filter block) | width cap join alpha | blend colour image | shader
+  auto shape = [](int colorKind, const std::vector<double>& colorBlock, int imageKind,
+                  const std::vector<double>& imageBlock, uint32_t fill = 0xff3366cc) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(12);
+    w.pushAnim(12);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.push(fill);
+    w.push(2 | 4);
+    w.pushAnim(1);
+    w.push(0);
+    w.push(0);
+    w.pushAnim(1);
+    w.push(3);  // srcOver
+    w.push(colorKind);
+    for (double word : colorBlock) {
+      w.push(word);
+    }
+    w.push(imageKind);
+    for (double word : imageBlock) {
+      w.push(word);
+    }
+    w.push(-1);
+    return render(w.finish(), {}, {});
+  };
+
+  auto plain = shape(-1, {}, -1, {});
+  CHECK(anyPixelSet(plain));
+
+  // Luma turns the fill into its own luminance, so the drawn colour changes.
+  auto luma = shape(2, {}, -1, {});
+  CHECK(luma != plain);
+
+  // Alpha threshold hard-edges a half-transparent fill, and the threshold itself matters.
+  const uint32_t half = 0x803366cc;
+  auto soft = shape(-1, {}, -1, {}, half);
+  CHECK(shape(3, {0.2}, -1, {}, half) != soft);
+  CHECK(shape(3, {0.9}, -1, {}, half) != shape(3, {0.2}, -1, {}, half));
+
+  // An inner shadow paints inside the rect, a drop shadow outside it.
+  std::vector<double> under = {4, 4, 3, 3, 0xff000000, 0};
+  std::vector<double> inside = {4, 4, 3, 3, 0xff000000, 2};
+  auto dropped = shape(-1, {}, 1, under);
+  auto innerLit = shape(-1, {}, 1, inside);
+  CHECK(dropped != innerLit);
+  CHECK(opaqueAt(dropped, 54, 54));    // the drop shadow spills past the rect
+  CHECK(!opaqueAt(innerLit, 54, 54));  // the inner one never leaves it
+  CHECK(pixelAt(innerLit, 16, 16) != pixelAt(plain, 16, 16));
+}
+
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -2625,6 +2680,7 @@ int main() {
   aGroupClipConfinesItsSubtree();
   aLayerCompositesTheSubtreeOnce();
   pathEffectsReshapeTheGeometry();
+  theLateFilterKindsAllDraw();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

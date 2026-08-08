@@ -212,6 +212,15 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
           mode: p.mode as BlendMode,
         },
       }
+    case NodeType.Luma:
+      return { colorFilter: { kind: 'luma' } }
+    case NodeType.AlphaThreshold:
+      return {
+        colorFilter: {
+          kind: 'alphaThreshold',
+          threshold: p.threshold as number,
+        },
+      }
     case NodeType.Blur:
       return {
         imageFilter: {
@@ -233,6 +242,7 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
           blurY: p.blurY as number,
           color: p.color as Color,
           shadowOnly: p.shadowOnly as boolean,
+          inner: p.inner as boolean,
         },
       }
     default:

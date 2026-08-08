@@ -68,3 +68,7 @@ against the live value array each frame.
   2 dash, 4 corner, 8 even-odd fill), then the block each set bit needs. The word
   is always there, so an older reader would take it for the paint's colour; trim
   bounds and dash phase are value slots, since line-drawing is the point of trim.
+- **20** — adds colour-filter kinds 2 (luma) and 3 (alpha threshold, one word), and
+  the drop-shadow's shadow-only word became a flags word (1 shadow only, 2 inner).
+  A paint with no filter block is untouched, but an older reader would take a luma
+  filter's kind for a matrix and walk twenty words into the image filter.

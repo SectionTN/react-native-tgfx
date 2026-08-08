@@ -19,9 +19,11 @@ export {
 } from './components/drawings'
 export {
   BlendColor,
+  AlphaThreshold,
   Blur,
   CornerPathEffect,
   DashPathEffect,
+  Luma,
   ColorMatrix,
   DiamondGradient,
   DropShadow,
@@ -100,9 +102,11 @@ export type {
   Animated,
   BlendColorProps,
   BlendMode,
+  AlphaThresholdProps,
   BlurProps,
   CornerPathEffectProps,
   DashPathEffectProps,
+  LumaProps,
   CameraFrameProps,
   CanvasHandle,
   CanvasProps,

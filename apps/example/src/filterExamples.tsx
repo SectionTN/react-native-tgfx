@@ -1,6 +1,7 @@
 // Colour filters, blend modes and image filters (#134), all built once when the scene compiles.
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
+  AlphaThreshold,
   BlendColor,
   Blur,
   Canvas,
@@ -10,6 +11,7 @@ import {
   Fill,
   Image,
   Paint,
+  Luma,
   Path,
   RoundedRect,
   useImage,
@@ -201,10 +203,39 @@ export function BlendWithFilter() {
   );
 }
 
+function LateFilters() {
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<DropShadow inner> · <Luma> · <AlphaThreshold>'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 120 }]}>
+        <RoundedRect x={8} y={20} width={90} height={80} r={14} color="#f5f7fa">
+          <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" />
+        </RoundedRect>
+        <RoundedRect x={112} y={20} width={90} height={80} r={14} color="#f5f7fa">
+          <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" inner />
+        </RoundedRect>
+        <Circle cx={252} cy={60} r={38} color="#f2a33c">
+          <Luma />
+        </Circle>
+        <Circle cx={330} cy={60} r={38} color="#4f8ef7">
+          <AlphaThreshold threshold={0.6} />
+        </Circle>
+      </Canvas>
+      <RNText style={styles.caption}>
+        The same card with the shadow under it, then inside it; a disc through
+        luma; and one hard-edged at 0.6 alpha.
+      </RNText>
+    </View>
+  );
+}
+
 export function FilterSection() {
   return (
     <>
       <BlendModes />
+      <LateFilters />
       <ColorMatrices />
       <BlendColors />
       <ImageFilters />

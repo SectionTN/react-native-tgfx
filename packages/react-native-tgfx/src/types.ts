@@ -484,6 +484,20 @@ export interface DropShadowProps {
   color?: Color
   /** Draw only the shadow, dropping the content that cast it. */
   shadowOnly?: boolean
+  /** Cast the shadow *inside* the shape instead of under it. */
+  inner?: boolean
+}
+
+/** Replaces every colour with its luminance, carried into the alpha channel. */
+export interface LumaProps {
+  children?: ReactNode
+}
+
+/** Snaps alpha to 0 or 1 either side of `threshold`, for hard-edged masking. */
+export interface AlphaThresholdProps {
+  /** 0-1. Defaults to 0.5. */
+  threshold?: number
+  children?: ReactNode
 }
 
 export interface NoiseProps {
