@@ -69,7 +69,8 @@ ImageHandle ImageRegistry::add(std::shared_ptr<tgfx::ImageCodec> codec) {
   return {handle, stored.width, stored.height};
 }
 
-ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image, size_t ownedBytes) {
+ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image, size_t ownedBytes,
+                                      bool live) {
   if (image == nullptr) {
     return {};
   }
@@ -81,6 +82,7 @@ ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image, size_
   entry.decoded = std::move(image);
   // Reported to the JS GC but never touched into the LRU, so it is never evicted.
   entry.bytes = ownedBytes;
+  entry.live = live;
   auto& stored = entries_.emplace(handle, std::move(entry)).first->second;
   return {handle, stored.width, stored.height};
 }
@@ -173,6 +175,29 @@ std::shared_ptr<tgfx::Image> ImageRegistry::acquire(int32_t handle, bool* extern
   // On a hit too: recency that only records insertion is FIFO, which evicts what is on screen.
   touchLocked(handle, entry);
   return entry.decoded;
+}
+
+std::shared_ptr<tgfx::Image> ImageRegistry::sourceImage(int32_t handle) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = entries_.find(handle);
+  if (it == entries_.end()) {
+    return nullptr;
+  }
+  auto& entry = it->second;
+  if (entry.produce != nullptr || entry.live) {
+    // Whatever frame is current is not a stable source, and its buffer is recycled.
+    return nullptr;
+  }
+  if (entry.decoded != nullptr) {
+    // The pixels the renderer already holds: deriving from the codec would decode a
+    // second time, on the render thread, and upload a second full-size texture.
+    return entry.decoded;
+  }
+  if (entry.codec != nullptr && entry.lazy == nullptr) {
+    // Evicted, so rebuild from the codec. Cached because MakeFrom mints a fresh GPU key.
+    entry.lazy = tgfx::Image::MakeFrom(entry.codec);
+  }
+  return entry.lazy;
 }
 
 uint64_t ImageRegistry::addWakeListener(std::function<void()> wake) {

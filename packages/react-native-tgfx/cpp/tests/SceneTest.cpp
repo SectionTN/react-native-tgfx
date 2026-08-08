@@ -1515,6 +1515,17 @@ void theByteBudgetEvictsLeastRecentlyUsed() {
   registry.setCacheLimit(restore);
 }
 
+/// A frame someone else recycles is no basis for a derived image.
+void aLiveHandleRefusesToBeDerivedFrom() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto still = registerSolid({255, 0, 0, 255}, 8, 8);
+  CHECK(registry.sourceImage(still.handle) != nullptr);
+
+  auto frame = registry.addExternal(registry.sourceImage(still.handle), 0, true);
+  CHECK(frame.handle != 0);
+  CHECK(registry.sourceImage(frame.handle) == nullptr);
+}
+
 
 void fitModesLetterboxAndCrop() {
   auto image = registerSolid(cellColor(7), 4, 2);
@@ -3166,6 +3177,45 @@ void anOffscreenRenderProducesTheSamePixels() {
   CHECK(threw);
 }
 
+/// A derived image must outlive its parent's eviction, so it comes from the codec.
+void aDerivedImageSurvivesTheParentsEviction() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  size_t restore = registry.cacheLimit();
+  auto parent = registerSolid({0, 0, 255, 255}, 16, 16);
+  CHECK(parent.handle != 0);
+
+  auto source = registry.sourceImage(parent.handle);
+  CHECK(source != nullptr && source->width() == 16);
+  // One decode chain per parent: a fresh MakeFrom would mint a second GPU key and texture.
+  CHECK(registry.sourceImage(parent.handle) == source);
+  auto half = source->makeScaled(8, 8, {});
+  CHECK(half != nullptr && half->width() == 8 && half->height() == 8);
+  auto crop = source->makeSubset(tgfx::Rect::MakeXYWH(0, 0, 4, 4));
+  CHECK(crop != nullptr && crop->width() == 4);
+
+  // Registered as external, so it is charged nothing and never evicted itself.
+  auto derived = registry.addExternal(half);
+  CHECK(derived.handle != 0 && registry.byteSize(derived.handle) == 0);
+
+  // Squeeze the budget until the parent's pixels go, then draw the derivative.
+  registry.setCacheLimit(1);
+  for (int i = 0; i < 4; i++) {
+    registerSolid(cellColor(i), 16, 16);
+  }
+  auto* context = device()->lockContext();
+  auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+  surface->getCanvas()->clear();
+  surface->getCanvas()->drawImage(registry.acquire(derived.handle));
+  context->flushAndSubmit(true);
+  auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888);
+  Pixels pixels(static_cast<size_t>(info.byteSize()));
+  surface->readPixels(info, pixels.data());
+  device()->unlock();
+  CHECK(pixelAt(pixels, 4, 4)[2] == 255);
+
+  registry.setCacheLimit(restore);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -3200,6 +3250,8 @@ int main() {
   verticesDrawTheTrianglesTheyDescribe();
   verticesSampleTheirTextureCoordinates();
   anOffscreenRenderProducesTheSamePixels();
+  aDerivedImageSurvivesTheParentsEviction();
+  aLiveHandleRefusesToBeDerivedFrom();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

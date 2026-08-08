@@ -306,6 +306,56 @@ const GREY = [
   0, 0, 0, 0, 1, 0,
 ];
 
+/** One decode, four handles: the derivations stay native and share the pixels. */
+export function DerivedHandles() {
+  const photo = useImage(sample);
+  const derived = useMemo(() => {
+    if (photo == null) {
+      return null;
+    }
+    return {
+      thumb: photo.scaled(32, 32),
+      crop: photo.subset(0, 0, 64, 64),
+      turned: photo.oriented('rightTop'),
+      soft: photo.blurred(6, 6),
+    };
+  }, [photo]);
+
+  useEffect(
+    () => () => {
+      derived?.thumb.dispose();
+      derived?.crop.dispose();
+      derived?.turned.dispose();
+      derived?.soft.dispose();
+    },
+    [derived]
+  );
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'handle ops — scaled · subset · oriented · blurred'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 110 }]}>
+        <Fill color="#f2f2f7" />
+        {derived != null && (
+          <>
+            <Image image={derived.thumb} x={8} y={10} width={80} height={80} />
+            <Image image={derived.crop} x={96} y={10} width={80} height={80} />
+            <Image image={derived.turned} x={184} y={10} width={80} height={80} />
+            {/* Inset by the blur margin: the filtered result is larger than the source. */}
+            <Image image={derived.soft} x={264} y={2} width={96} height={96} />
+          </>
+        )}
+      </Canvas>
+      <RNText style={styles.caption}>
+        A 32px downscale, a corner crop, a quarter turn, and a baked blur — one
+        decode between them.
+      </RNText>
+    </View>
+  );
+}
+
 /** The image as a paint source: tiled fills, and a masked shape. */
 export function ImageShaderExamples() {
   const pattern = useImage(tile);
@@ -509,6 +559,7 @@ export function ImageSection() {
       <AtlasField />
       <VerticesMeshes />
       <OffscreenRender />
+      <DerivedHandles />
       <ImageShaderExamples />
     </>
   );

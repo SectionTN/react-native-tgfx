@@ -263,3 +263,42 @@ pixel readback.
 
 Renders are capped at 8192 pixels on a side after `pixelRatio` is applied, which
 at the limit is a 256 MB pixel readback — in practice memory bites first.
+
+## Handle operations
+
+A `TgfxImage` can derive new handles from itself. All four are **lazy**: nothing
+is copied and no pixels round-trip through JS. Every derivation of one parent
+shares a single decode and a single source texture, so a sprite sheet cut into
+handles decodes once.
+
+```ts
+const thumb = photo.scaled(200, 200)
+const sprite = sheet.subset(0, 0, 64, 64)
+const upright = photo.oriented('rightTop')
+const frosted = photo.blurred(20, 20)
+```
+
+| method | what it gives |
+| --- | --- |
+| `subset(x, y, width, height)` | a crop, in source pixels |
+| `scaled(width, height, sampling?)` | a resampled copy; `sampling` defaults to `'linear'` |
+| `oriented(orientation)` | rotated or flipped by an EXIF-style orientation |
+| `blurred(blurX, blurY)` | a Gaussian blur baked in, so it is filtered once rather than per frame |
+
+`scaled()` is the memory one. A 12 MP photo drawn at 200x200 otherwise keeps
+full-resolution pixels in both the decode budget and texture memory; a scaled
+handle samples the source down once.
+
+Each derived handle is independent: you own it and must `dispose()` it, and
+disposing the parent does not disturb it. Derivation is taken from the decoder
+rather than from cached pixels, so a derived handle also survives the parent
+being evicted — the source re-decodes on demand.
+
+A derived handle keeps the source's pixels alive for as long as it exists, so it
+reports those bytes to the garbage collector — an abandoned derivative is
+collected on its own merits rather than looking free. `blurred` reports its
+filtered surface on top of that. None of it counts against `setImageCacheLimit`,
+which governs eviction, and a derived handle is never evicted.
+
+A handle backed by something someone else recycles — a camera frame, or a video
+stream — has no stable source, and these methods throw on it.

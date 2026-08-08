@@ -14,6 +14,10 @@
 #include "tgfx/core/Data.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageCodec.h"
+#include "tgfx/core/ImageFilter.h"
+#include "tgfx/core/Orientation.h"
+#include "tgfx/core/Rect.h"
+#include "tgfx/core/SamplingOptions.h"
 
 namespace margelo::nitro::tgfx {
 
@@ -161,8 +165,115 @@ std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImageFactory::fromNativeBuffer(
   if (image == nullptr) {
     throw std::runtime_error("tgfx: the hardware buffer could not be imported");
   }
-  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image));
+  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image), 0, true);
   return std::make_shared<HybridTgfxImage>(handle);
+}
+
+namespace {
+
+::tgfx::SamplingOptions samplingOf(std::optional<ImageSampling> sampling) {
+  switch (sampling.value_or(ImageSampling::LINEAR)) {
+    case ImageSampling::NEAREST:
+      return ::tgfx::SamplingOptions(::tgfx::FilterMode::Nearest, ::tgfx::MipmapMode::None);
+    case ImageSampling::MIPMAP:
+      return ::tgfx::SamplingOptions(::tgfx::FilterMode::Linear, ::tgfx::MipmapMode::Linear);
+    case ImageSampling::LINEAR:
+      break;
+  }
+  return ::tgfx::SamplingOptions(::tgfx::FilterMode::Linear, ::tgfx::MipmapMode::None);
+}
+
+::tgfx::Orientation orientationOf(Orientation orientation) {
+  switch (orientation) {
+    case Orientation::TOPLEFT: return ::tgfx::Orientation::TopLeft;
+    case Orientation::TOPRIGHT: return ::tgfx::Orientation::TopRight;
+    case Orientation::BOTTOMRIGHT: return ::tgfx::Orientation::BottomRight;
+    case Orientation::BOTTOMLEFT: return ::tgfx::Orientation::BottomLeft;
+    case Orientation::LEFTTOP: return ::tgfx::Orientation::LeftTop;
+    case Orientation::RIGHTTOP: return ::tgfx::Orientation::RightTop;
+    case Orientation::RIGHTBOTTOM: return ::tgfx::Orientation::RightBottom;
+    case Orientation::LEFTBOTTOM: return ::tgfx::Orientation::LeftBottom;
+  }
+  return ::tgfx::Orientation::TopLeft;
+}
+
+/// Charged the pixels it keeps alive: a derivation holds a strong ref past the parent's eviction.
+std::shared_ptr<HybridTgfxImageSpec> registerDerived(std::shared_ptr<::tgfx::Image> image,
+                                                     const char* what, size_t ownedBytes = 0) {
+  if (image == nullptr) {
+    throw std::runtime_error(std::string("tgfx: ") + what + " produced no image");
+  }
+  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image), ownedBytes);
+  if (handle.handle == 0) {
+    throw std::runtime_error(std::string("tgfx: ") + what + " could not be registered");
+  }
+  return std::make_shared<HybridTgfxImage>(handle);
+}
+
+/// What a derivation keeps alive, so an abandoned handle still tells the GC what it costs.
+size_t sourceBytes(int32_t handle) {
+  return tgfxrn::ImageRegistry::instance().byteSize(handle);
+}
+
+std::shared_ptr<::tgfx::Image> sourceOf(int32_t handle, const char* what) {
+  auto image = tgfxrn::ImageRegistry::instance().sourceImage(handle);
+  if (image == nullptr) {
+    throw std::runtime_error(std::string("tgfx: ") + what +
+                             " needs a decoded image, and this handle has none");
+  }
+  return image;
+}
+
+}  // namespace
+
+std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImage::subset(double x, double y, double width,
+                                                             double height) {
+  if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
+      !std::isfinite(height) || !(width > 0) || !(height > 0)) {
+    throw std::runtime_error("tgfx: subset needs a finite rect with a positive size");
+  }
+  auto source = sourceOf(handle_.handle, "subset");
+  auto rect = ::tgfx::Rect::MakeXYWH(static_cast<float>(x), static_cast<float>(y),
+                                     static_cast<float>(width), static_cast<float>(height));
+  return registerDerived(source->makeSubset(rect), "subset", sourceBytes(handle_.handle));
+}
+
+std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImage::scaled(
+    double width, double height, std::optional<ImageSampling> sampling) {
+  if (!(width >= 1) || !(height >= 1) || width > 65536 || height > 65536) {
+    throw std::runtime_error("tgfx: scaled needs a size of at least one pixel");
+  }
+  auto source = sourceOf(handle_.handle, "scaled");
+  return registerDerived(source->makeScaled(static_cast<int>(width), static_cast<int>(height),
+                                            samplingOf(sampling)),
+                         "scaled", sourceBytes(handle_.handle));
+}
+
+std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImage::oriented(Orientation orientation) {
+  auto source = sourceOf(handle_.handle, "oriented");
+  return registerDerived(source->makeOriented(orientationOf(orientation)), "oriented",
+                         sourceBytes(handle_.handle));
+}
+
+std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImage::blurred(double blurX, double blurY) {
+  if (!std::isfinite(blurX) || !std::isfinite(blurY) || blurX < 0 || blurY < 0) {
+    throw std::runtime_error("tgfx: blurred needs finite blur radii of zero or more");
+  }
+  auto source = sourceOf(handle_.handle, "blurred");
+  // Bounds grow by 2 sigma a side, and an unclamped one overflows the int the size lands in.
+  double grownWidth = static_cast<double>(source->width()) + 4 * blurX;
+  double grownHeight = static_cast<double>(source->height()) + 4 * blurY;
+  if (grownWidth > 65536 || grownHeight > 65536) {
+    throw std::runtime_error("tgfx: blurred is capped at 65536 pixels on a side");
+  }
+  auto filter = ::tgfx::ImageFilter::Blur(static_cast<float>(blurX), static_cast<float>(blurY));
+  auto blurred = source->makeWithFilter(std::move(filter));
+  // Its own pixels on top of the source it holds: a filter renders a new surface.
+  size_t bytes = blurred == nullptr
+                     ? 0
+                     : sourceBytes(handle_.handle) + static_cast<size_t>(blurred->width()) *
+                                                         static_cast<size_t>(blurred->height()) * 4;
+  return registerDerived(std::move(blurred), "blurred", bytes);
 }
 
 void HybridTgfxImage::setNativeBuffer(uint64_t buffer, PixelFormat format) {

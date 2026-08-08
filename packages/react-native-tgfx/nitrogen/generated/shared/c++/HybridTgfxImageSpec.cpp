@@ -18,6 +18,10 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridGetter("width", &HybridTgfxImageSpec::getWidth);
       prototype.registerHybridGetter("height", &HybridTgfxImageSpec::getHeight);
       prototype.registerHybridMethod("setNativeBuffer", &HybridTgfxImageSpec::setNativeBuffer);
+      prototype.registerHybridMethod("subset", &HybridTgfxImageSpec::subset);
+      prototype.registerHybridMethod("scaled", &HybridTgfxImageSpec::scaled);
+      prototype.registerHybridMethod("oriented", &HybridTgfxImageSpec::oriented);
+      prototype.registerHybridMethod("blurred", &HybridTgfxImageSpec::blurred);
     });
   }
 

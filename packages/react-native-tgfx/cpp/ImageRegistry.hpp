@@ -46,7 +46,15 @@ class ImageRegistry {
    * pass 0 for an image whose pixels are someone else's (an SVG picture, a
    * hardware buffer).
    */
-  ImageHandle addExternal(std::shared_ptr<tgfx::Image> image, size_t ownedBytes = 0);
+  ImageHandle addExternal(std::shared_ptr<tgfx::Image> image, size_t ownedBytes = 0,
+                          bool live = false);
+
+  /**
+   * A lazy view of an entry's image, safe to derive from. A codec entry gives a
+   * re-decodable image rather than its cached pixels, so a derived handle
+   * survives the parent's eviction and is never charged bytes of its own.
+   */
+  std::shared_ptr<tgfx::Image> sourceImage(int32_t handle);
 
   bool replaceExternal(int32_t handle, std::shared_ptr<tgfx::Image> image);
 
@@ -103,8 +111,12 @@ class ImageRegistry {
     size_t bytes = 0;
     std::list<int32_t>::iterator at{};
     bool resident = false;
+    /// A frame someone else owns and recycles, so it is no basis for a derived image.
+    bool live = false;
     /// Set for a stream entry; `decoded` stays null and the image comes from here.
     std::function<std::shared_ptr<tgfx::Image>()> produce;
+    /// Rebuilt from the codec only after an eviction, and shared across derivations.
+    std::shared_ptr<tgfx::Image> lazy;
 
     bool external() const {
       return codec == nullptr;

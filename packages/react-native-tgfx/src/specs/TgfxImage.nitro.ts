@@ -16,6 +16,20 @@ export type PixelFormat =
   | 'bt2020-full'
   | 'jpeg-full'
 
+/** How a scaled image is resampled. Same values as the drawing-side `Sampling`. */
+export type ImageSampling = 'nearest' | 'linear' | 'mipmap'
+
+/** Where the stored top-left pixel belongs, matching EXIF's orientation tag. */
+export type Orientation =
+  | 'topLeft'
+  | 'topRight'
+  | 'bottomRight'
+  | 'bottomLeft'
+  | 'leftTop'
+  | 'rightTop'
+  | 'rightBottom'
+  | 'leftBottom'
+
 /**
  * A decoded image living in native memory.
  *
@@ -50,6 +64,36 @@ export interface TgfxImage extends HybridObject<{
    * Only valid on a handle created from a native buffer.
    */
   setNativeBuffer(buffer: UInt64, format: PixelFormat): void
+
+  /**
+   * A crop of this image, sharing its decode. Lazy: no pixels are copied and no
+   * bytes are charged, so a sprite sheet cut into handles costs one decode.
+   */
+  subset(x: number, y: number, width: number, height: number): TgfxImage
+
+  /**
+   * A resampled copy at `width` x `height`. The memory fix for photo grids: a
+   * 12 MP source drawn at 200x200 otherwise holds full-resolution pixels in
+   * both the decode budget and texture memory.
+   */
+  scaled(width: number, height: number, sampling?: ImageSampling): TgfxImage
+
+  /**
+   * Rotated or flipped by an EXIF-style orientation. `'topLeft'` is the
+   * identity; the rest name where the stored top-left pixel belongs.
+   */
+  oriented(orientation: Orientation): TgfxImage
+
+  /**
+   * This image with a Gaussian blur baked in, so a frosted backdrop is filtered
+   * once rather than every frame.
+   *
+   * The result is **larger than the source and centred in it** — a blur spreads
+   * about two sigma past each edge — so drawing it at the source's position
+   * shifts the content. Offset by `(derived.width - source.width) / 2` to line
+   * the two up.
+   */
+  blurred(blurX: number, blurY: number): TgfxImage
 
   // `dispose()` comes from HybridObject and is overridden natively: it drops
   // the native image now instead of at the next GC. A scene still holding the

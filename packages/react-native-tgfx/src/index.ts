@@ -97,7 +97,7 @@ export {
 export type { ImageState } from './hooks/useImage'
 export { loadVideo, useVideo } from './hooks/useVideo'
 export type { Video, VideoOptions } from './hooks/useVideo'
-export type { PixelFormat } from './specs/TgfxImage.nitro'
+export type { PixelFormat, Orientation } from './specs/TgfxImage.nitro'
 export type { TgfxVideo } from './specs/TgfxVideo.nitro'
 
 export { TgfxNativeView } from './views/TgfxNativeView'

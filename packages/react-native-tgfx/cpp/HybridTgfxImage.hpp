@@ -2,6 +2,8 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 
 #include "HybridTgfxImageSpec.hpp"
 #include "ImageRegistry.hpp"
@@ -34,6 +36,13 @@ class HybridTgfxImage : public HybridTgfxImageSpec {
   }
 
   void setNativeBuffer(uint64_t buffer, PixelFormat format) override;
+
+  std::shared_ptr<HybridTgfxImageSpec> subset(double x, double y, double width,
+                                              double height) override;
+  std::shared_ptr<HybridTgfxImageSpec> scaled(
+      double width, double height, std::optional<ImageSampling> sampling) override;
+  std::shared_ptr<HybridTgfxImageSpec> oriented(Orientation orientation) override;
+  std::shared_ptr<HybridTgfxImageSpec> blurred(double blurX, double blurY) override;
 
   /// Hermes would otherwise see a few bytes of JS object for a multi-megabyte image.
   size_t getExternalMemorySize() noexcept override {
