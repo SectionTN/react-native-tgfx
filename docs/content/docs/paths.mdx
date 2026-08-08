@@ -36,6 +36,12 @@ The result is normalised so non-zero winding fills the intended region — inner
 contours come back wound against their parent. SVG path data has nowhere to put
 a fill rule, so without that step a hole would fill in solid when drawn.
 
+That normalisation compares every contour against every other, so `pathOp` is
+quadratic in the number of contours the result has. Shapes with a handful of
+contours cost microseconds; a result with hundreds runs into milliseconds, and
+this is a synchronous call on the JS thread. Combine once and keep the string
+rather than recomputing it per render.
+
 ## Bounds
 
 ```ts

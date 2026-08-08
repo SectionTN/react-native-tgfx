@@ -9,6 +9,7 @@
 #include "tgfx/core/PathMeasure.h"
 #include "tgfx/core/PathTypes.h"
 #include "tgfx/core/Point.h"
+#include "tgfx/core/Rect.h"
 
 namespace tgfxrn {
 namespace {
@@ -18,6 +19,7 @@ struct Contour {
   tgfx::Path path;
   std::vector<tgfx::Path::Segment> segments;
   std::vector<tgfx::Point> outline;
+  tgfx::Rect box = tgfx::Rect::MakeEmpty();
   float area = 0;
 };
 
@@ -78,6 +80,7 @@ void appendSegment(tgfx::Path& out, const tgfx::Path::Segment& segment) {
 /// them inside it, and shared vertices can only ever be a minority of the sample.
 std::vector<tgfx::Point> outlinePoints(const tgfx::Path& contour) {
   std::vector<tgfx::Point> points;
+  points.reserve(5);
   auto measure = tgfx::PathMeasure::MakeFrom(contour);
   if (measure == nullptr) {
     return points;
@@ -118,11 +121,15 @@ std::vector<Contour> splitContours(const tgfx::Path& path) {
     }
     contours.back().segments.push_back(segment);
   }
+  if (contours.size() < 2) {
+    return contours;
+  }
   for (auto& contour : contours) {
     for (const auto& segment : contour.segments) {
       appendSegment(contour.path, segment);
     }
     contour.path.close();
+    contour.box = contour.path.getBounds();
     contour.area = shoelace(contour.segments);
     contour.outline = outlinePoints(contour.path);
   }
@@ -182,7 +189,8 @@ tgfx::Path toWinding(const tgfx::Path& path) {
   for (size_t i = 0; i < contours.size(); i++) {
     int depth = 0;
     for (size_t j = 0; j < contours.size(); j++) {
-      if (j != i && encloses(contours[j].path, contours[i].outline)) {
+      if (j != i && contours[j].box.contains(contours[i].box) &&
+          encloses(contours[j].path, contours[i].outline)) {
         depth++;
       }
     }
