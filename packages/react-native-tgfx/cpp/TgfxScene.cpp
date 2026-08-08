@@ -107,7 +107,7 @@ std::atomic<size_t> gFilterBuilds{0};
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
-  KTextPath, KCameraFrame, KGlyphs
+  KTextPath, KCameraFrame, KGlyphs, KGroupLayer
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -717,7 +717,8 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
     return false;
   }
   switch (kind) {
-    case KGroup: {
+    case KGroup:
+    case KGroupLayer: {
       cmd.kind = DrawCmd::Group;
       int opCount = r.nextInt();
       cmd.ops.reserve(boundedCount(r, opCount));
@@ -733,6 +734,45 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       if (!animated && !cmd.ops.empty()) {
         cmd.hasMatrix = true;
         cmd.matrix = matrixFromOps(cmd.ops, {});
+      }
+      // Only KGroupLayer carries the clip/layer block; a plain group is unchanged.
+      if (kind == KGroupLayer) {
+        int flags = r.nextInt();
+        cmd.invertClip = (flags & 2) != 0;
+        cmd.layer = (flags & 4) != 0;
+        if ((flags & 1) != 0) {
+          cmd.clipKind = r.nextInt();
+          if (cmd.clipKind == 3) {
+            cmd.clipPath = parseSvgPath(r.nextString());
+          } else {
+            float x = static_cast<float>(r.next());
+            float y = static_cast<float>(r.next());
+            cmd.clipRect = tgfx::Rect::MakeXYWH(x, y, static_cast<float>(r.next()),
+                                                static_cast<float>(r.next()));
+            if (cmd.clipKind == 2) {
+              cmd.clipRadiusX = static_cast<float>(r.next());
+              cmd.clipRadiusY = static_cast<float>(r.next());
+            }
+          }
+          if (cmd.invertClip && cmd.clipKind != 3) {
+            // Only a path can carry an inverse fill, so a rect clip becomes one.
+            tgfx::Path box;
+            if (cmd.clipKind == 2) {
+              box.addRRect(tgfx::RRect::MakeRectXY(cmd.clipRect, cmd.clipRadiusX,
+                                                   cmd.clipRadiusY));
+            } else {
+              box.addRect(cmd.clipRect);
+            }
+            cmd.clipPath = std::move(box);
+            cmd.clipKind = 3;
+          }
+          if (cmd.invertClip) {
+            cmd.clipPath.toggleInverseFillType();
+          }
+        }
+        if (cmd.layer) {
+          cmd.layerAlpha = r.nextAnim();
+        }
       }
       int childCount = r.nextInt();
       cmd.children.reserve(boundedCount(r, childCount));
@@ -974,14 +1014,32 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             tgfx::Paint& paint) const {
   if (cmd.kind == DrawCmd::Group) {
     bool transformed = cmd.hasMatrix || !cmd.ops.empty();
-    if (transformed) {
+    bool saved = transformed || cmd.clipKind != 0 || cmd.layer;
+    if (saved) {
       canvas->save();
+    }
+    if (transformed) {
       canvas->concat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
+    }
+    switch (cmd.clipKind) {
+      case 1: canvas->clipRect(cmd.clipRect); break;
+      case 2:
+        canvas->clipRRect(
+            tgfx::RRect::MakeRectXY(cmd.clipRect, cmd.clipRadiusX, cmd.clipRadiusY));
+        break;
+      case 3: canvas->clipPath(cmd.clipPath); break;
+      default: break;
+    }
+    if (cmd.layer) {
+      canvas->saveLayerAlpha(cmd.layerAlpha.resolve(v));
     }
     for (const auto& child : cmd.children) {
       drawCmd(canvas, child, v, paint);
     }
-    if (transformed) {
+    if (cmd.layer) {
+      canvas->restore();
+    }
+    if (saved) {
       canvas->restore();
     }
     return;

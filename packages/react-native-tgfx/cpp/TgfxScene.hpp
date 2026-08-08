@@ -30,7 +30,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 17;
+inline constexpr double kSceneVersion = 18;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -154,6 +154,16 @@ struct DrawCmd {
   enum Kind {
     Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame
   };
+
+  /// Group extras: 0 no clip, 1 rect, 2 round rect, 3 path.
+  int clipKind = 0;
+  bool invertClip = false;
+  bool layer = false;
+  AnimF layerAlpha{1, -1};
+  tgfx::Rect clipRect = tgfx::Rect::MakeEmpty();
+  float clipRadiusX = 0;
+  float clipRadiusY = 0;
+  tgfx::Path clipPath;
   Kind kind = Group;
 
   AnimF x, y, w, h, rx, ry, cx, cy, r, x1, y1, x2, y2, fontSize;

@@ -59,3 +59,8 @@ against the live value array each frame.
   and the alpha, and the font block's italic word became a style bitfield (1
   italic, 2 faux bold, 4 faux italic). Text that sets neither faux bit is
   byte-identical to 16, but a paint with a miter limit shifts everything after it.
+- **18** — adds the group-layer kind (13): a `<Group>` that clips or layers writes
+  a flags word after its transform ops, then an optional clip block (kind, then a
+  rect, a round rect, or a path string) and an optional layer alpha. A group that
+  does neither still writes kind 0 and is byte-identical to 17, so only the groups
+  that use the new props cost anything.
