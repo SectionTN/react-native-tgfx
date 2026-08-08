@@ -121,6 +121,7 @@ export function Canvas({
   style,
   composite = 'layer',
   opaque = false,
+  colorSpace = 'srgb',
   ref,
 }: CanvasProps): React.ReactElement {
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
@@ -137,6 +138,8 @@ export function Canvas({
   if (hybridRef.current == null) {
     hybridRef.current = callback((ref: TgfxViewRef) => {
       viewRef.current = ref
+      // Optional: a JS bundle newer than the native binary would otherwise throw here.
+      ref.setColorSpace?.(colorSpaceRef.current)
       sentStrings.current = []
       if (scene.current != null) {
         const strings = scene.current.strings
@@ -149,6 +152,21 @@ export function Canvas({
     })
   }
   const hybrid = hybridRef.current
+  // Read through a ref: the hybrid callback is created once and must see the latest.
+  const colorSpaceRef = useRef(colorSpace)
+  const mountedColorSpace = useRef(colorSpace)
+  colorSpaceRef.current = colorSpace
+  useEffect(() => {
+    if (
+      colorSpace !== mountedColorSpace.current &&
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__
+    ) {
+      console.warn(
+        `[tgfx] <Canvas colorSpace> changed from '${mountedColorSpace.current}' to '${colorSpace}', which has no effect: the drawing surface takes its colour space from the platform window, and that is fixed when the canvas mounts. Remount the canvas with a key to change it.`
+      )
+    }
+  }, [colorSpace])
 
   if (rootRef.current == null) {
     // Straight to the hybrid object: as a prop it would ride a React and a Fabric commit per frame.

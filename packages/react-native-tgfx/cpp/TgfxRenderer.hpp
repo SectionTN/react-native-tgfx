@@ -53,6 +53,13 @@ class TgfxRenderer {
 
   void setPixelRatio(float ratio);
 
+  /// Read when the window is built; a later change cannot move an existing window's space.
+  void setColorSpace(bool displayP3);
+
+  bool wantsDisplayP3() const {
+    return displayP3_.load(std::memory_order_relaxed);
+  }
+
   /// How this view's push-driven loop schedules a draw. Any thread; must only schedule.
   void setWakeCallback(std::function<void()> wake);
 
@@ -119,6 +126,7 @@ class TgfxRenderer {
   uint64_t wakeToken_ = 0;
   std::vector<std::pair<SnapshotRequest, SnapshotCallback>> pendingSnapshots_;
   std::vector<InFlightSnapshot> inFlightSnapshots_;
+  std::atomic<bool> displayP3_{false};
   std::atomic<bool> snapshotPending_{false};
   // A counter, not a flag: a surface created before the bump must not clear it.
   std::atomic<uint64_t> snapshotBarrier_{0};

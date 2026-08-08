@@ -278,6 +278,18 @@ it will not appear behind the canvas; draw those with `<Fill>` instead.
 
 ### Wide-gamut colours
 
+`<Canvas colorSpace="display-p3">` creates the drawing surface in Display P3, so
+wide-gamut images and gradients keep their colour on a P3 screen instead of being
+clamped to sRGB. `snapshot()` tags its output with the surface's space rather
+than assuming sRGB.
+
+It is **read once, when the canvas mounts** — the surface takes its space from the
+platform window, and that window is created with the view. Changing the prop
+later warns in dev and does nothing; remount with a `key` if you need to switch.
+
+A `color` prop is a separate matter: the draw program carries one packed sRGB
+word per colour, so a P3 surface does not widen what a `color` can express.
+
 CSS Color 4's `color()` syntax is accepted, with components in 0..1:
 
 ```tsx

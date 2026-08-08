@@ -27,6 +27,8 @@ internal object TgfxNative {
   external fun setOpaque(ptr: Long, opaque: Boolean)
   external fun setValues(ptr: Long, values: DoubleArray)
 
+  external fun setColorSpace(ptr: Long, displayP3: Boolean)
+
   external fun hitTest(ptr: Long, x: Float, y: Float, precise: Boolean): DoubleArray
   external fun draw(ptr: Long): Boolean
 

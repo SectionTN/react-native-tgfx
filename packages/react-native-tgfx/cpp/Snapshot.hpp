@@ -69,9 +69,10 @@ inline void finishSnapshot(std::shared_ptr<tgfx::Data> pixels,
     fail("[tgfx] snapshot: the readback returned no pixels");
     return;
   }
+  // Tagged with the surface's own space, so a P3 readback is not relabelled sRGB.
   auto dstInfo = tgfx::ImageInfo::Make(info.width(), info.height(),
                                        tgfx::ColorType::RGBA_8888,
-                                       tgfx::AlphaType::Unpremultiplied);
+                                       tgfx::AlphaType::Unpremultiplied, 0, info.colorSpace());
   std::vector<uint8_t> straight(dstInfo.byteSize());
   tgfx::Pixmap src(info, pixels->data());
   if (!src.readPixels(dstInfo, straight.data())) {

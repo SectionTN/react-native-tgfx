@@ -15,6 +15,7 @@
 #include "IdleGate.hpp"
 #include "Snapshot.hpp"
 #include "TgfxRenderer.hpp"
+#include "tgfx/core/ColorSpace.h"
 #include "tgfx/gpu/metal/MetalWindow.h"
 
 // The `token` is the encoded buffer's owning reference, so ArrayBuffer.wrap needs no copy.
@@ -106,7 +107,17 @@ void TgfxSnapshotRelease(void* token) {
   if (_drawableWidth <= 0 || _drawableHeight <= 0) {
     return;
   }
-  auto window = tgfx::MetalWindow::MakeFrom([self metalLayer]);
+  // The layer's own space too, or the surface is P3 while the layer still presents sRGB.
+  bool wantsP3 = _renderer != nullptr && _renderer->wantsDisplayP3();
+  auto space = wantsP3 ? tgfx::ColorSpace::DisplayP3() : tgfx::ColorSpace::SRGB();
+  auto layer = [self metalLayer];
+  // +1 from Create; the layer retains it, so this scope has to give its reference back.
+  CGColorSpaceRef cgSpace = CGColorSpaceCreateWithName(
+      wantsP3 ? kCGColorSpaceDisplayP3 : kCGColorSpaceSRGB);
+  layer.colorspace = cgSpace;
+  CGColorSpaceRelease(cgSpace);
+  layer.pixelFormat = wantsP3 ? MTLPixelFormatBGRA10_XR_sRGB : MTLPixelFormatBGRA8Unorm;
+  auto window = tgfx::MetalWindow::MakeFrom(layer, nullptr, space);
   if (window != nullptr) {
     _renderer->setWindow(window);
     _windowBound = true;
@@ -191,6 +202,13 @@ void TgfxSnapshotRelease(void* token) {
     _renderer->setValues(std::vector<double>(values, values + count));
   }
   [self wakeUp];
+}
+
+- (void)setDisplayP3:(BOOL)displayP3 {
+  if (_renderer != nullptr) {
+    _renderer->setColorSpace(displayP3 == YES);
+    [self requestRender];
+  }
 }
 
 - (NSArray<NSNumber*>*)hitTestX:(float)x y:(float)y precise:(BOOL)precise {

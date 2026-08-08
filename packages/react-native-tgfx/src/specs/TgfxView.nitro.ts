@@ -88,6 +88,12 @@ export interface TgfxViewMethods extends HybridViewMethods {
   setValues(values: number[]): void
 
   /**
+   * The drawing surface's colour space. `'display-p3'` on a P3 screen keeps
+   * wide-gamut image and gradient content instead of clamping it to sRGB.
+   */
+  setColorSpace(colorSpace: string): void
+
+  /**
    * Index paths of the nodes under a canvas-space point, front-to-back,
    * flattened as `[depth, i0, i1, ..., depth, j0, ...]`.
    *

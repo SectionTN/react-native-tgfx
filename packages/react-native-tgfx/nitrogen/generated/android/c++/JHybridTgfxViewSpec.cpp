@@ -100,6 +100,10 @@ namespace margelo::nitro::tgfx {
       return __array;
     }());
   }
+  void JHybridTgfxViewSpec::setColorSpace(const std::string& colorSpace) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* colorSpace */)>("setColorSpace");
+    method(_javaPart, jni::make_jstring(colorSpace));
+  }
   std::vector<double> JHybridTgfxViewSpec::hitTest(double x, double y, bool precise) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayDouble>(double /* x */, double /* y */, jboolean /* precise */)>("hitTest");
     auto __result = method(_javaPart, x, y, precise);

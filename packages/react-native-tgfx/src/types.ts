@@ -483,6 +483,20 @@ export interface CanvasProps {
    */
   composite?: 'layer' | 'texture'
   /**
+   * The drawing surface's colour space. Defaults to `'srgb'`.
+   *
+   * `'display-p3'` creates a P3 surface, so wide-gamut images and gradients keep
+   * their colour on a P3 screen instead of being clamped. Note that a `color`
+   * prop is still carried as sRGB in the draw program, so `color(display-p3 …)`
+   * remains a compile-time conversion — this widens what images and gradients
+   * can show, not what a packed colour can express.
+   *
+   * **Read once, when the canvas mounts.** The surface takes its colour space
+   * from the platform window, which is created with the view; changing this
+   * prop later warns in dev and does nothing. Remount with a `key` to change it.
+   */
+  colorSpace?: 'srgb' | 'display-p3'
+  /**
    * Render without an alpha channel: the layer composites without blending and
    * the engine clears to opaque black. Anything behind the canvas stops showing
    * through.

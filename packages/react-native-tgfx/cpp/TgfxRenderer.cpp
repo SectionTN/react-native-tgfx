@@ -128,6 +128,12 @@ std::vector<double> TgfxRenderer::hitTest(float x, float y, bool precise) {
   return scene_.hitTest(x, y, precise, snapshot);
 }
 
+void TgfxRenderer::setColorSpace(bool displayP3) {
+  // Only read when the window is built. A Surface rebuilt from the same window keeps
+  // that window's space, so changing this later cannot take effect and must not pretend to.
+  displayP3_.store(displayP3, std::memory_order_relaxed);
+}
+
 void TgfxRenderer::onResize() {
   surfaceDirty_ = true;
   version_.fetch_add(1, std::memory_order_release);

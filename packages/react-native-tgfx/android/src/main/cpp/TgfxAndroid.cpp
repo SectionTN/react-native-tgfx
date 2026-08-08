@@ -12,6 +12,7 @@
 #include "Snapshot.hpp"
 #include "TgfxRenderer.hpp"
 #include "tgfx/core/Data.h"
+#include "tgfx/core/ColorSpace.h"
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
 #include "tgfx/platform/android/HardwareBufferJNI.h"
 
@@ -157,7 +158,9 @@ Java_com_margelo_nitro_tgfx_TgfxNative_surfaceCreated(JNIEnv* env, jobject,
   if (view->nativeWindow == nullptr) {
     return;
   }
-  auto window = tgfx::EGLWindow::MakeFrom(view->nativeWindow);
+  auto space = view->renderer.wantsDisplayP3() ? tgfx::ColorSpace::DisplayP3()
+                                               : tgfx::ColorSpace::SRGB();
+  auto window = tgfx::EGLWindow::MakeFrom(view->nativeWindow, nullptr, space);
   view->renderer.setWindow(window);
 }
 
@@ -271,6 +274,15 @@ Java_com_margelo_nitro_tgfx_TgfxNative_hitTest(JNIEnv* env, jobject, jlong ptr, 
     env->SetDoubleArrayRegion(out, 0, static_cast<jsize>(hits.size()), hits.data());
   }
   return out;
+}
+
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_setColorSpace(JNIEnv*, jobject, jlong ptr,
+                                                    jboolean displayP3) {
+  auto* view = asView(ptr);
+  if (view != nullptr) {
+    view->renderer.setColorSpace(displayP3 == JNI_TRUE);
+  }
 }
 
 JNIEXPORT jboolean JNICALL

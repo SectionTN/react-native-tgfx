@@ -29,6 +29,10 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     metalView.requestRender()
   }
 
+  func setColorSpace(colorSpace: String) throws {
+    metalView.setDisplayP3(colorSpace == "display-p3")
+  }
+
   func setValues(values: [Double]) throws {
     values.withUnsafeBufferPointer { buffer in
       guard let base = buffer.baseAddress else { return }

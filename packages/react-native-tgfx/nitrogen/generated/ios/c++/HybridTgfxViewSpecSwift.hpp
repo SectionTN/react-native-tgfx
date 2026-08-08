@@ -106,6 +106,12 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void setColorSpace(const std::string& colorSpace) override {
+      auto __result = _swiftPart.setColorSpace(colorSpace);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline std::vector<double> hitTest(double x, double y, bool precise) override {
       auto __result = _swiftPart.hitTest(std::forward<decltype(x)>(x), std::forward<decltype(y)>(y), std::forward<decltype(precise)>(precise));
       if (__result.hasError()) [[unlikely]] {

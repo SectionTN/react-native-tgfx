@@ -62,6 +62,11 @@ internal class TgfxRenderTarget {
     requestRender()
   }
 
+  fun setColorSpace(displayP3: Boolean) {
+    withPtr { TgfxNative.setColorSpace(it, displayP3) }
+    requestRender()
+  }
+
   fun setValues(values: DoubleArray) {
     withPtr { TgfxNative.setValues(it, values) }
     requestRender()
