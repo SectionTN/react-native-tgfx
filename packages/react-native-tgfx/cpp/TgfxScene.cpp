@@ -1261,11 +1261,10 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       maskPaint.setColorFilter(tgfx::ColorFilter::Luma());
     }
     canvas->saveLayer(&maskPaint);
-    // The layer is only as big as it draws, so seed it transparent: DstIn has to
-    // reach the content the mask does not cover, not leave it standing.
+    // Clear rather than a transparent colour: a zero-alpha fill is dropped, widening nothing.
     tgfx::Paint clear;
-    clear.setColor(tgfx::Color::Transparent());
-    clear.setBlendMode(tgfx::BlendMode::Src);
+    clear.setColor(tgfx::Color::Black());
+    clear.setBlendMode(tgfx::BlendMode::Clear);
     canvas->drawPaint(clear);
     for (const auto& child : cmd.maskChildren) {
       drawCmd(canvas, child, v, paint);

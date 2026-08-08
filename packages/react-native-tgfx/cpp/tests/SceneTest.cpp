@@ -1295,6 +1295,33 @@ void aMaskCutsItsContentDown() {
   auto whiteLuma = scene(1, 0xffffffff);
   CHECK(opaqueAt(whiteLuma, 16, 32));
   CHECK(!opaqueAt(scene(1, 0xff000000), 16, 32));
+
+  // A mask cuts its own content and nothing else: a sibling drawn before it stands.
+  Writer w;
+  w.push(2);
+  w.push(1);  // a rect over the right half, drawn under the mask node
+  w.pushAnim(32);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(64);
+  w.pushPaint(0xff112233, false);
+  w.push(14);  // Mask
+  w.push(0);
+  w.push(1);
+  w.push(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(64);
+  w.pushPaint(0xffffffff, false);
+  w.push(1);
+  w.push(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.pushPaint(0xff3366cc, false);
+  CHECK(opaqueAt(render(w.finish(), {}, {}), 48, 32));
 }
 
 void fillCoversTheWholeCanvas() {
