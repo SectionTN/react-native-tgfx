@@ -21,6 +21,7 @@ import {
 } from 'react-native-tgfx';
 import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
+import { PathSection } from './src/pathExamples';
 import { TextSection } from './src/textExamples';
 import { VideoSection } from './src/videoExamples';
 import {
@@ -150,6 +151,8 @@ function Demo() {
       </Section>
 
       <TextSection />
+
+      <PathSection />
 
       <Section label="Custom shapes (composed from primitives)" height={150}>
         <Star cx={42} cy={74} outerR={36} points={5} color="#FF9500" />
