@@ -247,7 +247,7 @@ import { Circle, Paint } from 'react-native-tgfx'
 
 | prop | type | default |
 | --- | --- | --- |
-| `color` | `Animated<Color>` — hex, `rgb()`/`rgba()`, `hsl()`/`hsla()`, or a named colour | black |
+| `color` | `Animated<Color>` — hex, `rgb()`/`rgba()`, `hsl()`/`hsla()`, `color(display-p3 …)`, or a named colour | black |
 | `style` | `'fill' \| 'stroke'` | `'fill'` |
 | `strokeWidth` | `Animated<number>` | `1` |
 | `strokeCap` | `'butt' \| 'round' \| 'square'` | `'butt'` |
@@ -275,6 +275,22 @@ string `<Fill>` accepts — `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`,
 `hsl()` or a CSS name. A `PlatformColor()`, a `processColor()` number, or
 `'transparent'` is left to the platform view untouched, which on Android means
 it will not appear behind the canvas; draw those with `<Fill>` instead.
+
+### Wide-gamut colours
+
+CSS Color 4's `color()` syntax is accepted, with components in 0..1:
+
+```tsx
+<Rect color="color(display-p3 1 0.2 0.1)" />
+<Rect color="color(srgb 1 0 0 / 0.5)" />
+```
+
+A `display-p3` colour is **converted to sRGB when the scene compiles**, because
+the draw program carries one packed sRGB word per colour. A value outside the
+sRGB gamut clips to the nearest one that fits — so this buys the syntax and
+correct relative colour, not extra gamut on screen. Painting a P3 surface with
+P3 values needs the colour space to reach the wire format and the drawing
+surface, which is separate work.
 
 ## Group
 

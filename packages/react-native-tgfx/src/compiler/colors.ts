@@ -326,8 +326,69 @@ function warnUnparseable(str: string): void {
   WARNED.add(str)
   console.warn(
     `[react-native-tgfx] Unrecognized color "${str}", rendering opaque black. ` +
-      'Expected #rgb/#rgba/#rrggbb/#rrggbbaa, rgb()/rgba(), hsl()/hsla(), a CSS color name, or a packed 0xAARRGGBB number.'
+      'Expected #rgb/#rgba/#rrggbb/#rrggbbaa, rgb()/rgba(), hsl()/hsla(), color(display-p3 r g b), a CSS color name, or a packed 0xAARRGGBB number.'
   )
+}
+
+/**
+ * CSS Color 4 `color(<space> r g b / a)`, the syntax a wide-gamut colour arrives
+ * in. Components are 0..1 rather than 0..255.
+ *
+ * Only `display-p3` and `srgb` are accepted, and a P3 colour is **converted to
+ * sRGB here** rather than carried through — the wire format holds one packed
+ * sRGB word per colour. On a P3 surface that clamps the extra gamut, which is
+ * the honest behaviour until the program can carry a colour space.
+ */
+function fromColorFunc(str: string): number | undefined {
+  const open = str.indexOf('(')
+  const close = str.lastIndexOf(')')
+  if (open < 0 || close < open) {
+    return undefined
+  }
+  const parts = str
+    .slice(open + 1, close)
+    .replace('/', ' ')
+    .split(/[\s,]+/)
+    .filter((part) => part.length > 0)
+  const space = parts[0]
+  if (space !== 'display-p3' && space !== 'srgb') {
+    return undefined
+  }
+  const nums = parts.slice(1).map(Number)
+  if (nums.length < 3 || nums.some((n) => !Number.isFinite(n))) {
+    return undefined
+  }
+  const [r, g, b] = nums as [number, number, number]
+  const alpha = nums.length > 3 ? nums[3]! : 1
+  const rgb = space === 'display-p3' ? p3ToSrgb(r, g, b) : ([r, g, b] as const)
+  return (
+    ((clamp255(alpha * 255) << 24) |
+      (clamp255(rgb[0] * 255) << 16) |
+      (clamp255(rgb[1] * 255) << 8) |
+      clamp255(rgb[2] * 255)) >>>
+    0
+  )
+}
+
+function clamp255(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)))
+}
+
+/// Linearise, apply the P3-to-sRGB matrix, re-encode. Out-of-gamut clips.
+function p3ToSrgb(r: number, g: number, b: number): readonly [number, number, number] {
+  const lin = (c: number) =>
+    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  // Clamped first: an out-of-gamut channel goes negative, and Math.pow of that is NaN.
+  const enc = (raw: number) => {
+    const c = Math.max(0, Math.min(1, raw))
+    return c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
+  }
+  const [lr, lg, lb] = [lin(r), lin(g), lin(b)]
+  return [
+    enc(1.2249401 * lr - 0.2249404 * lg + 0.0000000 * lb),
+    enc(-0.0420569 * lr + 1.0420571 * lg + 0.0000000 * lb),
+    enc(-0.0196376 * lr - 0.0786361 * lg + 1.0982735 * lb),
+  ] as const
 }
 
 function parseColor(str: string): number {
@@ -339,6 +400,8 @@ function parseColor(str: string): number {
     value = fromFunc(str)
   } else if (str.startsWith('hsl')) {
     value = fromHsl(str)
+  } else if (str.startsWith('color(')) {
+    value = fromColorFunc(str)
   } else if (Object.hasOwn(NAMED, str)) {
     value = NAMED[str]
   }

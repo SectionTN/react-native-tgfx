@@ -110,6 +110,20 @@ function Demo() {
         ))}
       </Section>
 
+      <Section label="color(display-p3) — P3 pairs above their sRGB equivalents">
+        {[
+          ['color(display-p3 1 0 0)', '#ff0000'],
+          ['color(display-p3 0 1 0)', '#00ff00'],
+          ['color(display-p3 0 0 1)', '#0000ff'],
+          ['color(display-p3 1 0.8 0)', '#ffcc00'],
+        ].map(([p3, srgb], i) => (
+          <Group key={p3} transform={[{ translateX: i * 88 }]}>
+            <Rect x={0} y={0} width={80} height={32} color={p3} />
+            <Rect x={0} y={36} width={80} height={32} color={srgb} />
+          </Group>
+        ))}
+      </Section>
+
       <Section label="Gradients">
         <RoundedRect x={0} y={0} width={170} height={64} r={16}>
           <LinearGradient
