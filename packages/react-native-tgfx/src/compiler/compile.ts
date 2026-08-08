@@ -1,6 +1,6 @@
 import { isNodeHandle, nodeInternals, type NodeHandle } from '../imperative'
 import { NodeType, type Node } from '../reconciler/types'
-import type { Color } from './colors'
+import { resolveColor, type Color } from './colors'
 import type { BlendMode } from './filters'
 import {
   fitCode,
@@ -29,7 +29,7 @@ import {
   type MaybeSharedValue,
 } from './values'
 import { Kind, type SceneWriter } from './writer'
-import type { AtlasSprite, ClipRect, UniformValue } from '../types'
+import type { AtlasSprite, ClipRect, UniformValue, Vector as Vec } from '../types'
 
 interface GlyphInput {
   id: number
@@ -96,6 +96,7 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.CameraFrame]: Kind.CameraFrame,
   [NodeType.Mask]: Kind.Mask,
   [NodeType.Atlas]: Kind.Atlas,
+  [NodeType.Vertices]: Kind.Vertices,
 }
 
 /**
@@ -120,6 +121,54 @@ function writeAtlas(w: SceneWriter, p: Record<string, unknown>): void {
     w.push(scale)
     w.push(resolveNumber(sprite?.x) - (scale * width) / 2)
     w.push(resolveNumber(sprite?.y) - (scale * height) / 2)
+  }
+}
+
+/**
+ * Positions, then optional texture coordinates and colours, then optional
+ * indices — each block preceded by its own count so the reader never has to
+ * guess which are present.
+ */
+function writeVertices(w: SceneWriter, p: Record<string, unknown>): void {
+  const vertices = Array.isArray(p.vertices) ? (p.vertices as Vec[]) : []
+  const colors = Array.isArray(p.colors) ? (p.colors as Color[]) : undefined
+  const textures = Array.isArray(p.textures) ? (p.textures as Vec[]) : undefined
+  const indices = Array.isArray(p.indices) ? (p.indices as number[]) : undefined
+  const count = vertices.length
+  w.push(p.mode === 'triangleStrip' ? 1 : 0)
+  w.push(count)
+  for (const vertex of vertices) {
+    w.push(resolveNumber(vertex?.x))
+    w.push(resolveNumber(vertex?.y))
+  }
+  // A short attribute array would desync the reader: it reads one entry per vertex regardless.
+  const hasTextures = textures != null && textures.length >= count
+  w.push(hasTextures ? 1 : 0)
+  if (hasTextures) {
+    for (let i = 0; i < count; i++) {
+      w.push(resolveNumber(textures[i]?.x))
+      w.push(resolveNumber(textures[i]?.y))
+    }
+  }
+  const hasColors = colors != null && colors.length >= count
+  w.push(hasColors ? 1 : 0)
+  if (hasColors) {
+    for (let i = 0; i < count; i++) {
+      w.push(resolveColor(colors[i]!))
+    }
+  }
+  const list = indices ?? []
+  w.push(list.length)
+  // Hoisted: a release bundle folds it away, but a dev one would pay it per index.
+  const dev = typeof __DEV__ !== 'undefined' && __DEV__
+  for (let i = 0; i < list.length; i++) {
+    const at = Math.trunc(resolveNumber(list[i], -1))
+    if (dev && (at < 0 || at >= count)) {
+      console.warn(
+        `[tgfx] <Vertices indices> holds ${at}, which is outside the ${count} vertices given. The mesh is skipped.`
+      )
+    }
+    w.push(at)
   }
 }
 
@@ -415,6 +464,9 @@ function writeDrawing(
       break
     case Kind.Atlas:
       writeAtlas(w, p)
+      break
+    case Kind.Vertices:
+      writeVertices(w, p)
       break
     case Kind.Text:
       w.pushAnim(p.x)

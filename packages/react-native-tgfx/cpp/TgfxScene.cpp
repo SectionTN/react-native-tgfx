@@ -95,7 +95,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; its frame is ~1072 B, so 256 deep is ~269 KiB of stack.
+/// Bounds readNode and so drawCmd too; its frame is ~1104 B, so 256 deep is ~276 KiB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
@@ -108,7 +108,7 @@ std::atomic<size_t> gFilterBuilds{0};
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
-  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask, KAtlas
+  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask, KAtlas, KVertices
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -841,6 +841,66 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   applyPaint(paint, {}, paint.cached);
 }
 
+/// Out of line: its four vectors would otherwise sit in every readNode frame, 256 deep.
+[[gnu::noinline]] void readMesh(SceneReader& r, DrawCmd& cmd) {
+  auto topology = r.nextInt() == 1 ? tgfx::MeshTopology::TriangleStrip
+                                   : tgfx::MeshTopology::Triangles;
+  int count = r.nextInt();
+  // Two words per position, so the buffer bounds the count before any reserve.
+  size_t vertexCount = std::min(static_cast<size_t>(std::max(0, count)), r.remaining() / 2);
+  std::vector<tgfx::Point> positions;
+  positions.reserve(vertexCount);
+  for (size_t i = 0; i < vertexCount && r.ok; i++) {
+    float x = static_cast<float>(r.next());
+    float y = static_cast<float>(r.next());
+    positions.push_back({x, y});
+  }
+  std::vector<tgfx::Point> texCoords;
+  if (r.nextInt() != 0) {
+    texCoords.reserve(positions.size());
+    for (size_t i = 0; i < positions.size() && r.ok; i++) {
+      float x = static_cast<float>(r.next());
+      float y = static_cast<float>(r.next());
+      texCoords.push_back({x, y});
+    }
+  }
+  std::vector<tgfx::Color> colors;
+  if (r.nextInt() != 0) {
+    colors.reserve(positions.size());
+    for (size_t i = 0; i < positions.size() && r.ok; i++) {
+      colors.push_back(colorFromPacked(static_cast<uint32_t>(r.next())));
+    }
+  }
+  std::vector<uint16_t> indices;
+  int indexCount = r.nextInt();
+  size_t bounded = boundedCount(r, indexCount);
+  indices.reserve(bounded);
+  bool outOfRange = false;
+  for (size_t i = 0; i < bounded && r.ok; i++) {
+    // Through nextInt, not a raw cast: an out-of-range double is undefined behaviour.
+    int index = r.nextInt();
+    outOfRange |= index < 0 || static_cast<size_t>(index) >= positions.size();
+    indices.push_back(static_cast<uint16_t>(index & 0xffff));
+  }
+  if (outOfRange) {
+    // Nothing rejects these downstream, so an index past the end reads another draw's buffer.
+    TGFXRN_LOGW("vertices: an index is outside the %zu given, so the mesh is skipped",
+                positions.size());
+    return;
+  }
+  if (r.ok && !positions.empty()) {
+    cmd.mesh = tgfx::Mesh::MakeCopy(
+        topology, static_cast<int>(positions.size()), positions.data(),
+        texCoords.empty() ? nullptr : texCoords.data(),
+        colors.empty() ? nullptr : colors.data(), static_cast<int>(indices.size()),
+        indices.empty() ? nullptr : indices.data());
+    if (cmd.mesh == nullptr) {
+      TGFXRN_LOGW("vertices: %zu of them could not build a mesh; an indexed one caps at 65536",
+                  positions.size());
+    }
+  }
+}
+
 bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
   if (depth > kMaxNodeDepth) {
     r.ok = false;
@@ -1108,6 +1168,10 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       break;
     }
+    case KVertices:
+      cmd.kind = DrawCmd::Vertices;
+      readMesh(r, cmd);
+      break;
     case KText: {
       cmd.kind = DrawCmd::Text;
       cmd.x = r.nextAnim();
@@ -1420,6 +1484,12 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       // No per-sprite colours: tgfx only applies them to an alpha-only atlas.
       canvas->drawAtlas(sheet, cmd.atlas->matrices.data(), cmd.atlas->sprites.data(), nullptr,
                         cmd.atlas->sprites.size(), cmd.sampling, p);
+      break;
+    }
+    case DrawCmd::Vertices: {
+      if (cmd.mesh != nullptr) {
+        canvas->drawMesh(cmd.mesh, *p);
+      }
       break;
     }
     case DrawCmd::Text: {

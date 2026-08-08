@@ -13,6 +13,7 @@
 #include "tgfx/core/BlendMode.h"
 #include "tgfx/core/Matrix.h"
 #include "tgfx/core/Paint.h"
+#include "tgfx/core/Mesh.h"
 #include "tgfx/core/Path.h"
 #include "tgfx/core/Rect.h"
 #include "tgfx/core/SamplingOptions.h"
@@ -30,7 +31,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 23;
+inline constexpr double kSceneVersion = 24;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -185,7 +186,8 @@ struct PathEffectCmd {
 
 struct DrawCmd {
   enum Kind {
-    Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame, Mask, Atlas
+    Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame, Mask, Atlas,
+    Vertices
   };
 
 
@@ -229,6 +231,8 @@ struct DrawCmd {
   std::shared_ptr<TextCmd> text;
   /// Behind a pointer so every non-atlas DrawCmd costs one word, not two vectors.
   std::shared_ptr<AtlasCmd> atlas;
+  /// Built once when the program is read: MakeCopy owns its own vertex data.
+  std::shared_ptr<tgfx::Mesh> mesh;
 };
 
 using Program = std::vector<DrawCmd>;

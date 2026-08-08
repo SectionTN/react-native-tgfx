@@ -40,6 +40,7 @@ export const NodeType = {
   Fill: 'tgfx_fill',
   CameraFrame: 'tgfx_cameraframe',
   Atlas: 'tgfx_atlas',
+  Vertices: 'tgfx_vertices',
 } as const
 
 export type NodeTypeName = (typeof NodeType)[keyof typeof NodeType]

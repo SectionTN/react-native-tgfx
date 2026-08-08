@@ -5,9 +5,11 @@ import {
   Canvas,
   Circle,
   Fill,
+  Group,
   Atlas,
   Image,
   ImageShader,
+  Vertices,
   Paint,
   Path,
   RoundedRect,
@@ -171,6 +173,63 @@ export function AtlasField() {
         <Fill color="#f2f2f7" />
         {sheet != null && (
           <Atlas image={sheet} sprites={field} sampling="nearest" />
+        )}
+      </Canvas>
+    </View>
+  );
+}
+
+/** Below the shape level: a colour mesh, and the same mesh warping an image. */
+export function VerticesMeshes() {
+  const photo = useImage(sample);
+  const grid = useMemo(() => {
+    const size = 3;
+    const step = 110 / size;
+    const points: { x: number; y: number }[] = [];
+    const coords: { x: number; y: number }[] = [];
+    const hues = ['#f2a33c', '#4f8ef7', '#34c759', '#ff2d55'];
+    const colors: string[] = [];
+    for (let row = 0; row <= size; row++) {
+      for (let col = 0; col <= size; col++) {
+        // A sine bulge along the rows, so the warp is visible in both panels.
+        const wobble = Math.sin((col / size) * Math.PI) * 12;
+        points.push({ x: 8 + col * step, y: 8 + row * step + wobble });
+        coords.push({ x: (col / size) * 128, y: (row / size) * 128 });
+        colors.push(hues[(row + col) % hues.length]!);
+      }
+    }
+    const indices: number[] = [];
+    for (let row = 0; row < size; row++) {
+      for (let col = 0; col < size; col++) {
+        const at = row * (size + 1) + col;
+        indices.push(at, at + 1, at + size + 1, at + 1, at + size + 1, at + size + 2);
+      }
+    }
+    return { points, coords, colors, indices };
+  }, []);
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<Vertices> — colour mesh, then the same mesh warping an image'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 140 }]}>
+        <Fill color="#f2f2f7" />
+        <Vertices
+          vertices={grid.points}
+          colors={grid.colors}
+          indices={grid.indices}
+        />
+        {photo != null && (
+          <Group transform={[{ translateX: 130 }]}>
+            <Vertices
+              vertices={grid.points}
+              textures={grid.coords}
+              indices={grid.indices}
+            >
+              <ImageShader image={photo} />
+            </Vertices>
+          </Group>
         )}
       </Canvas>
     </View>
@@ -378,6 +437,7 @@ export function ImageSection() {
       <SamplingModes />
       <SpriteSheet />
       <AtlasField />
+      <VerticesMeshes />
       <ImageShaderExamples />
     </>
   );

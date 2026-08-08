@@ -161,6 +161,35 @@ struct Writer {
     }
   }
 
+  /// A vertices node, mirroring writeVertices() in compile.ts.
+  /// Arguments in wire order: positions, texture coordinates, colours, then indices.
+  void pushVertices(const std::vector<std::array<double, 2>>& positions,
+                    const std::vector<std::array<double, 2>>& texCoords = {},
+                    const std::vector<uint32_t>& colors = {},
+                    const std::vector<int>& indices = {}, int topology = 0) {
+    push(16);
+    push(topology);
+    push(static_cast<double>(positions.size()));
+    for (const auto& point : positions) {
+      push(point[0]);
+      push(point[1]);
+    }
+    push(texCoords.empty() ? 0 : 1);
+    for (const auto& point : texCoords) {
+      push(point[0]);
+      push(point[1]);
+    }
+    push(colors.empty() ? 0 : 1);
+    for (uint32_t color : colors) {
+      push(static_cast<double>(color));
+    }
+    push(static_cast<double>(indices.size()));
+    for (int index : indices) {
+      push(static_cast<double>(index));
+    }
+    pushPaint(0xffffffff, false);
+  }
+
   /// An atlas node, mirroring writeAtlas() in compile.ts.
   void pushAtlas(int32_t handle, const std::vector<std::array<double, 7>>& sprites,
                  int sampling = 1) {
@@ -2957,6 +2986,104 @@ void anAtlasPlacesEverySpriteItIsGiven() {
   CHECK(pixelAt(halves, 32 + 8, 32 - 8)[2] == 255);
 }
 
+/// A mesh below the shape level: per-vertex colour, and indices reusing vertices.
+void verticesDrawTheTrianglesTheyDescribe() {
+  // One triangle covering the top-left half of a 64x64 canvas, paint-coloured.
+  Writer plain;
+  plain.push(1);
+  plain.pushVertices({{0, 0}, {56, 0}, {0, 56}});
+  auto flat = render(plain.finish(), {}, {});
+  CHECK(pixelAt(flat, 8, 8)[0] == 255 && pixelAt(flat, 8, 8)[2] == 255);
+  // Past the hypotenuse nothing was drawn.
+  CHECK(pixelAt(flat, 56, 56)[0] == 0);
+
+  // Per-vertex colour: red at the origin, blue at the far corner, blended between.
+  Writer shaded;
+  shaded.push(1);
+  shaded.pushVertices({{0, 0}, {56, 0}, {0, 56}}, {}, {0xffff0000, 0xff0000ff, 0xff0000ff});
+  auto blended = render(shaded.finish(), {}, {});
+  auto near = pixelAt(blended, 4, 4);
+  auto far = pixelAt(blended, 40, 4);
+  CHECK(near[0] > far[0] && far[2] > near[2]);
+
+  // Two triangles from four vertices: indices reuse the shared edge.
+  Writer quad;
+  quad.push(1);
+  quad.pushVertices({{8, 8}, {56, 8}, {8, 56}, {56, 56}}, {}, {}, {0, 1, 2, 1, 2, 3});
+  auto square = render(quad.finish(), {}, {});
+  CHECK(pixelAt(square, 12, 12)[0] == 255);
+  CHECK(pixelAt(square, 52, 52)[0] == 255);
+  CHECK(pixelAt(square, 4, 4)[0] == 0);
+
+  // The same four vertices as a strip need no indices at all.
+  Writer strip;
+  strip.push(1);
+  strip.pushVertices({{8, 8}, {56, 8}, {8, 56}, {56, 56}}, {}, {}, {}, 1);
+  auto stripped = render(strip.finish(), {}, {});
+  CHECK(pixelAt(stripped, 32, 32)[0] == 255);
+
+  // Fewer than three vertices describes no triangle and must draw nothing.
+  Writer degenerate;
+  degenerate.push(1);
+  degenerate.pushVertices({{0, 0}, {56, 0}});
+  CHECK(inkPixels(render(degenerate.finish(), {}, {})) == 0);
+
+  // An index past the last vertex would read another draw's buffer: skip the mesh.
+  Writer past;
+  past.push(1);
+  past.pushVertices({{8, 8}, {56, 8}, {8, 56}}, {}, {}, {0, 1, 3});
+  CHECK(inkPixels(render(past.finish(), {}, {})) == 0);
+  Writer negative;
+  negative.push(1);
+  negative.pushVertices({{8, 8}, {56, 8}, {8, 56}}, {}, {}, {0, 1, -1});
+  CHECK(inkPixels(render(negative.finish(), {}, {})) == 0);
+  // A node after a rejected mesh still parses, so the reader stayed in step.
+  Writer after;
+  after.push(2);
+  after.pushVertices({{8, 8}, {56, 8}, {8, 56}}, {}, {}, {0, 1, 3});
+  after.push(1);  // Rect
+  after.pushAnim(8);
+  after.pushAnim(8);
+  after.pushAnim(16);
+  after.pushAnim(16);
+  after.pushPaint(0xff00ff00, false);
+  CHECK(pixelAt(render(after.finish(), {}, {}), 16, 16)[1] == 255);
+}
+
+/// Texture coordinates against an image shader: the warp samples where it is told.
+void verticesSampleTheirTextureCoordinates() {
+  // Left half red, right half blue, sampled so the whole quad takes the blue half.
+  std::vector<uint8_t> half{255, 0, 0, 255, 0, 0, 255, 255};
+  auto split = registerPixels(2, 1, half);
+  CHECK(split.handle != 0);
+
+  Writer w;
+  w.push(1);
+  w.push(16);
+  w.push(0);
+  w.push(4);
+  const double quad[4][2] = {{8, 8}, {56, 8}, {8, 56}, {56, 56}};
+  for (const auto& point : quad) {
+    w.push(point[0]);
+    w.push(point[1]);
+  }
+  w.push(1);
+  // All four corners land in the right-hand pixel, in image pixel space.
+  for (int i = 0; i < 4; i++) {
+    w.push(1.5);
+    w.push(0.5);
+  }
+  w.push(0);
+  w.push(6);
+  for (int index : {0, 1, 2, 1, 2, 3}) {
+    w.push(index);
+  }
+  w.pushImageShaderPaint(split.handle, 0, 0);
+  auto warped = render(w.finish(), {}, {});
+  auto got = pixelAt(warped, 32, 32);
+  CHECK(got[2] == 255 && got[0] == 0);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -2988,6 +3115,8 @@ int main() {
   aMaskCutsItsContentDown();
   fillCoversTheWholeCanvas();
   anAtlasPlacesEverySpriteItIsGiven();
+  verticesDrawTheTrianglesTheyDescribe();
+  verticesSampleTheirTextureCoordinates();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

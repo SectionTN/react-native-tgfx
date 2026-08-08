@@ -53,6 +53,7 @@ A `ref` on `<Canvas>` gives a `CanvasHandle` for reading pixels back — see
 | `Path` | `path` — SVG path data, `string`; plus `start`, `end`, `fillType` and the path effects below |
 | `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` — see [images](/docs/images#image) |
 | `Atlas` | `image`, `sprites`, `sampling` — many sprites from one sheet in one node, see below |
+| `Vertices` | `vertices`, `colors`, `textures`, `indices`, `mode` — a raw triangle mesh, see below |
 | `Text` | `text`, `x`, `y`, plus the font and paragraph props — see [text](/docs/text) |
 | `TextPath` | `path`, `text`, `startOffset`, plus the font props — see [text](/docs/text) |
 | `Fill` | none of its own — covers the canvas |
@@ -178,6 +179,59 @@ applies them only to an alpha-only atlas.
 
 The `sprites` array is read when the scene compiles, so moving a particle field
 means a React render. A worklet-driven bulk update is tracked separately.
+
+### Vertices
+
+`<Vertices>` draws an arbitrary triangle mesh — the one component that works
+below the shape level. Mesh gradients, image warping, and quads you build
+yourself all live here.
+
+```tsx
+import { Canvas, Vertices } from 'react-native-tgfx'
+
+<Canvas style={{ flex: 1 }}>
+  <Vertices
+    vertices={[
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 0, y: 200 },
+      { x: 200, y: 200 },
+    ]}
+    colors={['#ff0000', '#00ff00', '#0000ff', '#ffff00']}
+    indices={[0, 1, 2, 1, 2, 3]}
+  />
+</Canvas>
+```
+
+`vertices` are canvas points. `colors`, if given, are one per vertex and are
+interpolated across each triangle — that is the whole mesh-gradient trick.
+`indices` reuse vertices so a shared edge is stored once; without them the
+vertices are taken in order. `mode` is `'triangles'` (default, three vertices per
+triangle) or `'triangleStrip'` (each new vertex closes a triangle with the
+previous two). Skia's `'triangleFan'` has no tgfx topology and is not offered.
+
+`textures` are one coordinate per vertex, in the **pixels** of the image behind
+an `<ImageShader>` on the same node — that is how you warp an image across a
+mesh. Without a shader they do nothing.
+
+An attribute array shorter than `vertices` is dropped rather than padded, and a
+longer one is truncated: the reader takes exactly one entry per vertex, so a
+partial block would put it out of step with the rest of the program.
+
+Every index must point at a vertex that exists. One that does not skips the whole
+mesh — nothing below this layer range-checks them, so an index past the end would
+sample another draw's buffer. An indexed mesh is also capped at 65536 vertices;
+past that it draws nothing. Both warn in dev.
+
+Like `<Atlas>`, the arrays are read when the scene compiles, so a moving mesh
+means a React render — a Reanimated shared value inside `vertices` is frozen at
+its last commit.
+
+How the colour is resolved follows tgfx: a shader with per-vertex colours
+multiplies the two; a shader alone gives the texture colour; per-vertex colours
+alone give the vertex colour; neither gives the paint colour. A solid
+`<ColorShader>` is folded into the paint colour before any of that, so per-vertex
+colours replace it rather than multiplying with it.
 
 ## Paint
 

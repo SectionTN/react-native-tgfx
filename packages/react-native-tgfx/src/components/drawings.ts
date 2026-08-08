@@ -5,6 +5,7 @@ import type {
   CircleProps,
   ImageProps,
   AtlasProps,
+  VerticesProps,
   LineProps,
   OvalProps,
   PaintComponentProps,
@@ -58,6 +59,13 @@ export const Image = NodeType.Image as unknown as FC<ImageProps>
  * paint and read. The GPU batches either form the same way.
  */
 export const Atlas = NodeType.Atlas as unknown as FC<AtlasProps>
+
+/**
+ * An arbitrary triangle mesh: per-vertex colours for mesh gradients, texture
+ * coordinates against an `<ImageShader>` for image warping. Nothing else in the
+ * library draws below the shape level.
+ */
+export const Vertices = NodeType.Vertices as unknown as FC<VerticesProps>
 
 /**
  * Text with its first baseline at (`x`, `y`). Breaks at `\n`, and wraps inside

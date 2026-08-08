@@ -86,3 +86,11 @@ against the live value array each frame.
   node, N sprites — 7 words each against ~16 for an `<Image>`. An older reader
   would take the handle for a
   group's transform-op count.
+- **24** — adds the vertices kind (16): a topology word (0 triangles, 1 strip), a
+  vertex count, then two words per position; a flag and, if set, two words per
+  texture coordinate; a flag and, if set, one packed colour per vertex; then an
+  index count and that many indices. Each optional block carries its own flag, so
+  the reader never infers presence from a length. Indices are read through the
+  same range guard as any other integer and the whole mesh is dropped if one
+  points past the vertices. An older reader would take the topology for a group's
+  transform-op count.

@@ -179,6 +179,29 @@ export interface AtlasProps extends PaintProps {
   sampling?: Sampling
 }
 
+/** `'triangles'` takes vertices in threes; `'triangleStrip'` shares two per triangle. */
+export type MeshTopology = 'triangles' | 'triangleStrip'
+
+export interface VerticesProps extends PaintProps {
+  /** Vertex positions, in canvas points. */
+  vertices: Vector[]
+  /** One colour per vertex, interpolated across each triangle. */
+  colors?: Color[]
+  /**
+   * One texture coordinate per vertex, in the **pixels** of the image behind an
+   * `<ImageShader>` on this node's paint. Without a shader they do nothing.
+   */
+  textures?: Vector[]
+  /**
+   * Indices into `vertices`. Without them the vertices are taken in order.
+   * Indexed meshes are capped at 65536 vertices, and every index must be in
+   * range — one that is not skips the whole mesh.
+   */
+  indices?: number[]
+  /** Defaults to `'triangles'`. */
+  mode?: MeshTopology
+}
+
 export interface CameraFrameProps extends PaintProps {
   /**
    * A hardware-buffer handle from `imageFromNativeBuffer`, re-pointed at each

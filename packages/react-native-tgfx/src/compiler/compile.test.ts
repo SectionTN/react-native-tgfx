@@ -1254,3 +1254,69 @@ test('<Atlas> encodes a hole in the sprite array rather than throwing', () => {
     0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 5, 5,
   ])
 })
+
+test('<Vertices> writes positions, then the optional blocks in order', () => {
+  const { used } = compile([
+    node(NodeType.Vertices, {
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 0, y: 10 },
+      ],
+      colors: ['#ff0000', '#00ff00', '#0000ff'],
+      indices: [0, 1, 2],
+      mode: 'triangleStrip',
+    }),
+  ])
+  // kind, topology, count, then two words per vertex
+  expect(used[4]).toBe(Kind.Vertices)
+  expect(used[5]).toBe(1)
+  expect(used[6]).toBe(3)
+  expect(Array.from(used.subarray(7, 13))).toEqual([0, 0, 10, 0, 0, 10])
+  expect(used[13]).toBe(0) // no texture coordinates
+  expect(used[14]).toBe(1) // colours follow
+  expect(Array.from(used.subarray(15, 18))).toEqual([
+    0xffff0000, 0xff00ff00, 0xff0000ff,
+  ])
+  expect(used[18]).toBe(3)
+  expect(Array.from(used.subarray(19, 22))).toEqual([0, 1, 2])
+})
+
+test('<Vertices> drops an attribute array shorter than the vertices', () => {
+  const { used } = compile([
+    node(NodeType.Vertices, {
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+      ],
+      colors: ['#ff0000'],
+      textures: [{ x: 1, y: 1 }],
+    }),
+  ])
+  expect(used[6]).toBe(2)
+  expect(used[11]).toBe(0) // textures dropped
+  expect(used[12]).toBe(0) // colours dropped
+  expect(used[13]).toBe(0) // no indices
+})
+
+test('<Vertices> with nothing at all still encodes a well-formed node', () => {
+  const { used } = compile([node(NodeType.Vertices, {})])
+  expect(used[4]).toBe(Kind.Vertices)
+  expect(used[6]).toBe(0)
+})
+
+test('<Vertices> writes an out-of-range index through for native to reject', () => {
+  const { used } = compile([
+    node(NodeType.Vertices, {
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+      ],
+      indices: [0, 1, 9, -1, 2.5],
+    }),
+  ])
+  expect(used[15]).toBe(5)
+  // Truncated, never rounded: the reader range-checks and drops the whole mesh.
+  expect(Array.from(used.subarray(16, 21))).toEqual([0, 1, 9, -1, 2])
+})
