@@ -1263,7 +1263,9 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     tgfx::Paint maskPaint;
     maskPaint.setBlendMode(tgfx::BlendMode::DstIn);
     if (cmd.maskLuminance) {
-      maskPaint.setColorFilter(tgfx::ColorFilter::Luma());
+      // Built once: Luma is stateless, and this runs per masked node per frame.
+      static const auto luma = tgfx::ColorFilter::Luma();
+      maskPaint.setColorFilter(luma);
     }
     canvas->saveLayer(&maskPaint);
     // Clear, not a transparent colour: a zero-alpha fill is dropped and widens nothing.
