@@ -29,7 +29,7 @@ import {
   type MaybeSharedValue,
 } from './values'
 import { Kind, type SceneWriter } from './writer'
-import type { UniformValue } from '../types'
+import type { ClipRect, UniformValue } from '../types'
 
 interface GlyphInput {
   id: number
@@ -479,22 +479,59 @@ function writeOps(
   return count
 }
 
+const CLIP = { none: 0, rect: 1, rrect: 2, path: 3 } as const
+
+/** A clip block: its kind, then the geometry that kind needs. */
+function writeClip(w: SceneWriter, clip: ClipRect | string): void {
+  if (typeof clip === 'string') {
+    w.push(CLIP.path)
+    w.pushString(clip)
+    return
+  }
+  const rx = clip.rx !== undefined ? clip.rx : clip.r
+  const ry = clip.ry !== undefined ? clip.ry : clip.r
+  w.push(rx || ry ? CLIP.rrect : CLIP.rect)
+  w.push(resolveNumber(clip.x))
+  w.push(resolveNumber(clip.y))
+  w.push(resolveNumber(clip.width))
+  w.push(resolveNumber(clip.height))
+  if (rx || ry) {
+    w.push(resolveNumber(rx, 0))
+    w.push(resolveNumber(ry, 0))
+  }
+}
+
 function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
+  const p = node.props
   const local = localPaint(w, node)
+  const clip = p.clip as ClipRect | string | undefined
+  // A layer composites the subtree once, so the whole inherited alpha rides it, not the children.
+  const layer = p.layer === true
+  const alpha = mulOpacity(ctx.opacity, local.opacity)
   const childCtx: CompileCtx = {
     paint: mergePaint(ctx.paint, local),
-    opacity: mulOpacity(ctx.opacity, local.opacity),
+    opacity: layer ? 1 : alpha,
   }
-  w.push(Kind.Group)
+  const extended = clip != null || layer
+  w.push(extended ? Kind.GroupLayer : Kind.Group)
   const opCountAt = w.reserve()
   w.patch(
     opCountAt,
-    writeOps(
-      w,
-      (node.props.transform as Transform) ?? [],
-      vec(node.props.origin)
-    )
+    writeOps(w, (p.transform as Transform) ?? [], vec(p.origin))
   )
+  if (extended) {
+    w.push(
+      (clip != null ? 1 : 0) |
+        (p.invertClip === true ? 2 : 0) |
+        (layer ? 4 : 0)
+    )
+    if (clip != null) {
+      writeClip(w, clip)
+    }
+    if (layer) {
+      w.pushAnim(alpha, 1)
+    }
+  }
   const childCountAt = w.reserve()
   w.patch(childCountAt, writeNodes(w, node.children, childCtx))
 }

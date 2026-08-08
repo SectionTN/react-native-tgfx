@@ -821,6 +821,114 @@ void aMiterLimitCutsBackASharpSpike() {
   CHECK(opaqueAt(spike(0), 32, 2));
 }
 
+/// A group clip confines its subtree; inverting it keeps exactly the complement.
+void aGroupClipConfinesItsSubtree() {
+  // kind 13 (GroupLayer): opCount, flags, clip block, [alpha], childCount, children.
+  // clipKind 3 reads its path from the string table instead of four geometry words.
+  auto scene = [](int clipKind, bool invert) {
+    Writer w;
+    w.push(1);
+    w.push(13);
+    w.push(0);  // no transform ops
+    w.push(1 | (invert ? 2 : 0));
+    w.push(clipKind);
+    if (clipKind == 3) {
+      w.push(0);
+    } else {
+      w.push(8);
+      w.push(8);
+      w.push(24);
+      w.push(24);
+      if (clipKind == 2) {
+        w.push(6);
+        w.push(6);
+      }
+    }
+    w.push(1);  // one child
+    w.push(9);  // Fill: covers the canvas, so only the clip decides what lands
+    w.pushPaint(0xff3366cc, false);
+    return render(w.finish(), {"M8 8 L32 8 L32 32 L8 32 Z"}, {});
+  };
+
+  auto clipped = scene(1, false);
+  CHECK(opaqueAt(clipped, 16, 16));    // inside the clip
+  CHECK(!opaqueAt(clipped, 2, 2));     // outside it
+  CHECK(!opaqueAt(clipped, 40, 40));
+
+  auto inverted = scene(1, true);
+  CHECK(!opaqueAt(inverted, 16, 16));  // exactly the complement
+  CHECK(opaqueAt(inverted, 2, 2));
+  CHECK(opaqueAt(inverted, 40, 40));
+
+  // A round clip cuts its corners off; the centre of the box is still covered.
+  auto rounded = scene(2, false);
+  CHECK(opaqueAt(rounded, 20, 20));
+  CHECK(opaqueAt(clipped, 9, 9));
+  CHECK(pixelAt(rounded, 9, 9) != pixelAt(clipped, 9, 9));
+
+  // A path clip covers the same box, so it must land exactly where the rect clip did.
+  CHECK(scene(3, false) == clipped);
+  CHECK(scene(3, true) == inverted);
+}
+
+/// Two overlapping half-opaque rects: a layer composites once, so the overlap does not darken.
+void aLayerCompositesTheSubtreeOnce() {
+  auto scene = [](bool layer) {
+    Writer w;
+    w.push(1);
+    w.push(layer ? 13 : 0);
+    w.push(0);
+    if (layer) {
+      w.push(4);       // layer, no clip
+      w.pushAnim(0.5);
+    }
+    w.push(2);
+    for (int i = 0; i < 2; i++) {
+      w.push(1);  // Rect
+      w.pushAnim(4 + i * 12);
+      w.pushAnim(4);
+      w.pushAnim(28);
+      w.pushAnim(28);
+      // Without a layer the group's alpha has to ride each child instead.
+      w.push(0xff3366cc);
+      w.push(2);
+      w.pushAnim(1);
+      w.push(0);
+      w.push(0);
+      w.pushAnim(layer ? 1.0 : 0.5);
+      w.push(-1);
+    }
+    return render(w.finish(), {}, {});
+  };
+
+  auto layered = scene(true);
+  auto perChild = scene(false);
+  // Off the overlap both agree; inside it the per-child version has blended twice.
+  CHECK(pixelAt(layered, 8, 16) == pixelAt(perChild, 8, 16));
+  CHECK(pixelAt(layered, 20, 16) != pixelAt(perChild, 20, 16));
+  CHECK(pixelAt(layered, 20, 16) == pixelAt(layered, 8, 16));
+
+  // Clip and layer together: the clip still bites, and the surviving ink is faded once.
+  Writer both;
+  both.push(1);
+  both.push(13);
+  both.push(0);
+  both.push(1 | 4);  // clip + layer
+  both.push(1);      // rect clip
+  both.push(0);
+  both.push(0);
+  both.push(24);
+  both.push(24);
+  both.pushAnim(0.5);
+  both.push(1);
+  both.push(9);  // Fill
+  both.pushPaint(0xff3366cc, false);
+  auto clipLayer = render(both.finish(), {}, {});
+  CHECK(opaqueAt(clipLayer, 12, 12));
+  CHECK(!opaqueAt(clipLayer, 40, 40));
+  CHECK(pixelAt(clipLayer, 12, 12) == pixelAt(layered, 8, 16));
+}
+
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -2395,6 +2503,8 @@ int main() {
   aRuntimeShaderChildNestsInOneProgram();
   twoShadersWithChildrenDoNotCollide();
   aMiterLimitCutsBackASharpSpike();
+  aGroupClipConfinesItsSubtree();
+  aLayerCompositesTheSubtreeOnce();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

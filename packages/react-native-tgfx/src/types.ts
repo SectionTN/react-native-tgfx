@@ -54,9 +54,29 @@ export interface PaintProps {
   children?: ReactNode
 }
 
+/** A clip shape: a rect, a rounded rect when `r`/`rx`/`ry` is set, or SVG path data. */
+export interface ClipRect {
+  x: number
+  y: number
+  width: number
+  height: number
+  r?: number
+  rx?: number
+  ry?: number
+}
+
 export interface GroupProps extends PaintProps {
   transform?: Transform
   origin?: Vector
+  /** Confines the subtree to this shape. Read once per commit, like `<Path path>`. */
+  clip?: ClipRect | string
+  /** Keep what falls *outside* `clip` instead of inside. */
+  invertClip?: boolean
+  /**
+   * Composite the subtree once into an offscreen layer. Without it `opacity`
+   * multiplies into each child, so overlapping children double-blend.
+   */
+  layer?: boolean
 }
 
 export interface RectProps extends PaintProps {

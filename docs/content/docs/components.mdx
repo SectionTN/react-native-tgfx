@@ -145,6 +145,9 @@ import { Group, Rect } from 'react-native-tgfx'
 | --- | --- |
 | `transform` | `Transform[]` |
 | `origin` | `Vector` — `{ x, y }`, the point transforms are applied about |
+| `clip` | `{ x, y, width, height, r?, rx?, ry? }` or SVG path data |
+| `invertClip` | `boolean` — keep what falls outside `clip` instead of inside |
+| `layer` | `boolean` — composite the subtree once, offscreen |
 
 Operations apply in array order. The full set is `translate`, `translateX`,
 `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateZ`, `skewX`, `skewY`.
@@ -156,6 +159,45 @@ carries no unit. Convert in your worklet if you are thinking in degrees.
 When no operand is animated the matrix is folded at compile time and costs
 nothing per frame. One animated operand moves the whole group onto the per-frame
 path — worth knowing when a static group sits inside an animated one.
+
+### Clipping
+
+`clip` confines the subtree. Give it a rect, add `r` (or `rx`/`ry`) for a rounded
+one, or hand it SVG path data for anything else. `invertClip` keeps the
+complement instead — a spotlight cut out of a dim overlay is `clip` plus
+`invertClip`.
+
+```tsx
+<Group clip={{ x: 0, y: 0, width: 100, height: 100, r: 12 }}>
+  <Image x={0} y={0} width={100} height={100} image={photo} />
+</Group>
+```
+
+Like `<Path path>`, `clip` is read once per commit — a `SharedValue` there would
+never animate.
+
+A rect or rounded-rect clip is free: the GPU scissors it, with no offscreen. A
+path clip rasterises a mask per group per frame, which is far more expensive.
+`invertClip` moves a rect into that second class too, because an inverse fill
+only exists on a path — so invert a rect clip when you want the effect, not out
+of habit.
+
+### Layers
+
+By default a group's `opacity` multiplies into each child, so two overlapping
+children blend twice and the overlap reads darker than either one. `layer`
+composites the whole subtree once into an offscreen and applies the opacity to
+the result, which is what you usually mean:
+
+```tsx
+<Group layer opacity={0.5}>
+  <Circle cx={40} cy={40} r={30} color="#4F8EF7" />
+  <Circle cx={70} cy={40} r={30} color="#4F8EF7" />
+</Group>
+```
+
+That offscreen costs a render target, so reach for it when the double-blend is
+visible, not by default.
 
 ## Gradients and noise
 

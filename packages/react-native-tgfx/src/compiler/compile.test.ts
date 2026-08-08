@@ -98,6 +98,91 @@ test('nests groups with their transform ops and child count', () => {
   expect(used[13]).toBe(Kind.Rect)
 })
 
+test('a plain group writes exactly what it always did', () => {
+  const plain = compile([
+    node(NodeType.Group, { transform: [{ translateX: 10 }] }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(plain.used[4]).toBe(Kind.Group)
+  // Only a group that clips or layers takes the extended kind, and only it costs words.
+  const clipped = compile([
+    node(
+      NodeType.Group,
+      {
+        transform: [{ translateX: 10 }],
+        clip: { x: 1, y: 2, width: 3, height: 4 },
+      },
+      [node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })]
+    ),
+  ])
+  expect(clipped.used[4]).toBe(Kind.GroupLayer)
+  expect(clipped.used.length).toBe(plain.used.length + 6)
+})
+
+test('a group clip writes its kind and geometry, and a path clip interns', () => {
+  const rect = compile([
+    node(NodeType.Group, { clip: { x: 1, y: 2, width: 3, height: 4 } }, []),
+  ])
+  // kind | opCount | flags | clipKind x y w h | childCount
+  expect(Array.from(rect.used.subarray(4, 12))).toEqual([13, 0, 1, 1, 1, 2, 3, 4])
+
+  const rounded = compile([
+    node(NodeType.Group, { clip: { x: 1, y: 2, width: 3, height: 4, r: 5 } }, []),
+  ])
+  expect(Array.from(rounded.used.subarray(6, 14))).toEqual([1, 2, 1, 2, 3, 4, 5, 5])
+
+  const path = compile([
+    node(NodeType.Group, { clip: 'M0 0 L1 1', invertClip: true }, []),
+  ])
+  expect(path.strings).toEqual(['M0 0 L1 1'])
+  expect(Array.from(path.used.subarray(6, 9))).toEqual([1 | 2, 3, 0])
+})
+
+test('a layer carries the group alpha instead of pushing it into the children', () => {
+  const layered = compile([
+    node(NodeType.Group, { layer: true, opacity: 0.5 }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  // flags = layer, then the layer alpha, then one child whose own alpha is untouched.
+  expect(layered.used[6]).toBe(4)
+  expect(layered.used[7]).toBe(0.5)
+  expect(layered.used[8]).toBe(1)
+  expect(layered.used[9]).toBe(Kind.Rect)
+  expect(layered.used[layered.used.length - 3]).toBe(1)
+
+  const flattened = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(flattened.used[flattened.used.length - 3]).toBe(0.5)
+})
+
+test('a nested layer applies the inherited opacity once, not twice', () => {
+  const nested = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      node(NodeType.Group, { layer: true }, [
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+    ]),
+  ])
+  // The whole inherited alpha rides the layer; the child stays at 1 rather than squaring it.
+  expect(nested.used[10]).toBe(0.5)
+  expect(nested.used[nested.used.length - 3]).toBe(1)
+
+  const both = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      node(NodeType.Group, { layer: true, opacity: 0.5 }, [
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+    ]),
+  ])
+  expect(both.used[10]).toBe(0.25)
+  expect(both.used[both.used.length - 3]).toBe(1)
+})
+
 test('multiplies group opacity into the child alpha', () => {
   const { used } = compile([
     node(NodeType.Group, { opacity: 0.5 }, [
