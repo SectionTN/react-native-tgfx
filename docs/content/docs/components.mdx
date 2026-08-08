@@ -120,9 +120,14 @@ import { DashPathEffect, Path } from 'react-native-tgfx'
 | `<DashPathEffect>` | `intervals` — alternating on/off lengths, even count; `phase` — offset, animatable |
 | `<CornerPathEffect>` | `r` — corner radius, applied before any stroke |
 
-Effects apply corner, then dash, then trim — the order Skia uses. A path whose
-trim and phase are all static is reshaped once at commit; animate any of them and
-it is reshaped per frame, which is the cost of the animation.
+Trim is applied first — react-native-skia bakes it into the path the same way —
+then corner, then dash. So a dash pattern re-flows as a trim shortens the path
+rather than staying pinned in place.
+
+`intervals` needs an even count of at least two; anything else is skipped and the
+path draws solid, with a warning in dev. A path whose trim and phase are all
+static is reshaped once at commit; animate either and it is reshaped per frame,
+which is the cost of the animation.
 
 ## Paint
 

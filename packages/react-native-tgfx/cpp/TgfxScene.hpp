@@ -156,6 +156,7 @@ struct PathEffectCmd {
   AnimF start{0, -1};
   AnimF end{1, -1};
   std::vector<float> intervals;
+  /// Only ever set for an even count of at least two, which is all MakeDash accepts.
   bool dash = false;
   AnimF phase{0, -1};
   float corner = 0;
@@ -165,7 +166,7 @@ struct PathEffectCmd {
     return start.slot >= 0 || end.slot >= 0 || phase.slot >= 0;
   }
 
-  /// Corner, then dash, then trim — the order Skia applies them in.
+  /// Trim first, as react-native-skia bakes it into the path, then corner and dash.
   void apply(tgfx::Path* path, std::span<const double> v) const;
 };
 

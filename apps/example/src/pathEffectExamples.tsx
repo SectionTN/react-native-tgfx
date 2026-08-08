@@ -28,7 +28,7 @@ export function PathEffectSection() {
 
   return (
     <>
-      <Panel label="DashPathEffect — static · marching phase" height={110}>
+      <Panel label="DashPathEffect — static intervals" height={110}>
         <Path path={ZIGZAG} color="#1C1C1E" style="stroke" strokeWidth={4}>
           <DashPathEffect intervals={[12, 8]} />
         </Path>

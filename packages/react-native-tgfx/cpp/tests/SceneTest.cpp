@@ -943,19 +943,14 @@ void aLayerCompositesTheSubtreeOnce() {
 /// Dash, corner and trim reshape the geometry; trim's slots move without a re-commit.
 void pathEffectsReshapeTheGeometry() {
   // path | flags | [start end] | [count intervals phase] | [corner] then the paint.
-  auto stroke = [](int flags, const std::vector<double>& block,
-                   const std::vector<double>& values, int startSlot = -1) {
+  auto stroke = [](int flags, const std::vector<double>& block) {
     Writer w;
     w.push(1);
     w.push(6);
     w.push(0);
     w.push(flags);
-    for (size_t i = 0; i < block.size(); i++) {
-      if (startSlot >= 0 && i == 0) {
-        w.pushAnim(block[i], startSlot);
-      } else {
-        w.push(block[i]);
-      }
+    for (double word : block) {
+      w.push(word);
     }
     w.push(0xff000000);
     w.push(1 | 2);
@@ -964,25 +959,44 @@ void pathEffectsReshapeTheGeometry() {
     w.push(0);
     w.pushAnim(1);
     w.push(-1);
-    return render(w.finish(), {"M4 32 L60 32"}, values);
+    return render(w.finish(), {"M4 32 L60 32"}, {});
   };
 
-  auto solid = stroke(0, {}, {});
+  auto solid = stroke(0, {});
   CHECK(anyPixelSet(solid));
 
   // A dash removes ink between the on-intervals, so the same line covers fewer pixels.
-  auto dashed = stroke(2, {2, 8, 8, 0}, {});
+  auto dashed = stroke(2, {2, 8, 8, 0});
   CHECK(anyPixelSet(dashed));
   CHECK(inkPixels(dashed) < inkPixels(solid));
 
   // Phase slides the pattern, so the same intervals land elsewhere.
-  CHECK(stroke(2, {2, 8, 8, 4}, {}) != dashed);
+  CHECK(stroke(2, {2, 8, 8, 4}) != dashed);
 
   // Trim keeps the first half only.
-  auto half = stroke(1, {0, 0.5}, {});
+  auto half = stroke(1, {0, 0.5});
   CHECK(inkPixels(half) < inkPixels(solid));
   CHECK(opaqueAt(half, 10, 32));
   CHECK(!opaqueAt(half, 55, 32));
+
+  // An even-odd fill has to survive corner and dash, which rebuild the path.
+  auto donut = [](int flags, const std::vector<double>& block) {
+    Writer w;
+    w.push(1);
+    w.push(6);
+    w.push(0);
+    w.push(flags);
+    for (double word : block) {
+      w.push(word);
+    }
+    w.pushPaint(0xff000000, false);
+    return render(w.finish(),
+                  {"M4 4 L60 4 L60 60 L4 60 Z M20 20 L44 20 L44 44 L20 44 Z"}, {});
+  };
+  CHECK(!opaqueAt(donut(8, {}), 32, 32));          // the hole is open
+  CHECK(opaqueAt(donut(0, {}), 32, 32));           // winding fills it
+  CHECK(!opaqueAt(donut(8 | 4, {6}), 32, 32));     // still open through a corner effect
+  CHECK(!opaqueAt(donut(8 | 2, {2, 6, 6, 0}), 32, 32));  // and through a dash
 
   // An animated trim re-applies per frame: the same program, two different values.
   tgfxrn::SceneRenderer renderer;

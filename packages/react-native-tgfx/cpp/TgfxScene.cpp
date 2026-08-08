@@ -383,6 +383,13 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
 }  // namespace
 
 void PathEffectCmd::apply(tgfx::Path* path, std::span<const double> v) const {
+  // Corner and dash rebuild the path and drop its fill type, so carry it across them.
+  auto fill = path->getFillType();
+  if (trim) {
+    if (auto effect = tgfx::PathEffect::MakeTrim(start.resolve(v), end.resolve(v))) {
+      effect->filterPath(path);
+    }
+  }
   if (corner > 0) {
     if (auto effect = tgfx::PathEffect::MakeCorner(corner)) {
       effect->filterPath(path);
@@ -395,11 +402,7 @@ void PathEffectCmd::apply(tgfx::Path* path, std::span<const double> v) const {
       effect->filterPath(path);
     }
   }
-  if (trim) {
-    if (auto effect = tgfx::PathEffect::MakeTrim(start.resolve(v), end.resolve(v))) {
-      effect->filterPath(path);
-    }
-  }
+  path->setFillType(fill);
 }
 
 std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
@@ -891,7 +894,8 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
           for (int i = 0; i < count && r.ok; i++) {
             effects->intervals.push_back(static_cast<float>(r.next()));
           }
-          effects->dash = effects->intervals.size() >= 2;
+          // MakeDash also rejects an odd count, so match it rather than build a dead effect.
+          effects->dash = effects->intervals.size() >= 2 && effects->intervals.size() % 2 == 0;
           effects->phase = r.nextAnim();
         }
         if ((flags & 4) != 0) {
