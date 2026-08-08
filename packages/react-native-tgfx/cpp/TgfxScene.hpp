@@ -249,6 +249,14 @@ class SceneRenderer {
 
   void render(tgfx::Canvas* canvas, std::span<const double> values);
 
+  /**
+   * Index paths of the nodes whose geometry contains the point, front-to-back.
+   * Flattened as [depth, i0, i1, ..., depth, j0, ...] so it crosses the bridge
+   * as one array. `precise` tests the filled region rather than the bounds.
+   */
+  std::vector<double> hitTest(float x, float y, bool precise,
+                              std::span<const double> values);
+
   void clearCaches();
 
  private:

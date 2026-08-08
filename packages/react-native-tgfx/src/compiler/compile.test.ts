@@ -1,5 +1,9 @@
-import { expect, test } from 'bun:test'
+import { expect, mock, test } from 'bun:test'
+
+// createHandle reaches for runOnJS; this file has no other reanimated dependency.
+mock.module('react-native-reanimated', () => ({}))
 import { NodeType, type Node } from '../reconciler/types'
+import { createHandle } from '../imperative'
 import { compileScene } from './compile'
 import { Kind, SCENE_VERSION, SceneWriter } from './writer'
 
@@ -1355,4 +1359,43 @@ test('<Group picture> keeps the clip and layer bits alongside it', () => {
     ]),
   ])
   expect(used[6]).toBe(1 | 4 | 8)
+})
+
+test('a handled node records where it sits in the drawn tree', () => {
+  const outer = createHandle()
+  const inner = createHandle()
+  const writer = new SceneWriter()
+  compileScene(
+    [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      node(NodeType.Group, {}, [
+        node(NodeType.Circle, { cx: 0, cy: 0, r: 1, ref: inner }),
+      ]),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, ref: outer }),
+    ],
+    writer
+  )
+  expect(writer.refPaths.map((entry) => entry.path)).toEqual([[1, 0], [2]])
+})
+
+// Both lists restart at 0 natively, so a shared path would name the matte instead.
+test('a handle in a mask source cannot collide with one in its content', () => {
+  const inSource = createHandle()
+  const inContent = createHandle()
+  const writer = new SceneWriter()
+  compileScene(
+    [
+      node(NodeType.Mask, {}, [
+        node(NodeType.MaskSource, {}, [
+          node(NodeType.Circle, { cx: 0, cy: 0, r: 1, ref: inSource }),
+        ]),
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, ref: inContent }),
+      ]),
+    ],
+    writer
+  )
+  const paths = writer.refPaths.map((entry) => entry.path.join(','))
+  expect(new Set(paths).size).toBe(2)
+  expect(paths).toContain('0,0')
+  expect(paths).toContain('0,-1,0')
 })

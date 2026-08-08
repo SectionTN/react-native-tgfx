@@ -1,3 +1,4 @@
+import type { NodeHandle } from '../imperative'
 import { compileScene } from '../compiler/compile'
 import type { MaybeSharedValue } from '../compiler/values'
 import { SceneWriter } from '../compiler/writer'
@@ -23,6 +24,10 @@ export class TgfxContainer implements NodeOwner {
   muted = false
   onValues: ((values: number[]) => void) | null = null
   private readonly writer = new SceneWriter()
+  /// Rebuilt each commit: hit results come back as index paths and need naming.
+  refPaths: { path: number[]; ref: NodeHandle }[] = []
+  /// Keyed for hit results, which arrive as paths and would otherwise rescan the list.
+  readonly byPath = new Map<string, NodeHandle>()
   private readonly onCommit: CommitListener
   private values: MaybeSharedValue<unknown>[] = []
   private readonly scratch: number[] = []
@@ -40,12 +45,17 @@ export class TgfxContainer implements NodeOwner {
     if (this.muted) {
       return
     }
-    const { buffer, strings, values, refs } = compileScene(
+    const { buffer, strings, values, refs, refPaths } = compileScene(
       this.root,
       this.writer,
       fromReact
     )
     this.values = values
+    this.refPaths = refPaths
+    this.byPath.clear()
+    for (const entry of refPaths) {
+      this.byPath.set(entry.path.join(','), entry.ref)
+    }
     for (let i = 0; i < refs.length; i++) {
       const ref = refs[i]!
       if (!warnedShared && refs.indexOf(ref) !== i) {

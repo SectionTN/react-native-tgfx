@@ -16,6 +16,7 @@ import {
   Shader,
   Text,
   useNode,
+  type CanvasHandle,
 } from 'react-native-tgfx';
 
 const H = 160;
@@ -31,7 +32,50 @@ half4 main(float2 pos) {
 }
 `;
 
+/** Tap the canvas: hitTest names whichever shape is under the point. */
+function HitTesting() {
+  const canvas = useRef<CanvasHandle>(null);
+  const disc = useNode();
+  const card = useNode();
+  const [hit, setHit] = useState('tap a shape');
+
+  const onTouch = (event: { nativeEvent: { locationX: number; locationY: number } }) => {
+    const { locationX, locationY } = event.nativeEvent;
+    const hits = canvas.current?.hitTest(locationX, locationY, { precise: true }) ?? [];
+    const named = hits.map(entry =>
+      entry.node === disc ? 'circle' : entry.node === card ? 'card' : `unnamed ${entry.path.join('.')}`
+    );
+    setHit(named.length === 0 ? 'nothing there' : `top: ${named[0]} · all: ${named.join(', ')}`);
+  };
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>hitTest — tap to name what is under the point</RNText>
+      <View onStartShouldSetResponder={() => true} onResponderRelease={onTouch}>
+        <Canvas ref={canvas} style={[styles.canvas, { height: 130 }]}>
+          <Fill color="#f2f2f7" />
+          <RoundedRect ref={card} x={16} y={16} width={120} height={90} r={14} color="#34c759" />
+          <Group transform={[{ translateX: 170 }]}>
+            <Circle ref={disc} cx={50} cy={60} r={44} color="#0a84ff" />
+          </Group>
+          <Circle cx={300} cy={60} r={22} color="#ff9500" />
+        </Canvas>
+      </View>
+      <RNText style={styles.caption}>{hit}</RNText>
+    </View>
+  );
+}
+
 export function ImperativeSection() {
+  return (
+    <>
+      <HitTesting />
+      <ImperativeHandles />
+    </>
+  );
+}
+
+function ImperativeHandles() {
   const box = useNode();
   const dot = useNode();
   const label = useNode();
@@ -175,6 +219,7 @@ export function ImperativeSection() {
 }
 
 const styles = StyleSheet.create({
+  caption: { fontSize: 11, color: '#8e8e93', marginTop: 6 },
   section: { paddingHorizontal: 16, paddingVertical: 12 },
   label: { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 8 },
   canvas: { height: H, backgroundColor: '#0B1020', borderRadius: 12 },

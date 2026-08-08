@@ -1,0 +1,33 @@
+# Contributing
+
+## Imperative APIs first
+
+A lesson learned the hard way (see
+[#204](https://github.com/riteshshukla04/react-native-tgfx/issues/204)): every
+API that shipped declarative-only had its imperative path retrofitted later, or
+never. When adding a new drawable, paint, or effect:
+
+1. **Design the imperative path first** — which props are value slots, what the
+   wire format carries, what a write from a worklet costs.
+2. **Then wrap the declarative component over it.**
+
+A PR that adds a declarative API with no slot story for its animatable props is
+incomplete.
+
+## Performance — no compromise
+
+The imperative path is the hot path. Non-negotiables:
+
+- A slot patch happens **in native**, on the render thread, resolved at draw.
+  No JSON, no per-write parse, no scene re-encode.
+- Slot writes are **worklet-safe** — they must work while the JS thread is
+  blocked.
+- **Zero per-frame JS allocations.** Bulk data travels via a pre-allocated
+  shared `ArrayBuffer` JS writes into, not a fresh array per frame.
+- Re-encode is the fallback, never the design.
+
+## Docs
+
+Every PR that changes the public surface updates `docs/content/docs` (and
+`packages/react-native-tgfx/docs/wire-format.md` when the wire format moves).
+Code-only PRs are incomplete.

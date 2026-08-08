@@ -81,6 +81,9 @@ export class SceneWriter {
   private readonly stringIds = new Map<string, number>()
   readonly values: MaybeSharedValue<unknown>[] = []
   readonly refs: NodeHandle[] = []
+  /// Where each handled node sits in the drawn tree, so a native hit can be named.
+  readonly refPaths: { path: number[]; ref: NodeHandle }[] = []
+  readonly pathStack: number[] = []
   reseed = true
   private readonly slots = new Map<object, number>()
 
@@ -91,6 +94,8 @@ export class SceneWriter {
     this.stringIds.clear()
     this.values.length = 0
     this.refs.length = 0
+    this.refPaths.length = 0
+    this.pathStack.length = 0
     this.slots.clear()
   }
 

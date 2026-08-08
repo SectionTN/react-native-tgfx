@@ -193,6 +193,18 @@ void TgfxSnapshotRelease(void* token) {
   [self wakeUp];
 }
 
+- (NSArray<NSNumber*>*)hitTestX:(float)x y:(float)y precise:(BOOL)precise {
+  if (_renderer == nullptr) {
+    return @[];
+  }
+  auto hits = _renderer->hitTest(x, y, precise == YES);
+  NSMutableArray<NSNumber*>* out = [NSMutableArray arrayWithCapacity:hits.size()];
+  for (double value : hits) {
+    [out addObject:@(value)];
+  }
+  return out;
+}
+
 - (void)snapshotWithFormat:(NSString*)format
                    quality:(int)quality
                       rect:(CGRect)rect

@@ -67,6 +67,12 @@ internal class TgfxRenderTarget {
     requestRender()
   }
 
+  fun hitTest(x: Float, y: Float, precise: Boolean): DoubleArray {
+    var hits = DoubleArray(0)
+    withPtr { hits = TgfxNative.hitTest(it, x, y, precise) }
+    return hits
+  }
+
   fun snapshot(
     options: NativeSnapshotOptions,
     path: String,

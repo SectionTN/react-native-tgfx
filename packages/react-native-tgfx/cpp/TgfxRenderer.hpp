@@ -46,6 +46,9 @@ class TgfxRenderer {
 
   void setValues(const std::vector<double>& values);
 
+  /// Index paths under a point, flattened. Safe from any thread; see TgfxScene.hpp.
+  std::vector<double> hitTest(float x, float y, bool precise);
+
   void onResize();
 
   void setPixelRatio(float ratio);
@@ -107,7 +110,7 @@ class TgfxRenderer {
   SceneRenderer scene_;
   size_t appliedCacheLimit_ = 0;
   bool cacheLimitApplied_ = false;
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::atomic<bool> surfaceDirty_{false};
   std::atomic<float> pixelRatio_{1.0f};
   std::atomic<bool> opaque_{false};

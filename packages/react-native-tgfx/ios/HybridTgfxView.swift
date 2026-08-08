@@ -36,6 +36,10 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     }
   }
 
+  func hitTest(x: Double, y: Double, precise: Bool) throws -> [Double] {
+    return metalView.hitTestX(Float(x), y: Float(y), precise: precise).map { $0.doubleValue }
+  }
+
   func snapshot(options: NativeSnapshotOptions) throws -> Promise<NativeSnapshot> {
     let promise = Promise<NativeSnapshot>()
     read(options, path: nil) { bytes, size, token, width, height in

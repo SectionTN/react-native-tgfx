@@ -457,6 +457,64 @@ directly — pushing a `scene` buffer and a values buffer themselves rather than
 going through `<Canvas>`. Its ref type is `TgfxViewRef`. Most code should not
 need it.
 
+## Hit testing
+
+`canvasRef.current.hitTest(x, y)` returns the nodes under a canvas-space point,
+topmost first.
+
+```tsx
+const canvas = useRef<CanvasHandle>(null)
+const bar = useNode()
+
+<GestureDetector gesture={Gesture.Tap().onEnd((e) => {
+  const hits = canvas.current?.hitTest(e.x, e.y) ?? []
+  if (hits.some((hit) => hit.node === bar)) {
+    // the bar was tapped
+  }
+})}>
+  <Canvas ref={canvas} style={{ flex: 1 }}>
+    <Rect ref={bar} x={10} y={10} width={40} height={80} color="#0a84ff" />
+  </Canvas>
+</GestureDetector>
+```
+
+It is answered natively from the geometry the renderer is drawing **this frame**,
+so it follows animated values rather than the last committed props, and it
+inverse-transforms through every `<Group>` exactly as the renderer transforms
+forward.
+
+Each result is `{ node, path }`. Only a node carrying a `useNode()` handle can be
+named, so `node` is `null` for one that was never given a handle — `path` is the
+child-index route from the root, which stays distinct between anonymous hits.
+
+| option | meaning |
+| --- | --- |
+| `precise` | test the filled region rather than the bounding box; defaults to false |
+
+`precise` matters for paths and circles, where a bounding box is much larger than
+the shape. It is the more expensive test, and a bounding box is usually what a
+tap target wants.
+
+Nodes with no geometry of their own — `<Group>`, `<Fill>`, `<Text>` — are never
+reported; their children are. A `<Mask>`'s content is hit-tested, its mask source
+is not, since the source is a matte rather than something on screen. A `<Group
+clip>` bounds its subtree, so nothing clipped away is reported. `<CameraFrame>`
+and its children are skipped: placing them needs the surface, which a hit test
+does not have, and no answer beats a confidently wrong one.
+
+`precise` is exact for `<Path>`, `<Circle>` and `<Oval>`; every other kind uses
+its box either way.
+
+It walks the whole scene, so it suits a tap rather than a per-move pan handler:
+roughly 200 µs for 5000 nodes on a desktop, and several times that on a phone.
+A `clip` prunes the subtree it bounds, which is the cheapest way to keep a deep
+scene fast.
+
+One caveat worth knowing: a tap landing between a structural commit and the next
+frame is answered against the tree that is still on screen, while the handles
+were already remapped — so a hit can be named against the previous layout for a
+single frame.
+
 ## Types
 
 The package exports its prop types alongside the components — `CanvasProps`,

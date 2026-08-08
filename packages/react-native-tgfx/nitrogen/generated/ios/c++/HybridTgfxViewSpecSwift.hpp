@@ -106,6 +106,14 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
+    inline std::vector<double> hitTest(double x, double y, bool precise) override {
+      auto __result = _swiftPart.hitTest(std::forward<decltype(x)>(x), std::forward<decltype(y)>(y), std::forward<decltype(precise)>(precise));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) override {
       auto __result = _swiftPart.snapshot(std::forward<decltype(options)>(options));
       if (__result.hasError()) [[unlikely]] {

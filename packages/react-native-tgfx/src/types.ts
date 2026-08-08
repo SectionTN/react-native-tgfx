@@ -217,6 +217,21 @@ export interface VerticesProps extends PaintProps {
   mode?: MeshTopology
 }
 
+export interface HitTestOptions {
+  /**
+   * Test the filled region rather than the bounding box. Defaults to false,
+   * which is what a tap target usually wants and is much cheaper on paths.
+   */
+  precise?: boolean
+}
+
+export interface HitTestResult {
+  /** The handle on the node, or null if it was never given one. */
+  node: NodeHandle | null
+  /** Child indices from the root down to the node, so anonymous hits stay distinct. */
+  path: number[]
+}
+
 export interface CameraFrameProps extends PaintProps {
   /**
    * A hardware-buffer handle from `imageFromNativeBuffer`, re-pointed at each
@@ -432,6 +447,20 @@ export interface CanvasHandle {
    * A `NodeHandle.set` already redraws on its own.
    */
   redraw(): void
+
+  /**
+   * The nodes under a canvas-space point, topmost first.
+   *
+   * Answered natively from the geometry the renderer is drawing this frame, so
+   * it follows animated values rather than the last committed props, and it
+   * inverse-transforms through each `<Group>` the same way the renderer
+   * transforms forward.
+   *
+   * Only nodes carrying a `useNode()` handle can be named, so a hit on an
+   * unnamed node reports `node: null` — the `path` is still there if you want
+   * to tell two anonymous hits apart.
+   */
+  hitTest(x: number, y: number, options?: HitTestOptions): HitTestResult[]
 }
 
 export interface CanvasProps {

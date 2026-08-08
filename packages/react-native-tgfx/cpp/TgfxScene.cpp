@@ -1099,6 +1099,9 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
     case KPath: {
       cmd.kind = DrawCmd::Path;
       cmd.path = parseSvgPath(r.nextString());
+      // Through contains, not getBounds: it is SkPathRef's own lazy bounds that a later
+      // hitTest would otherwise compute while the render thread is reading them.
+      (void)cmd.path.contains(0, 0);
       int flags = r.nextInt();
       if ((flags & 8) != 0) {
         cmd.path.setFillType(tgfx::PathFillType::EvenOdd);
@@ -1336,6 +1339,123 @@ void SceneRenderer::setScene(std::span<const double> words,
 
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = std::move(program);
+}
+
+
+namespace {
+
+/// The geometry a node covers, in its own space. Empty means it draws nothing to hit.
+tgfx::Rect hitBounds(const DrawCmd& cmd, std::span<const double> v) {
+  switch (cmd.kind) {
+    case DrawCmd::Rect:
+    case DrawCmd::RRect:
+    case DrawCmd::Oval:
+    case DrawCmd::Image:
+      return rectOf(cmd, v);
+    case DrawCmd::Circle: {
+      float r = cmd.r.resolve(v);
+      return tgfx::Rect::MakeXYWH(cmd.cx.resolve(v) - r, cmd.cy.resolve(v) - r, r * 2, r * 2);
+    }
+    case DrawCmd::Path:
+      return cmd.path.getBounds();
+    case DrawCmd::Vertices:
+      return cmd.mesh != nullptr ? cmd.mesh->bounds() : tgfx::Rect::MakeEmpty();
+    default:
+      // Text, fills, groups and the rest have no geometry of their own to test.
+      return tgfx::Rect::MakeEmpty();
+  }
+}
+
+/// Does the node cover `local`? `precise` asks the fill region rather than the box.
+bool hitNode(const DrawCmd& cmd, const tgfx::Point& local, bool precise,
+             std::span<const double> v) {
+  if (cmd.kind == DrawCmd::Path) {
+    // The cached bounds first: they are thread-safe and skip `contains` for most nodes.
+    if (!cmd.path.getBounds().contains(local.x, local.y)) {
+      return false;
+    }
+    return !precise || cmd.path.contains(local.x, local.y);
+  }
+  if (precise && cmd.kind == DrawCmd::Circle) {
+    float dx = local.x - cmd.cx.resolve(v);
+    float dy = local.y - cmd.cy.resolve(v);
+    float r = cmd.r.resolve(v);
+    return dx * dx + dy * dy <= r * r;
+  }
+  if (precise && cmd.kind == DrawCmd::Oval) {
+    auto box = rectOf(cmd, v);
+    float rx = box.width() / 2;
+    float ry = box.height() / 2;
+    if (rx <= 0 || ry <= 0) {
+      return false;
+    }
+    float dx = (local.x - (box.left + rx)) / rx;
+    float dy = (local.y - (box.top + ry)) / ry;
+    return dx * dx + dy * dy <= 1;
+  }
+  auto bounds = hitBounds(cmd, v);
+  return !bounds.isEmpty() && bounds.contains(local.x, local.y);
+}
+
+/// Walks back to front so the first hit reported is the one drawn last, i.e. on top.
+void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
+             const tgfx::Point& point, bool precise, std::span<const double> v,
+             std::vector<int32_t>& path, std::vector<double>& out) {
+  for (size_t i = nodes.size(); i-- > 0;) {
+    const auto& cmd = nodes[i];
+    if (cmd.kind == DrawCmd::CameraFrame) {
+      // Its matrix needs the surface, which a hit test has not got: no answer beats a wrong one.
+      continue;
+    }
+    auto matrix = parent;
+    if (cmd.hasMatrix || !cmd.ops.empty()) {
+      matrix.preConcat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
+    }
+    tgfx::Matrix inverted = tgfx::Matrix::I();
+    if (!matrix.invert(&inverted)) {
+      // A degenerate transform collapses the subtree to nothing, so nothing is under the point.
+      continue;
+    }
+    auto local = inverted.mapXY(point.x, point.y);
+    if (cmd.clipKind != 0 && !cmd.invertClip) {
+      // Prunes the subtree too, which is most of what makes a deep scene affordable.
+      auto clip = cmd.clipKind == 3
+                      ? (cmd.clipPath != nullptr ? cmd.clipPath->getBounds() : tgfx::Rect::MakeEmpty())
+                      : cmd.clipRect;
+      if (!clip.contains(local.x, local.y)) {
+        continue;
+      }
+    }
+    path.push_back(static_cast<int32_t>(i));
+    if (!cmd.children.empty()) {
+      hitWalk(cmd.children, matrix, point, precise, v, path, out);
+    }
+    if (hitNode(cmd, local, precise, v)) {
+      out.push_back(static_cast<double>(path.size()));
+      for (int32_t step : path) {
+        out.push_back(static_cast<double>(step));
+      }
+    }
+    path.pop_back();
+  }
+}
+
+}  // namespace
+
+std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
+                                           std::span<const double> values) {
+  std::shared_ptr<const Program> program;
+  {
+    std::lock_guard<std::mutex> lock(programMutex_);
+    program = program_;
+  }
+  std::vector<double> out;
+  if (program == nullptr) {
+    return out;
+  }
+  std::vector<int32_t> path;
+  hitWalk(*program, tgfx::Matrix::I(), {x, y}, precise, values, path, out);
+  return out;
 }
 
 void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,

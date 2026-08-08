@@ -221,7 +221,7 @@ function isOpSlot(key: string): key is TransformSlot {
   return (TRANSFORM_SLOTS as readonly string[]).includes(key)
 }
 
-function createHandle(): NodeHandle {
+export function createHandle(): NodeHandle {
   // Resolved now, or the worklet would capture a remote handle instead of the function.
   const runOnJS = getRunOnJS()
   const slots: Record<string, LiveValue> = {}

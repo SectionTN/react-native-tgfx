@@ -88,6 +88,15 @@ export interface TgfxViewMethods extends HybridViewMethods {
   setValues(values: number[]): void
 
   /**
+   * Index paths of the nodes under a canvas-space point, front-to-back,
+   * flattened as `[depth, i0, i1, ..., depth, j0, ...]`.
+   *
+   * Answered from the same resolved geometry the renderer draws, so it follows
+   * animated values rather than the last committed props.
+   */
+  hitTest(x: number, y: number, precise: boolean): number[]
+
+  /**
    * Read the canvas back as pixels.
    *
    * The readback is issued on the render thread inside the frame it belongs to,

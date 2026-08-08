@@ -17,6 +17,7 @@ import { directNodes } from '../reconciler/directNodes'
 import { createNode, NodeType } from '../reconciler/types'
 import type { NativeSnapshotOptions } from '../specs/TgfxView.nitro'
 import type {
+  HitTestResult,
   CanvasProps,
   Snapshot,
   SnapshotFormat,
@@ -189,6 +190,23 @@ export function Canvas({
       },
       redraw: (): void => {
         viewRef.current?.invalidate()
+      },
+      hitTest: (x, y, options): HitTestResult[] => {
+        const view = viewRef.current
+        const root = rootRef.current
+        if (view == null || root == null) {
+          return []
+        }
+        const flat = view.hitTest(x, y, options?.precise === true)
+        const named = root.container.byPath
+        const out: HitTestResult[] = []
+        for (let i = 0; i < flat.length; ) {
+          const depth = flat[i]!
+          const path = flat.slice(i + 1, i + 1 + depth)
+          i += 1 + depth
+          out.push({ node: named.get(path.join(',')) ?? null, path })
+        }
+        return out
       },
     }),
     []

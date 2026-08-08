@@ -3297,6 +3297,83 @@ void aRecordedGroupReplaysWhatItDrew() {
   CHECK(first == second && first == recorded);
 }
 
+/// Front-to-back, through the group transform stack, in the node's own space.
+void hitTestReportsWhatIsUnderThePoint() {
+  Writer w;
+  w.push(2);
+  // A rect at 0,0 32x32 under a group translated by 20, holding a circle at 10,10 r8.
+  w.push(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushPaint(0xff0000ff, false);
+  w.push(0);  // Group
+  w.push(1);  // one transform op
+  w.push(0);  // translate
+  w.pushAnim(20);
+  w.pushAnim(0);
+  w.push(1);  // one child
+  w.push(4);  // Circle
+  w.pushAnim(10);
+  w.pushAnim(10);
+  w.pushAnim(8);
+  w.pushPaint(0xffff0000, false);
+
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+
+  // Inside both: the circle is drawn later, so it comes first.
+  auto both = renderer.hitTest(30, 10, false, {});
+  CHECK(both.size() == 5);
+  CHECK(both[0] == 2 && both[1] == 1 && both[2] == 0);  // group 1, child 0
+  CHECK(both[3] == 1 && both[4] == 0);                  // then the rect
+
+  // Inside the rect only.
+  auto rectOnly = renderer.hitTest(4, 28, false, {});
+  CHECK(rectOnly.size() == 2 && rectOnly[0] == 1 && rectOnly[1] == 0);
+
+  // Outside everything.
+  CHECK(renderer.hitTest(200, 200, false, {}).empty());
+
+  // The group's translate has to be undone: without it 10,10 would land on the circle.
+  auto shifted = renderer.hitTest(10, 10, false, {});
+  CHECK(shifted.size() == 2 && shifted[1] == 0);
+
+  // A clip bounds the tap target: nothing outside it is reported, subtree included.
+  {
+    Writer c;
+    c.push(1);
+    c.push(13);  // GroupLayer
+    c.push(0);   // no transform ops
+    c.push(1);   // clip, no invert/layer/picture
+    c.push(1);   // rect clip
+    c.push(0);
+    c.push(0);
+    c.push(10);
+    c.push(10);
+    c.push(1);  // one child
+    c.push(1);  // Rect
+    c.pushAnim(0);
+    c.pushAnim(0);
+    c.pushAnim(100);
+    c.pushAnim(100);
+    c.pushPaint(0xff0000ff, false);
+    tgfxrn::SceneRenderer clipped;
+    clipped.setScene(c.finish(), {});
+    CHECK(!clipped.hitTest(5, 5, false, {}).empty());
+    // Inside the rect but outside the clip, where nothing is drawn.
+    CHECK(clipped.hitTest(50, 50, false, {}).empty());
+  }
+
+  // 23,3 sits in the circle's bounding box but outside the disc, and inside the rect.
+  auto boxed = renderer.hitTest(23, 3, false, {});
+  auto exact = renderer.hitTest(23, 3, true, {});
+  CHECK(boxed.size() == 5);   // the circle, then the rect
+  CHECK(exact.size() == 2);   // only the rect
+  CHECK(exact[0] == 1 && exact[1] == 0);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -3334,6 +3411,7 @@ int main() {
   aDerivedImageSurvivesTheParentsEviction();
   aLiveHandleRefusesToBeDerivedFrom();
   aRecordedGroupReplaysWhatItDrew();
+  hitTestReportsWhatIsUnderThePoint();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

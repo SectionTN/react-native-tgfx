@@ -258,6 +258,21 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
   view->renderer.setValues(values);
 }
 
+JNIEXPORT jdoubleArray JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_hitTest(JNIEnv* env, jobject, jlong ptr, jfloat x,
+                                               jfloat y, jboolean precise) {
+  auto* view = asView(ptr);
+  if (view == nullptr) {
+    return env->NewDoubleArray(0);
+  }
+  auto hits = view->renderer.hitTest(x, y, precise == JNI_TRUE);
+  auto out = env->NewDoubleArray(static_cast<jsize>(hits.size()));
+  if (out != nullptr && !hits.empty()) {
+    env->SetDoubleArrayRegion(out, 0, static_cast<jsize>(hits.size()), hits.data());
+  }
+  return out;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_draw(JNIEnv*, jobject, jlong ptr) {
   auto* view = asView(ptr);

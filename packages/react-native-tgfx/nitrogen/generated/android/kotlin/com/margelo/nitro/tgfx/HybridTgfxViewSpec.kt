@@ -55,6 +55,10 @@ abstract class HybridTgfxViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun hitTest(x: Double, y: Double, precise: Boolean): DoubleArray
+  
+  @DoNotStrip
+  @Keep
   abstract fun snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot>
   
   @DoNotStrip

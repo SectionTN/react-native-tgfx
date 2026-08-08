@@ -100,6 +100,10 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     target.setValues(values)
   }
 
+  override fun hitTest(x: Double, y: Double, precise: Boolean): DoubleArray {
+    return target.hitTest(x.toFloat(), y.toFloat(), precise)
+  }
+
   override fun snapshot(options: NativeSnapshotOptions): Promise<NativeSnapshot> {
     val promise = Promise<NativeSnapshot>()
     target.snapshot(options, "") { data, width, height, error ->

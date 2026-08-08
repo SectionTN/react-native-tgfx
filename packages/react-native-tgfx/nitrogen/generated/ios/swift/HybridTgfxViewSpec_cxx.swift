@@ -178,6 +178,24 @@ open class HybridTgfxViewSpec_cxx {
   }
   
   @inline(__always)
+  public final func hitTest(x: Double, y: Double, precise: Bool) -> bridge.Result_std__vector_double__ {
+    do {
+      let __result = try self.__implementation.hitTest(x: x, y: y, precise: precise)
+      let __resultCpp = { () -> bridge.std__vector_double_ in
+        var __vector = bridge.create_std__vector_double_(__result.count)
+        for __item in __result {
+          __vector.push_back(__item)
+        }
+        return __vector
+      }()
+      return bridge.create_Result_std__vector_double__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__vector_double__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func snapshot(options: NativeSnapshotOptions) -> bridge.Result_std__shared_ptr_Promise_NativeSnapshot___ {
     do {
       let __result = try self.__implementation.snapshot(options: options)

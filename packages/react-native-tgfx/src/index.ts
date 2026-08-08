@@ -109,6 +109,8 @@ export type {
   BlendMode,
   BlendProps,
   MaskProps,
+  HitTestOptions,
+  HitTestResult,
   BlurProps,
   ColorShaderProps,
   CornerPathEffectProps,

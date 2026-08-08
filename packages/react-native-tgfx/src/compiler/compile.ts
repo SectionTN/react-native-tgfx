@@ -43,6 +43,7 @@ export interface CompileResult {
   strings: string[]
   values: MaybeSharedValue<unknown>[]
   refs: NodeHandle[]
+  refPaths: { path: number[]; ref: NodeHandle }[]
 }
 
 type Opacity = number | MaybeSharedValue<number>
@@ -668,7 +669,10 @@ function writeMask(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   w.push(node.props.mode === 'luminance' ? 1 : 0)
   const maskCountAt = w.reserve()
   // The mask is a matte, not part of the picture: it inherits neither paint nor opacity.
+  // Under -1 so a handle in the source cannot collide with the content child at the same index.
+  w.pathStack.push(-1)
   w.patch(maskCountAt, writeNodes(w, source?.children ?? [], ROOT_CTX))
+  w.pathStack.pop()
   const contentCountAt = w.reserve()
   w.patch(contentCountAt, writeNodes(w, content, contentCtx))
 }
@@ -740,8 +744,10 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
     const ref = node.props.ref
     if (isNodeHandle(ref)) {
       w.refs.push(ref)
+      w.refPaths.push({ path: [...w.pathStack, count], ref })
       node = nodeInternals(ref).apply(node, w.reseed)
     }
+    w.pathStack.push(count)
     if (kind === Kind.Mask) {
       writeMask(w, node, ctx)
     } else if (kind === Kind.Group) {
@@ -751,6 +757,7 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
     } else {
       writeDrawing(w, node, ctx, kind)
     }
+    w.pathStack.pop()
     count++
   }
   return count
@@ -777,5 +784,6 @@ export function compileScene(
     strings: w.strings,
     values: w.values,
     refs: w.refs,
+    refPaths: w.refPaths,
   }
 }

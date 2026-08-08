@@ -12,6 +12,7 @@ namespace margelo::nitro::tgfx { struct NativeSnapshot; }
 // Forward declaration of `NativeSnapshotOptions` to properly resolve imports.
 namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 
+#include <vector>
 #include "NativeSnapshot.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
@@ -20,7 +21,6 @@ namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 #include <NitroModules/JArrayBuffer.hpp>
 #include <string>
 #include <NitroModules/JUnit.hpp>
-#include <vector>
 #include "NativeSnapshotOptions.hpp"
 #include "JNativeSnapshotOptions.hpp"
 
@@ -99,6 +99,16 @@ namespace margelo::nitro::tgfx {
       __array->setRegion(0, __size, values.data());
       return __array;
     }());
+  }
+  std::vector<double> JHybridTgfxViewSpec::hitTest(double x, double y, bool precise) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayDouble>(double /* x */, double /* y */, jboolean /* precise */)>("hitTest");
+    auto __result = method(_javaPart, x, y, precise);
+    return [&]() {
+      size_t __size = __result->size();
+      std::vector<double> __vector(__size);
+      __result->getRegion(0, __size, __vector.data());
+      return __vector;
+    }();
   }
   std::shared_ptr<Promise<NativeSnapshot>> JHybridTgfxViewSpec::snapshot(const NativeSnapshotOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JNativeSnapshotOptions> /* options */)>("snapshot");

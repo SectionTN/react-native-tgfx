@@ -119,6 +119,15 @@ void TgfxRenderer::setValues(const std::vector<double>& values) {
   version_.fetch_add(1, std::memory_order_release);
 }
 
+std::vector<double> TgfxRenderer::hitTest(float x, float y, bool precise) {
+  std::vector<double> snapshot;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot = values_;
+  }
+  return scene_.hitTest(x, y, precise, snapshot);
+}
+
 void TgfxRenderer::onResize() {
   surfaceDirty_ = true;
   version_.fetch_add(1, std::memory_order_release);

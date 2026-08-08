@@ -26,6 +26,8 @@ internal object TgfxNative {
   external fun clearScene(ptr: Long)
   external fun setOpaque(ptr: Long, opaque: Boolean)
   external fun setValues(ptr: Long, values: DoubleArray)
+
+  external fun hitTest(ptr: Long, x: Float, y: Float, precise: Boolean): DoubleArray
   external fun draw(ptr: Long): Boolean
 
   /** Called once per [snapshot] on a native worker, never the render thread. [data] is call-scoped. */
