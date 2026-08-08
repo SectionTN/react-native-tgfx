@@ -95,7 +95,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; its frame is ~960 B, so 256 deep is ~240 KiB of stack.
+/// Bounds readNode and so drawCmd too; its frame is ~1072 B, so 256 deep is ~269 KiB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
@@ -108,7 +108,7 @@ std::atomic<size_t> gFilterBuilds{0};
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
-  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask
+  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask, KAtlas
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -1079,6 +1079,35 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       break;
     }
+    case KAtlas: {
+      cmd.kind = DrawCmd::Atlas;
+      int handle = r.nextInt();
+      cmd.sampling = samplingOf(r.nextInt());
+      int count = r.nextInt();
+      cmd.atlas = std::make_shared<AtlasCmd>();
+      // Seven words per sprite: the buffer bounds the loop, so bound the reserve to match.
+      size_t bounded = std::min(static_cast<size_t>(std::max(0, count)), r.remaining() / 7);
+      cmd.atlas->sprites.reserve(bounded);
+      cmd.atlas->matrices.reserve(bounded);
+      for (size_t i = 0; i < bounded && r.ok; i++) {
+        float sx = static_cast<float>(r.next());
+        float sy = static_cast<float>(r.next());
+        float sw = static_cast<float>(r.next());
+        float sh = static_cast<float>(r.next());
+        cmd.atlas->sprites.push_back(tgfx::Rect::MakeXYWH(sx, sy, sw, sh));
+        float scale = static_cast<float>(r.next());
+        float tx = static_cast<float>(r.next());
+        float ty = static_cast<float>(r.next());
+        cmd.atlas->matrices.push_back(tgfx::Matrix::MakeAll(scale, 0, tx, 0, scale, ty));
+      }
+      cmd.imageHandle = handle;
+      bool external = false;
+      cmd.image = resolveImage(handle, cmd.sampling, &external);
+      if (external) {
+        cmd.image = nullptr;
+      }
+      break;
+    }
     case KText: {
       cmd.kind = DrawCmd::Text;
       cmd.x = r.nextAnim();
@@ -1374,6 +1403,23 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                         : cmd.srcRect;
       auto fitted = fitRects(cmd.fit, source, rectOf(cmd, v));
       canvas->drawImageRect(image, fitted.src, fitted.dst, cmd.sampling, p);
+      break;
+    }
+    case DrawCmd::Atlas: {
+      if (cmd.atlas == nullptr || cmd.atlas->sprites.empty()) {
+        break;
+      }
+      std::shared_ptr<tgfx::Image> live;
+      if (cmd.image == nullptr && cmd.imageHandle != 0) {
+        live = resolveImage(cmd.imageHandle, cmd.sampling);
+      }
+      const auto& sheet = cmd.image != nullptr ? cmd.image : live;
+      if (sheet == nullptr || sheet->width() <= 0) {
+        break;
+      }
+      // No per-sprite colours: tgfx only applies them to an alpha-only atlas.
+      canvas->drawAtlas(sheet, cmd.atlas->matrices.data(), cmd.atlas->sprites.data(), nullptr,
+                        cmd.atlas->sprites.size(), cmd.sampling, p);
       break;
     }
     case DrawCmd::Text: {

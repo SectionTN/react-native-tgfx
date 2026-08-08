@@ -29,7 +29,7 @@ import {
   type MaybeSharedValue,
 } from './values'
 import { Kind, type SceneWriter } from './writer'
-import type { ClipRect, UniformValue } from '../types'
+import type { AtlasSprite, ClipRect, UniformValue } from '../types'
 
 interface GlyphInput {
   id: number
@@ -95,6 +95,32 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Fill]: Kind.Fill,
   [NodeType.CameraFrame]: Kind.CameraFrame,
   [NodeType.Mask]: Kind.Mask,
+  [NodeType.Atlas]: Kind.Atlas,
+}
+
+/**
+ * N sprites, one node. The translation is pre-biased by half the scaled sprite
+ * here rather than natively, so the reader stays a straight copy and `x`/`y`
+ * mean the sprite's centre.
+ */
+function writeAtlas(w: SceneWriter, p: Record<string, unknown>): void {
+  const sprites = Array.isArray(p.sprites) ? (p.sprites as AtlasSprite[]) : []
+  w.push(imageHandle(p.image))
+  w.push(samplingCode(p.sampling))
+  w.push(sprites.length)
+  for (const sprite of sprites) {
+    const rect = (sprite?.rect ?? {}) as SrcRect
+    const width = resolveNumber(rect.width)
+    const height = resolveNumber(rect.height)
+    w.push(resolveNumber(rect.x))
+    w.push(resolveNumber(rect.y))
+    w.push(width)
+    w.push(height)
+    const scale = resolveNumber(sprite?.scale, 1)
+    w.push(scale)
+    w.push(resolveNumber(sprite?.x) - (scale * width) / 2)
+    w.push(resolveNumber(sprite?.y) - (scale * height) / 2)
+  }
 }
 
 function quarterTurns(input: unknown): number {
@@ -386,6 +412,9 @@ function writeDrawing(
       w.push(fitCode(p.fit))
       w.push(samplingCode(p.sampling))
       writeSrcRect(w, p.rect)
+      break
+    case Kind.Atlas:
+      writeAtlas(w, p)
       break
     case Kind.Text:
       w.pushAnim(p.x)

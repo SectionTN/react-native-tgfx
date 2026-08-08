@@ -155,6 +155,30 @@ export interface ImageProps extends PaintProps {
   rect?: SrcRect
 }
 
+/** One sprite placement in an `<Atlas>`. */
+export interface AtlasSprite {
+  /** The sprite's rect in the atlas image, in image pixels. */
+  rect: SrcRect
+  /** Where the sprite's centre lands on the canvas. */
+  x: number
+  y: number
+  /** Uniform scale. Defaults to 1. */
+  scale?: number
+}
+
+/**
+ * Sprites are placed axis-aligned: tgfx's `drawAtlas` maps each sprite's
+ * bounding box, so a rotation would stretch the sprite rather than turn it.
+ * Rotate a `<Group>` around the whole batch, or use `<Image>` per sprite.
+ */
+export interface AtlasProps extends PaintProps {
+  /** The sprite sheet. `null` draws nothing. */
+  image: ImageLike | null
+  sprites: AtlasSprite[]
+  /** Defaults to `'linear'`. */
+  sampling?: Sampling
+}
+
 export interface CameraFrameProps extends PaintProps {
   /**
    * A hardware-buffer handle from `imageFromNativeBuffer`, re-pointed at each

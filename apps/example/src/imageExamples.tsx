@@ -1,9 +1,11 @@
 // Everything <Image> and <ImageShader> can do. Every source is a require()d asset, decoded natively.
+import { useMemo } from 'react';
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   Canvas,
   Circle,
   Fill,
+  Atlas,
   Image,
   ImageShader,
   Paint,
@@ -138,6 +140,38 @@ export function SpriteSheet() {
               rect={{ x: i * 32, y: 0, width: 32, height: 32 }}
             />
           ))}
+      </Canvas>
+    </View>
+  );
+}
+
+/** The same sheet again, but 120 sprites from one node instead of 120 nodes. */
+export function AtlasField() {
+  const sheet = useImage(sprites);
+  const field = useMemo(
+    () =>
+      Array.from({ length: 120 }, (_, i) => {
+        const angle = i * 0.7;
+        const radius = 4 + i * 1.1;
+        return {
+          rect: { x: (i % 4) * 32, y: 0, width: 32, height: 32 },
+          x: 180 + Math.cos(angle) * radius,
+          y: 70 + Math.sin(angle) * radius * 0.5,
+          scale: 0.3 + (i % 5) * 0.12,
+        };
+      }),
+    []
+  );
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<Atlas> — 120 sprites, one node'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 140 }]}>
+        <Fill color="#f2f2f7" />
+        {sheet != null && (
+          <Atlas image={sheet} sprites={field} sampling="nearest" />
+        )}
       </Canvas>
     </View>
   );
@@ -343,6 +377,7 @@ export function ImageSection() {
       <ExifOrientation />
       <SamplingModes />
       <SpriteSheet />
+      <AtlasField />
       <ImageShaderExamples />
     </>
   );

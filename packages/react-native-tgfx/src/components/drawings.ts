@@ -4,6 +4,7 @@ import type {
   CameraFrameProps,
   CircleProps,
   ImageProps,
+  AtlasProps,
   LineProps,
   OvalProps,
   PaintComponentProps,
@@ -50,6 +51,13 @@ export const Glyphs = NodeType.Glyphs as unknown as FC<GlyphsProps>
 
 /** Bitmap image drawn into the destination rect with the given `fit`. */
 export const Image = NodeType.Image as unknown as FC<ImageProps>
+
+/**
+ * Many sprites from one image in a single node — the fast path for particle
+ * systems and tile maps, where N `<Image>` nodes would be N nodes to compile,
+ * paint and read. The GPU batches either form the same way.
+ */
+export const Atlas = NodeType.Atlas as unknown as FC<AtlasProps>
 
 /**
  * Text with its first baseline at (`x`, `y`). Breaks at `\n`, and wraps inside

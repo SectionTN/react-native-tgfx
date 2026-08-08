@@ -80,3 +80,9 @@ against the live value array each frame.
 - **22** — adds the mask kind (14): a luminance flag, then a mask child list and a
   content child list, each a count followed by that many nodes. An older reader
   would take the flag for a transform-op count.
+- **23** — adds the atlas kind (15): an image handle, a sampling code, a sprite
+  count, then seven words per sprite (the source rect's `x, y, width, height`,
+  a uniform scale, and the destination `x, y` of the sprite's top-left). One
+  node, N sprites — 7 words each against ~16 for an `<Image>`. An older reader
+  would take the handle for a
+  group's transform-op count.

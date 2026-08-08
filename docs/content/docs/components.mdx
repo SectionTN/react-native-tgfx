@@ -52,6 +52,7 @@ A `ref` on `<Canvas>` gives a `CanvasHandle` for reading pixels back — see
 | `Line` | `x1`, `y1`, `x2`, `y2` |
 | `Path` | `path` — SVG path data, `string`; plus `start`, `end`, `fillType` and the path effects below |
 | `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` — see [images](/docs/images#image) |
+| `Atlas` | `image`, `sprites`, `sampling` — many sprites from one sheet in one node, see below |
 | `Text` | `text`, `x`, `y`, plus the font and paragraph props — see [text](/docs/text) |
 | `TextPath` | `path`, `text`, `startOffset`, plus the font props — see [text](/docs/text) |
 | `Fill` | none of its own — covers the canvas |
@@ -133,6 +134,50 @@ nothing per frame. The exception is an animated `start`/`end`: trim runs first,
 so anything after it has to run again too — pairing a moving trim with a
 `<CornerPathEffect>` on a long path is by far the most expensive combination
 here, and a rounded path you trim is cheaper drawn as a pre-rounded `path`.
+
+### Atlas
+
+`<Atlas>` draws N sprites cut from one image from a **single node**. N `<Image>`
+nodes cost N host nodes, N paint resolutions and ~15 wire words each; an atlas is
+one node, one paint, and seven words per sprite, which is what makes tile maps
+and particle fields affordable. (The GPU work is the same either way — tgfx
+already merges consecutive draws of one image into one batched op.)
+
+```tsx
+import { Atlas, Canvas, useImage } from 'react-native-tgfx'
+
+const sheet = useImage(require('./sprites.png'))
+
+<Canvas style={{ flex: 1 }}>
+  {sheet != null && (
+    <Atlas
+      image={sheet}
+      sprites={particles.map((p) => ({
+        rect: { x: 0, y: 0, width: 16, height: 16 },
+        x: p.x,
+        y: p.y,
+        scale: p.size,
+      }))}
+    />
+  )}
+</Canvas>
+```
+
+Each sprite takes a `rect` — its box in the sheet, in image pixels — and an
+`x`/`y` naming where the sprite's **centre** lands on the canvas, plus an
+optional uniform `scale`. The `rect` must lie inside the sheet: tgfx clips one
+that runs past the edge, and the clipped sprite is drawn smaller and off its
+stated centre.
+
+Sprites are placed axis-aligned. tgfx's `drawAtlas` maps each sprite's bounding
+box, so a per-sprite rotation would stretch the sprite rather than turn it, and
+the prop is not offered rather than being offered and ignored. Rotate a `<Group>`
+around the whole batch, or fall back to one `<Image>` per sprite when each needs
+its own angle. Per-sprite tint colours are missing for the same reason: tgfx
+applies them only to an alpha-only atlas.
+
+The `sprites` array is read when the scene compiles, so moving a particle field
+means a React render. A worklet-driven bulk update is tracked separately.
 
 ## Paint
 

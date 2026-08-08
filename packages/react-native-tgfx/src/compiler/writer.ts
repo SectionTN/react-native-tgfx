@@ -23,7 +23,7 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
  * array each frame.
  */
 // Every version and what it broke: docs/wire-format.md.
-export const SCENE_VERSION = 22
+export const SCENE_VERSION = 23
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
@@ -67,6 +67,7 @@ export const Kind = {
   Glyphs: 12,
   GroupLayer: 13,
   Mask: 14,
+  Atlas: 15,
 } as const
 
 const HEADER_WORDS = 3

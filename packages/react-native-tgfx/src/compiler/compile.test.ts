@@ -1215,3 +1215,42 @@ test('a live channel writes four patched colour words after the flags', () => {
   expect(used[patchStart]).toBe(1)
   expect(used[patchStart + 1]).toBe(12) // the green word
 })
+
+test('<Atlas> writes one node with a placement per sprite', () => {
+  const { used } = compile([
+    node(NodeType.Atlas, {
+      image: handle(7),
+      sprites: [
+        { rect: { x: 0, y: 0, width: 10, height: 20 }, x: 100, y: 50 },
+        { rect: { x: 10, y: 0, width: 10, height: 20 }, x: 0, y: 0, scale: 2 },
+      ],
+    }),
+  ])
+  // header(3) rootCount kind handle sampling count
+  expect(used[4]).toBe(Kind.Atlas)
+  expect(used[5]).toBe(7)
+  expect(used[7]).toBe(2)
+
+  // The source rect, the scale, then x/y biased by half the scaled sprite.
+  expect(Array.from(used.subarray(8, 15))).toEqual([0, 0, 10, 20, 1, 95, 40])
+  expect(Array.from(used.subarray(15, 22))).toEqual([10, 0, 10, 20, 2, -10, -20])
+})
+
+test('<Atlas> with no sprites still encodes a well-formed node', () => {
+  const { used } = compile([node(NodeType.Atlas, { image: handle(3) })])
+  expect(used[4]).toBe(Kind.Atlas)
+  expect(used[7]).toBe(0)
+})
+
+test('<Atlas> encodes a hole in the sprite array rather than throwing', () => {
+  const { used } = compile([
+    node(NodeType.Atlas, {
+      image: handle(3),
+      sprites: [undefined, { x: 5, y: 5 }],
+    }),
+  ])
+  expect(used[7]).toBe(2)
+  expect(Array.from(used.subarray(8, 22))).toEqual([
+    0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 5, 5,
+  ])
+})

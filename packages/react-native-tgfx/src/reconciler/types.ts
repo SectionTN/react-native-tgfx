@@ -39,6 +39,7 @@ export const NodeType = {
   CornerPathEffect: 'tgfx_corner',
   Fill: 'tgfx_fill',
   CameraFrame: 'tgfx_cameraframe',
+  Atlas: 'tgfx_atlas',
 } as const
 
 export type NodeTypeName = (typeof NodeType)[keyof typeof NodeType]

@@ -30,7 +30,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 22;
+inline constexpr double kSceneVersion = 23;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -163,6 +163,12 @@ struct TextCmd {
 };
 
 /// A <Path>'s dash/corner/trim block; absent unless the path asks for one.
+/// One entry per sprite in both vectors, always the same length.
+struct AtlasCmd {
+  std::vector<tgfx::Matrix> matrices;
+  std::vector<tgfx::Rect> sprites;
+};
+
 struct PathEffectCmd {
   bool trim = false;
   AnimF start{0, -1};
@@ -179,8 +185,9 @@ struct PathEffectCmd {
 
 struct DrawCmd {
   enum Kind {
-    Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame, Mask
+    Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame, Mask, Atlas
   };
+
 
   /// Mask only: the subtree whose alpha or luminance cuts `children` down.
   std::vector<DrawCmd> maskChildren;
@@ -220,6 +227,8 @@ struct DrawCmd {
   int quarterTurns = 0;
   bool mirror = false;
   std::shared_ptr<TextCmd> text;
+  /// Behind a pointer so every non-atlas DrawCmd costs one word, not two vectors.
+  std::shared_ptr<AtlasCmd> atlas;
 };
 
 using Program = std::vector<DrawCmd>;

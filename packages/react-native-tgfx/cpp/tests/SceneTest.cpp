@@ -161,6 +161,21 @@ struct Writer {
     }
   }
 
+  /// An atlas node, mirroring writeAtlas() in compile.ts.
+  void pushAtlas(int32_t handle, const std::vector<std::array<double, 7>>& sprites,
+                 int sampling = 1) {
+    push(15);
+    push(handle);
+    push(sampling);
+    push(static_cast<double>(sprites.size()));
+    for (const auto& sprite : sprites) {
+      for (double word : sprite) {
+        push(word);
+      }
+    }
+    pushPaint(0xffffffff, false);
+  }
+
   /// An image node, mirroring writeDrawing() in compile.ts.
   void pushImage(int32_t handle, double x, double y, double w, double h,
                  int fit = 0, int sampling = 1, const double* srcRect = nullptr) {
@@ -2908,6 +2923,40 @@ void placedGlyphsDrawWhereTheyArePut() {
   render(bogus.finish(), {"", "Helvetica"}, {});
 }
 
+/// One op, N sprites: each lands where its own transform puts it.
+void anAtlasPlacesEverySpriteItIsGiven() {
+  auto red = registerSolid({255, 0, 0, 255});
+  CHECK(red.handle != 0);
+
+  // Four 2x2 sprites scaled to 8x8, centred on the quadrants of a 64x64 canvas.
+  std::vector<std::array<double, 7>> sprites;
+  const double centres[4][2] = {{16, 16}, {48, 16}, {16, 48}, {48, 48}};
+  for (const auto& centre : centres) {
+    sprites.push_back({0, 0, 2, 2, 4, centre[0] - 4, centre[1] - 4});
+  }
+  Writer w;
+  w.push(1);
+  w.pushAtlas(red.handle, sprites);
+  auto pixels = render(w.finish(), {}, {});
+  for (const auto& centre : centres) {
+    auto got = pixelAt(pixels, static_cast<int>(centre[0]), static_cast<int>(centre[1]));
+    CHECK(got[0] == 255 && got[1] == 0 && got[2] == 0);
+  }
+  // Between the sprites nothing was drawn, and no sprite spilled past its scale.
+  CHECK(pixelAt(pixels, 32, 32)[0] == 0);
+  CHECK(inkPixels(pixels) == 4 * 8 * 8);
+
+  // Each sprite samples its own sub-rect: left half red, right half blue.
+  std::vector<uint8_t> half{255, 0, 0, 255, 0, 0, 255, 255};
+  auto split = registerPixels(2, 1, half);
+  Writer q;
+  q.push(1);
+  q.pushAtlas(split.handle, {{0, 0, 1, 1, 16, 32 - 8, 32 - 8}, {1, 0, 1, 1, 16, 32 + 8, 32 - 8}});
+  auto halves = render(q.finish(), {}, {});
+  CHECK(pixelAt(halves, 32 - 8, 32 - 8)[0] == 255);
+  CHECK(pixelAt(halves, 32 + 8, 32 - 8)[2] == 255);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -2938,6 +2987,7 @@ int main() {
   blendKeepsAnAnimatedUniformLive();
   aMaskCutsItsContentDown();
   fillCoversTheWholeCanvas();
+  anAtlasPlacesEverySpriteItIsGiven();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();
