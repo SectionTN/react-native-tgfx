@@ -137,6 +137,37 @@ test('an animated trim and dash phase take value slots', () => {
   expect(used[patchStart + 4]).toBe(1)
 })
 
+test('a luma filter is one word and needs no block', () => {
+  const filtered = (child: Node) =>
+    compile([
+      {
+        ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+        children: [child],
+      },
+    ])
+
+  // colour flags | width cap join alpha | blend colourKind ...
+  const luma = filtered(node(NodeType.Luma, {}))
+  expect(luma.used[10]).toBe(2 | 4) // antiAlias + the filter block
+  expect(Array.from(luma.used.subarray(15, 18))).toEqual([3, 2, -1])
+
+})
+
+test('a drop shadow packs shadowOnly and inner into one flags word', () => {
+  const shadow = (props: Record<string, unknown>) =>
+    compile([
+      {
+        ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+        children: [node(NodeType.DropShadow, { dx: 1, dy: 2, blur: 3, ...props })],
+      },
+    ])
+  const at = (r: ReturnType<typeof shadow>) => r.used[r.used.length - 3]
+  expect(at(shadow({}))).toBe(0)
+  expect(at(shadow({ shadowOnly: true }))).toBe(1)
+  expect(at(shadow({ inner: true }))).toBe(2)
+  expect(at(shadow({ shadowOnly: true, inner: true }))).toBe(3)
+})
+
 test('nests groups with their transform ops and child count', () => {
   const { used } = compile([
     node(NodeType.Group, { transform: [{ translateX: 10 }, { scale: 2 }] }, [

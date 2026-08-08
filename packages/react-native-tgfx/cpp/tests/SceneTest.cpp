@@ -1048,6 +1048,42 @@ void pathEffectsReshapeTheGeometry() {
   CHECK(!opaqueAt(atZero, 55, 32));     // and the baked trim still bites
 }
 
+/// Luma and the inner shadow: the filter kinds #179 was missing.
+void theLateFilterKindsAllDraw() {
+  auto shape = [](const std::vector<double>& colorFilter,
+                  const std::vector<double>& imageFilter, uint32_t fill = 0xff3366cc) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(12);
+    w.pushAnim(12);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushFilteredPaint(fill, {3, colorFilter, imageFilter});
+    return render(w.finish(), {}, {});
+  };
+
+  auto plain = shape({-1}, {-1});
+  CHECK(anyPixelSet(plain));
+
+  // Luma turns the fill into its own luminance, so the drawn colour changes.
+  auto before = tgfxrn::filterBuildCount();
+  auto luma = shape({2}, {-1});
+  CHECK(luma != plain);
+  CHECK(tgfxrn::filterBuildCount() == before + 1);
+
+  // An inner shadow paints inside the rect, a drop shadow outside it.
+  auto dropped = shape({-1}, {1, 4, 4, 3, 3, 0xff000000, 0});
+  auto innerLit = shape({-1}, {1, 4, 4, 3, 3, 0xff000000, 2});
+  CHECK(dropped != innerLit);
+  CHECK(opaqueAt(dropped, 54, 54));    // the drop shadow spills past the rect
+  CHECK(!opaqueAt(innerLit, 54, 54));  // the inner one never leaves it
+  CHECK(pixelAt(innerLit, 16, 16) != pixelAt(plain, 16, 16));
+
+  // Shadow-only composes with inner rather than replacing it.
+  CHECK(shape({-1}, {1, 4, 4, 3, 3, 0xff000000, 3}) != innerLit);
+}
+
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -2625,6 +2661,7 @@ int main() {
   aGroupClipConfinesItsSubtree();
   aLayerCompositesTheSubtreeOnce();
   pathEffectsReshapeTheGeometry();
+  theLateFilterKindsAllDraw();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

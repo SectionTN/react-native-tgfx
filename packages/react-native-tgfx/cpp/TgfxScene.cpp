@@ -676,6 +676,9 @@ void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
     auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
     paint.colorFilter = tgfx::ColorFilter::Blend(color, blendModeOf(r.nextInt()));
     gFilterBuilds++;
+  } else if (colorKind == 2) {
+    paint.colorFilter = tgfx::ColorFilter::Luma();
+    gFilterBuilds++;
   }
   int imageKind = r.nextInt();
   if (imageKind == 0) {
@@ -689,10 +692,14 @@ void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
     float blurX = static_cast<float>(r.next());
     float blurY = static_cast<float>(r.next());
     auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
+    int flags = r.nextInt();
+    bool only = (flags & 1) != 0;
     paint.imageFilter =
-        r.nextInt() != 0
-            ? tgfx::ImageFilter::DropShadowOnly(dx, dy, blurX, blurY, color)
-            : tgfx::ImageFilter::DropShadow(dx, dy, blurX, blurY, color);
+        (flags & 2) != 0
+            ? (only ? tgfx::ImageFilter::InnerShadowOnly(dx, dy, blurX, blurY, color)
+                    : tgfx::ImageFilter::InnerShadow(dx, dy, blurX, blurY, color))
+            : (only ? tgfx::ImageFilter::DropShadowOnly(dx, dy, blurX, blurY, color)
+                    : tgfx::ImageFilter::DropShadow(dx, dy, blurX, blurY, color));
     gFilterBuilds++;
   }
   if (paint.imageFilter != nullptr && paint.blend != tgfx::BlendMode::SrcOver) {

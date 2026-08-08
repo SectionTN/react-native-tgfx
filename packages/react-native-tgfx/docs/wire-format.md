@@ -68,3 +68,7 @@ against the live value array each frame.
   2 dash, 4 corner, 8 even-odd fill), then the block each set bit needs. The word
   is always there, so an older reader would take it for the paint's colour; trim
   bounds and dash phase are value slots, since line-drawing is the point of trim.
+- **20** — adds colour-filter kind 2 (luma, no payload), and the drop-shadow's
+  shadow-only word became a flags word (1 shadow only, 2 inner). Neither shifts a
+  word, so the cursor stays aligned either way: an older reader simply drops a
+  luma filter, and renders an inner shadow as an ordinary shadow-only one.

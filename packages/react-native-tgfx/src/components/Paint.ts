@@ -5,6 +5,7 @@ import type {
   BlurProps,
   CornerPathEffectProps,
   DashPathEffectProps,
+  LumaProps,
   ColorMatrixProps,
   DropShadowProps,
   ImageShaderProps,
@@ -77,6 +78,9 @@ export const Blur = NodeType.Blur as unknown as FC<BlurProps>
 
 /** Drop shadow under the drawing. Same offscreen cost as `<Blur>`. */
 export const DropShadow = NodeType.DropShadow as unknown as FC<DropShadowProps>
+
+/** Luminance as alpha. A colour filter, so it costs no offscreen. */
+export const Luma = NodeType.Luma as unknown as FC<LumaProps>
 
 /** Dashes its `<Path>`. Reshapes the geometry, so it needs no offscreen. */
 export const DashPathEffect =

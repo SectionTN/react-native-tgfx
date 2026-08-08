@@ -484,7 +484,12 @@ export interface DropShadowProps {
   color?: Color
   /** Draw only the shadow, dropping the content that cast it. */
   shadowOnly?: boolean
+  /** Cast the shadow *inside* the shape instead of under it. */
+  inner?: boolean
 }
+
+/** Replaces every colour with its luminance, carried into the alpha channel. */
+export type LumaProps = Record<string, never>
 
 export interface NoiseProps {
   freqX?: number

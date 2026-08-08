@@ -10,6 +10,7 @@ import {
   Fill,
   Image,
   Paint,
+  Luma,
   Path,
   RoundedRect,
   useImage,
@@ -201,10 +202,39 @@ export function BlendWithFilter() {
   );
 }
 
+function LateFilters() {
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<DropShadow> under · inner · <Luma>'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 120 }]}>
+        <RoundedRect x={8} y={20} width={90} height={80} r={14} color="#f5f7fa">
+          <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" />
+        </RoundedRect>
+        <RoundedRect x={112} y={20} width={90} height={80} r={14} color="#f5f7fa">
+          <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" inner />
+        </RoundedRect>
+        <RoundedRect x={214} y={20} width={80} height={80} r={12} color="#1c1c1e" />
+        <Circle cx={254} cy={60} r={34} color="#f2a33c" />
+        <RoundedRect x={300} y={20} width={80} height={80} r={12} color="#1c1c1e" />
+        <Circle cx={340} cy={60} r={34} color="#f2a33c">
+          <Luma />
+        </Circle>
+      </Canvas>
+      <RNText style={styles.caption}>
+        The same card with the shadow under it, then inside it; then the same
+        amber disc plain and through luma, both on a dark backdrop.
+      </RNText>
+    </View>
+  );
+}
+
 export function FilterSection() {
   return (
     <>
       <BlendModes />
+      <LateFilters />
       <ColorMatrices />
       <BlendColors />
       <ImageFilters />
