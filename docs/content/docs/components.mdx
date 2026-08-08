@@ -176,6 +176,12 @@ complement instead — a spotlight cut out of a dim overlay is `clip` plus
 Like `<Path path>`, `clip` is read once per commit — a `SharedValue` there would
 never animate.
 
+A rect or rounded-rect clip is free: the GPU scissors it, with no offscreen. A
+path clip rasterises a mask per group per frame, which is far more expensive.
+`invertClip` moves a rect into that second class too, because an inverse fill
+only exists on a path — so invert a rect clip when you want the effect, not out
+of habit.
+
 ### Layers
 
 By default a group's `opacity` multiplies into each child, so two overlapping

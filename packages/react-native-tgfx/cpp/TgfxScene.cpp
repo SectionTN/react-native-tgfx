@@ -94,7 +94,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; DrawCmd is ~620 B, so 256 deep is ~159 KB of stack.
+/// Bounds readNode and so drawCmd too; its frame is ~928 B, so 256 deep is ~232 KiB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
