@@ -50,7 +50,7 @@ A `ref` on `<Canvas>` gives a `CanvasHandle` for reading pixels back — see
 | `Oval` | `x`, `y`, `width`, `height` |
 | `Circle` | `cx`, `cy`, `r` |
 | `Line` | `x1`, `y1`, `x2`, `y2` |
-| `Path` | `path` — SVG path data, `string` |
+| `Path` | `path` — SVG path data, `string`; plus `start`, `end`, `fillType` and the path effects below |
 | `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` — see [images](/docs/images#image) |
 | `Text` | `text`, `x`, `y`, plus the font and paragraph props — see [text](/docs/text) |
 | `TextPath` | `path`, `text`, `startOffset`, plus the font props — see [text](/docs/text) |
@@ -98,6 +98,31 @@ function Backdrop({ width, height }: { width: number; height: number }) {
 
 Coverage comes from the device-space clip, so a transform on an enclosing
 `Group` moves the paint but not the area filled — as in Skia.
+
+### Path effects
+
+`<Path>` can trim itself, dash itself, and round its own corners. Trim is the
+line-drawing animation: `start` and `end` are 0-1 along the path and both are
+animatable, so a `SharedValue` on `end` draws the path on.
+
+```tsx
+import { DashPathEffect, Path } from 'react-native-tgfx'
+
+<Path path={route} style="stroke" strokeWidth={4} end={progress}>
+  <DashPathEffect intervals={[10, 5]} phase={march} />
+</Path>
+```
+
+| prop | what it does |
+| --- | --- |
+| `start`, `end` | the segment to keep, 0-1. `end` below `start` reverses it |
+| `fillType` | `'winding'` (default) or `'evenOdd'` |
+| `<DashPathEffect>` | `intervals` — alternating on/off lengths, even count; `phase` — offset, animatable |
+| `<CornerPathEffect>` | `r` — corner radius, applied before any stroke |
+
+Effects apply corner, then dash, then trim — the order Skia uses. A path whose
+trim and phase are all static is reshaped once at commit; animate any of them and
+it is reshaped per frame, which is the cost of the animation.
 
 ## Paint
 

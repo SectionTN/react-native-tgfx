@@ -64,3 +64,7 @@ against the live value array each frame.
   rect, a round rect, or a path string) and an optional layer alpha. A group that
   does neither still writes kind 0 and is byte-identical to 17, so only the groups
   that use the new props cost anything.
+- **19** — a `<Path>` writes one effect-flags word after its path string (1 trim,
+  2 dash, 4 corner, 8 even-odd fill), then the block each set bit needs. The word
+  is always there, so an older reader would take it for the paint's colour; trim
+  bounds and dash phase are value slots, since line-drawing is the point of trim.

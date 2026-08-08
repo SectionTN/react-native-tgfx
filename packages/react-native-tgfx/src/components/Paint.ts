@@ -3,6 +3,8 @@ import { NodeType } from '../reconciler/types'
 import type {
   BlendColorProps,
   BlurProps,
+  CornerPathEffectProps,
+  DashPathEffectProps,
   ColorMatrixProps,
   DropShadowProps,
   ImageShaderProps,
@@ -75,3 +77,11 @@ export const Blur = NodeType.Blur as unknown as FC<BlurProps>
 
 /** Drop shadow under the drawing. Same offscreen cost as `<Blur>`. */
 export const DropShadow = NodeType.DropShadow as unknown as FC<DropShadowProps>
+
+/** Dashes its `<Path>`. Reshapes the geometry, so it needs no offscreen. */
+export const DashPathEffect =
+  NodeType.DashPathEffect as unknown as FC<DashPathEffectProps>
+
+/** Rounds the corners of its `<Path>`, before any stroke. */
+export const CornerPathEffect =
+  NodeType.CornerPathEffect as unknown as FC<CornerPathEffectProps>

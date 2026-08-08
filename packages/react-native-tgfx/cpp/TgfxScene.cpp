@@ -18,6 +18,7 @@
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageFilter.h"
 #include "tgfx/core/Paint.h"
+#include "tgfx/core/PathEffect.h"
 #include "tgfx/core/Point.h"
 #include "tgfx/core/RRect.h"
 #include "tgfx/core/Rect.h"
@@ -380,6 +381,26 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
 }
 
 }  // namespace
+
+void PathEffectCmd::apply(tgfx::Path* path, std::span<const double> v) const {
+  if (corner > 0) {
+    if (auto effect = tgfx::PathEffect::MakeCorner(corner)) {
+      effect->filterPath(path);
+    }
+  }
+  if (dash) {
+    if (auto effect = tgfx::PathEffect::MakeDash(intervals.data(),
+                                                 static_cast<int>(intervals.size()),
+                                                 phase.resolve(v))) {
+      effect->filterPath(path);
+    }
+  }
+  if (trim) {
+    if (auto effect = tgfx::PathEffect::MakeTrim(start.resolve(v), end.resolve(v))) {
+      effect->filterPath(path);
+    }
+  }
+}
 
 std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
     std::span<const double> values) const {
@@ -850,10 +871,41 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         cmd.path.lineTo(cmd.x2.literal, cmd.y2.literal);
       }
       break;
-    case KPath:
+    case KPath: {
       cmd.kind = DrawCmd::Path;
       cmd.path = parseSvgPath(r.nextString());
+      int flags = r.nextInt();
+      if ((flags & 8) != 0) {
+        cmd.path.setFillType(tgfx::PathFillType::EvenOdd);
+      }
+      if ((flags & 7) != 0) {
+        auto effects = std::make_shared<PathEffectCmd>();
+        effects->trim = (flags & 1) != 0;
+        if (effects->trim) {
+          effects->start = r.nextAnim();
+          effects->end = r.nextAnim();
+        }
+        if ((flags & 2) != 0) {
+          int count = r.nextInt();
+          effects->intervals.reserve(boundedCount(r, count));
+          for (int i = 0; i < count && r.ok; i++) {
+            effects->intervals.push_back(static_cast<float>(r.next()));
+          }
+          effects->dash = effects->intervals.size() >= 2;
+          effects->phase = r.nextAnim();
+        }
+        if ((flags & 4) != 0) {
+          effects->corner = static_cast<float>(r.next());
+        }
+        // A static effect is baked now, so the draw path stays a plain drawPath.
+        if (effects->animated()) {
+          cmd.effects = std::move(effects);
+        } else {
+          effects->apply(&cmd.path, {});
+        }
+      }
       break;
+    }
     case KImage: {
       cmd.kind = DrawCmd::Image;
       cmd.x = r.nextAnim();
@@ -1113,7 +1165,13 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       }
       break;
     case DrawCmd::Path:
-      canvas->drawPath(cmd.path, *p);
+      if (cmd.effects != nullptr) {
+        tgfx::Path trimmed = cmd.path;
+        cmd.effects->apply(&trimmed, v);
+        canvas->drawPath(trimmed, *p);
+      } else {
+        canvas->drawPath(cmd.path, *p);
+      }
       break;
     case DrawCmd::Image: {
       std::shared_ptr<tgfx::Image> live;

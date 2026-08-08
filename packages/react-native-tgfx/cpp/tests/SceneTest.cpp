@@ -299,6 +299,16 @@ std::array<uint8_t, 3> pixelAt(const Pixels& pixels, int x, int y) {
   return {pixels[at], pixels[at + 1], pixels[at + 2]};
 }
 
+size_t inkPixels(const Pixels& pixels) {
+  size_t count = 0;
+  for (size_t at = 3; at < pixels.size(); at += 4) {
+    if (pixels[at] > 0) {
+      count++;
+    }
+  }
+  return count;
+}
+
 bool opaqueAt(const Pixels& pixels, int x, int y) {
   return pixels[(static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4 + 3] > 0;
 }
@@ -798,6 +808,7 @@ void aMiterLimitCutsBackASharpSpike() {
     w.push(1);
     w.push(6);  // Path
     w.push(0);  // path string index
+    w.push(0);  // no path effects
     w.push(0xff000000);
     w.push(1 | 2 | (limit > 0 ? 16 : 0));  // stroke, antiAlias, and a miter limit when asked
     w.pushAnim(6);                         // strokeWidth
@@ -927,6 +938,73 @@ void aLayerCompositesTheSubtreeOnce() {
   CHECK(opaqueAt(clipLayer, 12, 12));
   CHECK(!opaqueAt(clipLayer, 40, 40));
   CHECK(pixelAt(clipLayer, 12, 12) == pixelAt(layered, 8, 16));
+}
+
+/// Dash, corner and trim reshape the geometry; trim's slots move without a re-commit.
+void pathEffectsReshapeTheGeometry() {
+  // path | flags | [start end] | [count intervals phase] | [corner] then the paint.
+  auto stroke = [](int flags, const std::vector<double>& block,
+                   const std::vector<double>& values, int startSlot = -1) {
+    Writer w;
+    w.push(1);
+    w.push(6);
+    w.push(0);
+    w.push(flags);
+    for (size_t i = 0; i < block.size(); i++) {
+      if (startSlot >= 0 && i == 0) {
+        w.pushAnim(block[i], startSlot);
+      } else {
+        w.push(block[i]);
+      }
+    }
+    w.push(0xff000000);
+    w.push(1 | 2);
+    w.pushAnim(4);
+    w.push(0);
+    w.push(0);
+    w.pushAnim(1);
+    w.push(-1);
+    return render(w.finish(), {"M4 32 L60 32"}, values);
+  };
+
+  auto solid = stroke(0, {}, {});
+  CHECK(anyPixelSet(solid));
+
+  // A dash removes ink between the on-intervals, so the same line covers fewer pixels.
+  auto dashed = stroke(2, {2, 8, 8, 0}, {});
+  CHECK(anyPixelSet(dashed));
+  CHECK(inkPixels(dashed) < inkPixels(solid));
+
+  // Phase slides the pattern, so the same intervals land elsewhere.
+  CHECK(stroke(2, {2, 8, 8, 4}, {}) != dashed);
+
+  // Trim keeps the first half only.
+  auto half = stroke(1, {0, 0.5}, {});
+  CHECK(inkPixels(half) < inkPixels(solid));
+  CHECK(opaqueAt(half, 10, 32));
+  CHECK(!opaqueAt(half, 55, 32));
+
+  // An animated trim re-applies per frame: the same program, two different values.
+  tgfxrn::SceneRenderer renderer;
+  Writer w;
+  w.push(1);
+  w.push(6);
+  w.push(0);
+  w.push(1);
+  w.pushAnim(0, 0);
+  w.push(1);
+  w.push(0xff000000);
+  w.push(1 | 2);
+  w.pushAnim(4);
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1);
+  w.push(-1);
+  renderer.setScene(w.finish(), {"M4 32 L60 32"});
+  auto early = drawFrame(renderer, {0.0});
+  auto late = drawFrame(renderer, {0.6});
+  CHECK(inkPixels(late) < inkPixels(early));
+  CHECK(!opaqueAt(late, 10, 32));
 }
 
 void fillCoversTheWholeCanvas() {
@@ -2505,6 +2583,7 @@ int main() {
   aMiterLimitCutsBackASharpSpike();
   aGroupClipConfinesItsSubtree();
   aLayerCompositesTheSubtreeOnce();
+  pathEffectsReshapeTheGeometry();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

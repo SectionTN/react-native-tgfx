@@ -119,6 +119,25 @@ export interface PathProps extends PaintProps {
    * SharedValue here would never animate.
    */
   path: string
+  /** Where along the path to start drawing, 0-1. Animatable — this is line-drawing. */
+  start?: Animated<number>
+  /** Where to stop, 0-1. `end` below `start` draws the segment reversed. */
+  end?: Animated<number>
+  /** How the path decides what is inside. `'winding'` by default. */
+  fillType?: 'winding' | 'evenOdd'
+}
+
+/** Dashes a stroked path. A child of `<Path>`, like a gradient is a child of a shape. */
+export interface DashPathEffectProps {
+  /** Alternating on/off lengths in px. Needs at least two, and an even count. */
+  intervals: number[]
+  /** Offset into the interval pattern; animate it to march the dashes. */
+  phase?: Animated<number>
+}
+
+/** Rounds every corner of a path by `r`, before any stroke is applied. */
+export interface CornerPathEffectProps {
+  r: number
 }
 
 export interface ImageProps extends PaintProps {

@@ -30,6 +30,8 @@ export const NodeType = {
   BlendColor: 'tgfx_blendcolor',
   Blur: 'tgfx_blur',
   DropShadow: 'tgfx_dropshadow',
+  DashPathEffect: 'tgfx_dash',
+  CornerPathEffect: 'tgfx_corner',
   Fill: 'tgfx_fill',
   CameraFrame: 'tgfx_cameraframe',
 } as const
