@@ -30,7 +30,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 20;
+inline constexpr double kSceneVersion = 21;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -226,6 +226,8 @@ class SceneRenderer {
   void readTextRuns(SceneReader& reader, TextCmd& text);
   void readPaint(SceneReader& reader, PaintCmd& paint);
   void readFilters(SceneReader& reader, PaintCmd& paint);
+  std::shared_ptr<tgfx::ColorFilter> readColorFilter(SceneReader& reader, int depth);
+  std::shared_ptr<tgfx::ImageFilter> readImageFilter(SceneReader& reader, int depth);
   std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader, PaintCmd* out,
                                            int depth = 0);
 

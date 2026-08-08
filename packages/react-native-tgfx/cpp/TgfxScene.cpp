@@ -614,6 +614,25 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
     }
     return cmd.build(image);
   }
+  if (kind == 9) {
+    return tgfx::Shader::MakeColorShader(colorFromPacked(static_cast<uint32_t>(r.next())));
+  }
+  if (kind == 8) {
+    auto mode = blendModeOf(r.nextInt());
+    int count = r.nextInt();
+    std::shared_ptr<tgfx::Shader> folded;
+    for (int i = 0; i < count && r.ok; i++) {
+      // Children may bake into `out` (an image or runtime shader), which cannot fold here.
+      auto child = readShader(r, nullptr, depth + 1);
+      if (child == nullptr) {
+        continue;
+      }
+      folded = folded == nullptr ? std::move(child)
+                                 : tgfx::Shader::MakeBlend(mode, std::move(folded),
+                                                           std::move(child));
+    }
+    return folded;
+  }
   if (kind == 4 || kind == 5) {
     float fx = static_cast<float>(r.next());
     float fy = static_cast<float>(r.next());
@@ -662,31 +681,51 @@ size_t filterBuildCount() {
   return gFilterBuilds.load(std::memory_order_relaxed);
 }
 
-void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
-  paint.blend = blendModeOf(r.nextInt());
-  int colorKind = r.nextInt();
-  if (colorKind == 0) {
+std::shared_ptr<tgfx::ColorFilter> SceneRenderer::readColorFilter(SceneReader& r, int depth) {
+  if (depth > kMaxNodeDepth) {
+    r.ok = false;
+    return nullptr;
+  }
+  int kind = r.nextInt();
+  std::shared_ptr<tgfx::ColorFilter> filter;
+  if (kind == 0) {
     std::array<float, 20> matrix{};
     for (auto& value : matrix) {
       value = static_cast<float>(r.next());
     }
-    paint.colorFilter = tgfx::ColorFilter::Matrix(matrix);
-    gFilterBuilds++;
-  } else if (colorKind == 1) {
+    filter = tgfx::ColorFilter::Matrix(matrix);
+  } else if (kind == 1) {
     auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
-    paint.colorFilter = tgfx::ColorFilter::Blend(color, blendModeOf(r.nextInt()));
-    gFilterBuilds++;
-  } else if (colorKind == 2) {
-    paint.colorFilter = tgfx::ColorFilter::Luma();
-    gFilterBuilds++;
+    filter = tgfx::ColorFilter::Blend(color, blendModeOf(r.nextInt()));
+  } else if (kind == 2) {
+    filter = tgfx::ColorFilter::Luma();
+  } else if (kind == 4) {
+    // Read both sides whatever happens, or a null child would strand the cursor.
+    auto inner = readColorFilter(r, depth + 1);
+    auto outer = readColorFilter(r, depth + 1);
+    if (inner == nullptr || outer == nullptr) {
+      return inner != nullptr ? inner : outer;
+    }
+    filter = tgfx::ColorFilter::Compose(std::move(inner), std::move(outer));
+  } else {
+    return nullptr;
   }
-  int imageKind = r.nextInt();
-  if (imageKind == 0) {
+  gFilterBuilds++;
+  return filter;
+}
+
+std::shared_ptr<tgfx::ImageFilter> SceneRenderer::readImageFilter(SceneReader& r, int depth) {
+  if (depth > kMaxNodeDepth) {
+    r.ok = false;
+    return nullptr;
+  }
+  int kind = r.nextInt();
+  std::shared_ptr<tgfx::ImageFilter> filter;
+  if (kind == 0) {
     float blurX = static_cast<float>(r.next());
     float blurY = static_cast<float>(r.next());
-    paint.imageFilter = tgfx::ImageFilter::Blur(blurX, blurY, tileModeOf(r.nextInt()));
-    gFilterBuilds++;
-  } else if (imageKind == 1) {
+    filter = tgfx::ImageFilter::Blur(blurX, blurY, tileModeOf(r.nextInt()));
+  } else if (kind == 1) {
     float dx = static_cast<float>(r.next());
     float dy = static_cast<float>(r.next());
     float blurX = static_cast<float>(r.next());
@@ -694,14 +733,29 @@ void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
     auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
     int flags = r.nextInt();
     bool only = (flags & 1) != 0;
-    paint.imageFilter =
-        (flags & 2) != 0
-            ? (only ? tgfx::ImageFilter::InnerShadowOnly(dx, dy, blurX, blurY, color)
-                    : tgfx::ImageFilter::InnerShadow(dx, dy, blurX, blurY, color))
-            : (only ? tgfx::ImageFilter::DropShadowOnly(dx, dy, blurX, blurY, color)
-                    : tgfx::ImageFilter::DropShadow(dx, dy, blurX, blurY, color));
-    gFilterBuilds++;
+    filter = (flags & 2) != 0
+                 ? (only ? tgfx::ImageFilter::InnerShadowOnly(dx, dy, blurX, blurY, color)
+                         : tgfx::ImageFilter::InnerShadow(dx, dy, blurX, blurY, color))
+                 : (only ? tgfx::ImageFilter::DropShadowOnly(dx, dy, blurX, blurY, color)
+                         : tgfx::ImageFilter::DropShadow(dx, dy, blurX, blurY, color));
+  } else if (kind == 2) {
+    auto first = readImageFilter(r, depth + 1);
+    auto then = readImageFilter(r, depth + 1);
+    if (first == nullptr || then == nullptr) {
+      return first != nullptr ? first : then;
+    }
+    filter = tgfx::ImageFilter::Compose(std::move(first), std::move(then));
+  } else {
+    return nullptr;
   }
+  gFilterBuilds++;
+  return filter;
+}
+
+void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
+  paint.blend = blendModeOf(r.nextInt());
+  paint.colorFilter = readColorFilter(r, 0);
+  paint.imageFilter = readImageFilter(r, 0);
   if (paint.imageFilter != nullptr && paint.blend != tgfx::BlendMode::SrcOver) {
     // Taking the layer here keeps the blend mode tgfx would otherwise composite away.
     paint.layer = std::make_shared<tgfx::Paint>();

@@ -234,6 +234,27 @@ the result, which is what you usually mean:
 That offscreen costs a render target, so reach for it when the double-blend is
 visible, not by default.
 
+## Shader composition
+
+`<Blend>` folds its shader children together with a blend mode, left to right:
+the first child is the destination and each next one blends over it.
+`<ColorShader>` is the leaf that makes a solid colour usable as an input.
+
+```tsx
+import { Blend, ColorShader, RadialGradient, Rect, Turbulence } from 'react-native-tgfx'
+
+<Rect x={0} y={0} width={256} height={256}>
+  <Blend mode="multiply">
+    <RadialGradient center={{ x: 128, y: 128 }} r={128} colors={['blue', 'yellow']} />
+    <Turbulence freqX={0.05} freqY={0.05} octaves={4} />
+  </Blend>
+</Rect>
+```
+
+Nesting is allowed: a `<Blend>` can be a child of another `<Blend>`. Like every
+other shader, the whole tree is built once at commit — animate a `<Shader>`
+uniform if you need something to move.
+
 ## Gradients and noise
 
 Children of a shape or `<Paint>`. They draw nothing on their own.

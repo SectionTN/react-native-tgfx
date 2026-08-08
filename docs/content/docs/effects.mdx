@@ -55,7 +55,8 @@ on a physical iPhone before shipping it. Tracked in
 
 Children of a shape or `<Paint>`, exactly like gradients. They draw nothing on
 their own, and a shape takes at most one colour filter and one image filter —
-the last one written wins, and a second of the same class warns in development.
+two of the same class **compose**, in declaration order — the first one written
+runs first and the next runs over its result.
 
 | component | props |
 | --- | --- |

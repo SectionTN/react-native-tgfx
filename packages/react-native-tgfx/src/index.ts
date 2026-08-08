@@ -19,7 +19,9 @@ export {
 } from './components/drawings'
 export {
   BlendColor,
+  Blend,
   Blur,
+  ColorShader,
   CornerPathEffect,
   DashPathEffect,
   Luma,
@@ -101,7 +103,9 @@ export type {
   Animated,
   BlendColorProps,
   BlendMode,
+  BlendProps,
   BlurProps,
+  ColorShaderProps,
   CornerPathEffectProps,
   DashPathEffectProps,
   LumaProps,

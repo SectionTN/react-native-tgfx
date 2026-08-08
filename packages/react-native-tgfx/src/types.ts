@@ -488,6 +488,20 @@ export interface DropShadowProps {
   inner?: boolean
 }
 
+/**
+ * Folds its shader children together with `mode`, left to right: the first is the
+ * destination, each next one blends over it. A shader source, not a paint filter.
+ */
+export interface BlendProps {
+  mode?: BlendMode
+  children?: ReactNode
+}
+
+/** A solid colour as a shader, for use as a `<Blend>` input. */
+export interface ColorShaderProps {
+  color: Color
+}
+
 /** Replaces every colour with its luminance, carried into the alpha channel. */
 export type LumaProps = Record<string, never>
 
