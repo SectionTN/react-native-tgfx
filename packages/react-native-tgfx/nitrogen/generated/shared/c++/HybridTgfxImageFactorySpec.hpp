@@ -24,6 +24,7 @@ namespace margelo::nitro::tgfx { enum class PixelFormat; }
 #include <string>
 #include <NitroModules/ArrayBuffer.hpp>
 #include "PixelFormat.hpp"
+#include <vector>
 
 namespace margelo::nitro::tgfx {
 
@@ -60,6 +61,7 @@ namespace margelo::nitro::tgfx {
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromBytes(const std::shared_ptr<ArrayBuffer>& bytes) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromBase64(const std::string& data) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> fromNativeBuffer(uint64_t buffer, PixelFormat format) = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings, double width, double height, double pixelRatio, bool opaque) = 0;
       virtual void setCacheLimit(double bytes) = 0;
 
     protected:

@@ -1,21 +1,24 @@
 // Everything <Image> and <ImageShader> can do. Every source is a require()d asset, decoded natively.
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   Canvas,
   Circle,
+  ColorMatrix,
   Fill,
   Group,
   Atlas,
   Image,
   ImageShader,
   Vertices,
+  renderToImage,
   Paint,
   Path,
   RoundedRect,
   Text,
   useImage,
   type Fit,
+  type TgfxImage,
 } from 'react-native-tgfx';
 
 const sample = require('./assets/sample.png');
@@ -236,6 +239,73 @@ export function VerticesMeshes() {
   );
 }
 
+/** A scene rendered with no <Canvas> mounted, then drawn as an ordinary image. */
+export function OffscreenRender() {
+  const [made, setMade] = useState<TgfxImage | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    renderToImage(
+      <>
+        <Fill color="#101725" />
+        {[0, 1, 2, 3, 4].map(i => (
+          <Circle
+            key={i}
+            cx={24 + i * 32}
+            cy={64 - i * 8}
+            r={18}
+            color={`hsl(${i * 48}, 80%, 60%)`}
+          />
+        ))}
+      </>,
+      { width: 160, height: 100, pixelRatio: 2 }
+    )
+      .then(image => {
+        if (live) {
+          setMade(image);
+        }
+      })
+      .catch(e => live && setError(String(e)));
+    return () => {
+      live = false;
+      setMade(image => {
+        image?.dispose();
+        return null;
+      });
+    };
+  }, []);
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'renderToImage — drawn with no <Canvas> mounted'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 120 }]}>
+        <Fill color="#f2f2f7" />
+        {made != null && (
+          <>
+            <Image image={made} x={8} y={10} width={160} height={100} />
+            {/* The same handle again, so it is a real image and not a one-shot. */}
+            <Image image={made} x={184} y={10} width={80} height={50} />
+            <Image image={made} x={184} y={64} width={80} height={50}>
+              <ColorMatrix matrix={GREY} />
+            </Image>
+          </>
+        )}
+      </Canvas>
+      <RNText style={styles.caption}>
+        {error ?? 'One offscreen render, drawn three times.'}
+      </RNText>
+    </View>
+  );
+}
+
+const GREY = [
+  0.213, 0.715, 0.072, 0, 0, 0.213, 0.715, 0.072, 0, 0, 0.213, 0.715, 0.072, 0,
+  0, 0, 0, 0, 1, 0,
+];
+
 /** The image as a paint source: tiled fills, and a masked shape. */
 export function ImageShaderExamples() {
   const pattern = useImage(tile);
@@ -438,6 +508,7 @@ export function ImageSection() {
       <SpriteSheet />
       <AtlasField />
       <VerticesMeshes />
+      <OffscreenRender />
       <ImageShaderExamples />
     </>
   );
@@ -447,4 +518,5 @@ const styles = StyleSheet.create({
   section: { paddingHorizontal: 16, paddingVertical: 10 },
   label: { fontSize: 13, fontWeight: '600', color: '#3a3a3c', marginBottom: 6 },
   canvas: { width: '100%', backgroundColor: 'transparent' },
+  caption: { fontSize: 11, color: '#8e8e93', marginTop: 4 },
 });

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "HybridTgfxImageFactorySpec.hpp"
 
@@ -19,6 +20,9 @@ class HybridTgfxImageFactory : public HybridTgfxImageFactorySpec {
       const std::string& data) override;
   std::shared_ptr<HybridTgfxImageSpec> fromNativeBuffer(uint64_t buffer,
                                                         PixelFormat format) override;
+  std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(
+      const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings,
+      double width, double height, double pixelRatio, bool opaque) override;
 
   void setCacheLimit(double bytes) override;
   double getCachedBytes() override;

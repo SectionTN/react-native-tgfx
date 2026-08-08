@@ -3,6 +3,7 @@
 export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'
 export { Mask } from './components/Mask'
+export { renderToImage, type RenderToImageOptions } from './offscreen'
 export {
   CameraFrame,
   Circle,

@@ -17,6 +17,7 @@
 #include "SvgImage.hpp"
 #include "PathOps.hpp"
 #include "SvgPath.hpp"
+#include "OffscreenRender.hpp"
 #include "TgfxScene.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Data.h"
@@ -3084,6 +3085,87 @@ void verticesSampleTheirTextureCoordinates() {
   CHECK(got[2] == 255 && got[0] == 0);
 }
 
+/// No window, no view: renderToImage's surface belongs to nothing on screen.
+void anOffscreenRenderProducesTheSamePixels() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushPaint(0xff0000ff, false);
+  auto program = w.finish();
+
+  size_t bytes = 0;
+  auto image = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, false, bytes);
+  CHECK(image != nullptr);
+  CHECK(bytes == 64u * 64u * 4u);
+  CHECK(image->width() == 64 && image->height() == 64);
+
+  // The pixels came back on the CPU, so they draw in a context that never saw the surface.
+  auto* context = device()->lockContext();
+  auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+  auto* canvas = surface->getCanvas();
+  canvas->clear();
+  canvas->drawImage(image);
+  context->flushAndSubmit(true);
+  auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888);
+  Pixels pixels(static_cast<size_t>(info.byteSize()));
+  surface->readPixels(info, pixels.data());
+  device()->unlock();
+
+  CHECK(pixelAt(pixels, 16, 16)[2] == 255);
+  CHECK(pixelAt(pixels, 48, 48)[2] == 0);
+
+  // pixelRatio scales the surface without moving the geometry.
+  auto dense = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 2, false, bytes);
+  CHECK(dense != nullptr && dense->width() == 128 && dense->height() == 128);
+
+  // An opaque render leaves nothing transparent, even where the scene drew nothing.
+  auto solid = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, true, bytes);
+  CHECK(solid != nullptr);
+  auto* solidContext = device()->lockContext();
+  auto solidSurface = tgfx::Surface::Make(solidContext, kWidth, kHeight);
+  solidSurface->getCanvas()->clear();
+  solidSurface->getCanvas()->drawImage(solid);
+  solidContext->flushAndSubmit(true);
+  Pixels solidPixels(static_cast<size_t>(info.byteSize()));
+  solidSurface->readPixels(info, solidPixels.data());
+  device()->unlock();
+  // Black where the rect did not reach, not transparent.
+  CHECK(solidPixels[(48 * kWidth + 48) * 4 + 3] == 255);
+
+  // A decoded table, not the packed delta setScene takes: index 0 is the first string.
+  Writer stringy;
+  stringy.push(1);
+  stringy.push(6);  // Path
+  stringy.push(0);  // string index 0
+  stringy.push(0);  // no path effects
+  stringy.pushPaint(0xff00ff00, false);
+  size_t pathBytes = 0;
+  auto drawn = tgfxrn::renderSceneOffscreen(stringy.finish(), {"M0 0 L48 0 L48 48 Z"}, 64, 64, 1,
+                                            false, pathBytes);
+  CHECK(drawn != nullptr);
+  auto* pathContext = device()->lockContext();
+  auto pathSurface = tgfx::Surface::Make(pathContext, kWidth, kHeight);
+  pathSurface->getCanvas()->clear();
+  pathSurface->getCanvas()->drawImage(drawn);
+  pathContext->flushAndSubmit(true);
+  Pixels pathPixels(static_cast<size_t>(info.byteSize()));
+  pathSurface->readPixels(info, pathPixels.data());
+  device()->unlock();
+  CHECK(pixelAt(pathPixels, 32, 16)[1] == 255);
+
+  bool threw = false;
+  try {
+    tgfxrn::renderSceneOffscreen(program, {}, 0, 64, 1, false, bytes);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  CHECK(threw);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -3117,6 +3199,7 @@ int main() {
   anAtlasPlacesEverySpriteItIsGiven();
   verticesDrawTheTrianglesTheyDescribe();
   verticesSampleTheirTextureCoordinates();
+  anOffscreenRenderProducesTheSamePixels();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

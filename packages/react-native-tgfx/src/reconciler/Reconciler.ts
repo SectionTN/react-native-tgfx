@@ -186,6 +186,13 @@ export class TgfxRoot {
     reconciler.updateContainer(element, this.root, null, null)
   }
 
+  /// Commits before returning, so a caller with no view can read the program out.
+  renderSync(element: ReactNode): void {
+    this.direct = false
+    reconciler.updateContainerSync(element, this.root, null, null)
+    reconciler.flushSyncWork()
+  }
+
   setDirect(roots: Node[]): void {
     if (!this.direct) {
       // `updateContainer` only schedules, so flush it muted or the teardown blanks the canvas.

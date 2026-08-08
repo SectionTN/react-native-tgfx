@@ -19,6 +19,7 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("fromBytes", &HybridTgfxImageFactorySpec::fromBytes);
       prototype.registerHybridMethod("fromBase64", &HybridTgfxImageFactorySpec::fromBase64);
       prototype.registerHybridMethod("fromNativeBuffer", &HybridTgfxImageFactorySpec::fromNativeBuffer);
+      prototype.registerHybridMethod("fromScene", &HybridTgfxImageFactorySpec::fromScene);
       prototype.registerHybridMethod("setCacheLimit", &HybridTgfxImageFactorySpec::setCacheLimit);
     });
   }

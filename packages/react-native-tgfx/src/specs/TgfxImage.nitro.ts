@@ -103,6 +103,21 @@ export interface TgfxImageFactory extends HybridObject<{
   fromNativeBuffer(buffer: UInt64, format: PixelFormat): TgfxImage
 
   /**
+   * Render a compiled draw program to an offscreen GPU surface and register the
+   * result as an image. No `<Canvas>` need be mounted: the surface belongs to no
+   * view, so the pixels are read back to the CPU and re-uploaded wherever they
+   * are drawn.
+   */
+  fromScene(
+    words: ArrayBuffer,
+    strings: string[],
+    width: number,
+    height: number,
+    pixelRatio: number,
+    opaque: boolean
+  ): Promise<TgfxImage>
+
+  /**
    * Byte budget for decoded images. A decoded image is resident twice — as CPU
    * pixels here and as the GPU texture uploaded from them — so this number is
    * applied to both the pixel cache and the tgfx context's resource cache

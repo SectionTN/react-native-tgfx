@@ -40,7 +40,13 @@ class ImageRegistry {
   ImageHandle add(std::shared_ptr<tgfx::ImageCodec> codec);
 
   /// Register an image this registry did not decode. Outside the byte budget: not ours to evict.
-  ImageHandle addExternal(std::shared_ptr<tgfx::Image> image);
+  /**
+   * Registers an image the caller already holds pixels for. `ownedBytes` is what
+   * this process allocated to make it, reported to the JS GC but never evicted —
+   * pass 0 for an image whose pixels are someone else's (an SVG picture, a
+   * hardware buffer).
+   */
+  ImageHandle addExternal(std::shared_ptr<tgfx::Image> image, size_t ownedBytes = 0);
 
   bool replaceExternal(int32_t handle, std::shared_ptr<tgfx::Image> image);
 

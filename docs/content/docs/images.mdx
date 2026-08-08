@@ -207,3 +207,59 @@ Byte budget for decoded pixel buffers held between draws — a real LRU keyed on
 the handle, defaulting to 64 MB. An image the budget drops is re-decoded on next
 use, never lost. Decoded GPU textures are bounded separately by the tgfx context
 cache limit (192 MB).
+
+## renderToImage
+
+Draw a scene to an image without mounting a `<Canvas>` — share cards, sticker
+exports, thumbnails, generated textures.
+
+```tsx
+import { renderToImage, Rect, LinearGradient } from 'react-native-tgfx'
+
+const image = await renderToImage(
+  <Rect x={0} y={0} width={512} height={512}>
+    <LinearGradient
+      start={{ x: 0, y: 0 }}
+      end={{ x: 512, y: 512 }}
+      colors={['#f0f', '#0ff']}
+    />
+  </Rect>,
+  { width: 512, height: 512 }
+)
+```
+
+The tree goes through the same reconciler a canvas uses, so function components,
+`.map()`, hooks and context all expand. The result is an ordinary image handle:
+pass it to `<Image>`, `<ImageShader>`, or `<Atlas>`.
+
+| option | meaning |
+| --- | --- |
+| `width`, `height` | logical points, like a `<Canvas>` of that size |
+| `pixelRatio` | pixels per point, default 1 — pass the screen scale for a display-resolution render |
+| `opaque` | default false, leaving everything the scene did not cover transparent |
+
+The surface belongs to no view, so the pixels are read back to the CPU and
+re-uploaded wherever they are next drawn. That readback is the cost of a handle
+that works in any canvas, and it means `renderToImage` is not a per-frame tool:
+render once and reuse the handle.
+
+Animated props are read at their committed value. There is no view driving them,
+and the result is a single still frame.
+
+The caller owns the handle and must `dispose()` it. The result is **not** covered
+by `setImageCacheLimit`: it is registered as an external image, so it is never
+evicted and lives until you dispose it. Its size is reported to the JS garbage
+collector, so an unreferenced handle is collected eventually — but a large render
+held in state is held until you let it go.
+
+A suspending subtree commits its fallback rather than waiting, and a component
+that throws rejects the promise instead of resolving with a blank image.
+
+The tree is compiled synchronously on the JS thread before the promise is
+returned — about 0.2 ms for 500 nodes — and the GPU work then runs on a worker.
+Concurrent calls share one offscreen GPU context and so run strictly one at a
+time; a 4096x4096 render occupies a worker for roughly 10 ms, most of it the
+pixel readback.
+
+Renders are capped at 8192 pixels on a side after `pixelRatio` is applied, which
+at the limit is a 256 MB pixel readback — in practice memory bites first.

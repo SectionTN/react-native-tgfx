@@ -134,6 +134,7 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/SvgPath.cpp
         ../cpp/SvgImage.cpp
         ../cpp/TgfxRenderer.cpp
+        ../cpp/OffscreenRender.cpp
         ../cpp/ImageRegistry.cpp
         ../cpp/TgfxFrameSink.cpp
         ../cpp/HybridTgfxImageFactory.cpp

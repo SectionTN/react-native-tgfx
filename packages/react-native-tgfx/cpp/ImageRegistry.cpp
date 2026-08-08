@@ -69,7 +69,7 @@ ImageHandle ImageRegistry::add(std::shared_ptr<tgfx::ImageCodec> codec) {
   return {handle, stored.width, stored.height};
 }
 
-ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image) {
+ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image, size_t ownedBytes) {
   if (image == nullptr) {
     return {};
   }
@@ -79,7 +79,8 @@ ImageHandle ImageRegistry::addExternal(std::shared_ptr<tgfx::Image> image) {
   entry.width = image->width();
   entry.height = image->height();
   entry.decoded = std::move(image);
-  // Never touched into the LRU: the pixels are the producer's, not ours to budget.
+  // Reported to the JS GC but never touched into the LRU, so it is never evicted.
+  entry.bytes = ownedBytes;
   auto& stored = entries_.emplace(handle, std::move(entry)).first->second;
   return {handle, stored.width, stored.height};
 }
