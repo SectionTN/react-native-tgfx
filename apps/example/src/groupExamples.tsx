@@ -1,6 +1,6 @@
 // <Group> clip, invertClip and layer: the three things that needed a saveLayer to be right.
 import { Text as RNText, StyleSheet, View } from 'react-native';
-import { Canvas, Circle, Group, Image, Rect, useImage } from 'react-native-tgfx';
+import { Canvas, Circle, Group, Image, Line, Path, Rect, Text, useImage } from 'react-native-tgfx';
 
 const SPOTLIGHT = 'M60 8 C90 8 108 32 108 56 C108 80 90 104 60 104 C30 104 12 80 12 56 C12 32 30 8 60 8 Z';
 
@@ -9,6 +9,40 @@ export function GroupSection() {
 
   return (
     <>
+      <Panel label="Group picture — a static grid recorded once, replayed every frame" height={130}>
+        <Group picture>
+          {[0, 1, 2, 3, 4, 5].map(i => (
+            <Line
+              key={`v${i}`}
+              x1={12 + i * 56}
+              y1={10}
+              x2={12 + i * 56}
+              y2={100}
+              color="#d1d1d6"
+              strokeWidth={1}
+            />
+          ))}
+          {[0, 1, 2, 3].map(i => (
+            <Line
+              key={`h${i}`}
+              x1={12}
+              y1={10 + i * 30}
+              x2={292}
+              y2={10 + i * 30}
+              color="#d1d1d6"
+              strokeWidth={1}
+            />
+          ))}
+          <Path
+            path="M12 88 L68 60 L124 72 L180 34 L236 46 L292 20"
+            color="#0a84ff"
+            style="stroke"
+            strokeWidth={3}
+          />
+          <Text x={12} y={118} text="recorded once" fontSize={11} color="#8e8e93" />
+        </Group>
+      </Panel>
+
       <Panel label="Group clip — rect · rounded · path" height={130}>
         {img != null && (
           <>

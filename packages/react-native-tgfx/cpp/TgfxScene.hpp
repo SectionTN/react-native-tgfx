@@ -15,6 +15,7 @@
 #include "tgfx/core/Paint.h"
 #include "tgfx/core/Mesh.h"
 #include "tgfx/core/Path.h"
+#include "tgfx/core/Picture.h"
 #include "tgfx/core/Rect.h"
 #include "tgfx/core/SamplingOptions.h"
 #include "tgfx/core/TileMode.h"
@@ -31,7 +32,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 24;
+inline constexpr double kSceneVersion = 25;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -199,6 +200,10 @@ struct DrawCmd {
   int clipKind = 0;
   bool invertClip = false;
   bool layer = false;
+  /// Group only: record this subtree once and replay it, set only for a static one.
+  bool cachePicture = false;
+  /// Filled on the first draw and replayed after, so the recording costs one frame.
+  mutable std::shared_ptr<tgfx::Picture> picture;
   AnimF layerAlpha{1, -1};
   tgfx::Rect clipRect = tgfx::Rect::MakeEmpty();
   float clipRadiusX = 0;

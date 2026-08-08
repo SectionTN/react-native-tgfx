@@ -77,6 +77,21 @@ export interface GroupProps extends PaintProps {
    * multiplies into each child, so overlapping children double-blend.
    */
   layer?: boolean
+  /**
+   * Record this subtree once and replay the recording every frame, for a static
+   * background a scene redraws but never changes — a map, a chart grid.
+   *
+   * Ignored, with a warning, if anything under it changes between frames — an
+   * animated value, a video or camera frame, an image still decoding. A
+   * recording would freeze those. Cheap to leave on otherwise; the recording is
+   * rebuilt whenever the scene recommits.
+   *
+   * It replays recorded draw calls, not rasterized pixels, so the saving is the
+   * scene walk: roughly 10-15% of frame CPU on real geometry, more on many
+   * simple shapes. Reach for it to trim a static background, not as a step
+   * change.
+   */
+  picture?: boolean
 }
 
 export interface RectProps extends PaintProps {

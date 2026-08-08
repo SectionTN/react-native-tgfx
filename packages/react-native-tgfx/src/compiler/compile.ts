@@ -684,19 +684,19 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     paint: mergePaint(ctx.paint, local),
     opacity: layer ? 1 : alpha,
   }
-  const extended = clip != null || layer
+  const picture = p.picture === true
+  const extended = clip != null || layer || picture
   w.push(extended ? Kind.GroupLayer : Kind.Group)
   const opCountAt = w.reserve()
   w.patch(
     opCountAt,
     writeOps(w, (p.transform as Transform) ?? [], vec(p.origin))
   )
+  const flags =
+    (clip != null ? 1 : 0) | (p.invertClip === true ? 2 : 0) | (layer ? 4 : 0)
+  let flagsAt = -1
   if (extended) {
-    w.push(
-      (clip != null ? 1 : 0) |
-        (p.invertClip === true ? 2 : 0) |
-        (layer ? 4 : 0)
-    )
+    flagsAt = w.reserve()
     if (clip != null) {
       writeClip(w, clip)
     }
@@ -706,6 +706,11 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   }
   const childCountAt = w.reserve()
   w.patch(childCountAt, writeNodes(w, node.children, childCtx))
+  if (flagsAt >= 0) {
+    // Intent only. Whether it is safe to record is the reader's call: a value slot the writer
+    // deduped, a video handle and a pending decode all look static from here.
+    w.patch(flagsAt, flags | (picture ? 8 : 0))
+  }
 }
 
 function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {

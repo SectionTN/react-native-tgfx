@@ -94,3 +94,9 @@ against the live value array each frame.
   same range guard as any other integer and the whole mesh is dropped if one
   points past the vertices. An older reader would take the topology for a group's
   transform-op count.
+- **25** — the group flags word gains bit 8: record this subtree once and replay
+  the recording. The bit is intent only — the reader clears it when the subtree
+  holds anything that resolves per frame — and a group that asks for it becomes a
+  `GroupLayer` (13) so the flags word exists at all. An
+  older reader ignores the bit and draws the children directly, which is the
+  same picture.

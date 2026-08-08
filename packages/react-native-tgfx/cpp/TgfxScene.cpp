@@ -12,6 +12,7 @@
 #include "Log.hpp"
 #include "SvgPath.hpp"
 #include "TextLayout.hpp"
+#include "tgfx/core/PictureRecorder.h"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/ColorFilter.h"
@@ -67,6 +68,9 @@ struct SceneReader {
     return static_cast<int>(v);
   }
 
+  /// How much read so far resolves per frame; a group records only if it adds none.
+  int dynamic = 0;
+
   AnimF nextAnim() {
     AnimF f;
     // Compared as a double: casting a NaN or negative wire value to size_t is UB.
@@ -77,6 +81,10 @@ struct SceneReader {
                    ? static_cast<int>(slot)
                    : -1;
       patchAt += 2;
+      if (f.slot >= 0) {
+        // The one choke point for value slots: the writer dedupes, so counting them in JS misses reuse.
+        dynamic++;
+      }
     }
     f.literal = static_cast<float>(next());
     return f;
@@ -934,6 +942,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         int flags = r.nextInt();
         cmd.invertClip = (flags & 2) != 0;
         cmd.layer = (flags & 4) != 0;
+        cmd.cachePicture = (flags & 8) != 0;
         if ((flags & 1) != 0) {
           cmd.clipKind = r.nextInt();
           if (cmd.clipKind == 3) {
@@ -970,12 +979,18 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       int childCount = r.nextInt();
       cmd.children.reserve(boundedCount(r, childCount));
+      int dynamicBefore = r.dynamic;
       for (int i = 0; i < childCount && r.ok; i++) {
         DrawCmd child;
         if (!readNode(r, child, depth + 1)) {
           return false;
         }
         cmd.children.push_back(std::move(child));
+      }
+      if (cmd.cachePicture && r.dynamic != dynamicBefore) {
+        TGFXRN_LOGW("<Group picture> holds something that resolves per frame, so it is drawn "
+                    "directly; a recording would freeze it");
+        cmd.cachePicture = false;
       }
       return r.ok;
     }
@@ -993,12 +1008,18 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       int childCount = r.nextInt();
       cmd.children.reserve(boundedCount(r, childCount));
+      int dynamicBefore = r.dynamic;
       for (int i = 0; i < childCount && r.ok; i++) {
         DrawCmd child;
         if (!readNode(r, child, depth + 1)) {
           return false;
         }
         cmd.children.push_back(std::move(child));
+      }
+      if (cmd.cachePicture && r.dynamic != dynamicBefore) {
+        TGFXRN_LOGW("<Group picture> holds something that resolves per frame, so it is drawn "
+                    "directly; a recording would freeze it");
+        cmd.cachePicture = false;
       }
       return r.ok;
     }
@@ -1008,6 +1029,8 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
     case KCameraFrame: {
       // Like a group, but the transform comes from the live frame, with no re-commit.
       cmd.kind = DrawCmd::CameraFrame;
+      // Always a new frame, and its matrix needs a surface that a recording canvas lacks.
+      r.dynamic++;
       cmd.imageHandle = r.nextInt();
       cmd.fit = static_cast<Fit>(r.nextInt());
       cmd.sampling = samplingOf(r.nextInt());
@@ -1016,12 +1039,18 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       readPaint(r, cmd.paint);
       int childCount = r.nextInt();
       cmd.children.reserve(boundedCount(r, childCount));
+      int dynamicBefore = r.dynamic;
       for (int i = 0; i < childCount && r.ok; i++) {
         DrawCmd child;
         if (!readNode(r, child, depth + 1)) {
           return false;
         }
         cmd.children.push_back(std::move(child));
+      }
+      if (cmd.cachePicture && r.dynamic != dynamicBefore) {
+        TGFXRN_LOGW("<Group picture> holds something that resolves per frame, so it is drawn "
+                    "directly; a recording would freeze it");
+        cmd.cachePicture = false;
       }
       return r.ok;
     }
@@ -1166,6 +1195,10 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       if (external) {
         cmd.image = nullptr;
       }
+      if (cmd.image == nullptr && handle != 0) {
+        // A stream, or a decode still to arrive: either way it is not the same next frame.
+        r.dynamic++;
+      }
       break;
     }
     case KVertices:
@@ -1239,6 +1272,9 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       return false;
   }
   readPaint(r, cmd.paint);
+  if (cmd.paint.animated()) {
+    r.dynamic++;
+  }
   return r.ok;
 }
 
@@ -1330,8 +1366,24 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     if (cmd.layer) {
       canvas->saveLayerAlpha(cmd.layerAlpha.resolve(v));
     }
-    for (const auto& child : cmd.children) {
-      drawCmd(canvas, child, v, paint);
+    if (cmd.cachePicture) {
+      if (cmd.picture == nullptr) {
+        // Recorded under the identity, so the transform above stays live and the
+        // replay is not baked to whatever matrix the first frame happened to have.
+        tgfx::PictureRecorder recorder;
+        auto* into = recorder.beginRecording();
+        for (const auto& child : cmd.children) {
+          drawCmd(into, child, v, paint);
+        }
+        cmd.picture = recorder.finishRecordingAsPicture();
+      }
+      if (cmd.picture != nullptr) {
+        canvas->drawPicture(cmd.picture);
+      }
+    } else {
+      for (const auto& child : cmd.children) {
+        drawCmd(canvas, child, v, paint);
+      }
     }
     if (cmd.layer) {
       canvas->restore();

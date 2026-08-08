@@ -3216,6 +3216,87 @@ void aDerivedImageSurvivesTheParentsEviction() {
   registry.setCacheLimit(restore);
 }
 
+/// A recorded subtree replays; the flag is only ever set on one with nothing animated.
+void aRecordedGroupReplaysWhatItDrew() {
+  auto draw = [](bool record) {
+    Writer w;
+    w.push(1);
+    w.push(13);  // GroupLayer
+    w.push(0);   // no transform ops
+    w.push(record ? 8 : 0);
+    w.push(2);  // two children
+    w.push(1);  // Rect
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(24);
+    w.pushAnim(24);
+    w.pushPaint(0xff0000ff, false);
+    w.push(4);  // Circle
+    w.pushAnim(44);
+    w.pushAnim(44);
+    w.pushAnim(12);
+    w.pushPaint(0xffff0000, false);
+    return w.finish();
+  };
+
+  auto direct = render(draw(false), {}, {});
+  auto recorded = render(draw(true), {}, {});
+  CHECK(direct == recorded);
+
+  // A slot the writer deduped still looks static in JS, so the reader has to catch it.
+  {
+    Writer w;
+    w.push(1);
+    w.push(13);
+    w.push(0);
+    w.push(8);
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(8, 0);
+    w.pushAnim(8);
+    w.pushAnim(24);
+    w.pushAnim(24);
+    w.pushPaint(0xff0000ff, false);
+    auto program = w.finish();
+    tgfxrn::SceneRenderer moving;
+    moving.setScene(program, {});
+    // Drawn directly, so the slot still moves the rect between frames.
+    CHECK(drawFrame(moving, {8}) != drawFrame(moving, {40}));
+  }
+
+  // An image whose decode has not arrived is not the same next frame either.
+  {
+    auto& registry = tgfxrn::ImageRegistry::instance();
+    size_t restore = registry.cacheLimit();
+    auto image = registerSolid({0, 255, 0, 255}, 16, 16);
+    registry.setCacheLimit(1);
+    for (int i = 0; i < 4; i++) {
+      registerSolid(cellColor(i), 16, 16);
+    }
+    Writer w;
+    w.push(1);
+    w.push(13);
+    w.push(0);
+    w.push(8);
+    w.push(1);
+    w.pushImage(image.handle, 8, 8, 32, 32);
+    tgfxrn::SceneRenderer renderer;
+    renderer.setScene(w.finish(), {});
+    registry.waitForDecodes();
+    // It draws once the decode lands, which a recording taken while it was missing would not.
+    auto later = drawFrame(renderer, {});
+    CHECK(inkPixels(later) > 0);
+    registry.setCacheLimit(restore);
+  }
+
+  // And the replay is stable: a second frame off the same program draws the same thing.
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(draw(true), {});
+  auto first = drawFrame(renderer, {});
+  auto second = drawFrame(renderer, {});
+  CHECK(first == second && first == recorded);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -3252,6 +3333,7 @@ int main() {
   anOffscreenRenderProducesTheSamePixels();
   aDerivedImageSurvivesTheParentsEviction();
   aLiveHandleRefusesToBeDerivedFrom();
+  aRecordedGroupReplaysWhatItDrew();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();
   theByteBudgetEvictsLeastRecentlyUsed();

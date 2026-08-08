@@ -346,6 +346,41 @@ the result, which is what you usually mean:
 That offscreen costs a render target, so reach for it when the double-blend is
 visible, not by default.
 
+### Recording a static subtree
+
+`<Group picture>` records its subtree once and replays the recording every frame
+— for the parts of a scene that redraw constantly but never change, like a map
+background or a chart's grid and axes.
+
+```tsx
+<Group picture>
+  <Path path={gridPath} color="#e5e5ea" style="stroke" />
+  {ticks.map((t) => (
+    <Text key={t.at} x={t.x} y={h} text={t.label} fontSize={11} />
+  ))}
+</Group>
+```
+
+The flag is **ignored, with a warning, if anything under it changes between
+frames** — an animated value, a `<CameraFrame>`, an `<Image>` on a video handle,
+or one whose decode has not arrived yet. A recording would freeze those. The
+check runs in the reader, which is the only place that can see all of them: a
+shared value used twice in a scene is written once, and an image handle is a
+plain integer with no hint of what backs it.
+
+One such child opts the entire group out, so split the moving parts into a
+sibling group to keep the static ones recorded.
+
+What it replays is the recorded draw calls, not rasterized pixels — tgfx still
+builds and tessellates every op each frame. Measured on 125-500 nodes of real
+geometry that is **roughly 10-15% of frame CPU**, rising towards 50% on many
+simple shapes. It is a way to trim a static background, not a step change, and
+it does not reduce allocations.
+
+The recording is rebuilt whenever the scene recommits, so it costs one frame
+after any React render that changes the tree. It composes with `clip` and
+`layer` on the same group.
+
 ## Shader composition
 
 `<Blend>` folds its shader children together with a blend mode, left to right:

@@ -1320,3 +1320,39 @@ test('<Vertices> writes an out-of-range index through for native to reject', () 
   // Truncated, never rounded: the reader range-checks and drops the whole mesh.
   expect(Array.from(used.subarray(16, 21))).toEqual([0, 1, 9, -1, 2])
 })
+
+test('<Group picture> sets the record flag on a static subtree', () => {
+  const { used } = compile([
+    node(NodeType.Group, { picture: true }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(used[4]).toBe(Kind.GroupLayer)
+  expect(used[5]).toBe(0) // no transform ops
+  expect(used[6]).toBe(8) // picture, no clip and no layer
+})
+
+// Intent, not a verdict: the writer dedupes slots, so only the reader can tell.
+test('<Group picture> still asks to record when a child animates', () => {
+  const { used } = compile([
+    node(NodeType.Group, { picture: true }, [
+      node(NodeType.Rect, {
+        x: sharedValue(3),
+        y: 0,
+        width: 1,
+        height: 1,
+      }),
+    ]),
+  ])
+  expect(used[4]).toBe(Kind.GroupLayer)
+  expect(used[6]).toBe(8)
+})
+
+test('<Group picture> keeps the clip and layer bits alongside it', () => {
+  const { used } = compile([
+    node(NodeType.Group, { picture: true, layer: true, clip: { x: 0, y: 0, width: 4, height: 4 } }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(used[6]).toBe(1 | 4 | 8)
+})
