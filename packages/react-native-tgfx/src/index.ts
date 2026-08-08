@@ -64,6 +64,7 @@ export {
   pathSegment,
   pathTransform,
 } from './hooks/usePath'
+export type { ClipRect } from './types'
 export type {
   PathBounds,
   PathMatrix,

@@ -505,12 +505,12 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const p = node.props
   const local = localPaint(w, node)
   const clip = p.clip as ClipRect | string | undefined
-  // A layer composites the subtree once, so its opacity belongs to the layer, not the children.
+  // A layer composites the subtree once, so the whole inherited alpha rides it, not the children.
   const layer = p.layer === true
   const alpha = mulOpacity(ctx.opacity, local.opacity)
   const childCtx: CompileCtx = {
     paint: mergePaint(ctx.paint, local),
-    opacity: layer ? ctx.opacity : alpha,
+    opacity: layer ? 1 : alpha,
   }
   const extended = clip != null || layer
   w.push(extended ? Kind.GroupLayer : Kind.Group)

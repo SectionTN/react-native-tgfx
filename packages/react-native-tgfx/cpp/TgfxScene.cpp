@@ -94,7 +94,7 @@ struct SceneReader {
 
 namespace {
 
-/// Bounds readNode and so drawCmd too; DrawCmd is 544 B, so 256 deep is ~139 KB of stack.
+/// Bounds readNode and so drawCmd too; DrawCmd is ~620 B, so 256 deep is ~159 KB of stack.
 constexpr int kMaxNodeDepth = 256;
 
 /// A wire count clamped to the buffer; reserving on the raw value asks for terabytes.
@@ -743,7 +743,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         if ((flags & 1) != 0) {
           cmd.clipKind = r.nextInt();
           if (cmd.clipKind == 3) {
-            cmd.clipPath = parseSvgPath(r.nextString());
+            cmd.clipPath = std::make_shared<tgfx::Path>(parseSvgPath(r.nextString()));
           } else {
             float x = static_cast<float>(r.next());
             float y = static_cast<float>(r.next());
@@ -763,11 +763,11 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
             } else {
               box.addRect(cmd.clipRect);
             }
-            cmd.clipPath = std::move(box);
+            cmd.clipPath = std::make_shared<tgfx::Path>(std::move(box));
             cmd.clipKind = 3;
           }
-          if (cmd.invertClip) {
-            cmd.clipPath.toggleInverseFillType();
+          if (cmd.invertClip && cmd.clipPath != nullptr) {
+            cmd.clipPath->toggleInverseFillType();
           }
         }
         if (cmd.layer) {
@@ -1027,7 +1027,11 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
         canvas->clipRRect(
             tgfx::RRect::MakeRectXY(cmd.clipRect, cmd.clipRadiusX, cmd.clipRadiusY));
         break;
-      case 3: canvas->clipPath(cmd.clipPath); break;
+      case 3:
+        if (cmd.clipPath != nullptr) {
+          canvas->clipPath(*cmd.clipPath);
+        }
+        break;
       default: break;
     }
     if (cmd.layer) {

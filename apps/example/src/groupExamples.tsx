@@ -19,7 +19,7 @@ export function GroupSection() {
               <Image x={118} y={4} width={100} height={110} image={img} fit="cover" />
             </Group>
             <Group clip={SPOTLIGHT} transform={[{ translateX: 232 }]}>
-              <Image x={232} y={4} width={110} height={110} image={img} fit="cover" />
+              <Image x={0} y={0} width={116} height={116} image={img} fit="cover" />
             </Group>
           </>
         )}
@@ -32,7 +32,7 @@ export function GroupSection() {
               <Image x={4} y={4} width={110} height={110} image={img} fit="cover" />
             </Group>
             <Group clip={SPOTLIGHT} invertClip transform={[{ translateX: 130 }]}>
-              <Image x={130} y={4} width={110} height={110} image={img} fit="cover" />
+              <Image x={0} y={0} width={116} height={116} image={img} fit="cover" />
             </Group>
           </>
         )}

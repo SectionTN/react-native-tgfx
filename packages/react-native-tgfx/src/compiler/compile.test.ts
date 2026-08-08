@@ -160,6 +160,29 @@ test('a layer carries the group alpha instead of pushing it into the children', 
   expect(flattened.used[flattened.used.length - 3]).toBe(0.5)
 })
 
+test('a nested layer applies the inherited opacity once, not twice', () => {
+  const nested = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      node(NodeType.Group, { layer: true }, [
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+    ]),
+  ])
+  // The whole inherited alpha rides the layer; the child stays at 1 rather than squaring it.
+  expect(nested.used[10]).toBe(0.5)
+  expect(nested.used[nested.used.length - 3]).toBe(1)
+
+  const both = compile([
+    node(NodeType.Group, { opacity: 0.5 }, [
+      node(NodeType.Group, { layer: true, opacity: 0.5 }, [
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+    ]),
+  ])
+  expect(both.used[10]).toBe(0.25)
+  expect(both.used[both.used.length - 3]).toBe(1)
+})
+
 test('multiplies group opacity into the child alpha', () => {
   const { used } = compile([
     node(NodeType.Group, { opacity: 0.5 }, [

@@ -163,7 +163,8 @@ struct DrawCmd {
   tgfx::Rect clipRect = tgfx::Rect::MakeEmpty();
   float clipRadiusX = 0;
   float clipRadiusY = 0;
-  tgfx::Path clipPath;
+  /// Behind a pointer so a DrawCmd that does not clip costs no Path allocation.
+  std::shared_ptr<tgfx::Path> clipPath;
   Kind kind = Group;
 
   AnimF x, y, w, h, rx, ry, cx, cy, r, x1, y1, x2, y2, fontSize;
