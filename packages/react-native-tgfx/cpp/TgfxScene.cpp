@@ -1250,6 +1250,11 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
   }
 
   if (cmd.kind == DrawCmd::Mask) {
+    // Either side empty means nothing survives the intersection, and a one-record
+    // layer would be unrolled rather than composited, inverting that.
+    if (cmd.children.empty() || cmd.maskChildren.empty()) {
+      return;
+    }
     // Content into a layer, then the mask over it with DstIn: what survives is the overlap.
     canvas->saveLayer(nullptr);
     for (const auto& child : cmd.children) {

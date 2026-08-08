@@ -263,7 +263,11 @@ import { Circle, Image, Mask, RadialGradient, Rect } from 'react-native-tgfx'
 The mask arrives as a prop rather than a child, as in react-native-skia, so the
 two subtrees stay distinguishable.
 
-A mask composites its content into one offscreen and the mask into another, so it
-costs two render targets — and the mask's target is sized to the clip, not to the
-mask geometry, because the blend has to reach every pixel the content covers.
+The mask is a matte, not part of the picture: it inherits neither paint nor
+opacity from above, so a `<Group opacity={0.5}>` fades the content and leaves the
+mask's own coverage alone.
+
+A mask costs **two clip-sized render targets** — the blend has to reach every
+pixel the content covers, and the mask layer's unbounded fill propagates into the
+content layer. A small mask on a large canvas is as expensive as a large one.
 Reach for it when a shape or a gradient cannot do the job.

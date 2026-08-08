@@ -1291,6 +1291,36 @@ void aMaskCutsItsContentDown() {
   // A transparent mask keeps nothing, whatever its colour.
   CHECK(!anyPixelSet(scene(0, 0x00ffffff)));
 
+  // An empty side means nothing survives: a one-record layer would be unrolled, not composited.
+  auto emptySide = [](int maskCount, int contentCount) {
+    Writer w;
+    w.push(1);
+    w.push(14);
+    w.push(0);
+    w.push(maskCount);
+    for (int i = 0; i < maskCount; i++) {
+      w.push(1);
+      w.pushAnim(0);
+      w.pushAnim(0);
+      w.pushAnim(32);
+      w.pushAnim(64);
+      w.pushPaint(0xffffffff, false);
+    }
+    w.push(contentCount);
+    for (int i = 0; i < contentCount; i++) {
+      w.push(1);
+      w.pushAnim(0);
+      w.pushAnim(0);
+      w.pushAnim(64);
+      w.pushAnim(64);
+      w.pushPaint(0xff3366cc, false);
+    }
+    return render(w.finish(), {}, {});
+  };
+  CHECK(!anyPixelSet(emptySide(0, 1)));  // no mask hides everything
+  CHECK(!anyPixelSet(emptySide(1, 0)));  // no content paints nothing, least of all the mask
+  CHECK(!anyPixelSet(emptySide(0, 0)));
+
   // Luminance mode reads brightness, so black masks out where white masked in.
   auto whiteLuma = scene(1, 0xffffffff);
   CHECK(opaqueAt(whiteLuma, 16, 32));
