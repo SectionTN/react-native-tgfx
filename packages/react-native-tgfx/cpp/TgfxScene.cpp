@@ -108,7 +108,7 @@ std::atomic<size_t> gFilterBuilds{0};
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
-  KTextPath, KCameraFrame, KGlyphs, KGroupLayer
+  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -919,6 +919,29 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       return r.ok;
     }
+    case KMask: {
+      cmd.kind = DrawCmd::Mask;
+      cmd.maskLuminance = r.nextInt() != 0;
+      int maskCount = r.nextInt();
+      cmd.maskChildren.reserve(boundedCount(r, maskCount));
+      for (int i = 0; i < maskCount && r.ok; i++) {
+        DrawCmd child;
+        if (!readNode(r, child, depth + 1)) {
+          return false;
+        }
+        cmd.maskChildren.push_back(std::move(child));
+      }
+      int childCount = r.nextInt();
+      cmd.children.reserve(boundedCount(r, childCount));
+      for (int i = 0; i < childCount && r.ok; i++) {
+        DrawCmd child;
+        if (!readNode(r, child, depth + 1)) {
+          return false;
+        }
+        cmd.children.push_back(std::move(child));
+      }
+      return r.ok;
+    }
     case KFill:
       cmd.kind = DrawCmd::Fill;
       break;
@@ -1223,6 +1246,32 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     if (saved) {
       canvas->restore();
     }
+    return;
+  }
+
+  if (cmd.kind == DrawCmd::Mask) {
+    // Content into a layer, then the mask over it with DstIn: what survives is the overlap.
+    canvas->saveLayer(nullptr);
+    for (const auto& child : cmd.children) {
+      drawCmd(canvas, child, v, paint);
+    }
+    tgfx::Paint maskPaint;
+    maskPaint.setBlendMode(tgfx::BlendMode::DstIn);
+    if (cmd.maskLuminance) {
+      maskPaint.setColorFilter(tgfx::ColorFilter::Luma());
+    }
+    canvas->saveLayer(&maskPaint);
+    // The layer is only as big as it draws, so seed it transparent: DstIn has to
+    // reach the content the mask does not cover, not leave it standing.
+    tgfx::Paint clear;
+    clear.setColor(tgfx::Color::Transparent());
+    clear.setBlendMode(tgfx::BlendMode::Src);
+    canvas->drawPaint(clear);
+    for (const auto& child : cmd.maskChildren) {
+      drawCmd(canvas, child, v, paint);
+    }
+    canvas->restore();
+    canvas->restore();
     return;
   }
 

@@ -1260,6 +1260,43 @@ void blendKeepsAnAnimatedUniformLive() {
   CHECK(pixelAt(drawFrame(renderer, {1.0}), 16, 16)[0] > 200);
 }
 
+/// A mask keeps the content only where its own drawing is opaque (or bright).
+void aMaskCutsItsContentDown() {
+  auto scene = [](int luminance, uint32_t maskColor) {
+    Writer w;
+    w.push(1);
+    w.push(14);  // Mask
+    w.push(luminance);
+    w.push(1);   // one mask node: a rect over the left half
+    w.push(1);
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(64);
+    w.pushPaint(maskColor, false);
+    w.push(1);   // one content node: a rect over the whole canvas
+    w.push(1);
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(64);
+    w.pushAnim(64);
+    w.pushPaint(0xff3366cc, false);
+    return render(w.finish(), {}, {});
+  };
+
+  auto alpha = scene(0, 0xffffffff);
+  CHECK(opaqueAt(alpha, 16, 32));    // under the mask, the content survives
+  CHECK(!opaqueAt(alpha, 48, 32));   // outside it, nothing is left
+
+  // A transparent mask keeps nothing, whatever its colour.
+  CHECK(!anyPixelSet(scene(0, 0x00ffffff)));
+
+  // Luminance mode reads brightness, so black masks out where white masked in.
+  auto whiteLuma = scene(1, 0xffffffff);
+  CHECK(opaqueAt(whiteLuma, 16, 32));
+  CHECK(!opaqueAt(scene(1, 0xff000000), 16, 32));
+}
+
 void fillCoversTheWholeCanvas() {
   Writer fill;
   fill.push(1);
@@ -2842,6 +2879,7 @@ int main() {
   filtersOfOneClassCompose();
   blendKeepsItsDynamicChildrenLive();
   blendKeepsAnAnimatedUniformLive();
+  aMaskCutsItsContentDown();
   fillCoversTheWholeCanvas();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

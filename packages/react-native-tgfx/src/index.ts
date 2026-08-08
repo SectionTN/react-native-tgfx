@@ -2,6 +2,7 @@
 
 export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'
+export { Mask } from './components/Mask'
 export {
   CameraFrame,
   Circle,
@@ -104,6 +105,7 @@ export type {
   BlendColorProps,
   BlendMode,
   BlendProps,
+  MaskProps,
   BlurProps,
   ColorShaderProps,
   CornerPathEffectProps,
