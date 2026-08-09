@@ -1,6 +1,7 @@
 // Colour filters, blend modes and image filters (#134), all built once when the scene compiles.
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
+  BackdropBlur,
   Blend,
   BlendColor,
   Blur,
@@ -10,6 +11,7 @@ import {
   ColorShader,
   DropShadow,
   Fill,
+  Glass,
   Image,
   Paint,
   Luma,
@@ -311,9 +313,35 @@ function LateFilters() {
   );
 }
 
+function Backdrops() {
+  const img = useImage(sample);
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>
+        {'<BackdropBlur> and <Glass> — over the same photo'}
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 130 }]}>
+        <Fill color="#ffffff" />
+        {img != null && (
+          <>
+            <Image image={img} x={0} y={0} width={360} height={120} fit="cover" />
+            <BackdropBlur x={12} y={24} width={150} height={72} r={18} blur={14} />
+            <Glass x={198} y={24} width={150} height={72} r={18} refraction={45} frost={25} dispersion={15} />
+          </>
+        )}
+      </Canvas>
+      <RNText style={styles.caption}>
+        Frosted panel on the left, liquid glass on the right — both reading the
+        photo beneath them.
+      </RNText>
+    </View>
+  );
+}
+
 export function FilterSection() {
   return (
     <>
+      <Backdrops />
       <BlendModes />
       <LateFilters />
       <Composition />

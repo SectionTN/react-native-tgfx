@@ -301,14 +301,24 @@ tgfx::Device* device() {
 using Pixels = std::vector<uint8_t>;
 
 /// Draw one frame of an already-compiled program, so a test can prove what a *second* frame does.
-Pixels drawFrame(tgfxrn::SceneRenderer& renderer, const std::vector<double>& values) {
+Pixels drawFrame(tgfxrn::SceneRenderer& renderer, const std::vector<double>& values,
+                 float pixelRatio = 1, int width = kWidth, int height = kHeight) {
   auto* context = device()->lockContext();
-  auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+  auto surface = tgfx::Surface::Make(context, width, height);
+  CHECK(surface != nullptr);
   auto* canvas = surface->getCanvas();
   canvas->clear();
+  // What TgfxRenderer does: scene coordinates are logical pixels, the surface physical.
+  if (pixelRatio != 1) {
+    canvas->save();
+    canvas->concat(tgfx::Matrix::MakeScale(pixelRatio, pixelRatio));
+  }
   renderer.render(canvas, values);
+  if (pixelRatio != 1) {
+    canvas->restore();
+  }
   context->flushAndSubmit(true);
-  auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888);
+  auto info = tgfx::ImageInfo::Make(width, height, tgfx::ColorType::RGBA_8888);
   Pixels pixels(static_cast<size_t>(info.byteSize()));
   surface->readPixels(info, pixels.data());
   device()->unlock();
@@ -317,10 +327,11 @@ Pixels drawFrame(tgfxrn::SceneRenderer& renderer, const std::vector<double>& val
 
 Pixels render(const std::vector<double>& words,
               const std::vector<std::string>& strings,
-              const std::vector<double>& values) {
+              const std::vector<double>& values,
+              float pixelRatio = 1, int width = kWidth, int height = kHeight) {
   tgfxrn::SceneRenderer renderer;
   renderer.setScene(words, strings);
-  return drawFrame(renderer, values);
+  return drawFrame(renderer, values, pixelRatio, width, height);
 }
 
 bool anyPixelSet(const Pixels& pixels) {
@@ -3459,6 +3470,213 @@ void aPdfIsWrittenWithAPagePerScene() {
   std::remove((path + ".tgfx-partial").c_str());
 }
 
+/// A backdrop reads what is already on the surface, so order is what makes it one.
+void aBackdropFrostsWhatIsBeneathIt() {
+  auto program = [](double refraction) {
+    Writer w;
+    w.push(2);
+    // A hard-edged blue/red split underneath, so a blur has something to smear.
+    w.push(1);
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(64);
+    w.pushPaint(0xff0000ff, false);
+    w.push(17);  // Backdrop
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(48);
+    w.pushAnim(48);
+    w.push(0);           // corner radius
+    w.push(10);          // blur
+    w.push(refraction);  // 0 is a plain blur, above 0 is glass
+    w.push(20);
+    w.push(20);
+    w.push(0);
+    w.pushPaint(0xffffffff, false);
+    return w.finish();
+  };
+
+  auto plain = render(program(0), {}, {});
+  CHECK(inkPixels(plain) > 0);
+
+  // Without the backdrop the split stays hard; with it the panel samples across the edge.
+  Writer bare;
+  bare.push(1);
+  bare.push(1);
+  bare.pushAnim(0);
+  bare.pushAnim(0);
+  bare.pushAnim(32);
+  bare.pushAnim(64);
+  bare.pushPaint(0xff0000ff, false);
+  auto unfrosted = render(bare.finish(), {}, {});
+  CHECK(plain != unfrosted);
+
+  // Just right of the rect's edge, inside the panel: the blur has pulled blue across.
+  auto pulled = pixelAt(plain, 36, 30);
+  CHECK(pulled[2] > 0);
+
+  // Glass takes a different path through tgfx, so it must not draw the same thing.
+  auto glassy = render(program(40), {}, {});
+  CHECK(glassy != plain);
+}
+
+/// The example app's own geometry: a wide canvas at a phone's pixel ratio, with a panel big
+/// enough that the blur radius is a real number of pixels. A 64x64 scratch surface hides both.
+void aBackdropOnACanvasTheSizeOfARealOne() {
+  const int kW = 1110;
+  const int kH = 390;
+  const float kRatio = 3;
+  Writer w;
+  w.push(3);
+  // A hard black edge at x=80, which a 14pt blur must smear across inside the panel.
+  w.push(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(80);
+  w.pushAnim(120);
+  w.pushPaint(0xff000000, false);
+  w.push(1);
+  w.pushAnim(80);
+  w.pushAnim(0);
+  w.pushAnim(280);
+  w.pushAnim(120);
+  w.pushPaint(0xff808080, false);
+  w.push(17);  // Backdrop
+  w.pushAnim(12);
+  w.pushAnim(24);
+  w.pushAnim(150);
+  w.pushAnim(72);
+  w.push(18);  // corner radius
+  w.push(14);  // blur
+  w.push(0);   // refraction: a plain frosted panel
+  w.push(20);
+  w.push(20);
+  w.push(0);
+  w.pushPaint(0xffffffff, false);
+  auto drawn = render(w.finish(), {}, {}, kRatio, kW, kH);
+
+  auto at = [&](int x, int y) {
+    size_t i = (static_cast<size_t>(y) * kW + static_cast<size_t>(x)) * 4;
+    return std::array<uint8_t, 3>{drawn[i], drawn[i + 1], drawn[i + 2]};
+  };
+  // Just right of the black edge: outside the panel it stays grey, inside the blur darkens it.
+  auto above = at(250, 30);
+  auto inside = at(250, 180);
+  CHECK(above[0] > 100);
+  CHECK(inside[0] < above[0] - 20);
+  // Just left of it, the opposite: grey pulled into the black.
+  CHECK(at(230, 180)[0] > at(230, 30)[0] + 20);
+  // 40px right of the edge, which only a blur scaled by the pixel ratio still reaches: at this
+  // ratio that reads 108, and a sigma left in scene points reads the grey it never darkened.
+  CHECK(at(280, 180)[0] < 118);
+}
+
+/// A panel hanging off the surface gets a cropped backdrop, and glass maps its shape across
+/// whatever it is given, so the crop has to move the shape rather than squash it.
+void aBackdropHangingOffTheEdgeStillDrawsWhereItOverlaps() {
+  // A hard blue/red split at x=8, which is inside the part of a left-hanging panel that still
+  // lands on the surface, so the panel has something to smear.
+  auto program = [](double refraction, double x, bool panel) {
+    Writer w;
+    w.push(panel ? 3 : 2);
+    w.push(1);
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(8);
+    w.pushAnim(64);
+    w.pushPaint(0xff0000ff, false);
+    w.push(1);
+    w.pushAnim(8);
+    w.pushAnim(0);
+    w.pushAnim(56);
+    w.pushAnim(64);
+    w.pushPaint(0xffff0000, false);
+    if (panel) {
+      w.push(17);  // Backdrop
+      w.pushAnim(x);
+      w.pushAnim(8);
+      w.pushAnim(40);
+      w.pushAnim(40);
+      w.push(8);
+      w.push(6);
+      w.push(refraction);
+      w.push(20);
+      w.push(20);
+      w.push(0);
+      w.pushPaint(0xffffffff, false);
+    }
+    return w.finish();
+  };
+
+  for (double refraction : {0.0, 40.0}) {
+    auto bare = render(program(refraction, 0, false), {}, {});
+    // Straddling the left edge: it still draws over the part that overlaps the surface.
+    auto hanging = render(program(refraction, -20, true), {}, {});
+    CHECK(hanging != bare);
+    CHECK(opaqueAt(hanging, 4, 20));
+    // Near the surface edge the panel's own corner is off-screen, so the shape is straight-edged
+    // there. A shape cropped to the visible slice would round it off and leave this pixel bare.
+    CHECK(pixelAt(hanging, 1, 10) != pixelAt(bare, 1, 10));
+    // Entirely off the surface: nothing to sample, so the scene is left exactly as it was.
+    CHECK(render(program(refraction, -60, true), {}, {}) == bare);
+  }
+}
+
+/// The device differs from a scratch surface in two ways, and both broke this: it draws at a
+/// pixel ratio, and its content is an image still on its way to the GPU when the panel samples.
+void aBackdropAtAPixelRatioLeavesTheRestOfTheSceneAlone() {
+  auto photo = registerSolid({0, 0, 255, 255});
+  auto program = [&](bool panel, double refraction) {
+    Writer w;
+    w.push(panel ? 2 : 1);
+    // Only the left half, so a panel straddling x=16 has an edge to pull colour across.
+    w.pushImage(photo.handle, 0, 0, 16, 32);
+    if (panel) {
+      w.push(17);  // Backdrop
+      w.pushAnim(10);
+      w.pushAnim(8);
+      w.pushAnim(16);
+      w.pushAnim(16);
+      w.push(3);           // corner radius
+      w.push(6);           // blur
+      w.push(refraction);  // 0 is a plain blur, above 0 is glass
+      w.push(20);
+      w.push(20);
+      w.push(0);
+      w.pushPaint(0xffffffff, false);
+    }
+    return w.finish();
+  };
+
+  for (float ratio : {1.0f, 2.0f}) {
+    auto scaled = [ratio](int point) { return static_cast<int>(static_cast<float>(point) * ratio); };
+    auto without = render(program(false, 0), {}, {}, ratio);
+    auto with = render(program(true, 0), {}, {}, ratio);
+
+    // The photo is still there, both under the panel's own half and well clear of it.
+    auto photoPixel = pixelAt(with, scaled(4), scaled(4));
+    CHECK(photoPixel[2] > 200 && photoPixel[0] == 0);
+    CHECK(pixelAt(without, scaled(4), scaled(4)) == photoPixel);
+
+    // Inside the panel, 6 points right of the photo's edge: the blur pulled blue across.
+    auto pulled = pixelAt(with, scaled(22), scaled(16));
+    // Not merely non-zero: a sigma left in scene points still leaks a little blue this far in.
+    CHECK(pulled[2] > 20 && pulled[0] == 0);
+    CHECK(pixelAt(without, scaled(22), scaled(16))[2] == 0);
+
+    // Outside the panel and right of the photo, nothing was painted over the empty canvas.
+    CHECK(!opaqueAt(with, scaled(30), scaled(30)));
+
+    // Glass reads the same backdrop through a different path, so it must draw a panel too.
+    auto glassy = render(program(true, 40), {}, {}, ratio);
+    CHECK(glassy != without);
+    CHECK(glassy != with);
+    CHECK(pixelAt(glassy, scaled(4), scaled(4)) == photoPixel);
+    CHECK(opaqueAt(glassy, scaled(22), scaled(16)));
+  }
+}
+
 /// SVG is text: the same scene comes out as markup a reader can parse, not pixels.
 void anSvgIsWrittenAsMarkup() {
   Writer w;
@@ -4017,6 +4235,10 @@ int main() {
   aRecordedGroupReplaysWhatItDrew();
   hitTestReportsWhatIsUnderThePoint();
   aPdfIsWrittenWithAPagePerScene();
+  aBackdropFrostsWhatIsBeneathIt();
+  aBackdropAtAPixelRatioLeavesTheRestOfTheSceneAlone();
+  aBackdropOnACanvasTheSizeOfARealOne();
+  aBackdropHangingOffTheEdgeStillDrawsWhereItOverlaps();
   anSvgIsWrittenAsMarkup();
   everyImageDrawsItsOwnHandle();
   reCommittingAnImageSceneDecodesNothing();

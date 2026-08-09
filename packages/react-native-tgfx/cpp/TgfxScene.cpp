@@ -14,6 +14,7 @@
 #include "SvgPath.hpp"
 #include "TextLayout.hpp"
 #include "tgfx/core/PictureRecorder.h"
+#include "tgfx/layers/layerstyles/GlassStyle.h"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/ColorFilter.h"
@@ -147,7 +148,7 @@ std::atomic<size_t> gFilterBuilds{0};
 /// Node kinds, mirrored from src/compiler/writer.ts.
 enum Kind {
   KGroup = 0, KRect, KRRect, KOval, KCircle, KLine, KPath, KImage, KText, KFill,
-  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask, KAtlas, KVertices
+  KTextPath, KCameraFrame, KGlyphs, KGroupLayer, KMask, KAtlas, KVertices, KBackdrop
 };
 
 /// Sampling codes, mirrored from src/compiler/writer.ts.
@@ -1521,6 +1522,22 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       }
       break;
     }
+    case KBackdrop: {
+      cmd.kind = DrawCmd::Backdrop;
+      cmd.x = r.nextAnim();
+      cmd.y = r.nextAnim();
+      cmd.w = r.nextAnim();
+      cmd.h = r.nextAnim();
+      cmd.cornerRadius = static_cast<float>(r.next());
+      cmd.blur = static_cast<float>(r.next());
+      cmd.refraction = static_cast<float>(r.next());
+      cmd.depth = static_cast<float>(r.next());
+      cmd.frost = static_cast<float>(r.next());
+      cmd.dispersion = static_cast<float>(r.next());
+      // It samples what is already on the surface, so it can never be recorded.
+      r.dynamic++;
+      break;
+    }
     case KText: {
       cmd.kind = DrawCmd::Text;
       cmd.x = r.nextAnim();
@@ -2133,6 +2150,116 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       }
       // No per-sprite colours: tgfx only applies them to an alpha-only atlas.
       canvas->drawAtlas(sheet, matrices, rects, nullptr, count, cmd.sampling, p);
+      break;
+    }
+    case DrawCmd::Backdrop: {
+      auto rect = rectOf(cmd, v);
+      if (rect.isEmpty()) {
+        break;
+      }
+      auto* surface = canvas->getSurface();
+      if (surface == nullptr) {
+        // No surface to sample: an offscreen export or a recording has no backdrop.
+        break;
+      }
+      // makeImageSnapshot() flushes the surface itself and orders the copy after the ops beneath.
+      auto below = surface->makeImageSnapshot();
+      if (below == nullptr) {
+        break;
+      }
+      // The snapshot is in surface pixels while the rect is in scene points, so the panel, the
+      // region it reads and everything handed to tgfx below are all in pixels.
+      const auto& matrix = canvas->getMatrix();
+      float scale = matrix.getMaxScale();
+      if (!(scale > 0)) {
+        scale = 1;
+      }
+      auto panel = matrix.mapRect(rect);
+      panel.roundOut();
+      auto surfaceBounds = tgfx::Rect::MakeWH(surface->width(), surface->height());
+      // Splay and light angle are tgfx's own defaults; the light is dimmed from its 80 to 50.
+      auto glass = cmd.refraction > 0 ? tgfx::GlassStyle::Make(cmd.refraction, cmd.depth, cmd.frost,
+                                                               cmd.dispersion, 0, 45, 50)
+                                      : nullptr;
+      // Mirrored at the edges, as tgfx's own frost is: a panel flush with the surface edge would
+      // otherwise blur against transparency and let the sharp content show through underneath.
+      auto blur = glass == nullptr && cmd.blur > 0
+                      ? tgfx::ImageFilter::Blur(cmd.blur * scale, cmd.blur * scale,
+                                                tgfx::TileMode::Mirror)
+                      : nullptr;
+      if (glass == nullptr && blur == nullptr) {
+        break;
+      }
+      // Glass maps its shape across the whole background it is given, so that has to be the panel
+      // exactly, the way tgfx's own capturer sizes it. A blur instead reads past the panel.
+      auto background = glass != nullptr ? panel : blur->filterBounds(panel);
+      background.roundOut();
+      if (!background.intersect(surfaceBounds)) {
+        break;
+      }
+      // A panel hanging off the surface leaves the glass a cropped background. Its shape has to be
+      // cropped with it, or the mask stretches over the smaller image and the refraction squashes.
+      auto shape = panel;
+      if (glass != nullptr) {
+        panel = background;
+      }
+      auto source = below->makeSubset(background);
+      if (source == nullptr) {
+        break;
+      }
+      canvas->save();
+      if (cmd.cornerRadius > 0) {
+        canvas->clipRRect(tgfx::RRect::MakeRectXY(rect, cmd.cornerRadius, cmd.cornerRadius));
+      } else {
+        canvas->clipRect(rect);
+      }
+      if (glass == nullptr) {
+        // The clip is already the panel's shape, so a plain blur is just the blurred backdrop
+        // drawn into it. No layer style, and no per-frame mask to go with one.
+        tgfx::Point offset = {};
+        auto blurred = source->makeWithFilter(blur, &offset);
+        if (blurred != nullptr) {
+          tgfx::Paint panelPaint;
+          panelPaint.setAlpha(p->getAlpha());
+          canvas->setMatrix(tgfx::Matrix::I());
+          canvas->drawImage(blurred, background.left + offset.x, background.top + offset.y,
+                            &panelPaint);
+        }
+        canvas->restore();
+        break;
+      }
+      // Glass refracts against the panel's own shape, which it reads as the content's alpha.
+      tgfx::PictureRecorder recorder;
+      auto* maskCanvas = recorder.beginRecording();
+      auto local = tgfx::Rect::MakeWH(panel.width(), panel.height());
+      // The shape sits where it falls inside the image, so a cropped panel keeps the corners it
+      // still has rather than growing new ones at the crop.
+      auto shapeLocal = tgfx::Rect::MakeXYWH(shape.left - panel.left, shape.top - panel.top,
+                                             shape.width(), shape.height());
+      float radius = cmd.cornerRadius * scale;
+      tgfx::Paint maskPaint;
+      if (radius > 0) {
+        maskCanvas->drawRRect(tgfx::RRect::MakeRectXY(shapeLocal, radius, radius), maskPaint);
+      } else {
+        maskCanvas->drawRect(shapeLocal, maskPaint);
+      }
+      auto content = tgfx::Image::MakeFrom(recorder.finishRecordingAsPicture(),
+                                           static_cast<int>(local.width()),
+                                           static_cast<int>(local.height()));
+      if (content == nullptr) {
+        canvas->restore();
+        break;
+      }
+      tgfx::LayerStyleInput input;
+      input.content = content;
+      input.contentOffset = {panel.left, panel.top};
+      input.contentScale = scale;
+      input.extraSource = std::make_shared<tgfx::StyleInputSource>(
+          source, tgfx::Point{background.left - panel.left, background.top - panel.top});
+      // The style draws in pixels with the panel's top-left at the origin.
+      canvas->setMatrix(tgfx::Matrix::MakeTrans(panel.left, panel.top));
+      glass->draw(canvas, input, p->getAlpha());
+      canvas->restore();
       break;
     }
     case DrawCmd::Vertices: {

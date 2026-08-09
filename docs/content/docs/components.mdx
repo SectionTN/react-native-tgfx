@@ -233,6 +233,41 @@ alone give the vertex colour; neither gives the paint colour. A solid
 `<ColorShader>` is folded into the paint colour before any of that, so per-vertex
 colours replace it rather than multiplying with it.
 
+### Backdrop effects
+
+`<BackdropBlur>` frosts whatever is already drawn beneath it; `<Glass>` is
+tgfx's liquid-glass material — edge refraction, chromatic aberration and
+background frost, not a blur approximation.
+
+```tsx
+<Image image={photo} x={0} y={0} width={300} height={200} />
+<BackdropBlur x={20} y={40} width={260} height={120} r={24} blur={16} />
+<Glass x={20} y={40} width={260} height={120} r={24} refraction={40} frost={30} />
+```
+
+**Order is what makes it a backdrop.** The node samples the pixels below it, so
+it must come *after* the content it frosts. Its rect is the panel; the region it
+reads is that rect grown by the blur, so colour is pulled in from outside it.
+
+The panel is sampled rather than painted, so of the paint props only `opacity`,
+`visible` and `ref` apply, plus the alpha of `color`. It has no hit bounds, so
+it is never the answer to a hit test, and inside a `<Group layer>` or a `<Mask>`
+it samples the surface as it was before that layer opened.
+
+| prop | meaning |
+| --- | --- |
+| `x`, `y`, `width`, `height`, `r` | the panel, and what it samples |
+| `blur` | Gaussian blur of the backdrop, default 12 |
+| `refraction` | edge refraction; 40 under `<Glass>`, 0 under `<BackdropBlur>`, which is what makes that one a plain blur |
+| `depth` | how far refraction reaches in from the edge, default 20 |
+| `frost` | background frost, default 20 |
+| `dispersion` | chromatic aberration at the edge, default 0 |
+
+It reads the surface it is drawing into, so it works in `renderToImage` (which
+has a real offscreen surface) but draws nothing in `renderToPdf`, whose canvas
+has none. A `<Group picture>` containing one is never recorded either, since a
+recording would freeze the backdrop.
+
 ## Paint
 
 Set directly on a shape, or inherited from a `<Paint>` child:

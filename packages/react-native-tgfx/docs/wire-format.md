@@ -139,3 +139,7 @@ string array pushed with `setStringValues`.
     (unchanged past that word); a positive id is followed by topology, vertex
     and index capacities, a texture/colour flags word, and live vertex and
     index counts. The mesh is rebuilt from the shared block at draw.
+- **27** — adds the backdrop kind (17): x, y, width, height, corner radius, blur,
+  refraction, depth, frost and dispersion. One node covers both `<BackdropBlur>`
+  and `<Glass>`; a zero refraction is a plain blur. It samples the surface, so the
+  reader marks it dynamic and a `<Group picture>` holding one is never recorded.

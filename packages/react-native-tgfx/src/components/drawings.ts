@@ -6,6 +6,8 @@ import type {
   ImageProps,
   AtlasProps,
   VerticesProps,
+  BackdropProps,
+  GlassProps,
   LineProps,
   OvalProps,
   PaintComponentProps,
@@ -66,6 +68,21 @@ export const Atlas = NodeType.Atlas as unknown as FC<AtlasProps>
  * library draws below the shape level.
  */
 export const Vertices = NodeType.Vertices as unknown as FC<VerticesProps>
+
+/**
+ * A frosted panel over what is already drawn beneath it. Place it **after** that
+ * content: it samples the pixels below, so order is what makes it a backdrop.
+ */
+export const BackdropBlur = NodeType.Backdrop as unknown as FC<BackdropProps>
+
+/**
+ * Liquid glass: edge refraction, chromatic aberration and background frost, from
+ * tgfx's own material rather than approximated with a blur.
+ *
+ * Its own node type, not an alias of the blur's: the writer reads which one was
+ * used to decide whether `refraction` defaults to 40 or to a plain blur's 0.
+ */
+export const Glass = NodeType.Glass as unknown as FC<GlassProps>
 
 /**
  * Text with its first baseline at (`x`, `y`). Breaks at `\n`, and wraps inside

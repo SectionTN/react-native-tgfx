@@ -269,6 +269,41 @@ export interface HitTestResult {
   path: number[]
 }
 
+/**
+ * A frosted or refractive panel over whatever is already drawn beneath it.
+ *
+ * Backdrop effects read the pixels below, so the node must come **after** the
+ * content it frosts, and the region is its `clip` rect.
+ *
+ * The panel is not painted, it is sampled, so of the inherited paint only
+ * `opacity`, `visible` and `ref` apply, plus the alpha of `color` — its RGB,
+ * the stroke props and any paint or shader child are all ignored. A `ref`
+ * patches values; a backdrop has no hit bounds, so it is never pressable.
+ */
+export interface BackdropProps extends PaintProps {
+  /** The panel's rect, and what it samples from beneath. */
+  x: Animated<number>
+  y: Animated<number>
+  width: Animated<number>
+  height: Animated<number>
+  /** Corner radius. Defaults to 0. Static: the writer does not give it a slot. */
+  r?: number
+  /** Gaussian blur of the backdrop. Defaults to 12. */
+  blur?: number
+}
+
+/** `blur` is absent: glass frosts with `frost`, and the blur word is ignored on this path. */
+export interface GlassProps extends Omit<BackdropProps, 'blur'> {
+  /** Edge refraction strength. Defaults to 40. */
+  refraction?: number
+  /** How far the refraction reaches in from the edge. Defaults to 20. */
+  depth?: number
+  /** Background frost. Defaults to 20. */
+  frost?: number
+  /** Chromatic aberration at the edge. Defaults to 0. */
+  dispersion?: number
+}
+
 export interface CameraFrameProps extends PaintProps {
   /**
    * A hardware-buffer handle from `imageFromNativeBuffer`, re-pointed at each

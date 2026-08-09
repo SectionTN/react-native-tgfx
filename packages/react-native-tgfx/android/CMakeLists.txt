@@ -75,7 +75,7 @@ set(TGFX_USE_METAL OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_VULKAN OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_WEBGPU OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_QT OFF CACHE BOOL "" FORCE)
-set(TGFX_BUILD_LAYERS OFF CACHE BOOL "" FORCE)
+set(TGFX_BUILD_LAYERS ON CACHE BOOL "" FORCE)
 # On for SVGDOM (cpp/SvgImage.cpp); pulls in the vendored expat, and forces
 # TGFX_USE_PNG_ENCODE/TGFX_USE_JPEG_DECODE, which are already on below.
 # +545 KB of stripped arm64 libNitroTgfx, measured (4.89 MB -> 5.45 MB).

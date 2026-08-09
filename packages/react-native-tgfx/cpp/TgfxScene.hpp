@@ -33,7 +33,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 26;
+inline constexpr double kSceneVersion = 27;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -302,8 +302,16 @@ struct PathEffectCmd {
 struct DrawCmd {
   enum Kind {
     Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame, Mask, Atlas,
-    Vertices
+    Vertices, Backdrop
   };
+
+  /// Backdrop only: the panel's shape and the style's parameters.
+  float cornerRadius = 0;
+  float blur = 0;
+  float refraction = 0;
+  float depth = 0;
+  float frost = 0;
+  float dispersion = 0;
 
 
   /// Mask only: the subtree whose alpha or luminance cuts `children` down.

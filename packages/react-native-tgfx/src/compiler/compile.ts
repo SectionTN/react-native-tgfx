@@ -122,6 +122,8 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Mask]: Kind.Mask,
   [NodeType.Atlas]: Kind.Atlas,
   [NodeType.Vertices]: Kind.Vertices,
+  [NodeType.Backdrop]: Kind.Backdrop,
+  [NodeType.Glass]: Kind.Backdrop,
 }
 
 /** A shared-buffer attachment from `useSpriteBuffer` / `useVertexBuffer`. */
@@ -562,6 +564,20 @@ function writeDrawing(
       break
     case Kind.Vertices:
       writeVertices(w, p)
+      break
+    case Kind.Backdrop:
+      // Glass is a superset of blur, so one wire kind carries both: zero refraction is a plain
+      // blur. Two node types feed it only so <Glass> can default refraction to something visible.
+      w.pushAnim(p.x)
+      w.pushAnim(p.y)
+      w.pushAnim(p.width)
+      w.pushAnim(p.height)
+      w.push(resolveNumber(p.r, 0))
+      w.push(resolveNumber(p.blur, 12))
+      w.push(resolveNumber(p.refraction, node.type === NodeType.Glass ? 40 : 0))
+      w.push(resolveNumber(p.depth, 20))
+      w.push(resolveNumber(p.frost, 20))
+      w.push(resolveNumber(p.dispersion, 0))
       break
     case Kind.Text:
       w.pushAnim(p.x)
