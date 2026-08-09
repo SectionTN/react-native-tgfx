@@ -24,6 +24,9 @@ FOUNDATION_EXPORT void TgfxSnapshotRelease(void* _Nullable token);
 - (void)setOpaqueSurface:(BOOL)opaque;
 
 - (void)setValues:(const double*)values count:(int32_t)count;
+- (void)setStringValues:(const double*)indices
+                  count:(int32_t)count
+                 values:(NSArray<NSString*>*)values;
 - (void)setDisplayP3:(BOOL)displayP3;
 - (NSArray<NSNumber*>*)hitTestX:(float)x y:(float)y precise:(BOOL)precise;
 

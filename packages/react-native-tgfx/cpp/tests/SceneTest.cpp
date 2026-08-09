@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "BufferRegistry.hpp"
 #include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
 #include "TextLayout.hpp"
@@ -61,10 +62,11 @@ constexpr int kHeight = 64;
 /// The example app's bundled fonts, set by cpp/tests/CMakeLists.txt.
 constexpr const char* kFontDir = TGFXRN_TEST_FONT_DIR;
 
-/// Mirrors src/compiler/writer.ts: header, node stream, then the patch table.
+/// Mirrors src/compiler/writer.ts: header, node stream, then the two patch tables.
 struct Writer {
   std::vector<double> words{0, 0, 0};
   std::vector<double> patches;
+  std::vector<double> stringPatches;
 
   void push(double value) {
     words.push_back(value);
@@ -76,6 +78,15 @@ struct Writer {
       patches.push_back(slot);
     }
     words.push_back(literal);
+  }
+
+  /// A string-table index that may follow a string slot, like pushStringAnim().
+  void pushStringAnim(int tableIndex, int slot = -1) {
+    if (slot >= 0) {
+      stringPatches.push_back(static_cast<double>(words.size()));
+      stringPatches.push_back(slot);
+    }
+    words.push_back(tableIndex);
   }
 
   void pushPaint(uint32_t color, bool stroke, double strokeWidth = 1,
@@ -173,6 +184,7 @@ struct Writer {
                     const std::vector<uint32_t>& colors = {},
                     const std::vector<int>& indices = {}, int topology = 0) {
     push(16);
+    push(0);  // inline, no shared buffer
     push(topology);
     push(static_cast<double>(positions.size()));
     for (const auto& point : positions) {
@@ -195,12 +207,14 @@ struct Writer {
     pushPaint(0xffffffff, false);
   }
 
-  /// An atlas node, mirroring writeAtlas() in compile.ts.
+  /// An atlas node, mirroring writeAtlas() in compile.ts. Sprites carry the
+  /// v26 centre form: srcX, srcY, srcW, srcH, scale, centreX, centreY.
   void pushAtlas(int32_t handle, const std::vector<std::array<double, 7>>& sprites,
                  int sampling = 1) {
     push(15);
-    push(handle);
+    pushAnim(handle);
     push(sampling);
+    push(0);  // inline, no shared buffer
     push(static_cast<double>(sprites.size()));
     for (const auto& sprite : sprites) {
       for (double word : sprite) {
@@ -266,6 +280,10 @@ struct Writer {
     auto patchStart = words.size();
     words.push_back(static_cast<double>(patches.size() / 2));
     for (double patch : patches) {
+      words.push_back(patch);
+    }
+    words.push_back(static_cast<double>(stringPatches.size() / 2));
+    for (double patch : stringPatches) {
       words.push_back(patch);
     }
     words[0] = tgfxrn::kSceneVersion;
@@ -737,7 +755,7 @@ void aChildShaderSamplesWhereItIsAsked() {
 
 void aGradientChildShades() {
   // Linear black -> white across the 32-wide rect.
-  const std::vector<double> child = {0, 0, 0, 32, 0, 2, 0xff000000, 0xffffffff, 0};
+  const std::vector<double> child = {0, 0, 0, 32, 0, 0, 2, 0xff000000, 0xffffffff, 0};
   const std::vector<std::string> strings = {"return TGFX_CHILD_0(fragCoord);", ""};
 
   Writer w;
@@ -767,7 +785,7 @@ void twoChildrenOnOneShaderBothPaint() {
   const std::vector<std::vector<double>> children = {
       {7, static_cast<double>(image.handle), 1, 1, 0, 0},
       // Child 1: a black -> white ramp across the 32-wide rect.
-      {0, 0, 0, 32, 0, 2, 0xff000000, 0xffffffff, 0},
+      {0, 0, 0, 32, 0, 0, 2, 0xff000000, 0xffffffff, 0},
   };
   // Child 0 in red and green (one shifted), child 1 in blue: a wrong binding is a wrong channel.
   const std::vector<std::string> strings{
@@ -2449,11 +2467,11 @@ void theLayoutIsCachedByQuantisedSize() {
   auto blobOf = [](const tgfxrn::TextLayout& layout) {
     return layout.runs.empty() ? nullptr : layout.runs[0].blob;
   };
-  auto at20 = blobOf(cmd.resolve(20));
+  auto at20 = blobOf(cmd.resolve(20, {}, 0, {}));
   CHECK(at20 != nullptr);
-  CHECK(blobOf(cmd.resolve(20.1f)) == at20);
-  CHECK(blobOf(cmd.resolve(20)) == at20);
-  CHECK(blobOf(cmd.resolve(24)) != at20);
+  CHECK(blobOf(cmd.resolve(20.1f, {}, 0, {})) == at20);
+  CHECK(blobOf(cmd.resolve(20, {}, 0, {})) == at20);
+  CHECK(blobOf(cmd.resolve(24, {}, 0, {})) != at20);
 }
 
 /// A codepoint the primary face lacks must reach a fallback, not the blank gap glyph 0 leaves.
@@ -2977,7 +2995,8 @@ void anAtlasPlacesEverySpriteItIsGiven() {
   std::vector<std::array<double, 7>> sprites;
   const double centres[4][2] = {{16, 16}, {48, 16}, {16, 48}, {48, 48}};
   for (const auto& centre : centres) {
-    sprites.push_back({0, 0, 2, 2, 4, centre[0] - 4, centre[1] - 4});
+    // v26 carries the centre; the reader applies the half-sprite bias.
+    sprites.push_back({0, 0, 2, 2, 4, centre[0], centre[1]});
   }
   Writer w;
   w.push(1);
@@ -3076,7 +3095,8 @@ void verticesSampleTheirTextureCoordinates() {
   Writer w;
   w.push(1);
   w.push(16);
-  w.push(0);
+  w.push(0);  // inline, no shared buffer
+  w.push(0);  // triangles
   w.push(4);
   const double quad[4][2] = {{8, 8}, {56, 8}, {8, 56}, {56, 56}};
   for (const auto& point : quad) {
@@ -3492,11 +3512,477 @@ void anSvgIsWrittenAsMarkup() {
   CHECK(threw);
 }
 
+// ---- v26: imperative slot coverage (#204) ----
+
+/// One frame with string slots, against a caller-held renderer so the
+/// generation can move between frames the way setStringValues moves it.
+Pixels drawFrameWithStrings(tgfxrn::SceneRenderer& renderer,
+                            const std::vector<double>& values,
+                            const std::vector<std::string>& stringValues,
+                            uint64_t gen,
+                            const std::vector<uint8_t>* pushed = nullptr) {
+  std::vector<uint8_t> allPushed(stringValues.size(), 1);
+  auto* context = device()->lockContext();
+  auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+  auto* canvas = surface->getCanvas();
+  canvas->clear();
+  renderer.render(canvas, values, stringValues, gen,
+                  pushed != nullptr ? *pushed : allPushed);
+  context->flushAndSubmit(true);
+  auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888);
+  Pixels pixels(static_cast<size_t>(info.byteSize()));
+  surface->readPixels(info, pixels.data());
+  device()->unlock();
+  return pixels;
+}
+
+void aHiddenNodeDrawsNothingAndAVisibleSlotTogglesIt() {
+  // Literal 0: skipped outright.
+  Writer hidden;
+  hidden.push(1);
+  hidden.push(1 | 64);  // Rect + visible word
+  hidden.pushAnim(0);   // invisible
+  hidden.pushAnim(8);
+  hidden.pushAnim(8);
+  hidden.pushAnim(48);
+  hidden.pushAnim(48);
+  hidden.pushPaint(0xffff0000, false);
+  CHECK(!anyPixelSet(render(hidden.finish(), {}, {})));
+
+  // Slot-driven: the same program shows and hides through setValues.
+  Writer pooled;
+  pooled.push(1);
+  pooled.push(1 | 64);
+  pooled.pushAnim(1, 0);
+  pooled.pushAnim(8);
+  pooled.pushAnim(8);
+  pooled.pushAnim(48);
+  pooled.pushAnim(48);
+  pooled.pushPaint(0xffff0000, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(pooled.finish(), {});
+  CHECK(anyPixelSet(drawFrame(renderer, {1})));
+  CHECK(!anyPixelSet(drawFrame(renderer, {0})));
+  // Hidden nodes are not hit either.
+  CHECK(renderer.hitTest(32, 32, false, std::vector<double>{0}).empty());
+  CHECK(!renderer.hitTest(32, 32, false, std::vector<double>{1}).empty());
+}
+
+void liveTextReshapesOnAStringPush() {
+  tgfxrn::FontRegistry::instance().clear();
+  const std::vector<std::string> strings{"i", "Helvetica", "", "WWWW"};
+  Writer w;
+  w.push(1);
+  w.push(8);  // Text
+  w.pushAnim(4);
+  w.pushAnim(44);
+  w.pushAnim(28);
+  w.push(1);
+  w.push(400);
+  w.push(0);
+  w.push(0);
+  w.push(1);              // one run
+  w.pushStringAnim(0, 0); // run text follows string slot 0
+  w.push(2);              // run family ("")
+  w.push(0);              // run weight
+  w.push(0);              // run italic
+  w.push(0);              // run letterSpacing
+  w.push(0);              // run size
+  w.push(0);              // run hasColor
+  w.push(0);              // run color
+  w.push(0);              // wrapWidth
+  w.push(0);              // align
+  w.push(0);              // lineHeight
+  w.push(0);              // maxLines
+  w.push(2);              // ellipsis ("")
+  w.pushPaint(0xff000000, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+  auto narrow = drawFrameWithStrings(renderer, {}, {"i"}, 1);
+  auto wide = drawFrameWithStrings(renderer, {}, {"WWWW"}, 2);
+  CHECK(anyPixelSet(narrow));
+  CHECK(inkPixels(wide) > inkPixels(narrow) * 2);
+  // The same generation with the same content lays out nothing new.
+  auto again = drawFrameWithStrings(renderer, {}, {"WWWW"}, 2);
+  CHECK(again == wide);
+}
+
+void aLivePathReparsesOnAStringPush() {
+  const std::vector<std::string> strings{"M8 8 L16 8 L16 16 L8 16 Z"};
+  Writer w;
+  w.push(1);
+  w.push(6);  // Path
+  w.pushStringAnim(0, /*slot=*/0);
+  w.push(0);  // no effects
+  w.pushPaint(0xffff0000, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+  auto small = drawFrameWithStrings(renderer, {}, {"M8 8 L16 8 L16 16 L8 16 Z"}, 1);
+  auto big = drawFrameWithStrings(renderer, {}, {"M8 8 L56 8 L56 56 L8 56 Z"}, 2);
+  CHECK(anyPixelSet(small));
+  CHECK(inkPixels(big) > inkPixels(small) * 4);
+}
+
+void anImageHandleSlotSwapsThePixels() {
+  auto red = registerSolid({255, 0, 0, 255});
+  auto blue = registerSolid({0, 0, 255, 255});
+  Writer w;
+  w.push(1);
+  w.push(7);  // Image
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.pushAnim(static_cast<double>(red.handle), /*slot=*/0);
+  w.push(0);  // fill
+  w.push(1);
+  w.push(0);  // no source rect
+  w.pushPaint(0xffffffff, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto first = drawFrame(renderer, {static_cast<double>(red.handle)});
+  CHECK(pixelAt(first, 32, 32)[0] == 255);
+  auto swapped = drawFrame(renderer, {static_cast<double>(blue.handle)});
+  CHECK(pixelAt(swapped, 32, 32)[2] == 255);
+}
+
+void animatedGradientGeometryMoves() {
+  // A linear ramp whose end.x is a slot: moving it moves the midpoint's shade.
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.push(0);  // linear gradient
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64, /*slot=*/0);
+  w.pushAnim(0);
+  w.push(0);  // static stops
+  w.push(2);
+  w.push(0xff000000);
+  w.push(0xffffffff);
+  w.push(0);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto wide = drawFrame(renderer, {64});
+  auto tight = drawFrame(renderer, {16});
+  // With the ramp ending at 16, x=32 is already fully white; at 64 it is mid-grey.
+  CHECK(pixelAt(tight, 32, 32)[0] > 220);
+  CHECK(pixelAt(wide, 32, 32)[0] < 180);
+  CHECK(pixelAt(wide, 32, 32)[0] > 80);
+}
+
+void animatedStopColoursShift() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.push(0);  // linear
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(0);
+  w.push(1);  // animated colours
+  w.push(2);
+  // Stop 0: r slot, g 0, b 0, a 1. Stop 1: fixed blue.
+  w.pushAnim(1, /*slot=*/0);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.pushAnim(1);
+  w.push(0);  // no positions
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto redStart = drawFrame(renderer, {1});
+  auto darkStart = drawFrame(renderer, {0});
+  CHECK(pixelAt(redStart, 1, 32)[0] > 200);
+  CHECK(pixelAt(darkStart, 1, 32)[0] < 40);
+}
+
+void animatedBlurRadiusChangesThePixels() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(24);
+  w.pushAnim(24);
+  w.pushAnim(16);
+  w.pushAnim(16);
+  w.push(0xffff0000);
+  w.push(2 | 4);  // antiAlias + filter block
+  w.pushAnim(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.pushAnim(3);   // blend srcOver
+  w.push(-1);      // no colour filter
+  w.push(0);       // blur image filter
+  w.pushAnim(0, /*slot=*/0);
+  w.pushAnim(0, /*slot=*/0);
+  w.push(3);       // decal
+  w.push(-1);      // no shader
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto sharp = drawFrame(renderer, {0.01});
+  auto soft = drawFrame(renderer, {8});
+  // Just outside the box: a blur spreads ink past the geometry, sharp does not.
+  CHECK(pixelAt(sharp, 20, 32)[0] == 0);
+  CHECK(pixelAt(soft, 20, 32)[0] > 0);
+}
+
+void animatedStyleWordFlipsFillToStroke() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(16);
+  w.pushAnim(16);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.push(0xffff0000);
+  w.push(2 | 32);  // antiAlias + animated style/aa words
+  w.pushAnim(0, /*slot=*/0);  // style word
+  w.pushAnim(1);              // antiAlias word
+  w.pushAnim(2);              // strokeWidth
+  w.pushAnim(0);              // cap
+  w.pushAnim(0);              // join
+  w.pushAnim(1);              // alpha
+  w.push(-1);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto filled = drawFrame(renderer, {0});
+  auto stroked = drawFrame(renderer, {1});
+  CHECK(pixelAt(filled, 32, 32)[0] == 255);
+  CHECK(pixelAt(stroked, 32, 32)[0] == 0);
+  CHECK(pixelAt(stroked, 16, 32)[0] == 255);
+}
+
+void atlasDrawsFromASharedBuffer() {
+  auto red = registerSolid({255, 0, 0, 255});
+  auto block = std::make_shared<tgfxrn::SharedFloats>(7 * 2);
+  int32_t bufferId = tgfxrn::BufferRegistry::instance().add(block);
+  // Two 2x2 sprites scaled 8x, centred at (16,16) and (48,48).
+  const float sprites[14] = {0, 0, 2, 2, 8, 16, 16, 0, 0, 2, 2, 8, 48, 48};
+  std::copy(sprites, sprites + 14, block->data.begin());
+  Writer w;
+  w.push(1);
+  w.push(15);  // Atlas
+  w.pushAnim(static_cast<double>(red.handle));
+  w.push(1);
+  w.push(bufferId);
+  w.pushAnim(2, /*slot=*/0);
+  w.pushPaint(0xffffffff, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto both = drawFrame(renderer, {2});
+  CHECK(pixelAt(both, 16, 16)[0] == 255);
+  CHECK(pixelAt(both, 48, 48)[0] == 255);
+  // The count slot draws a prefix without touching the data.
+  auto one = drawFrame(renderer, {1});
+  CHECK(pixelAt(one, 16, 16)[0] == 255);
+  CHECK(pixelAt(one, 48, 48)[0] == 0);
+  tgfxrn::BufferRegistry::instance().remove(bufferId);
+}
+
+void verticesDrawFromASharedBuffer() {
+  // Positions for 4 vertices + 6 indices: two triangles covering a square.
+  auto block = std::make_shared<tgfxrn::SharedFloats>(4 * 2 + 6);
+  int32_t bufferId = tgfxrn::BufferRegistry::instance().add(block);
+  const float quad[8] = {8, 8, 56, 8, 8, 56, 56, 56};
+  const float indices[6] = {0, 1, 2, 1, 2, 3};
+  std::copy(quad, quad + 8, block->data.begin());
+  std::copy(indices, indices + 6, block->data.begin() + 8);
+  Writer w;
+  w.push(1);
+  w.push(16);  // Vertices
+  w.push(bufferId);
+  w.push(0);  // triangles
+  w.push(4);  // maxVertices
+  w.push(6);  // maxIndices
+  w.push(0);  // no textures, no colours
+  w.pushAnim(4, /*slot=*/0);
+  w.pushAnim(6, /*slot=*/1);
+  w.pushPaint(0xffff0000, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto drawn = drawFrame(renderer, {4, 6});
+  CHECK(pixelAt(drawn, 32, 32)[0] == 255);
+  // Half the indices: only the first triangle survives.
+  auto half = drawFrame(renderer, {4, 3});
+  CHECK(pixelAt(half, 12, 12)[0] == 255);
+  CHECK(pixelAt(half, 55, 55)[0] == 0);
+  tgfxrn::BufferRegistry::instance().remove(bufferId);
+}
+
+void srcRectSlotStepsSprites() {
+  // A 2x1 sheet, red then blue; the slot steps which texel the image shows.
+  std::vector<uint8_t> half{255, 0, 0, 255, 0, 0, 255, 255};
+  auto split = registerPixels(2, 1, half);
+  Writer w;
+  w.push(1);
+  w.push(7);  // Image
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.pushAnim(static_cast<double>(split.handle));
+  w.push(0);  // fill
+  w.push(0);  // nearest
+  w.push(1);  // source rect follows
+  w.pushAnim(0, /*slot=*/0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.pushAnim(1);
+  w.pushPaint(0xffffffff, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto redFrame = drawFrame(renderer, {0});
+  auto blueFrame = drawFrame(renderer, {1});
+  CHECK(pixelAt(redFrame, 32, 32)[0] == 255);
+  CHECK(pixelAt(blueFrame, 32, 32)[2] == 255);
+}
+
+
+void aSparseStringPushNeverBlanksANeighbour() {
+  // Two live-path nodes on slots 0 and 1; pushing only slot 1 must leave 0 drawn.
+  const std::vector<std::string> strings{"M8 8 L28 8 L28 28 L8 28 Z",
+                                        "M36 8 L56 8 L56 28 L36 28 Z"};
+  Writer w;
+  w.push(2);
+  w.push(6);
+  w.pushStringAnim(0, 0);
+  w.push(0);
+  w.pushPaint(0xffff0000, false);
+  w.push(6);
+  w.pushStringAnim(1, 1);
+  w.push(0);
+  w.pushPaint(0xff0000ff, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+  // Only slot 1 was pushed; slot 0's entry is the resize gap fill ("").
+  std::vector<uint8_t> pushed{0, 1};
+  auto frame = drawFrameWithStrings(
+      renderer, {}, {"", "M36 36 L56 36 L56 56 L36 56 Z"}, 1, &pushed);
+  CHECK(pixelAt(frame, 18, 18)[0] == 255);  // slot 0 keeps its compiled literal
+  CHECK(pixelAt(frame, 46, 46)[2] == 255);  // slot 1 moved to the pushed value
+  CHECK(pixelAt(frame, 46, 18)[2] == 0);    // and left its old spot
+}
+
+void hitTestFollowsALivePath() {
+  const std::vector<std::string> strings{"M8 8 L24 8 L24 24 L8 24 Z"};
+  Writer w;
+  w.push(1);
+  w.push(6);
+  w.pushStringAnim(0, 0);
+  w.push(0);
+  w.pushPaint(0xffff0000, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), strings);
+  std::vector<std::string> live{"M40 40 L56 40 L56 56 L40 56 Z"};
+  std::vector<uint8_t> pushed{1};
+  // The hit test sees the pushed geometry, not the compiled literal.
+  CHECK(!renderer.hitTest(16, 16, true, {}, live, pushed).empty() == false);
+  CHECK(!renderer.hitTest(48, 48, true, {}, live, pushed).empty());
+  // Without the push it still answers from the literal.
+  CHECK(!renderer.hitTest(16, 16, true, {}, {}, {}).empty());
+}
+
+void aBadBufferMeshIndexDropsTheFrameNotTheProcess() {
+  auto block = std::make_shared<tgfxrn::SharedFloats>(3 * 2 + 3);
+  int32_t bufferId = tgfxrn::BufferRegistry::instance().add(block);
+  const float tri[6] = {8, 8, 56, 8, 8, 56};
+  std::copy(tri, tri + 6, block->data.begin());
+  block->data[6] = 0;
+  block->data[7] = std::numeric_limits<float>::quiet_NaN();
+  block->data[8] = 2;
+  Writer w;
+  w.push(1);
+  w.push(16);
+  w.push(bufferId);
+  w.push(0);
+  w.push(3);
+  w.push(3);
+  w.push(0);
+  w.pushAnim(3);
+  w.pushAnim(3);
+  w.pushPaint(0xffff0000, false);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  CHECK(!anyPixelSet(drawFrame(renderer, {})));
+  tgfxrn::BufferRegistry::instance().remove(bufferId);
+}
+
+void anImageShaderSlotSeededZeroStillGoesLive() {
+  auto red = registerSolid({255, 0, 0, 255});
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.push(0xffffffff);
+  w.push(2);
+  w.pushAnim(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(1);
+  w.push(7);          // image shader
+  w.pushAnim(0, 0);   // handle slot seeded 0: nothing loaded at commit time
+  w.push(1);
+  w.push(1);
+  w.push(1);
+  w.push(0);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  // Slot 0: no image resolves, so the paint colour shows (white, green=255).
+  auto unlit = drawFrame(renderer, {0});
+  CHECK(pixelAt(unlit, 32, 32)[1] == 255);
+  // The slot write re-points the shader without a re-commit: red, green=0.
+  auto lit = drawFrame(renderer, {static_cast<double>(red.handle)});
+  CHECK(pixelAt(lit, 32, 32)[0] == 255);
+  CHECK(pixelAt(lit, 32, 32)[1] == 0);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
     return 1;
   }
+  aHiddenNodeDrawsNothingAndAVisibleSlotTogglesIt();
+  aSparseStringPushNeverBlanksANeighbour();
+  hitTestFollowsALivePath();
+  aBadBufferMeshIndexDropsTheFrameNotTheProcess();
+  anImageShaderSlotSeededZeroStillGoesLive();
+  liveTextReshapesOnAStringPush();
+  aLivePathReparsesOnAStringPush();
+  anImageHandleSlotSwapsThePixels();
+  animatedGradientGeometryMoves();
+  animatedStopColoursShift();
+  animatedBlurRadiusChangesThePixels();
+  animatedStyleWordFlipsFillToStroke();
+  atlasDrawsFromASharedBuffer();
+  verticesDrawFromASharedBuffer();
+  srcRectSlotStepsSprites();
   aCorruptProgramIsRejectedWithoutTrustingItsCounts();
   staticPaintDrawsWhatTheRebuildDraws();
   animatedColorDrawsWhatTheLiteralDraws();

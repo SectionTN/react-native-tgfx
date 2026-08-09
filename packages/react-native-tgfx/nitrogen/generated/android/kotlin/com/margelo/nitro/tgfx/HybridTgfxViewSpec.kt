@@ -55,6 +55,10 @@ abstract class HybridTgfxViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun setStringValues(indices: DoubleArray, values: Array<String>): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun setColorSpace(colorSpace: String): Unit
   
   @DoNotStrip

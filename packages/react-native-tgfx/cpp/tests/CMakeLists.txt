@@ -13,7 +13,7 @@ set(TGFX_BUILD_HELLO2D OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TGFX_DIR} ${CMAKE_BINARY_DIR}/tgfx)
 
 add_executable(SceneTest SceneTest.cpp ../TgfxScene.cpp ../SvgPath.cpp ../SvgImage.cpp ../ImageRegistry.cpp ../OffscreenRender.cpp ../PdfExport.cpp ../SvgExport.cpp
-               ../FontRegistry.cpp ../TextLayout.cpp ../PathOps.cpp)
+               ../FontRegistry.cpp ../TextLayout.cpp ../PathOps.cpp ../BufferRegistry.cpp)
 # tgfx's src too: the EXIF test names JpegCodec rather than going through
 # ImageCodec::MakeFrom, which would fall through to the platform decoder and
 # prove nothing about the embedded one.
@@ -30,6 +30,6 @@ target_include_directories(SnapshotTest PRIVATE ".." "${TGFX_DIR}/include")
 target_link_libraries(SnapshotTest tgfx)
 
 add_executable(AllocBench AllocBench.cpp ../TgfxScene.cpp ../SvgPath.cpp ../ImageRegistry.cpp
-               ../TgfxFrameSink.cpp ../FontRegistry.cpp ../TextLayout.cpp)
+               ../TgfxFrameSink.cpp ../FontRegistry.cpp ../TextLayout.cpp ../BufferRegistry.cpp)
 target_include_directories(AllocBench PRIVATE ".." "${TGFX_DIR}/include")
 target_link_libraries(AllocBench tgfx)

@@ -1,7 +1,11 @@
 import { isNodeHandle, nodeInternals, type NodeHandle } from '../imperative'
 import { NodeType, type Node } from '../reconciler/types'
 import { resolveColor, type Color } from './colors'
-import type { BlendMode } from './filters'
+import type {
+  BlendMode,
+  ColorFilterInput,
+  ImageFilterInput,
+} from './filters'
 import {
   fitCode,
   imageHandle,
@@ -17,6 +21,7 @@ import {
   NO_PAINT_PROPS,
   pickPaintInput,
   writePaint,
+  type AnimVector,
   type GradientInput,
   type PaintInput,
 } from './paint'
@@ -42,6 +47,7 @@ export interface CompileResult {
   buffer: ArrayBuffer
   strings: string[]
   values: MaybeSharedValue<unknown>[]
+  stringValues: MaybeSharedValue<string>[]
   refs: NodeHandle[]
   refPaths: { path: number[]; ref: NodeHandle }[]
 }
@@ -81,6 +87,24 @@ function mulOpacity(inherited: Opacity, own: unknown): Opacity {
 
 const Op = { translate: 0, scale: 1, rotate: 2, skewX: 3, skewY: 4 } as const
 
+/** Bit 64 on the kind word: a visibility word follows. Absent costs nothing. */
+const KIND_VISIBLE = 64
+
+/**
+ * The node's kind word, plus its `visible` word when the prop is present. A
+ * hidden node is skipped at draw *and* hit-test, which is what makes a
+ * mounted-but-idle pool node free.
+ */
+function pushKind(w: SceneWriter, kind: number, p: Record<string, unknown>): void {
+  const visible = p.visible
+  if (visible === undefined) {
+    w.push(kind)
+    return
+  }
+  w.push(kind | KIND_VISIBLE)
+  w.pushAnim(isSharedValue(visible) ? visible : visible === false ? 0 : visible === true ? 1 : visible, 1)
+}
+
 const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Group]: Kind.Group,
   [NodeType.Rect]: Kind.Rect,
@@ -100,37 +124,74 @@ const KIND_OF: Record<string, number | undefined> = {
   [NodeType.Vertices]: Kind.Vertices,
 }
 
+/** A shared-buffer attachment from `useSpriteBuffer` / `useVertexBuffer`. */
+interface BufferLike {
+  id: number
+  capacity?: number
+  maxVertices?: number
+  maxIndices?: number
+  hasTextures?: boolean
+  hasColors?: boolean
+}
+
+function bufferOf(value: unknown): BufferLike | null {
+  // id 0 is "no native module": fall back to the inline stream.
+  return value != null &&
+    typeof value === 'object' &&
+    typeof (value as BufferLike).id === 'number' &&
+    (value as BufferLike).id > 0
+    ? (value as BufferLike)
+    : null
+}
+
 /**
- * N sprites, one node. The translation is pre-biased by half the scaled sprite
- * here rather than natively, so the reader stays a straight copy and `x`/`y`
- * mean the sprite's centre.
+ * N sprites, one node. `x`/`y` mean the sprite's centre; the reader applies the
+ * half-sprite bias, so a live scale or size stays correct. A shared buffer
+ * replaces the inline list entirely: seven floats per sprite, read at draw.
  */
 function writeAtlas(w: SceneWriter, p: Record<string, unknown>): void {
-  const sprites = Array.isArray(p.sprites) ? (p.sprites as AtlasSprite[]) : []
-  w.push(imageHandle(p.image))
+  w.pushAnim(isSharedValue(p.image) ? p.image : imageHandle(p.image))
   w.push(samplingCode(p.sampling))
+  const buffer = bufferOf(p.buffer)
+  if (buffer != null) {
+    w.push(buffer.id)
+    w.pushAnim(p.count ?? buffer.capacity ?? 0)
+    return
+  }
+  w.push(0)
+  const sprites = Array.isArray(p.sprites) ? (p.sprites as AtlasSprite[]) : []
   w.push(sprites.length)
   for (const sprite of sprites) {
     const rect = (sprite?.rect ?? {}) as SrcRect
-    const width = resolveNumber(rect.width)
-    const height = resolveNumber(rect.height)
-    w.push(resolveNumber(rect.x))
-    w.push(resolveNumber(rect.y))
-    w.push(width)
-    w.push(height)
-    const scale = resolveNumber(sprite?.scale, 1)
-    w.push(scale)
-    w.push(resolveNumber(sprite?.x) - (scale * width) / 2)
-    w.push(resolveNumber(sprite?.y) - (scale * height) / 2)
+    w.pushAnim(rect.x)
+    w.pushAnim(rect.y)
+    w.pushAnim(rect.width)
+    w.pushAnim(rect.height)
+    w.pushAnim(sprite?.scale, 1)
+    w.pushAnim(sprite?.x)
+    w.pushAnim(sprite?.y)
   }
 }
 
 /**
- * Positions, then optional texture coordinates and colours, then optional
- * indices — each block preceded by its own count so the reader never has to
- * guess which are present.
+ * A leading buffer id, then either the shared-buffer header (topology, section
+ * capacities, live counts) or the inline stream: positions, then optional
+ * texture coordinates and colours, then optional indices — each block preceded
+ * by its own count so the reader never has to guess which are present.
  */
 function writeVertices(w: SceneWriter, p: Record<string, unknown>): void {
+  const buffer = bufferOf(p.buffer)
+  if (buffer != null) {
+    w.push(buffer.id)
+    w.push(p.mode === 'triangleStrip' ? 1 : 0)
+    w.push(buffer.maxVertices ?? 0)
+    w.push(buffer.maxIndices ?? 0)
+    w.push((buffer.hasTextures ? 1 : 0) | (buffer.hasColors ? 2 : 0))
+    w.pushAnim(p.vertexCount ?? buffer.maxVertices ?? 0)
+    w.pushAnim(p.indexCount ?? buffer.maxIndices ?? 0)
+    return
+  }
+  w.push(0)
   const vertices = Array.isArray(p.vertices) ? (p.vertices as Vec[]) : []
   const colors = Array.isArray(p.colors) ? (p.colors as Color[]) : undefined
   const textures = Array.isArray(p.textures) ? (p.textures as Vec[]) : undefined
@@ -186,18 +247,43 @@ function vec(input: unknown): Vector | undefined {
   return { x: resolveNumber(v.x), y: resolveNumber(v.y) }
 }
 
+/** Like {@link vec}, but keeps a SharedValue axis live for the anim writer. */
+function animVec(input: unknown): AnimVector | undefined {
+  if (input == null) {
+    return undefined
+  }
+  const v = input as { x?: unknown; y?: unknown }
+  return {
+    x: v.x as AnimVector['x'],
+    y: v.y as AnimVector['y'],
+  }
+}
+
+/** Route a `ref` on a gradient or filter node through its handle's overrides. */
+function applyRef(w: SceneWriter, node: Node): Node {
+  const ref = node.props.ref
+  if (!isNodeHandle(ref)) {
+    return node
+  }
+  w.refs.push(ref)
+  return nodeInternals(ref).apply(node, w.reseed)
+}
+
 function extractGradient(
   w: SceneWriter,
   node: Node
 ): GradientInput | undefined {
+  if (node.type !== NodeType.Shader) {
+    node = applyRef(w, node)
+  }
   const p = node.props
   if (node.type === NodeType.LinearGradient) {
     return {
       kind: 'linear',
-      start: vec(p.start),
-      end: vec(p.end),
+      start: animVec(p.start),
+      end: animVec(p.end),
       colors: (p.colors as Color[]) ?? [],
-      positions: p.positions as number[] | undefined,
+      positions: p.positions as GradientInput['positions'],
     }
   }
   if (
@@ -206,20 +292,20 @@ function extractGradient(
   ) {
     return {
       kind: node.type === NodeType.RadialGradient ? 'radial' : 'diamond',
-      center: vec(p.center) ?? vec({ x: p.cx, y: p.cy }),
-      radius: resolveNumber(p.r),
+      center: animVec(p.center) ?? animVec({ x: p.cx, y: p.cy }),
+      radius: p.r as GradientInput['radius'],
       colors: (p.colors as Color[]) ?? [],
-      positions: p.positions as number[] | undefined,
+      positions: p.positions as GradientInput['positions'],
     }
   }
   if (node.type === NodeType.SweepGradient) {
     return {
       kind: 'sweep',
-      center: vec(p.c) ?? vec(p.center) ?? vec({ x: p.cx, y: p.cy }),
-      startAngle: resolveNumber(p.start, 0),
-      endAngle: resolveNumber(p.end, 360),
+      center: animVec(p.c) ?? animVec(p.center) ?? animVec({ x: p.cx, y: p.cy }),
+      startAngle: p.start as GradientInput['startAngle'],
+      endAngle: p.end as GradientInput['endAngle'],
       colors: (p.colors as Color[]) ?? [],
-      positions: p.positions as number[] | undefined,
+      positions: p.positions as GradientInput['positions'],
     }
   }
   if (node.type === NodeType.ImageShader) {
@@ -292,12 +378,19 @@ function extractGradient(
   return undefined
 }
 
-function extractFilter(node: Node): Partial<PaintInput> | undefined {
+function extractFilter(
+  w: SceneWriter,
+  node: Node
+): Partial<PaintInput> | undefined {
+  node = applyRef(w, node)
   const p = node.props
   switch (node.type) {
     case NodeType.ColorMatrix:
       return {
-        colorFilter: { kind: 'matrix', matrix: p.matrix as number[] },
+        colorFilter: {
+          kind: 'matrix',
+          matrix: p.matrix as ColorFilterInput['matrix'],
+        },
       }
     case NodeType.BlendColor:
       return {
@@ -313,9 +406,9 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
       return {
         imageFilter: {
           kind: 'blur',
-          blur: p.blur as number,
-          blurX: p.blurX as number,
-          blurY: p.blurY as number,
+          blur: p.blur as ImageFilterInput['blur'],
+          blurX: p.blurX as ImageFilterInput['blurX'],
+          blurY: p.blurY as ImageFilterInput['blurY'],
           tileMode: p.tileMode as TileMode,
         },
       }
@@ -323,11 +416,11 @@ function extractFilter(node: Node): Partial<PaintInput> | undefined {
       return {
         imageFilter: {
           kind: 'dropShadow',
-          dx: p.dx as number,
-          dy: p.dy as number,
-          blur: p.blur as number,
-          blurX: p.blurX as number,
-          blurY: p.blurY as number,
+          dx: p.dx as ImageFilterInput['dx'],
+          dy: p.dy as ImageFilterInput['dy'],
+          blur: p.blur as ImageFilterInput['blur'],
+          blurX: p.blurX as ImageFilterInput['blurX'],
+          blurY: p.blurY as ImageFilterInput['blurY'],
           color: p.color as Color,
           shadowOnly: p.shadowOnly as boolean,
           inner: p.inner as boolean,
@@ -343,7 +436,7 @@ function paintFromChild(
   child: Node
 ): Partial<PaintInput> | undefined {
   const gradient = extractGradient(w, child)
-  return gradient != null ? { gradient } : extractFilter(child)
+  return gradient != null ? { gradient } : extractFilter(w, child)
 }
 
 /// Two filters of a class compose in declaration order: the earlier one runs first.
@@ -413,7 +506,7 @@ function writeDrawing(
   const own = paintFromChildren(w, node)
   const alpha = mulOpacity(ctx.opacity, own == null ? p.opacity : own.opacity)
 
-  w.push(kind)
+  pushKind(w, kind, p)
   switch (kind) {
     case Kind.Rect:
       w.pushAnim(p.x)
@@ -449,7 +542,8 @@ function writeDrawing(
       w.pushAnim(p.y2)
       break
     case Kind.Path:
-      w.pushString(String(resolveValue(p.path) ?? ''))
+      // A SharedValue path gets a string slot: re-parsed natively on change, never re-encoded.
+      w.pushStringAnim(p.path)
       writePathEffects(w, node, p)
       break
     case Kind.Image:
@@ -457,8 +551,8 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
-      // An integer, not a payload: the string table no longer scales with the bytes on screen.
-      w.push(imageHandle(p.image))
+      // An integer, not a payload — and a slot when live, so swapping images is a patch.
+      w.pushAnim(isSharedValue(p.image) ? p.image : imageHandle(p.image))
       w.push(fitCode(p.fit))
       w.push(samplingCode(p.sampling))
       writeSrcRect(w, p.rect)
@@ -665,7 +759,7 @@ function writeMask(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     paint: mergePaint(ctx.paint, local),
     opacity: mulOpacity(ctx.opacity, local.opacity),
   }
-  w.push(Kind.Mask)
+  pushKind(w, Kind.Mask, node.props)
   w.push(node.props.mode === 'luminance' ? 1 : 0)
   const maskCountAt = w.reserve()
   // The mask is a matte, not part of the picture: it inherits neither paint nor opacity.
@@ -690,7 +784,7 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   }
   const picture = p.picture === true
   const extended = clip != null || layer || picture
-  w.push(extended ? Kind.GroupLayer : Kind.Group)
+  pushKind(w, extended ? Kind.GroupLayer : Kind.Group, p)
   const opCountAt = w.reserve()
   w.patch(
     opCountAt,
@@ -722,7 +816,7 @@ function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const local = localPaint(w, node)
   const paint = mergePaint(ctx.paint, local)
   const alpha = mulOpacity(ctx.opacity, local.opacity)
-  w.push(Kind.CameraFrame)
+  pushKind(w, Kind.CameraFrame, p)
   w.push(imageHandle(p.image))
   w.push(fitCode(p.fit, 'cover'))
   w.push(samplingCode(p.sampling))
@@ -783,6 +877,7 @@ export function compileScene(
     buffer: w.finish(),
     strings: w.strings,
     values: w.values,
+    stringValues: w.stringValues,
     refs: w.refs,
     refPaths: w.refPaths,
   }

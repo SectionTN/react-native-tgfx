@@ -32,7 +32,7 @@ test('encodes a rect with its paint', () => {
   expect(strings).toEqual([])
   expect(values).toEqual([])
   // header(3) rootCount kind x y w h + paint(7) + patch table (count only)
-  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 2)
   expect(Array.from(used.subarray(3, 9))).toEqual([1, Kind.Rect, 1, 2, 3, 4])
   expect(used[9]).toBe(0xffff0000) // packed AARRGGBB
   expect(used[10]).toBe(2) // fill + antiAlias
@@ -165,7 +165,7 @@ test('a drop shadow packs shadowOnly and inner into one flags word', () => {
         children: [node(NodeType.DropShadow, { dx: 1, dy: 2, blur: 3, ...props })],
       },
     ])
-  const at = (r: ReturnType<typeof shadow>) => r.used[r.used.length - 3]
+  const at = (r: ReturnType<typeof shadow>) => r.used[r.used.length - 4]
   expect(at(shadow({}))).toBe(0)
   expect(at(shadow({ shadowOnly: true }))).toBe(1)
   expect(at(shadow({ inner: true }))).toBe(2)
@@ -284,14 +284,14 @@ test('a layer carries the group alpha instead of pushing it into the children', 
   expect(layered.used[7]).toBe(0.5)
   expect(layered.used[8]).toBe(1)
   expect(layered.used[9]).toBe(Kind.Rect)
-  expect(layered.used[layered.used.length - 3]).toBe(1)
+  expect(layered.used[layered.used.length - 4]).toBe(1)
 
   const flattened = compile([
     node(NodeType.Group, { opacity: 0.5 }, [
       node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
     ]),
   ])
-  expect(flattened.used[flattened.used.length - 3]).toBe(0.5)
+  expect(flattened.used[flattened.used.length - 4]).toBe(0.5)
 })
 
 test('a nested layer applies the inherited opacity once, not twice', () => {
@@ -304,7 +304,7 @@ test('a nested layer applies the inherited opacity once, not twice', () => {
   ])
   // The whole inherited alpha rides the layer; the child stays at 1 rather than squaring it.
   expect(nested.used[10]).toBe(0.5)
-  expect(nested.used[nested.used.length - 3]).toBe(1)
+  expect(nested.used[nested.used.length - 4]).toBe(1)
 
   const both = compile([
     node(NodeType.Group, { opacity: 0.5 }, [
@@ -314,7 +314,7 @@ test('a nested layer applies the inherited opacity once, not twice', () => {
     ]),
   ])
   expect(both.used[10]).toBe(0.25)
-  expect(both.used[both.used.length - 3]).toBe(1)
+  expect(both.used[both.used.length - 4]).toBe(1)
 })
 
 test('multiplies group opacity into the child alpha', () => {
@@ -407,7 +407,7 @@ test('writes an alpha word for images so they inherit group opacity', () => {
     ]),
   ])
   expect(strings).toEqual([])
-  expect(used.length).toBe(3 + 1 + 3 + IMAGE_WORDS + 1)
+  expect(used.length).toBe(3 + 1 + 3 + IMAGE_WORDS + 2)
   expect(used[12]).toBe(9) // the native handle, not a string index
   expect(used[13]).toBe(1) // fit: contain
   expect(used[14]).toBe(1) // sampling: linear
@@ -629,8 +629,8 @@ test('a text path carries the path, the text and the font block', () => {
 // Golden encoding: paint-bearing children add paint but never enter the stream. Word 0 is the version.
 const MIXED_GROUP_WORDS = [
   SCENE_VERSION,
-  60,
-  57,
+  63,
+  59,
   1,
   0,
   2,
@@ -662,6 +662,7 @@ const MIXED_GROUP_WORDS = [
   1,
   2,
   5,
+  0,
   2,
   4294967295,
   4278190080,
@@ -681,12 +682,14 @@ const MIXED_GROUP_WORDS = [
   1,
   2,
   5,
+  0,
   2,
   4294967295,
   4278190080,
   0,
   1,
   10,
+  0,
   0,
 ]
 
@@ -879,7 +882,7 @@ test('the native wire version matches SCENE_VERSION', async () => {
 
 test('a Fill writes its paint and no geometry', () => {
   const { used } = compile([node(NodeType.Fill, { color: '#ff0000' })])
-  expect(used.length).toBe(3 + 1 + 1 + 7 + 1)
+  expect(used.length).toBe(3 + 1 + 1 + 7 + 2)
   expect(used[4]).toBe(Kind.Fill)
   expect(used[5]).toBe(0xffff0000)
 })
@@ -950,7 +953,7 @@ test('an unfiltered paint writes no filter block and no flag bit', () => {
   ])
   expect(used[RECT_FLAGS_WORD]! & 4).toBe(0)
   expect(used[RECT_FILTERS_WORD]).toBe(-1)
-  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 2)
 })
 
 test('an explicit srcOver blend mode is not written either', () => {
@@ -964,7 +967,7 @@ test('an explicit srcOver blend mode is not written either', () => {
     }),
   ])
   expect(used[RECT_FLAGS_WORD]! & 4).toBe(0)
-  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 2)
 })
 
 test('writes a blend mode as its tgfx enum index', () => {
@@ -1197,7 +1200,7 @@ test('a literal four-channel colour packs into the colour word alone', () => {
   ])
   expect(used[9]).toBe(0xffff0000)
   expect(used[10]).toBe(2) // fill + antiAlias, no live-colour bit
-  expect(used.length).toBe(3 + 1 + 5 + 7 + 1)
+  expect(used.length).toBe(3 + 1 + 5 + 7 + 2)
 })
 
 test('a live channel writes four patched colour words after the flags', () => {
@@ -1230,20 +1233,22 @@ test('<Atlas> writes one node with a placement per sprite', () => {
       ],
     }),
   ])
-  // header(3) rootCount kind handle sampling count
+  // header(3) rootCount kind handle sampling bufferId count
   expect(used[4]).toBe(Kind.Atlas)
   expect(used[5]).toBe(7)
-  expect(used[7]).toBe(2)
+  expect(used[6]).toBe(1)
+  expect(used[7]).toBe(0) // inline, no shared buffer
+  expect(used[8]).toBe(2)
 
-  // The source rect, the scale, then x/y biased by half the scaled sprite.
-  expect(Array.from(used.subarray(8, 15))).toEqual([0, 0, 10, 20, 1, 95, 40])
-  expect(Array.from(used.subarray(15, 22))).toEqual([10, 0, 10, 20, 2, -10, -20])
+  // The source rect, the scale, then the sprite's centre (native applies the bias).
+  expect(Array.from(used.subarray(9, 16))).toEqual([0, 0, 10, 20, 1, 100, 50])
+  expect(Array.from(used.subarray(16, 23))).toEqual([10, 0, 10, 20, 2, 0, 0])
 })
 
 test('<Atlas> with no sprites still encodes a well-formed node', () => {
   const { used } = compile([node(NodeType.Atlas, { image: handle(3) })])
   expect(used[4]).toBe(Kind.Atlas)
-  expect(used[7]).toBe(0)
+  expect(used[8]).toBe(0)
 })
 
 test('<Atlas> encodes a hole in the sprite array rather than throwing', () => {
@@ -1253,8 +1258,8 @@ test('<Atlas> encodes a hole in the sprite array rather than throwing', () => {
       sprites: [undefined, { x: 5, y: 5 }],
     }),
   ])
-  expect(used[7]).toBe(2)
-  expect(Array.from(used.subarray(8, 22))).toEqual([
+  expect(used[8]).toBe(2)
+  expect(Array.from(used.subarray(9, 23))).toEqual([
     0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 5, 5,
   ])
 })
@@ -1272,18 +1277,19 @@ test('<Vertices> writes positions, then the optional blocks in order', () => {
       mode: 'triangleStrip',
     }),
   ])
-  // kind, topology, count, then two words per vertex
+  // kind, bufferId, topology, count, then two words per vertex
   expect(used[4]).toBe(Kind.Vertices)
-  expect(used[5]).toBe(1)
-  expect(used[6]).toBe(3)
-  expect(Array.from(used.subarray(7, 13))).toEqual([0, 0, 10, 0, 0, 10])
-  expect(used[13]).toBe(0) // no texture coordinates
-  expect(used[14]).toBe(1) // colours follow
-  expect(Array.from(used.subarray(15, 18))).toEqual([
+  expect(used[5]).toBe(0) // inline, no shared buffer
+  expect(used[6]).toBe(1)
+  expect(used[7]).toBe(3)
+  expect(Array.from(used.subarray(8, 14))).toEqual([0, 0, 10, 0, 0, 10])
+  expect(used[14]).toBe(0) // no texture coordinates
+  expect(used[15]).toBe(1) // colours follow
+  expect(Array.from(used.subarray(16, 19))).toEqual([
     0xffff0000, 0xff00ff00, 0xff0000ff,
   ])
-  expect(used[18]).toBe(3)
-  expect(Array.from(used.subarray(19, 22))).toEqual([0, 1, 2])
+  expect(used[19]).toBe(3)
+  expect(Array.from(used.subarray(20, 23))).toEqual([0, 1, 2])
 })
 
 test('<Vertices> drops an attribute array shorter than the vertices', () => {
@@ -1297,16 +1303,16 @@ test('<Vertices> drops an attribute array shorter than the vertices', () => {
       textures: [{ x: 1, y: 1 }],
     }),
   ])
-  expect(used[6]).toBe(2)
-  expect(used[11]).toBe(0) // textures dropped
-  expect(used[12]).toBe(0) // colours dropped
-  expect(used[13]).toBe(0) // no indices
+  expect(used[7]).toBe(2)
+  expect(used[12]).toBe(0) // textures dropped
+  expect(used[13]).toBe(0) // colours dropped
+  expect(used[14]).toBe(0) // no indices
 })
 
 test('<Vertices> with nothing at all still encodes a well-formed node', () => {
   const { used } = compile([node(NodeType.Vertices, {})])
   expect(used[4]).toBe(Kind.Vertices)
-  expect(used[6]).toBe(0)
+  expect(used[7]).toBe(0)
 })
 
 test('<Vertices> writes an out-of-range index through for native to reject', () => {
@@ -1320,9 +1326,9 @@ test('<Vertices> writes an out-of-range index through for native to reject', () 
       indices: [0, 1, 9, -1, 2.5],
     }),
   ])
-  expect(used[15]).toBe(5)
+  expect(used[16]).toBe(5)
   // Truncated, never rounded: the reader range-checks and drops the whole mesh.
-  expect(Array.from(used.subarray(16, 21))).toEqual([0, 1, 9, -1, 2])
+  expect(Array.from(used.subarray(17, 22))).toEqual([0, 1, 9, -1, 2])
 })
 
 test('<Group picture> sets the record flag on a static subtree', () => {
@@ -1398,4 +1404,453 @@ test('a handle in a mask source cannot collide with one in its content', () => {
   expect(new Set(paths).size).toBe(2)
   expect(paths).toContain('0,0')
   expect(paths).toContain('0,-1,0')
+})
+
+// ---- v26: imperative slot coverage (#204) ----
+
+const sharedString = (value: string) => ({
+  value,
+  _isReanimatedSharedValue: true as const,
+})
+
+test('visible rides the kind word: absent costs nothing, present adds one anim word', () => {
+  const plain = compile([node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })])
+  expect(plain.used[4]).toBe(Kind.Rect)
+
+  const hidden = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, visible: false }),
+  ])
+  expect(hidden.used[4]).toBe(Kind.Rect | 64)
+  expect(hidden.used[5]).toBe(0)
+  expect(hidden.used.length).toBe(plain.used.length + 1)
+
+  const live = sharedValue(1)
+  const toggled = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, visible: live }),
+  ])
+  expect(toggled.used[4]).toBe(Kind.Rect | 64)
+  expect(toggled.values).toEqual([live])
+})
+
+test('a group and a mask carry visible the same way', () => {
+  const { used } = compile([
+    node(NodeType.Group, { visible: false }, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(used[4]).toBe(Kind.Group | 64)
+  expect(used[5]).toBe(0)
+})
+
+test('gradient endpoints, stops and positions take value slots', () => {
+  const endX = sharedValue(20)
+  const pos = sharedValue(0.5)
+  const { used, values } = compile([
+    {
+      ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      children: [
+        node(NodeType.LinearGradient, {
+          start: { x: 0, y: 0 },
+          end: { x: endX, y: 10 },
+          colors: ['#ff0000', '#0000ff'],
+          positions: [0, pos],
+        }),
+      ],
+    },
+  ])
+  expect(values).toEqual([endX, pos])
+  // Shader kind sits after the 7-word paint block; geometry follows it.
+  expect(used[15]).toBe(0) // linear
+  expect(used[18]).toBe(20) // the animated end.x literal
+  // stops flags word says the colours are packed (no live channel).
+  expect(used[20]).toBe(0)
+})
+
+test('a live stop colour switches the stops block to four channels per stop', () => {
+  const r = sharedValue(1)
+  const { used, values } = compile([
+    {
+      ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      children: [
+        node(NodeType.LinearGradient, {
+          start: { x: 0, y: 0 },
+          end: { x: 10, y: 0 },
+          colors: [[r, 0, 0, 1], '#0000ff'],
+        }),
+      ],
+    },
+  ])
+  expect(values).toEqual([r])
+  // flags word 1: both stops travel as channels, 4 words each.
+  expect(used[20]).toBe(1)
+  expect(used[21]).toBe(2) // stop count
+})
+
+test('blur and drop-shadow parameters take value slots', () => {
+  const radius = sharedValue(4)
+  const blurred = compile([
+    {
+      ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      children: [node(NodeType.Blur, { blur: radius })],
+    },
+  ])
+  expect(blurred.values).toEqual([radius])
+
+  const dx = sharedValue(2)
+  const shadowed = compile([
+    {
+      ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      children: [node(NodeType.DropShadow, { dx, dy: 2, blur: 3 })],
+    },
+  ])
+  expect(shadowed.values).toEqual([dx])
+})
+
+test('a live shadow colour writes the channel block behind flag bit 4', () => {
+  const g = sharedValue(0.5)
+  const { used, values } = compile([
+    {
+      ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      children: [
+        node(NodeType.DropShadow, { dx: 1, dy: 2, blur: 3, color: [0, g, 0, 1] }),
+      ],
+    },
+  ])
+  expect(values).toEqual([g])
+  // flags word gains bit 4 and four channel words follow it.
+  let shadowAt = -1
+  for (let i = 0; i < used.length - 3; i++) {
+    if (used[i] === 1 && used[i + 1] === 2 && used[i + 2] === 3 && used[i + 3] === 3) {
+      shadowAt = i
+      break
+    }
+  }
+  expect(shadowAt).toBeGreaterThan(0)
+  expect(used[shadowAt + 5]).toBe(4)
+  expect(Array.from(used.subarray(shadowAt + 6, shadowAt + 10))).toEqual([0, 0.5, 0, 1])
+})
+
+test('a colour-matrix entry takes a value slot', () => {
+  const gain = sharedValue(1)
+  const matrix = [
+    gain, 0, 0, 0, 0,
+    0, 1, 0, 0, 0,
+    0, 0, 1, 0, 0,
+    0, 0, 0, 1, 0,
+  ]
+  const { values } = compile([
+    {
+      ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      children: [node(NodeType.ColorMatrix, { matrix })],
+    },
+  ])
+  expect(values).toEqual([gain])
+})
+
+test('an image source rect takes value slots', () => {
+  const frame = sharedValue(0)
+  const { values } = compile([
+    node(NodeType.Image, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      image: handle(9),
+      rect: { x: frame, y: 0, width: 32, height: 32 },
+    }),
+  ])
+  expect(values).toEqual([frame])
+})
+
+test('a shared image handle becomes a value slot', () => {
+  const which = sharedValue(9)
+  const { used, values } = compile([
+    node(NodeType.Image, {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      image: which,
+    }),
+  ])
+  expect(values).toEqual([which])
+  expect(used[9]).toBe(9) // the handle word carries the current literal
+})
+
+test('a SharedValue path takes a string slot and patches the string table word', () => {
+  const path = sharedString('M0 0 L1 1')
+  const { used, strings, stringValues } = compile([
+    node(NodeType.Path, { path }),
+  ])
+  expect(strings).toEqual(['M0 0 L1 1'])
+  expect(stringValues).toEqual([path])
+  // The string patch table follows the numeric one: count, wordIndex, slot.
+  const patchStart = used[2]!
+  const numeric = used[patchStart]!
+  const stringsAt = patchStart + 1 + numeric * 2
+  expect(used[stringsAt]).toBe(1)
+  expect(used[stringsAt + 1]).toBe(5) // the path word
+  expect(used[stringsAt + 2]).toBe(0) // string slot 0
+})
+
+test('a SharedValue text takes a string slot per run', () => {
+  const text = sharedString('42')
+  const { stringValues, used } = compile([
+    node(NodeType.Text, { x: 0, y: 0, text }),
+  ])
+  expect(stringValues).toEqual([text])
+  const patchStart = used[2]!
+  const stringsAt = patchStart + 1 + used[patchStart]! * 2
+  expect(used[stringsAt]).toBe(1)
+})
+
+test('a static scene writes an empty string patch table', () => {
+  const { used, stringValues } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+  ])
+  expect(stringValues).toEqual([])
+  expect(used[used.length - 1]).toBe(0)
+})
+
+test('<Atlas buffer> writes the buffer id and a live count instead of sprites', () => {
+  const count = sharedValue(3)
+  const { used, values } = compile([
+    node(NodeType.Atlas, {
+      image: handle(7),
+      buffer: { id: 5, capacity: 8 },
+      count,
+    }),
+  ])
+  expect(used[7]).toBe(5)
+  expect(used[8]).toBe(3)
+  expect(values).toEqual([count])
+})
+
+test('<Atlas buffer> with id 0 falls back to the inline sprites', () => {
+  const { used } = compile([
+    node(NodeType.Atlas, {
+      image: handle(7),
+      buffer: { id: 0, capacity: 8 },
+      sprites: [{ rect: { x: 0, y: 0, width: 1, height: 1 }, x: 5, y: 5 }],
+    }),
+  ])
+  expect(used[7]).toBe(0)
+  expect(used[8]).toBe(1)
+})
+
+test('<Vertices buffer> writes capacities, flags and live counts', () => {
+  const vertexCount = sharedValue(3)
+  const { used, values } = compile([
+    node(NodeType.Vertices, {
+      buffer: {
+        id: 4,
+        maxVertices: 16,
+        maxIndices: 24,
+        hasTextures: true,
+        hasColors: false,
+      },
+      vertexCount,
+      mode: 'triangleStrip',
+    }),
+  ])
+  expect(Array.from(used.subarray(5, 10))).toEqual([4, 1, 16, 24, 1])
+  expect(used[10]).toBe(3)
+  expect(used[11]).toBe(24)
+  expect(values).toEqual([vertexCount])
+})
+
+test('animated sprite fields take value slots', () => {
+  const x = sharedValue(50)
+  const { values } = compile([
+    node(NodeType.Atlas, {
+      image: handle(7),
+      sprites: [{ rect: { x: 0, y: 0, width: 10, height: 10 }, x, y: 0 }],
+    }),
+  ])
+  expect(values).toEqual([x])
+})
+
+test('a handle write makes text live from the first write', () => {
+  const ref = createHandle()
+  const handleInternals = (
+    require('../imperative') as typeof import('../imperative')
+  ).nodeInternals(ref)
+  ref.set({ text: '42' })
+  const writer = new SceneWriter()
+  const first = compileScene(
+    [node(NodeType.Text, { x: 0, y: 0, text: 'start', ref })],
+    writer
+  )
+  expect(first.stringValues.length).toBe(1)
+  expect(first.strings).toContain('42')
+  handleInternals.bind(
+    { pushValues: () => {}, recompile: () => {} },
+    writer
+  )
+})
+
+test('a handle write makes an enum live from the first write', () => {
+  const ref = createHandle()
+  ref.set({ strokeCap: 'round' })
+  const writer = new SceneWriter()
+  const result = compileScene(
+    [
+      node(NodeType.Rect, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        style: 'stroke',
+        ref,
+      }),
+    ],
+    writer
+  )
+  // Geometry substitution adds x/y/w/h; the cap slot rides along with code 1.
+  expect(result.values.length).toBe(5)
+  expect(Number((result.values[4] as { value: unknown }).value)).toBe(1)
+})
+
+test('a handle on a gradient patches its geometry after the first write', () => {
+  const ref = createHandle()
+  ref.set({ end: { x: 30, y: 0 } })
+  const writer = new SceneWriter()
+  const result = compileScene(
+    [
+      {
+        ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+        children: [
+          node(NodeType.LinearGradient, {
+            start: { x: 0, y: 0 },
+            end: { x: 10, y: 0 },
+            colors: ['#ff0000', '#0000ff'],
+            ref,
+          }),
+        ],
+      },
+    ],
+    writer
+  )
+  expect(result.values.length).toBe(2) // endX and endY slots
+})
+
+test('a handle image write swaps the handle word to a slot', () => {
+  const ref = createHandle()
+  ref.set({ image: 42 })
+  const writer = new SceneWriter()
+  const result = compileScene(
+    [
+      node(NodeType.Image, {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        image: handle(9),
+        ref,
+      }),
+    ],
+    writer
+  )
+  expect(result.values.length).toBe(5)
+  expect(Number((result.values[4] as { value: unknown }).value)).toBe(42)
+})
+
+test('a Blend handle mode write resolves to its code, not srcOver', () => {
+  const ref = createHandle()
+  ref.set({ mode: 'multiply' })
+  const writer = new SceneWriter()
+  const { buffer } = compileScene(
+    [
+      {
+        ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+        children: [
+          {
+            ...node(NodeType.Blend, { mode: 'screen', ref }),
+            children: [
+              node(NodeType.ColorShader, { color: '#ff0000' }),
+              node(NodeType.ColorShader, { color: '#00ff00' }),
+            ],
+          },
+        ],
+      },
+    ],
+    writer
+  )
+  const words = new Float64Array(buffer)
+  // Shader kind 8, then the fold's mode word: multiply is 24 in BLEND_MODES.
+  const at = words.indexOf(8, 15)
+  expect(words[at + 1]).toBe(24)
+})
+
+test('changing the stop count through a handle re-encodes instead of dropping stops', () => {
+  const ref = createHandle()
+  const writer = new SceneWriter()
+  const gradient = () => ({
+    ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    children: [
+      node(NodeType.LinearGradient, {
+        start: { x: 0, y: 0 },
+        end: { x: 10, y: 0 },
+        colors: ['#ff0000', '#0000ff'],
+        ref,
+      }),
+    ],
+  })
+  const handleInternals = (
+    require('../imperative') as typeof import('../imperative')
+  ).nodeInternals(ref)
+  let recompiled = 0
+  const owner = {
+    pushValues: () => {},
+    recompile: () => {
+      recompiled++
+      // The container's recompile: re-encode with the overrides and re-bind.
+      handleInternals.bind(owner, compileAgain())
+    },
+  }
+  const compileAgain = () => {
+    compileScene([gradient()], writer, false)
+    return writer
+  }
+  compileScene([gradient()], writer)
+  handleInternals.bind(owner, writer)
+  // First write goes live-from-first-write: one re-encode hands out the slots.
+  ref.set({ colors: ['#00ff00', '#ff00ff'] })
+  expect(recompiled).toBe(1)
+  // Same count again: a plain patch, no further re-encode.
+  ref.set({ colors: ['#ffff00', '#00ffff'] })
+  expect(recompiled).toBe(1)
+  // Three stops now: the program only compiled two, so this must re-encode.
+  ref.set({ colors: ['#00ff00', '#ff00ff', '#123456'] })
+  expect(recompiled).toBe(2)
+})
+
+test('colors written to a non-gradient handle fall through to a re-encode', () => {
+  const ref = createHandle()
+  const writer = new SceneWriter()
+  compileScene(
+    [
+      node(NodeType.Vertices, {
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 1, y: 0 },
+          { x: 0, y: 1 },
+        ],
+        colors: ['#ff0000', '#00ff00', '#0000ff'],
+        ref,
+      }),
+    ],
+    writer
+  )
+  let recompiled = 0
+  const handleInternals = (
+    require('../imperative') as typeof import('../imperative')
+  ).nodeInternals(ref)
+  handleInternals.bind(
+    { pushValues: () => {}, recompile: () => recompiled++ },
+    writer
+  )
+  // Not gradient stops: the write must go the generic override + re-encode way.
+  ref.set({ colors: ['#111111', '#222222', '#333333'] })
+  expect(recompiled).toBe(1)
 })

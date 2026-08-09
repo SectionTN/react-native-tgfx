@@ -26,6 +26,7 @@ internal object TgfxNative {
   external fun clearScene(ptr: Long)
   external fun setOpaque(ptr: Long, opaque: Boolean)
   external fun setValues(ptr: Long, values: DoubleArray)
+  external fun setStringValues(ptr: Long, indices: DoubleArray, values: Array<String>)
 
   external fun setColorSpace(ptr: Long, displayP3: Boolean)
 

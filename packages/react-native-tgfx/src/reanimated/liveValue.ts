@@ -34,6 +34,15 @@ export function makeLive(value: number): LiveValue {
   return live
 }
 
+/** A live string slot: `text` and `path` content the engine patches in place. */
+export type LiveString = MaybeSharedValue<string>
+
+export function makeLiveString(value: string): LiveString {
+  const live = makeShared(value)
+  LIVE.add(live)
+  return live
+}
+
 /** True for a value only this package writes, so no driver is needed for it. */
 export function isLive(value: MaybeSharedValue<unknown>): boolean {
   return LIVE.has(value)

@@ -55,21 +55,22 @@ export function writeTextRuns(
   const spans = node.children.filter((child) => child.type === NodeType.Span)
   if (spans.length === 0) {
     w.push(1)
-    writeRun(w, String(resolveValue(props.text) ?? ''), {})
+    writeRun(w, props.text, {})
     return
   }
   w.push(spans.length)
   for (const span of spans) {
-    writeRun(w, String(resolveValue(span.props.text) ?? ''), span.props)
+    writeRun(w, span.props.text, span.props)
   }
 }
 
 function writeRun(
   w: SceneWriter,
-  text: string,
+  text: unknown,
   p: Record<string, unknown>
 ): void {
-  w.pushString(text)
+  // A SharedValue string gets a string slot: content changes without a re-encode.
+  w.pushStringAnim(text)
   w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
   // 0, not 400: the paragraph's weight is what an unset span inherits.
   w.push(p.fontWeight !== undefined ? weightValue(p.fontWeight) : 0)

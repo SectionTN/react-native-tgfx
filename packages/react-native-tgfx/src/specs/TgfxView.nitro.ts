@@ -88,6 +88,14 @@ export interface TgfxViewMethods extends HybridViewMethods {
   setValues(values: number[]): void
 
   /**
+   * Update the scene's string slots — live `text` and `path` content. Sparse:
+   * `indices[i]` names the slot `values[i]` replaces, and only changed slots are
+   * sent, so an idle frame costs nothing here. The engine re-shapes text or
+   * re-parses path data on the render thread; the program is never re-read.
+   */
+  setStringValues(indices: number[], values: string[]): void
+
+  /**
    * The drawing surface's colour space. `'display-p3'` on a P3 screen keeps
    * wide-gamut image and gradient content instead of clamping it to sRGB.
    */

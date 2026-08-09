@@ -63,7 +63,7 @@ export {
   Turbulence,
 } from './components/Paint'
 
-export { useNode } from './imperative'
+export { createHandle, useNode } from './imperative'
 export type { NodeHandle } from './imperative'
 
 export { useCameraFrame } from './hooks/useCameraFrame'
@@ -118,6 +118,18 @@ export {
 export type { ImageState } from './hooks/useImage'
 export { loadVideo, useVideo } from './hooks/useVideo'
 export type { Video, VideoOptions } from './hooks/useVideo'
+export {
+  SPRITE_FLOATS,
+  meshViews,
+  useSpriteBuffer,
+  useVertexBuffer,
+} from './hooks/useBuffers'
+export type {
+  MeshViews,
+  SpriteBuffer,
+  VertexBuffer,
+  VertexBufferOptions,
+} from './hooks/useBuffers'
 export type { PixelFormat, Orientation } from './specs/TgfxImage.nitro'
 export type { TgfxVideo } from './specs/TgfxVideo.nitro'
 

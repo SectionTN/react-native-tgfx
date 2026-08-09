@@ -90,6 +90,10 @@ void TgfxRenderer::setScene(std::span<const double> words,
     pendingScene_.assign(words.begin(), words.end());
     pendingStrings_ = strings_;
     scenePending_ = true;
+    // A re-encode bakes current values as literals and may reassign slot
+    // indices, so stale pushes must not outrank the new program's words.
+    std::fill(stringPushed_.begin(), stringPushed_.end(), 0);
+    stringGen_++;
   }
   version_.fetch_add(1, std::memory_order_release);
 }
@@ -119,13 +123,41 @@ void TgfxRenderer::setValues(const std::vector<double>& values) {
   version_.fetch_add(1, std::memory_order_release);
 }
 
+void TgfxRenderer::setStringValues(const std::vector<double>& indices,
+                                   const std::vector<std::string>& values) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    size_t count = std::min(indices.size(), values.size());
+    for (size_t i = 0; i < count; i++) {
+      double raw = indices[i];
+      if (!(raw >= 0 && raw < 65536)) {
+        continue;
+      }
+      size_t at = static_cast<size_t>(raw);
+      if (stringValues_.size() <= at) {
+        // The gap fill is inert: only slots marked pushed are ever read.
+        stringValues_.resize(at + 1);
+        stringPushed_.resize(at + 1, 0);
+      }
+      stringValues_[at] = values[i];
+      stringPushed_[at] = 1;
+    }
+    stringGen_++;
+  }
+  version_.fetch_add(1, std::memory_order_release);
+}
+
 std::vector<double> TgfxRenderer::hitTest(float x, float y, bool precise) {
   std::vector<double> snapshot;
+  std::vector<std::string> strings;
+  std::vector<uint8_t> pushed;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot = values_;
+    strings = stringValues_;
+    pushed = stringPushed_;
   }
-  return scene_.hitTest(x, y, precise, snapshot);
+  return scene_.hitTest(x, y, precise, snapshot, strings, pushed);
 }
 
 void TgfxRenderer::setColorSpace(bool displayP3) {
@@ -160,6 +192,12 @@ bool TgfxRenderer::draw() {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
     drawValues_.assign(values_.begin(), values_.end());
+    // Strings copy only when a push moved the generation; idle frames skip it.
+    if (drawStringGen_ != stringGen_) {
+      drawStringValues_.assign(stringValues_.begin(), stringValues_.end());
+      drawStringPushed_.assign(stringPushed_.begin(), stringPushed_.end());
+      drawStringGen_ = stringGen_;
+    }
     dropCaches = cachesDirty_;
     cachesDirty_ = false;
     if (scenePending_) {
@@ -234,7 +272,8 @@ bool TgfxRenderer::draw() {
     }
     {
       TGFXRN_TRACE("tgfx.render");
-      scene_.render(canvas, drawValues_);
+      scene_.render(canvas, drawValues_, drawStringValues_, drawStringGen_,
+                    drawStringPushed_);
     }
     if (pixelRatio != 1.0f) {
       canvas->restore();

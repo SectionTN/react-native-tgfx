@@ -17,6 +17,7 @@ public protocol HybridTgfxViewSpec_protocol: HybridObject, HybridView {
   func setScene(scene: ArrayBuffer, strings: [String]) throws -> Void
   func invalidate() throws -> Void
   func setValues(values: [Double]) throws -> Void
+  func setStringValues(indices: [Double], values: [String]) throws -> Void
   func setColorSpace(colorSpace: String) throws -> Void
   func hitTest(x: Double, y: Double, precise: Bool) throws -> [Double]
   func snapshot(options: NativeSnapshotOptions) throws -> Promise<NativeSnapshot>

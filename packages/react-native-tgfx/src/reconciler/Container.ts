@@ -11,7 +11,8 @@ let warnedShared = false
 export type CommitListener = (
   buffer: ArrayBuffer,
   strings: string[],
-  values: MaybeSharedValue<unknown>[]
+  values: MaybeSharedValue<unknown>[],
+  stringValues: MaybeSharedValue<string>[]
 ) => void
 
 /**
@@ -23,6 +24,7 @@ export class TgfxContainer implements NodeOwner {
   root: Node[] = []
   muted = false
   onValues: ((values: number[]) => void) | null = null
+  onStrings: ((indices: number[], values: string[]) => void) | null = null
   private readonly writer = new SceneWriter()
   /// Rebuilt each commit: hit results come back as index paths and need naming.
   refPaths: { path: number[]; ref: NodeHandle }[] = []
@@ -30,6 +32,8 @@ export class TgfxContainer implements NodeOwner {
   readonly byPath = new Map<string, NodeHandle>()
   private readonly onCommit: CommitListener
   private values: MaybeSharedValue<unknown>[] = []
+  private stringValues: MaybeSharedValue<string>[] = []
+  private readonly sentStrings: (string | null)[] = []
   private readonly scratch: number[] = []
 
   constructor(onCommit: CommitListener) {
@@ -45,12 +49,15 @@ export class TgfxContainer implements NodeOwner {
     if (this.muted) {
       return
     }
-    const { buffer, strings, values, refs, refPaths } = compileScene(
-      this.root,
-      this.writer,
-      fromReact
-    )
+    const { buffer, strings, values, stringValues, refs, refPaths } =
+      compileScene(this.root, this.writer, fromReact)
     this.values = values
+    this.stringValues = stringValues
+    // The program carries current literals, so nothing is pending for the new table.
+    this.sentStrings.length = stringValues.length
+    for (let i = 0; i < stringValues.length; i++) {
+      this.sentStrings[i] = String(stringValues[i]!.value ?? '')
+    }
     this.refPaths = refPaths
     this.byPath.clear()
     for (const entry of refPaths) {
@@ -66,7 +73,7 @@ export class TgfxContainer implements NodeOwner {
       }
       nodeInternals(ref).bind(this, this.writer)
     }
-    this.onCommit(buffer, strings, values)
+    this.onCommit(buffer, strings, values, stringValues)
   }
 
   recompile(): void {
@@ -74,6 +81,7 @@ export class TgfxContainer implements NodeOwner {
   }
 
   pushValues(): void {
+    this.pushStrings()
     if (this.values.length === 0) {
       // Nothing to patch, and an empty push still costs the render thread a redraw on Android.
       return
@@ -84,5 +92,26 @@ export class TgfxContainer implements NodeOwner {
       out[i] = Number(this.values[i]!.value)
     }
     this.onValues?.(out)
+  }
+
+  /// The changed string slots only; an unchanged frame sends nothing.
+  private pushStrings(): void {
+    if (this.stringValues.length === 0 || this.onStrings == null) {
+      return
+    }
+    let indices: number[] | null = null
+    let out: string[] | null = null
+    for (let i = 0; i < this.stringValues.length; i++) {
+      const now = String(this.stringValues[i]!.value ?? '')
+      if (now === this.sentStrings[i]) {
+        continue
+      }
+      this.sentStrings[i] = now
+      ;(indices ??= []).push(i)
+      ;(out ??= []).push(now)
+    }
+    if (indices != null && out != null) {
+      this.onStrings(indices, out)
+    }
   }
 }

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -32,7 +33,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 25;
+inline constexpr double kSceneVersion = 26;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -53,10 +54,19 @@ struct AnimF {
     }
     return literal;
   }
+
+  /// The same word as an integer code — enum slots and registry handles.
+  int resolveInt(std::span<const double> values) const {
+    float v = resolve(values);
+    return v >= static_cast<float>(std::numeric_limits<int>::min()) &&
+                   v <= static_cast<float>(std::numeric_limits<int>::max())
+               ? static_cast<int>(v)
+               : 0;
+  }
 };
 
 struct ImageShaderCmd {
-  int32_t handle = 0;
+  AnimF handle{};
   tgfx::TileMode tileX = tgfx::TileMode::Clamp;
   tgfx::TileMode tileY = tgfx::TileMode::Clamp;
   tgfx::SamplingOptions sampling{tgfx::FilterMode::Linear, tgfx::MipmapMode::None};
@@ -75,9 +85,11 @@ struct ChildShaderCmd {
   std::shared_ptr<ImageShaderCmd> image;
   std::shared_ptr<RuntimeShaderCmd> runtime;
   std::shared_ptr<struct BlendShaderCmd> blend;
+  std::shared_ptr<struct GradientShaderCmd> gradient;
 
   bool dynamic() const {
-    return image != nullptr || runtime != nullptr || blend != nullptr;
+    return image != nullptr || runtime != nullptr || blend != nullptr ||
+           gradient != nullptr;
   }
 
   std::shared_ptr<tgfx::Shader> resolve(std::span<const double> values) const;
@@ -94,6 +106,59 @@ struct RuntimeShaderCmd {
   std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
 };
 
+/// A gradient whose geometry, stops or stop colours carry value slots.
+struct GradientShaderCmd {
+  /// 0 linear, 1 radial, 2 sweep, 3 diamond — the wire's shader kinds.
+  int kind = 0;
+  /// linear: x0 y0 x1 y1; radial/diamond: cx cy r; sweep: cx cy a0 a1.
+  std::array<AnimF, 4> geometry{};
+  /// One packed word per stop, or four channels per stop when animColors.
+  bool animColors = false;
+  std::vector<uint32_t> colors;
+  std::vector<AnimF> colorChannels;
+  std::vector<AnimF> positions;
+
+  bool animated() const;
+  std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
+};
+
+/// A colour filter whose parameters may carry value slots; static ones never get here.
+struct ColorFilterCmd {
+  /// 0 matrix, 1 blend, 2 luma, 4 compose (5 on the wire folds into 1 + animColor).
+  int kind = 0;
+  std::array<AnimF, 20> matrix{};
+  uint32_t color = 0;
+  std::array<AnimF, 4> rgba{};
+  bool animColor = false;
+  AnimF mode{3, -1};
+  std::shared_ptr<ColorFilterCmd> inner;
+  std::shared_ptr<ColorFilterCmd> outer;
+
+  bool animated() const;
+  std::shared_ptr<tgfx::ColorFilter> build(std::span<const double> values) const;
+};
+
+/// An image filter (blur / drop shadow) whose parameters may carry value slots.
+struct ImageFilterCmd {
+  /// 0 blur, 1 dropShadow, 2 compose.
+  int kind = 0;
+  AnimF blurX{};
+  AnimF blurY{};
+  tgfx::TileMode tile = tgfx::TileMode::Decal;
+  AnimF dx{};
+  AnimF dy{};
+  uint32_t color = 0xff000000;
+  std::array<AnimF, 4> rgba{};
+  bool animColor = false;
+  /// Bit 1 shadow only, bit 2 inner.
+  int flags = 0;
+  std::shared_ptr<ImageFilterCmd> first;
+  std::shared_ptr<ImageFilterCmd> then;
+
+  bool animated() const;
+  std::shared_ptr<tgfx::ImageFilter> build(std::span<const double> values) const;
+};
+
 /// A <Blend> whose children cannot all be folded at commit — a video frame or an animated uniform.
 struct BlendShaderCmd {
   tgfx::BlendMode mode = tgfx::BlendMode::SrcOver;
@@ -108,30 +173,43 @@ struct PaintCmd {
   std::array<AnimF, 4> rgba{};
   bool animColor = false;
   bool stroke = false;
+  /// Set when style/antiAlias travel as their own animated words (flags bit 32).
+  bool animStyle = false;
+  AnimF styleWord{};
+  AnimF aaWord{1, -1};
   AnimF strokeWidth{1, -1};
-  int cap = 0;
-  int join = 0;
-  float miter = 4;
+  AnimF cap{};
+  AnimF join{};
+  AnimF miter{4, -1};
   bool antiAlias = true;
   AnimF alpha{1, -1};
   std::shared_ptr<tgfx::Shader> shader;  // built once for static gradients
   std::shared_ptr<RuntimeShaderCmd> runtime;
+  /// Set when the gradient's geometry or stops animate; `shader` is null then.
+  std::shared_ptr<GradientShaderCmd> gradient;
   /// Set only for an <ImageShader> on a hardware-buffer handle; otherwise the shader stands.
   std::shared_ptr<ImageShaderCmd> imageShader;
   /// Set when a <Blend> child is dynamic, so the fold has to happen per frame.
   std::shared_ptr<BlendShaderCmd> blendShader;
-  /// Filters and blend mode, built once by setScene: their inputs are literals.
+  /// Filters and blend mode, built once by setScene when their inputs are literals.
+  AnimF blendWord{3, -1};
   tgfx::BlendMode blend = tgfx::BlendMode::SrcOver;
   std::shared_ptr<tgfx::ColorFilter> colorFilter;
   std::shared_ptr<tgfx::ImageFilter> imageFilter;
+  /// Set instead of the two above when the filter's parameters animate.
+  std::shared_ptr<ColorFilterCmd> colorFilterCmd;
+  std::shared_ptr<ImageFilterCmd> imageFilterCmd;
   /// Set when a blend mode meets an image filter, which tgfx cannot honour on one paint.
   std::shared_ptr<tgfx::Paint> layer;
   tgfx::Paint cached;
 
   bool animated() const {
     return animColor || alpha.slot >= 0 || runtime != nullptr ||
-           imageShader != nullptr || blendShader != nullptr ||
-           (stroke && strokeWidth.slot >= 0);
+           gradient != nullptr || imageShader != nullptr ||
+           blendShader != nullptr || colorFilterCmd != nullptr ||
+           imageFilterCmd != nullptr || animStyle || cap.slot >= 0 ||
+           join.slot >= 0 || miter.slot >= 0 || blendWord.slot >= 0 ||
+           ((stroke || animStyle) && strokeWidth.slot >= 0);
   }
 };
 
@@ -155,20 +233,56 @@ struct TextCmd {
   tgfx::Path path;
   bool onPath = false;
   std::vector<PlacedGlyph> glyphs;
+  /// True when any run's content follows a string slot.
+  bool liveRuns = false;
 
-  /// The layout for the size last drawn. Mutable because only the render thread touches it.
-  const TextLayout& resolve(float size) const;
+  /**
+   * The layout for the size (and, for slotted runs, string values) last drawn.
+   * Slotted run content is pulled from `strings` and re-shaped on change — on
+   * the render thread, with no scene re-encode. Mutable: render thread only.
+   */
+  const TextLayout& resolve(float size, std::span<const std::string> strings,
+                            uint64_t stringGen,
+                            std::span<const uint8_t> pushed) const;
 
  private:
   mutable float layoutSize = -1;
+  mutable uint64_t layoutGen = 0;
   mutable TextLayout layout;
 };
 
-/// A <Path>'s dash/corner/trim block; absent unless the path asks for one.
-/// One entry per sprite in both vectors, always the same length.
+/**
+ * An <Atlas>'s sprites: baked matrices when every field is a literal, the
+ * animated words (or a shared buffer id) when not — resolved into the scratch
+ * vectors at draw, which are mutable because only the render thread fills them.
+ */
 struct AtlasCmd {
   std::vector<tgfx::Matrix> matrices;
   std::vector<tgfx::Rect> sprites;
+  /// Seven AnimF per sprite (srcX srcY srcW srcH scale cx cy) when any moves.
+  std::vector<AnimF> words;
+  bool animated = false;
+  /// A BufferRegistry id; > 0 replaces both inline forms above.
+  int32_t bufferId = 0;
+  AnimF count{};
+  mutable std::vector<tgfx::Matrix> scratchMatrices;
+  mutable std::vector<tgfx::Rect> scratchSprites;
+};
+
+/// A <Vertices> fed from a shared buffer, rebuilt into a mesh at draw.
+struct MeshBufferCmd {
+  int32_t bufferId = 0;
+  bool strip = false;
+  int maxVertices = 0;
+  int maxIndices = 0;
+  bool hasTextures = false;
+  bool hasColors = false;
+  AnimF vertexCount{};
+  AnimF indexCount{};
+  mutable std::vector<tgfx::Point> scratchPositions;
+  mutable std::vector<tgfx::Point> scratchTexCoords;
+  mutable std::vector<tgfx::Color> scratchColors;
+  mutable std::vector<uint16_t> scratchIndices;
 };
 
 struct PathEffectCmd {
@@ -212,6 +326,8 @@ struct DrawCmd {
   std::shared_ptr<tgfx::Path> clipPath;
   Kind kind = Group;
 
+  /// Kind-word bit 64: skip draw and hit-test when it resolves below 0.5.
+  AnimF visible{1, -1};
   AnimF x, y, w, h, rx, ry, cx, cy, r, x1, y1, x2, y2, fontSize;
   PaintCmd paint;
 
@@ -222,14 +338,28 @@ struct DrawCmd {
 
   tgfx::Path path;
   bool lineAnimated = false;
+  /// String slot the path data follows; re-parsed on change, render thread only.
+  int pathSlot = -1;
+  /// Wire flags for a slotted path, re-applied after each re-parse (bit 8 even-odd).
+  int pathFlags = 0;
+  mutable uint64_t pathGen = 0;
+  mutable tgfx::Path livePath;
   /// Path effects. Held rather than baked when trim or dash phase can move per frame.
   std::shared_ptr<PathEffectCmd> effects;
   // Null for a hardware-buffer handle: caching the resolved image would pin the producer's buffer.
   std::shared_ptr<tgfx::Image> image;
   int32_t imageHandle = 0;
+  /// The handle word's slot form; when live, the drawn image follows it per frame.
+  AnimF imageWord{};
+  /// The image last resolved for a live handle, so a stable frame is one compare.
+  mutable int32_t liveHandle = 0;
+  mutable std::shared_ptr<tgfx::Image> liveImage;
   Fit fit = Fit::Contain;
   tgfx::SamplingOptions sampling{tgfx::FilterMode::Linear, tgfx::MipmapMode::None};
   tgfx::Rect srcRect = tgfx::Rect::MakeEmpty();
+  /// Set when the source rect animates; `srcRect` holds the literals then.
+  bool animSrcRect = false;
+  std::array<AnimF, 4> srcRectWords{};
   // CameraFrame: quarter turns clockwise, 0-3, applied before the fit.
   int quarterTurns = 0;
   bool mirror = false;
@@ -238,6 +368,8 @@ struct DrawCmd {
   std::shared_ptr<AtlasCmd> atlas;
   /// Built once when the program is read: MakeCopy owns its own vertex data.
   std::shared_ptr<tgfx::Mesh> mesh;
+  /// Set instead of `mesh` when the vertices come from a shared buffer.
+  std::shared_ptr<MeshBufferCmd> meshBuffer;
 };
 
 using Program = std::vector<DrawCmd>;
@@ -247,15 +379,29 @@ class SceneRenderer {
   void setScene(std::span<const double> words,
                 const std::vector<std::string>& strings);
 
-  void render(tgfx::Canvas* canvas, std::span<const double> values);
+  /**
+   * `stringValues`/`stringGen` back the program's string slots (live text and
+   * path data). `stringPushed` marks which slots a push has actually written —
+   * an unpushed slot keeps its compiled literal, so a sparse push can never
+   * blank a neighbour. The generation gates change detection, so an idle frame
+   * never compares strings. Callers with no string slots may omit all three.
+   */
+  void render(tgfx::Canvas* canvas, std::span<const double> values,
+              std::span<const std::string> stringValues = {},
+              uint64_t stringGen = 0,
+              std::span<const uint8_t> stringPushed = {});
 
   /**
    * Index paths of the nodes whose geometry contains the point, front-to-back.
    * Flattened as [depth, i0, i1, ..., depth, j0, ...] so it crosses the bridge
    * as one array. `precise` tests the filled region rather than the bounds.
+   * `stringValues`/`stringPushed` let a string-slotted path be tested against
+   * what is drawn (re-parsed locally — `livePath` belongs to the render thread).
    */
   std::vector<double> hitTest(float x, float y, bool precise,
-                              std::span<const double> values);
+                              std::span<const double> values,
+                              std::span<const std::string> stringValues = {},
+                              std::span<const uint8_t> stringPushed = {});
 
   void clearCaches();
 
@@ -271,13 +417,14 @@ class SceneRenderer {
   void readTextRuns(SceneReader& reader, TextCmd& text);
   void readPaint(SceneReader& reader, PaintCmd& paint);
   void readFilters(SceneReader& reader, PaintCmd& paint);
-  std::shared_ptr<tgfx::ColorFilter> readColorFilter(SceneReader& reader, int depth);
-  std::shared_ptr<tgfx::ImageFilter> readImageFilter(SceneReader& reader, int depth);
+  std::shared_ptr<ColorFilterCmd> readColorFilterCmd(SceneReader& reader, int depth);
+  std::shared_ptr<ImageFilterCmd> readImageFilterCmd(SceneReader& reader, int depth);
   std::shared_ptr<tgfx::Shader> readShader(SceneReader& reader, PaintCmd* out,
                                            int depth = 0);
 
   void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
-               tgfx::Paint& paint) const;
+               std::span<const std::string> strings, uint64_t stringGen,
+               std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const;
 };
 
 }  // namespace tgfxrn

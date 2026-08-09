@@ -1,4 +1,5 @@
 import type { TgfxImage } from '../specs/TgfxImage.nitro'
+import type { MaybeSharedValue } from './values'
 import type { SceneWriter } from './writer'
 
 /**
@@ -25,10 +26,10 @@ export type Sampling = 'nearest' | 'linear' | 'mipmap'
 export type TileMode = 'clamp' | 'repeat' | 'mirror' | 'decal'
 
 export interface SrcRect {
-  x: number
-  y: number
-  width: number
-  height: number
+  x: number | MaybeSharedValue<number>
+  y: number | MaybeSharedValue<number>
+  width: number | MaybeSharedValue<number>
+  height: number | MaybeSharedValue<number>
 }
 
 // Mirrored by the Fit enum and samplingOf()/tileModeOf() in cpp/TgfxScene.cpp.
@@ -94,7 +95,7 @@ export function imageHandle(image: unknown): number {
   return handle
 }
 
-/** Write `srcFlag` and, when present, the source rect. */
+/** Write `srcFlag` and, when present, the source rect (each side animatable). */
 export function writeSrcRect(w: SceneWriter, rect: unknown): void {
   const r = rect as SrcRect | undefined | null
   if (r == null) {
@@ -102,8 +103,8 @@ export function writeSrcRect(w: SceneWriter, rect: unknown): void {
     return
   }
   w.push(1)
-  w.push(Number(r.x) || 0)
-  w.push(Number(r.y) || 0)
-  w.push(Number(r.width) || 0)
-  w.push(Number(r.height) || 0)
+  w.pushAnim(r.x)
+  w.pushAnim(r.y)
+  w.pushAnim(r.width)
+  w.pushAnim(r.height)
 }

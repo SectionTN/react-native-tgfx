@@ -100,6 +100,24 @@ namespace margelo::nitro::tgfx {
       return __array;
     }());
   }
+  void JHybridTgfxViewSpec::setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayDouble> /* indices */, jni::alias_ref<jni::JArrayClass<jni::JString>> /* values */)>("setStringValues");
+    method(_javaPart, [&]() {
+      size_t __size = indices.size();
+      jni::local_ref<jni::JArrayDouble> __array = jni::JArrayDouble::newArray(__size);
+      __array->setRegion(0, __size, indices.data());
+      return __array;
+    }(), [&](auto&& __input) {
+      size_t __size = __input.size();
+      jni::local_ref<jni::JArrayClass<jni::JString>> __array = jni::JArrayClass<jni::JString>::newArray(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        const auto& __element = __input[__i];
+        auto __elementJni = jni::make_jstring(__element);
+        __array->setElement(__i, *__elementJni);
+      }
+      return __array;
+    }(values));
+  }
   void JHybridTgfxViewSpec::setColorSpace(const std::string& colorSpace) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* colorSpace */)>("setColorSpace");
     method(_javaPart, jni::make_jstring(colorSpace));

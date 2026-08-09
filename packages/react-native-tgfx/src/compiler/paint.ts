@@ -1,4 +1,9 @@
-import { isColorComponents, resolveColor, type Color } from './colors'
+import {
+  colorChannels,
+  isColorComponents,
+  resolveColor,
+  type Color,
+} from './colors'
 import {
   blendCode,
   hasFilters,
@@ -19,7 +24,6 @@ import {
 } from './image'
 import { transpileShader } from './sksl'
 import type { UniformValue } from '../types'
-import type { Vector } from './transform'
 import {
   isSharedValue,
   resolveNumber,
@@ -31,14 +35,15 @@ import type { SceneWriter } from './writer'
 /** Public paint inputs shared by every drawing component and `<Paint>`. */
 export interface PaintInput {
   color?: Color
-  style?: 'fill' | 'stroke'
+  /** A numeric shared value carries the style code from a node handle. */
+  style?: 'fill' | 'stroke' | MaybeSharedValue<number>
   strokeWidth?: number | MaybeSharedValue<number>
-  strokeCap?: 'butt' | 'round' | 'square'
-  strokeJoin?: 'miter' | 'round' | 'bevel'
-  strokeMiter?: number
+  strokeCap?: 'butt' | 'round' | 'square' | MaybeSharedValue<number>
+  strokeJoin?: 'miter' | 'round' | 'bevel' | MaybeSharedValue<number>
+  strokeMiter?: number | MaybeSharedValue<number>
   opacity?: number | MaybeSharedValue<number>
-  antiAlias?: boolean
-  blendMode?: BlendMode
+  antiAlias?: boolean | MaybeSharedValue<number>
+  blendMode?: BlendMode | MaybeSharedValue<number>
   gradient?: GradientInput
   colorFilter?: ColorFilterInput
   imageFilter?: ImageFilterInput
@@ -62,14 +67,14 @@ export interface GradientInput {
   sampling?: Sampling
   fit?: Fit
   rect?: SrcRect
-  start?: Vector
-  end?: Vector
-  center?: Vector
-  radius?: number
+  start?: AnimVector
+  end?: AnimVector
+  center?: AnimVector
+  radius?: number | MaybeSharedValue<number>
   colors: Color[]
-  positions?: number[]
-  startAngle?: number
-  endAngle?: number
+  positions?: (number | MaybeSharedValue<number>)[]
+  startAngle?: number | MaybeSharedValue<number>
+  endAngle?: number | MaybeSharedValue<number>
   freqX?: number
   freqY?: number
   octaves?: number
@@ -78,13 +83,20 @@ export interface GradientInput {
   uniforms?: Record<string, UniformValue>
   children?: GradientInput[]
   /** `<Blend>` only: how its children fold together. */
-  mode?: BlendMode
+  mode?: BlendMode | MaybeSharedValue<number>
   /** `<ColorShader>` only. */
   color?: Color
 }
 
-const CAPS = { butt: 0, round: 1, square: 2 } as const
-const JOINS = { miter: 0, round: 1, bevel: 2 } as const
+/** A point whose axes may each be live. */
+export interface AnimVector {
+  x?: number | MaybeSharedValue<number>
+  y?: number | MaybeSharedValue<number>
+}
+
+export const CAPS = { butt: 0, round: 1, square: 2 } as const
+export const JOINS = { miter: 0, round: 1, bevel: 2 } as const
+export const STYLES = { fill: 0, stroke: 1 } as const
 
 const SHADER_KIND = {
   linear: 0,
@@ -123,15 +135,47 @@ export function mergePaint(
   return out
 }
 
+/** True when the value itself, or any element of it, is a SharedValue. */
+function anyShared(list: readonly unknown[] | undefined): boolean {
+  if (list == null) {
+    return false
+  }
+  for (const entry of list) {
+    if (isSharedValue(entry)) {
+      return true
+    }
+    if (Array.isArray(entry) && entry.some(isSharedValue)) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * A flags word, then the stops. Bit 1: each colour travels as four animated
+ * channels instead of one packed word. Positions are animatable either way —
+ * they are single words, so a slot costs nothing when unused.
+ */
 function writeStops(w: SceneWriter, g: GradientInput): void {
+  const liveColors = anyShared(g.colors)
+  w.push(liveColors ? 1 : 0)
   w.push(g.colors.length)
   for (const color of g.colors) {
-    w.push(resolveColor(resolveValue(color)))
+    if (liveColors) {
+      const channels = isColorComponents(color)
+        ? color
+        : colorChannels(resolveColor(resolveValue(color)))
+      for (let i = 0; i < 4; i++) {
+        w.pushAnim(channels[i], i === 3 ? 1 : 0)
+      }
+    } else {
+      w.push(resolveColor(resolveValue(color)))
+    }
   }
   const positions = g.positions
   w.push(positions?.length ?? 0)
   for (const position of positions ?? []) {
-    w.push(resolveNumber(position))
+    w.pushAnim(position)
   }
 }
 
@@ -143,7 +187,10 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
       return
     case 'blend': {
       const children = g.children ?? []
-      w.push(blendCode(g.mode))
+      // The fold's mode word is not an anim word; a handle write lands here
+      // as a numeric shared value, resolved to its code per re-encode.
+      const mode = resolveValue(g.mode as unknown)
+      w.push(typeof mode === 'number' ? mode : blendCode(mode))
       w.push(children.length)
       for (const child of children) {
         writeGradient(w, child)
@@ -151,7 +198,7 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
       return
     }
     case 'image': {
-      w.push(imageHandle(g.image))
+      w.pushAnim(isSharedValue(g.image) ? g.image : imageHandle(g.image))
       w.push(tileCode(g.tx))
       w.push(tileCode(g.ty))
       w.push(samplingCode(g.sampling))
@@ -220,24 +267,24 @@ function writeGradient(w: SceneWriter, g: GradientInput): void {
       w.push(resolveNumber(g.seed, 0))
       return
     case 'sweep':
-      w.push(resolveNumber(g.center?.x))
-      w.push(resolveNumber(g.center?.y))
-      w.push(resolveNumber(g.startAngle, 0))
-      w.push(resolveNumber(g.endAngle, 360))
+      w.pushAnim(g.center?.x)
+      w.pushAnim(g.center?.y)
+      w.pushAnim(g.startAngle, 0)
+      w.pushAnim(g.endAngle, 360)
       writeStops(w, g)
       return
     case 'radial':
     case 'diamond':
-      w.push(resolveNumber(g.center?.x))
-      w.push(resolveNumber(g.center?.y))
-      w.push(resolveNumber(g.radius))
+      w.pushAnim(g.center?.x)
+      w.pushAnim(g.center?.y)
+      w.pushAnim(g.radius)
       writeStops(w, g)
       return
     default:
-      w.push(resolveNumber(g.start?.x))
-      w.push(resolveNumber(g.start?.y))
-      w.push(resolveNumber(g.end?.x))
-      w.push(resolveNumber(g.end?.y))
+      w.pushAnim(g.start?.x)
+      w.pushAnim(g.start?.y)
+      w.pushAnim(g.end?.x)
+      w.pushAnim(g.end?.y)
       writeStops(w, g)
   }
 }
@@ -288,24 +335,44 @@ export function writePaint(
   // Four live channels only when one moves; a literal `[r, g, b, a]` packs into the word below.
   const channels =
     isColorComponents(color) && color.some(isSharedValue) ? color : null
+  // Style and antiAlias are flag bits, so a live one needs its own word. A live
+  // style must hold the numeric code — a string cannot ride the value array.
+  const styleNow = resolveValue(style)
+  const aaNow = resolveValue(antiAlias)
+  const liveStyle =
+    !forceStroke && isSharedValue(style) && typeof styleNow === 'number'
+  const liveAA = isSharedValue(antiAlias)
   w.push(resolveColor(resolveValue(color as Color | undefined)))
   w.push(
-    (forceStroke || style === 'stroke' ? 1 : 0) |
-      (antiAlias !== false ? 2 : 0) |
+    (forceStroke || styleNow === 'stroke' || styleNow === 1 ? 1 : 0) |
+      (aaNow !== false && aaNow !== 0 ? 2 : 0) |
       (filtered ? 4 : 0) |
       (channels != null ? 8 : 0) |
-      (miter !== undefined ? 16 : 0)
+      (miter !== undefined ? 16 : 0) |
+      (liveStyle || liveAA ? 32 : 0)
   )
+  if (liveStyle || liveAA) {
+    w.pushAnim(
+      liveStyle ? style : forceStroke || styleNow === 'stroke' ? 1 : 0
+    )
+    w.pushAnim(liveAA ? antiAlias : aaNow !== false ? 1 : 0)
+  }
   if (channels != null) {
     for (let i = 0; i < 4; i++) {
       w.pushAnim(channels[i], i === 3 ? 1 : 0)
     }
   }
   w.pushAnim(strokeWidth, 1)
-  w.push(CAPS[(cap as PaintInput['strokeCap']) ?? 'butt'])
-  w.push(JOINS[(join as PaintInput['strokeJoin']) ?? 'miter'])
+  w.pushAnim(
+    isSharedValue(cap) ? cap : CAPS[(cap as keyof typeof CAPS) ?? 'butt']
+  )
+  w.pushAnim(
+    isSharedValue(join)
+      ? join
+      : JOINS[(join as keyof typeof JOINS) ?? 'miter']
+  )
   if (miter !== undefined) {
-    w.push(resolveNumber(miter, 4))
+    w.pushAnim(miter, 4)
   }
   w.pushAnim(alpha, 1)
   if (filtered) {

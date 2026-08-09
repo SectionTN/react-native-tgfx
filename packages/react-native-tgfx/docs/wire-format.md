@@ -13,12 +13,15 @@ A flat `Float64Array` written in tree preorder, in words:
     [2]         first word of the slot-patch table
     [3..]       node stream
     [patch]     count, then (wordIndex, slotIndex) pairs
+    [strings]   count, then (wordIndex, stringSlot) pairs
 
 Strings (path data, text, image sources, shader source) are rare and
 variable-width, so they travel beside the buffer in a string table and the buffer
 holds their indices. A field backed by a Reanimated SharedValue is written as 0
 and recorded in the patch table, so the engine knows which words to resolve
-against the live value array each frame.
+against the live value array each frame. A string word backed by a SharedValue
+is recorded in the string-patch table the same way, resolved against the live
+string array pushed with `setStringValues`.
 
 ## Versions
 
@@ -100,3 +103,39 @@ against the live value array each frame.
   `GroupLayer` (13) so the flags word exists at all. An
   older reader ignores the bit and draws the children directly, which is the
   same picture.
+- **26** — the imperative-coverage release (#204), all in one break:
+  - A **string-patch table** follows the numeric patch table: a count, then
+    (wordIndex, stringSlot) pairs. Path data and text-run content words may
+    carry entries; the engine resolves them against `setStringValues` pushes,
+    re-parsing the path or re-shaping the paragraph on the render thread. An
+    older reader would report the program not fully consumed.
+  - The **kind word carries bit 64**: a `visible` word (a value slot) follows
+    it. A node that resolves below 0.5 is skipped at draw and hit-test — the
+    supported pool pattern for variable-count scenes. Absent, a node is
+    byte-identical to 25.
+  - **Gradient geometry animates**: linear start/end, radial and diamond
+    centre/radius, and sweep centre/angles are anim words. The stops block
+    gains a leading flags word — bit 1 means each stop colour travels as four
+    anim channels instead of one packed word — and stop positions are anim
+    words either way.
+  - **Filter parameters animate**: blur sigmas, drop-shadow offset and sigmas,
+    every colour-matrix entry and the paint's blend-mode word are anim words. A
+    drop-shadow flags word gains bit 4 (four live colour channels follow);
+    colour-filter kind 5 is kind 1 with four live channels after the packed
+    word. A filter with a live parameter is rebuilt per frame; a literal one is
+    still built exactly once, at setScene.
+  - **Paint enums animate**: the cap and join words are anim words, the miter
+    word too, and paint flags gain bit 32 — a style word and an antiAlias word
+    (both animatable) follow the flags when either is live.
+  - **Image handles are anim words** — on `<Image>`, `<Atlas>` and the image
+    shader — so swapping which image a node draws is one slot write. The image
+    source rect's four words are anim words, for sprite-sheet stepping.
+  - **Atlas** writes a buffer id after the sampling word: 0 keeps the inline
+    sprite list (whose seven per-sprite words are now anim words, and whose
+    x/y now mean the sprite's centre — the reader applies the half-sprite
+    bias); a positive id names a shared float block in the BufferRegistry,
+    followed by a live sprite count instead of any inline data.
+  - **Vertices** writes a buffer id after the kind: 0 keeps the inline stream
+    (unchanged past that word); a positive id is followed by topology, vertex
+    and index capacities, a texture/colour flags word, and live vertex and
+    index counts. The mesh is rebuilt from the shared block at draw.

@@ -1,6 +1,10 @@
-import { resolveColor, type Color } from './colors'
+import { isColorComponents, resolveColor, type Color } from './colors'
 import { tileCode, type TileMode } from './image'
-import { resolveNumber } from './values'
+import {
+  isSharedValue,
+  resolveValue,
+  type MaybeSharedValue,
+} from './values'
 import type { SceneWriter } from './writer'
 
 /**
@@ -49,10 +53,12 @@ export function blendCode(mode: unknown): number {
   return at < 0 ? SRC_OVER : at
 }
 
-/** A colour transform applied per pixel. Read once at commit; never animated. */
+type AnimNumber = number | MaybeSharedValue<number>
+
+/** A colour transform applied per pixel. Parameters may be value slots. */
 export interface ColorFilterInput {
   kind: 'matrix' | 'blend' | 'luma' | 'compose'
-  matrix?: number[]
+  matrix?: AnimNumber[]
   color?: Color
   mode?: BlendMode
   /** `'compose'` only: `inner` runs first, then `outer` over its result. */
@@ -70,12 +76,12 @@ export interface ImageFilterInput {
   first?: ImageFilterInput
   then?: ImageFilterInput
   inner?: boolean
-  blur?: number
-  blurX?: number
-  blurY?: number
+  blur?: AnimNumber
+  blurX?: AnimNumber
+  blurY?: AnimNumber
   tileMode?: TileMode
-  dx?: number
-  dy?: number
+  dx?: AnimNumber
+  dy?: AnimNumber
   color?: Color
   shadowOnly?: boolean
 }
@@ -90,7 +96,8 @@ export function hasFilters(
   imageFilter: unknown
 ): boolean {
   return (
-    (blendMode !== undefined && blendCode(blendMode) !== SRC_OVER) ||
+    (blendMode !== undefined &&
+      (isSharedValue(blendMode) || blendCode(blendMode) !== SRC_OVER)) ||
     colorFilter != null ||
     imageFilter != null
   )
@@ -100,9 +107,9 @@ export function hasFilters(
  * Write the paint's filter block: blend mode, colour filter, image filter.
  * Only written when {@link hasFilters} says so — the flag bit tells the reader.
  *
- * Every field here is a literal. Filters are built once, at setScene, and an
- * animated parameter would mean rebuilding one per frame for every filtered
- * node, which is the allocation the compile-once command list exists to avoid.
+ * Parameters travel through `pushAnim`, so a live one becomes a value slot. A
+ * filter with no live parameter is still built once at setScene; only one that
+ * actually animates is rebuilt per frame, and only that filter.
  */
 export function writeFilters(
   w: SceneWriter,
@@ -110,7 +117,7 @@ export function writeFilters(
   colorFilter: ColorFilterInput | undefined,
   imageFilter: ImageFilterInput | undefined
 ): void {
-  w.push(blendCode(blendMode))
+  w.pushAnim(isSharedValue(blendMode) ? blendMode : blendCode(blendMode), 3)
   writeColorFilter(w, colorFilter)
   writeImageFilter(w, imageFilter)
 }
@@ -128,14 +135,30 @@ function writeColorFilter(
   } else if (colorFilter.kind === 'luma') {
     w.push(2)
   } else if (colorFilter.kind === 'blend') {
-    w.push(1)
-    w.push(resolveColor(colorFilter.color))
-    w.push(blendCode(colorFilter.mode))
+    // Kind 5 is kind 1 with the colour as four live channels after the word.
+    const channels =
+      isColorComponents(colorFilter.color) &&
+      colorFilter.color.some(isSharedValue)
+        ? colorFilter.color
+        : null
+    w.push(channels != null ? 5 : 1)
+    w.push(resolveColor(resolveValue(colorFilter.color)))
+    if (channels != null) {
+      for (let i = 0; i < 4; i++) {
+        w.pushAnim(channels[i], i === 3 ? 1 : 0)
+      }
+    }
+    w.pushAnim(
+      isSharedValue(colorFilter.mode)
+        ? colorFilter.mode
+        : blendCode(colorFilter.mode),
+      3
+    )
   } else {
     w.push(0)
     const m = colorFilter.matrix?.length === 20 ? colorFilter.matrix : IDENTITY
     for (const value of m) {
-      w.push(resolveNumber(value))
+      w.pushAnim(value)
     }
   }
 }
@@ -154,24 +177,34 @@ function writeImageFilter(
     writeImageFilter(w, imageFilter.then)
     return
   }
-  const blurX = resolveNumber(imageFilter.blurX ?? imageFilter.blur)
-  const blurY = resolveNumber(imageFilter.blurY ?? imageFilter.blur)
+  const blurX = imageFilter.blurX ?? imageFilter.blur
+  const blurY = imageFilter.blurY ?? imageFilter.blur
   if (imageFilter.kind === 'dropShadow') {
     w.push(1)
-    w.push(resolveNumber(imageFilter.dx))
-    w.push(resolveNumber(imageFilter.dy))
-    w.push(blurX)
-    w.push(blurY)
-    w.push(resolveColor(imageFilter.color))
-    // Bit 1 shadow only, bit 2 inside the shape instead of under it.
+    w.pushAnim(imageFilter.dx)
+    w.pushAnim(imageFilter.dy)
+    w.pushAnim(blurX)
+    w.pushAnim(blurY)
+    const liveColor =
+      isColorComponents(imageFilter.color) &&
+      imageFilter.color.some(isSharedValue)
+    w.push(resolveColor(resolveValue(imageFilter.color)))
+    // Bit 1 shadow only, bit 2 inner, bit 4 the colour follows as live channels.
     w.push(
       (imageFilter.shadowOnly === true ? 1 : 0) |
-        (imageFilter.inner === true ? 2 : 0)
+        (imageFilter.inner === true ? 2 : 0) |
+        (liveColor ? 4 : 0)
     )
+    if (liveColor) {
+      const channels = imageFilter.color as readonly unknown[]
+      for (let i = 0; i < 4; i++) {
+        w.pushAnim(channels[i], i === 3 ? 1 : 0)
+      }
+    }
     return
   }
   w.push(0)
-  w.push(blurX)
-  w.push(blurY)
+  w.pushAnim(blurX)
+  w.pushAnim(blurY)
   w.push(tileCode(imageFilter.tileMode, 'decal'))
 }

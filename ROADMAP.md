@@ -193,8 +193,20 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   a slotted prop is patched in place — from the JS thread or from inside a worklet —
   and anything else re-encodes without React. `color`, a `<Group>`'s transform
   operands and a `<Shader>`'s `uniforms` are patchable too (#160), and the surface
-  has its own docs page. Still open: slots for `path`/`text` (#49), and structural
-  add/remove/reorder (#160).
+  has its own docs page.
+- ✅ Imperative coverage for the rest of the surface (#204): `text` and `path` are
+  string slots (re-shaped / re-parsed on the render thread), `image` and `rect`
+  patch in place, gradients and filters take a `ref` for their geometry, stops
+  and parameters, the paint enums patch, `visible` slots the pool pattern for
+  variable-count scenes, and `<Atlas>`/`<Vertices>` take shared float buffers
+  (`useSpriteBuffer` / `useVertexBuffer`) for zero-copy per-frame bulk data.
+  Still open: true structural add/remove/reorder (#160) — the `visible` pool is
+  the supported pattern meanwhile.
+- **Policy — imperative-first.** When adding a new drawable, paint, or effect:
+  design the imperative path first — which props are slots, what the wire format
+  carries, what a worklet write costs — then wrap the declarative component over
+  it. A PR that adds a declarative API with no slot story for its animatable
+  props is incomplete. (Also recorded in CONTRIBUTING.md and AGENTS.md.)
 - 🟠 The HostConfig is cast (`as unknown`) with stubbed suspense/hydration
   members — test Suspense (image loading), error boundaries, concurrent features.
 - 🟠 Incremental/diff updates to native (Skia diffs a command list); currently

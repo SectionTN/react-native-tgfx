@@ -49,32 +49,36 @@ These resolve through a slot and animate:
 
 - shape geometry — `x`, `y`, `width`, `height`, `cx`, `cy`, `r`, `rx`, `ry`, and
   the `Line` endpoints `x1`, `y1`, `x2`, `y2`
-- `opacity` and `strokeWidth`
-- `Text`'s `fontSize`
+- `opacity`, `strokeWidth`, `strokeMiter` and `visible`
+- `Text`'s `fontSize` — and `text` itself, as a **string slot**: the engine
+  re-shapes on the render thread when the value changes
+- `Path`'s `path` (a string slot, re-parsed on change), and its trim
+  `start` / `end`
+- `Image`'s `rect`, and the `rect` fields of each `<Atlas>` sprite, plus its
+  `x`, `y` and `scale`
 - `Group` transform operands
 - shader uniform components
+- gradient geometry (`start`, `end`, `center`, `r`, sweep angles), stop
+  `positions`, and stop `colors` in four-channel form
+- filter parameters — `<Blur>`'s sigmas, `<DropShadow>`'s `dx` / `dy` / `blur`
+  and four-channel `color`, every `<ColorMatrix>` entry
 - a **paint** `color` in its four-channel form — a drawing node's own `color`, or
   one on `<Paint>`
 
-Everything else is read once at commit. `text`, `path` and `Image`'s `image`
-are typed as what they are, so passing a `SharedValue` is a type error rather
-than a silent freeze.
+Everything else is read once at commit:
 
 | prop | why it freezes |
 | --- | --- |
 | `color` as a string or packed number | packed to a single integer at compile time |
-| `color` anywhere but a paint — `<Span>`, gradient stops, `<BlendColor>`, `<DropShadow>` | packed at compile time even in four-channel form |
-| `Image`'s `image` | a native handle, resolved once |
-| `text` | interned into the string table |
-| `path` | parsed once into a native path object |
+| `<Span>` `color` and its other run overrides | baked into the shaped run |
+| `Image`'s `image` object | a native handle, resolved once — swap it through a [node handle](/docs/imperative) |
 | `fontFamily` | plain `string`, resolved once |
-| gradient `colors` and `positions` | written as literals |
-| gradient geometry — `start`, `end`, `center`, `r` | written as literals |
 | noise `freqX`, `freqY`, `octaves`, `seed` | written as literals |
-| `style`, `strokeCap`, `strokeJoin`, `antiAlias` | packed into the paint flags |
+| `style`, `strokeCap`, `strokeJoin`, `antiAlias`, `blendMode` | static strings in JSX — animate them through a [node handle](/docs/imperative) |
+| `<TextPath>`'s `path` | the baseline is laid out once per commit |
 
-The failure is silent — the prop still accepts the value. If something you expect
-to move is frozen, check this table first.
+If something you expect to move is frozen, check this table first — and check
+the [imperative page](/docs/imperative) for the handle-write equivalents.
 
 ### Animating a colour
 

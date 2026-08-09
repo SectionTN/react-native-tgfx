@@ -46,6 +46,10 @@ class TgfxRenderer {
 
   void setValues(const std::vector<double>& values);
 
+  /// Sparse writes into the string-slot array (live text and path data).
+  void setStringValues(const std::vector<double>& indices,
+                       const std::vector<std::string>& values);
+
   /// Index paths under a point, flattened. Safe from any thread; see TgfxScene.hpp.
   std::vector<double> hitTest(float x, float y, bool precise);
 
@@ -112,6 +116,13 @@ class TgfxRenderer {
   uint64_t compiledFontEpoch_ = 0;
   std::vector<double> values_;
   std::vector<double> drawValues_;
+  std::vector<std::string> stringValues_;
+  std::vector<std::string> drawStringValues_;
+  /// Which slots a push has written; unpushed slots keep their compiled literal.
+  std::vector<uint8_t> stringPushed_;
+  std::vector<uint8_t> drawStringPushed_;
+  uint64_t stringGen_ = 0;
+  uint64_t drawStringGen_ = 0;
   std::vector<double> drawScene_;
   std::shared_ptr<const StringTable> drawStrings_;
   SceneRenderer scene_;

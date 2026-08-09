@@ -72,6 +72,11 @@ internal class TgfxRenderTarget {
     requestRender()
   }
 
+  fun setStringValues(indices: DoubleArray, values: Array<String>) {
+    withPtr { TgfxNative.setStringValues(it, indices, values) }
+    requestRender()
+  }
+
   fun hitTest(x: Float, y: Float, precise: Boolean): DoubleArray {
     var hits = DoubleArray(0)
     withPtr { hits = TgfxNative.hitTest(it, x, y, precise) }

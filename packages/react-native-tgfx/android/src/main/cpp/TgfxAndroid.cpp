@@ -261,6 +261,38 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
   view->renderer.setValues(values);
 }
 
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_setStringValues(JNIEnv* env, jobject, jlong ptr,
+                                                       jdoubleArray indexArr,
+                                                       jobjectArray valueArr) {
+  auto* view = asView(ptr);
+  if (view == nullptr || indexArr == nullptr || valueArr == nullptr) {
+    return;
+  }
+  jsize len = env->GetArrayLength(indexArr);
+  std::vector<double> indices(static_cast<size_t>(len));
+  if (len > 0) {
+    env->GetDoubleArrayRegion(indexArr, 0, len, indices.data());
+  }
+  jsize count = env->GetArrayLength(valueArr);
+  std::vector<std::string> values;
+  values.reserve(static_cast<size_t>(count));
+  for (jsize i = 0; i < count; i++) {
+    auto jstr = static_cast<jstring>(env->GetObjectArrayElement(valueArr, i));
+    if (jstr == nullptr) {
+      values.emplace_back();
+      continue;
+    }
+    const char* utf = env->GetStringUTFChars(jstr, nullptr);
+    values.emplace_back(utf != nullptr ? utf : "");
+    if (utf != nullptr) {
+      env->ReleaseStringUTFChars(jstr, utf);
+    }
+    env->DeleteLocalRef(jstr);
+  }
+  view->renderer.setStringValues(indices, values);
+}
+
 JNIEXPORT jdoubleArray JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_hitTest(JNIEnv* env, jobject, jlong ptr, jfloat x,
                                                jfloat y, jboolean precise) {

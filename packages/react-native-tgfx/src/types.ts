@@ -38,6 +38,12 @@ export interface PaintProps {
    * See {@link NodeHandle}.
    */
   ref?: NodeHandle
+  /**
+   * Skip drawing (and hit-testing) this node. A value slot, so a handle or a
+   * SharedValue toggles it with no re-encode — the supported way to pool
+   * mounted nodes for particle systems and variable-count scenes.
+   */
+  visible?: Animated<boolean | number>
   color?: Animated<Color>
   /** `'fill'` (default) or `'stroke'`. */
   style?: 'fill' | 'stroke'
@@ -45,7 +51,7 @@ export interface PaintProps {
   strokeCap?: 'butt' | 'round' | 'square'
   strokeJoin?: 'miter' | 'round' | 'bevel'
   /** Past this length-over-width ratio a `'miter'` join falls back to bevel. Defaults to 4. */
-  strokeMiter?: number
+  strokeMiter?: Animated<number>
   /** Paint-wide alpha multiplier in [0, 1]; only one per chain can animate. */
   opacity?: Animated<number>
   antiAlias?: boolean
@@ -130,10 +136,11 @@ export interface LineProps extends PaintProps {
 
 export interface PathProps extends PaintProps {
   /**
-   * SVG path data. Read once per commit: there is no path value slot, so a
-   * SharedValue here would never animate.
+   * SVG path data. A SharedValue (or a `handle.set({ path })` write) gets a
+   * string slot: the engine re-parses on the render thread when the value
+   * changes, with no scene re-encode.
    */
-  path: string
+  path: Animated<string>
   /** Where along the path to start drawing, 0-1. Animatable — this is line-drawing. */
   start?: Animated<number>
   /** Where to stop, 0-1. `end` below `start` draws the segment reversed. */
@@ -160,25 +167,29 @@ export interface ImageProps extends PaintProps {
   y: Animated<number>
   width: Animated<number>
   height: Animated<number>
-  /** A native image handle from `useImage`. `null` draws nothing. */
+  /**
+   * A native image handle from `useImage`. `null` draws nothing. Swappable
+   * through a node handle — `handle.set({ image })` patches the registry id in
+   * place, no re-encode.
+   */
   image: ImageLike | null
   /** Defaults to `'contain'`. Same semantics as Skia's `fit`. */
   fit?: Fit
   /** Defaults to `'linear'`. Use `'mipmap'` for large images in small boxes. */
   sampling?: Sampling
-  /** Source sub-rect, in image pixels — for sprite sheets. */
+  /** Source sub-rect, in image pixels — animatable, for sprite-sheet stepping. */
   rect?: SrcRect
 }
 
-/** One sprite placement in an `<Atlas>`. */
+/** One sprite placement in an `<Atlas>`. Every field is animatable. */
 export interface AtlasSprite {
   /** The sprite's rect in the atlas image, in image pixels. */
   rect: SrcRect
   /** Where the sprite's centre lands on the canvas. */
-  x: number
-  y: number
+  x: Animated<number>
+  y: Animated<number>
   /** Uniform scale. Defaults to 1. */
-  scale?: number
+  scale?: Animated<number>
 }
 
 /**
@@ -189,7 +200,16 @@ export interface AtlasSprite {
 export interface AtlasProps extends PaintProps {
   /** The sprite sheet. `null` draws nothing. */
   image: ImageLike | null
-  sprites: AtlasSprite[]
+  /** Inline sprite list; ignored when `buffer` is given. */
+  sprites?: AtlasSprite[]
+  /**
+   * A shared sprite buffer from `useSpriteBuffer`: seven floats per sprite,
+   * written in place from JS or a worklet and read by the renderer at draw.
+   * The zero-allocation path for particle systems.
+   */
+  buffer?: { id: number; capacity: number }
+  /** How many buffer sprites to draw. A value slot; defaults to the capacity. */
+  count?: Animated<number>
   /** Defaults to `'linear'`. */
   sampling?: Sampling
 }
@@ -198,8 +218,25 @@ export interface AtlasProps extends PaintProps {
 export type MeshTopology = 'triangles' | 'triangleStrip'
 
 export interface VerticesProps extends PaintProps {
+  /**
+   * A shared mesh buffer from `useVertexBuffer`: positions (and reserved
+   * texture/colour/index sections) written in place and read at draw — the
+   * zero-allocation path for per-frame mesh deformation. Replaces the inline
+   * arrays below when given.
+   */
+  buffer?: {
+    id: number
+    maxVertices: number
+    maxIndices: number
+    hasTextures: boolean
+    hasColors: boolean
+  }
+  /** How many buffer vertices to draw. A value slot; defaults to the capacity. */
+  vertexCount?: Animated<number>
+  /** How many buffer indices to draw. A value slot; defaults to the capacity. */
+  indexCount?: Animated<number>
   /** Vertex positions, in canvas points. */
-  vertices: Vector[]
+  vertices?: Vector[]
   /** One colour per vertex, interpolated across each triangle. */
   colors?: Color[]
   /**
@@ -335,14 +372,15 @@ export interface TextProps extends PaintProps, FontProps, ParagraphProps {
   x: Animated<number>
   y: Animated<number>
   /**
-   * Read once per commit: there is no text value slot, so a SharedValue here
-   * would never animate.
+   * A SharedValue (or a `handle.set({ text })` write) gets a string slot: the
+   * engine re-shapes on the render thread when the value changes, with no
+   * re-encode — the live-counter path.
    *
    * Optional because `<Span>` children (inherited from {@link PaintProps}) are
    * the other way to give a `<Text>` its content, and they replace this when
    * present. A `<Text>` with neither draws nothing.
    */
-  text?: string
+  text?: Animated<string>
 }
 
 /**
@@ -510,28 +548,41 @@ export interface CanvasProps {
   debug?: boolean
 }
 
+/** A point whose axes are each animatable. */
+export interface AnimatedVector {
+  x: Animated<number>
+  y: Animated<number>
+}
+
 export interface GradientStops {
+  /**
+   * Stop colours. An entry given as `[r, g, b, a]` components with a
+   * SharedValue channel animates; a handle's `set({ colors })` patches them all.
+   */
   colors: Color[]
-  positions?: number[]
+  /** Stop offsets in 0..1. Animatable — each is a value slot when live. */
+  positions?: Animated<number>[]
+  /** A handle from `useNode()`, for patching this gradient without a render. */
+  ref?: NodeHandle
 }
 
 export interface LinearGradientProps extends GradientStops {
-  start: Vector
-  end: Vector
+  start: AnimatedVector
+  end: AnimatedVector
 }
 
 export interface RadialGradientProps extends GradientStops {
-  center: Vector
-  r: number
+  center: AnimatedVector
+  r: Animated<number>
 }
 
 export interface SweepGradientProps extends GradientStops {
   /** Center of the sweep. `center` is accepted as an alias. */
-  c?: Vector
-  center?: Vector
+  c?: AnimatedVector
+  center?: AnimatedVector
   /** Angular range in degrees; defaults to a full 0-360 turn (as in Skia). */
-  start?: number
-  end?: number
+  start?: Animated<number>
+  end?: Animated<number>
 }
 
 /**
@@ -559,38 +610,47 @@ export interface ShaderProps {
 /**
  * A 4x5 row-major colour matrix, applied as
  * `R' = a*R + b*G + c*B + d*A + e` (and so on per channel), then clamped.
- * Anything but exactly 20 numbers is treated as the identity.
+ * Anything but exactly 20 numbers is treated as the identity. Each entry is
+ * animatable, and a `ref` patches the whole matrix in place.
  */
 export interface ColorMatrixProps {
-  matrix: number[]
+  matrix: Animated<number>[]
+  /** A handle from `useNode()`, for patching this filter without a render. */
+  ref?: NodeHandle
 }
 
 export interface BlendColorProps {
   color: Color
   /** How `color` (src) blends with the drawing (dst). Defaults to `'srcOver'`. */
   mode?: BlendMode
+  /** A handle from `useNode()`, for patching this filter without a render. */
+  ref?: NodeHandle
 }
 
 export interface BlurProps {
-  /** Gaussian sigma for both axes; `blurX`/`blurY` override it per axis. */
-  blur?: number
-  blurX?: number
-  blurY?: number
+  /** Gaussian sigma for both axes; `blurX`/`blurY` override it per axis. Animatable. */
+  blur?: Animated<number>
+  blurX?: Animated<number>
+  blurY?: Animated<number>
   /** How the kernel samples outside the drawing. Defaults to `'decal'`. */
   tileMode?: TileMode
+  /** A handle from `useNode()`, for patching this filter without a render. */
+  ref?: NodeHandle
 }
 
 export interface DropShadowProps {
-  dx?: number
-  dy?: number
-  blur?: number
-  blurX?: number
-  blurY?: number
+  dx?: Animated<number>
+  dy?: Animated<number>
+  blur?: Animated<number>
+  blurX?: Animated<number>
+  blurY?: Animated<number>
   color?: Color
   /** Draw only the shadow, dropping the content that cast it. */
   shadowOnly?: boolean
   /** Cast the shadow *inside* the shape instead of under it. */
   inner?: boolean
+  /** A handle from `useNode()`, for patching this filter without a render. */
+  ref?: NodeHandle
 }
 
 /**

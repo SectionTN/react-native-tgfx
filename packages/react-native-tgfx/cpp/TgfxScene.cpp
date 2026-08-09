@@ -7,6 +7,7 @@
 #include <iterator>
 #include <limits>
 
+#include "BufferRegistry.hpp"
 #include "FontRegistry.hpp"
 #include "ImageRegistry.hpp"
 #include "Log.hpp"
@@ -35,14 +36,20 @@ namespace tgfxrn {
 /// Cursor over the binary draw program from src/compiler/writer.ts; fields are read in write order.
 struct SceneReader {
   SceneReader(std::span<const double> words, std::span<const double> patches,
+              std::span<const double> stringPatches,
               const std::vector<std::string>& strings)
-      : words(words), patches(patches), strings(strings) {}
+      : words(words),
+        patches(patches),
+        stringPatches(stringPatches),
+        strings(strings) {}
 
   std::span<const double> words;
   std::span<const double> patches;
+  std::span<const double> stringPatches;
   const std::vector<std::string>& strings;
   size_t at = 3;  // past the header
   size_t patchAt = 0;
+  size_t stringPatchAt = 0;
   bool ok = true;
 
   size_t remaining() const {
@@ -98,6 +105,30 @@ struct SceneReader {
       return kEmpty;
     }
     return strings[static_cast<size_t>(index)];
+  }
+
+  /// A string word that may follow a string slot (live text or path data).
+  struct StringRef {
+    const std::string* value;
+    int slot = -1;
+  };
+
+  StringRef nextStringRef() {
+    StringRef ref;
+    if (stringPatchAt + 1 < stringPatches.size() &&
+        stringPatches[stringPatchAt] == static_cast<double>(at)) {
+      double slot = stringPatches[stringPatchAt + 1];
+      ref.slot = slot >= 0 && slot <= std::numeric_limits<int>::max()
+                     ? static_cast<int>(slot)
+                     : -1;
+      stringPatchAt += 2;
+      if (ref.slot >= 0) {
+        // Live content resolves per frame, which a picture recording would freeze.
+        dynamic++;
+      }
+    }
+    ref.value = &nextString();
+    return ref;
   }
 };
 
@@ -289,17 +320,31 @@ tgfx::Color colorFromPacked(uint32_t c) {
   return tgfx::Color::FromRGBA(r, g, b, a);
 }
 
-void readStops(SceneReader& r, std::vector<tgfx::Color>& colors,
-               std::vector<float>& positions) {
+/**
+ * The v26 stops block into a GradientShaderCmd: a flags word (bit 1 = colours
+ * travel as four live channels each), the colours, then the positions — each
+ * position an anim word.
+ */
+void readStops(SceneReader& r, GradientShaderCmd& g) {
+  g.animColors = (r.nextInt() & 1) != 0;
   int colorCount = r.nextInt();
-  colors.reserve(boundedCount(r, colorCount));
-  for (int i = 0; i < colorCount && r.ok; i++) {
-    colors.push_back(colorFromPacked(static_cast<uint32_t>(r.next())));
+  if (g.animColors) {
+    size_t bounded = std::min(static_cast<size_t>(std::max(0, colorCount)),
+                              r.remaining() / 4);
+    g.colorChannels.reserve(bounded * 4);
+    for (size_t i = 0; i < bounded * 4 && r.ok; i++) {
+      g.colorChannels.push_back(r.nextAnim());
+    }
+  } else {
+    g.colors.reserve(boundedCount(r, colorCount));
+    for (int i = 0; i < colorCount && r.ok; i++) {
+      g.colors.push_back(static_cast<uint32_t>(r.next()));
+    }
   }
   int positionCount = r.nextInt();
-  positions.reserve(boundedCount(r, positionCount));
+  g.positions.reserve(boundedCount(r, positionCount));
   for (int i = 0; i < positionCount && r.ok; i++) {
-    positions.push_back(static_cast<float>(r.next()));
+    g.positions.push_back(r.nextAnim());
   }
 }
 tgfx::Rect rectOf(const DrawCmd& c, std::span<const double> v) {
@@ -360,34 +405,42 @@ void applyPaint(const PaintCmd& pc, std::span<const double> v,
     paint.setShader(pc.runtime->build(v));
   } else if (pc.blendShader != nullptr) {
     paint.setShader(pc.blendShader->build(v));
+  } else if (pc.gradient != nullptr) {
+    paint.setShader(pc.gradient->build(v));
   } else if (pc.imageShader != nullptr) {
-    paint.setShader(pc.imageShader->build(
-        resolveImage(pc.imageShader->handle, pc.imageShader->sampling)));
+    paint.setShader(pc.imageShader->build(resolveImage(
+        pc.imageShader->handle.resolveInt(v), pc.imageShader->sampling)));
   } else if (pc.shader != nullptr) {
     paint.setShader(pc.shader);
   }
-  if (pc.stroke) {
+  bool stroke = pc.animStyle ? pc.styleWord.resolveInt(v) == 1 : pc.stroke;
+  if (stroke) {
     paint.setStyle(tgfx::PaintStyle::Stroke);
     paint.setStrokeWidth(pc.strokeWidth.resolve(v));
-    switch (pc.cap) {
+    switch (pc.cap.resolveInt(v)) {
       case 1: paint.setLineCap(tgfx::LineCap::Round); break;
       case 2: paint.setLineCap(tgfx::LineCap::Square); break;
       default: paint.setLineCap(tgfx::LineCap::Butt); break;
     }
-    switch (pc.join) {
+    switch (pc.join.resolveInt(v)) {
       case 1: paint.setLineJoin(tgfx::LineJoin::Round); break;
       case 2: paint.setLineJoin(tgfx::LineJoin::Bevel); break;
       default: paint.setLineJoin(tgfx::LineJoin::Miter); break;
     }
-    paint.setMiterLimit(pc.miter);
+    paint.setMiterLimit(pc.miter.resolve(v));
   } else {
     paint.setStyle(tgfx::PaintStyle::Fill);
   }
-  paint.setAntiAlias(pc.antiAlias);
+  paint.setAntiAlias(pc.animStyle ? pc.aaWord.resolve(v) >= 0.5f
+                                  : pc.antiAlias);
   paint.setAlpha(color.alpha * pc.alpha.resolve(v));
-  paint.setBlendMode(pc.blend);
-  paint.setColorFilter(pc.colorFilter);
-  paint.setImageFilter(pc.imageFilter);
+  paint.setBlendMode(pc.blendWord.slot >= 0
+                         ? blendModeOf(pc.blendWord.resolveInt(v))
+                         : pc.blend);
+  paint.setColorFilter(pc.colorFilterCmd != nullptr ? pc.colorFilterCmd->build(v)
+                                                    : pc.colorFilter);
+  paint.setImageFilter(pc.imageFilterCmd != nullptr ? pc.imageFilterCmd->build(v)
+                                                    : pc.imageFilter);
 }
 
 }  // namespace
@@ -434,10 +487,14 @@ std::shared_ptr<tgfx::Shader> ChildShaderCmd::resolve(
     return blend->build(values);
   }
   if (image != nullptr) {
-    return image->build(resolveImage(image->handle, image->sampling));
+    return image->build(
+        resolveImage(image->handle.resolveInt(values), image->sampling));
   }
   if (runtime != nullptr) {
     return runtime->build(values);
+  }
+  if (gradient != nullptr) {
+    return gradient->build(values);
   }
   return shader;
 }
@@ -472,6 +529,70 @@ std::shared_ptr<tgfx::Shader> RuntimeShaderCmd::build(
   return tgfx::Shader::MakeRuntimeShader(body, std::move(resolved), preamble,
                                          functionNames,
                                          std::move(resolvedChildren));
+}
+
+bool GradientShaderCmd::animated() const {
+  for (const auto& word : geometry) {
+    if (word.slot >= 0) {
+      return true;
+    }
+  }
+  for (const auto& word : colorChannels) {
+    if (word.slot >= 0) {
+      return true;
+    }
+  }
+  for (const auto& word : positions) {
+    if (word.slot >= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::shared_ptr<tgfx::Shader> GradientShaderCmd::build(
+    std::span<const double> v) const {
+  std::vector<tgfx::Color> resolvedColors;
+  if (animColors) {
+    resolvedColors.reserve(colorChannels.size() / 4);
+    for (size_t i = 0; i + 3 < colorChannels.size(); i += 4) {
+      resolvedColors.push_back(tgfx::Color::FromRGBA(
+          channelOf(colorChannels[i], v), channelOf(colorChannels[i + 1], v),
+          channelOf(colorChannels[i + 2], v),
+          channelOf(colorChannels[i + 3], v)));
+    }
+  } else {
+    resolvedColors.reserve(colors.size());
+    for (uint32_t packed : colors) {
+      resolvedColors.push_back(colorFromPacked(packed));
+    }
+  }
+  if (resolvedColors.size() < 2) {
+    return nullptr;
+  }
+  std::vector<float> resolvedPositions;
+  resolvedPositions.reserve(positions.size());
+  for (const auto& word : positions) {
+    resolvedPositions.push_back(word.resolve(v));
+  }
+  float a = geometry[0].resolve(v);
+  float b = geometry[1].resolve(v);
+  float c = geometry[2].resolve(v);
+  float d = geometry[3].resolve(v);
+  switch (kind) {
+    case 2:
+      return tgfx::Shader::MakeConicGradient({a, b}, c, d, resolvedColors,
+                                             resolvedPositions);
+    case 1:
+      return tgfx::Shader::MakeRadialGradient({a, b}, c, resolvedColors,
+                                              resolvedPositions);
+    case 3:
+      return tgfx::Shader::MakeDiamondGradient({a, b}, c, resolvedColors,
+                                               resolvedPositions);
+    default:
+      return tgfx::Shader::MakeLinearGradient({a, b}, {c, d}, resolvedColors,
+                                              resolvedPositions);
+  }
 }
 
 std::shared_ptr<tgfx::Shader> ImageShaderCmd::build(
@@ -517,7 +638,10 @@ void SceneRenderer::readTextRuns(SceneReader& r, TextCmd& text) {
   }
   text.runs.resize(static_cast<size_t>(count));
   for (auto& run : text.runs) {
-    run.text = r.nextString();
+    auto content = r.nextStringRef();
+    run.text = *content.value;
+    run.slot = content.slot;
+    text.liveRuns = text.liveRuns || run.slot >= 0;
     run.family = r.nextString();
     run.weight = r.nextInt();
     // Not `!= 0`: 2 means "upright", which a bool would fold into "italic".
@@ -529,10 +653,35 @@ void SceneRenderer::readTextRuns(SceneReader& r, TextCmd& text) {
   }
 }
 
-const TextLayout& TextCmd::resolve(float size) const {
+const TextLayout& TextCmd::resolve(float size,
+                                   std::span<const std::string> strings,
+                                   uint64_t stringGen,
+                                   std::span<const uint8_t> pushed) const {
   // Quantised: getScalerContext keys its cache on the raw float and never erases. See #145.
   size = std::round(size * 4) / 4;
-  if (size == layoutSize) {
+  bool contentChanged = false;
+  if (liveRuns && stringGen != layoutGen) {
+    // Only on a push, and only for slotted runs: an idle frame compares nothing.
+    layoutGen = stringGen;
+    for (auto& run : runs) {
+      if (run.slot < 0 || static_cast<size_t>(run.slot) >= strings.size()) {
+        continue;
+      }
+      // A slot no push has written keeps its compiled literal: a sparse push
+      // must never blank a neighbour ("" is a legitimate pushed value).
+      if (static_cast<size_t>(run.slot) >= pushed.size() ||
+          pushed[static_cast<size_t>(run.slot)] == 0) {
+        continue;
+      }
+      const auto& now = strings[static_cast<size_t>(run.slot)];
+      if (run.text != now) {
+        // Mutable by the same rule as the layout: only the render thread is here.
+        const_cast<TextRun&>(run).text = now;
+        contentChanged = true;
+      }
+    }
+  }
+  if (size == layoutSize && !contentChanged) {
     return layout;
   }
   layoutSize = size;
@@ -602,6 +751,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
       child.image = std::move(childPaint.imageShader);
       child.runtime = std::move(childPaint.runtime);
       child.blend = std::move(childPaint.blendShader);
+      child.gradient = std::move(childPaint.gradient);
       dynamicChild = dynamicChild || child.dynamic();
       children.push_back(std::move(child));
     }
@@ -628,7 +778,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
   }
   if (kind == 7) {
     ImageShaderCmd cmd;
-    cmd.handle = r.nextInt();
+    cmd.handle = r.nextAnim();
     cmd.tileX = tileModeOf(r.nextInt());
     cmd.tileY = tileModeOf(r.nextInt());
     cmd.sampling = samplingOf(r.nextInt());
@@ -641,9 +791,11 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
       cmd.rect = tgfx::Rect::MakeXYWH(x, y, w, h);
       cmd.fit = static_cast<Fit>(r.nextInt());
     }
+    int handle = cmd.handle.resolveInt({});
     bool external = false;
-    auto image = resolveImage(cmd.handle, cmd.sampling, &external);
-    if ((external || image == nullptr) && cmd.handle != 0 && out != nullptr) {
+    auto image = resolveImage(handle, cmd.sampling, &external);
+    if ((external || image == nullptr || cmd.handle.slot >= 0) &&
+        (handle != 0 || cmd.handle.slot >= 0) && out != nullptr) {
       // Baking here would freeze whatever the registry held at compile time.
       out->imageShader = std::make_shared<ImageShaderCmd>(cmd);
       return nullptr;
@@ -666,6 +818,7 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
       child.image = std::move(childPaint.imageShader);
       child.runtime = std::move(childPaint.runtime);
       child.blend = std::move(childPaint.blendShader);
+      child.gradient = std::move(childPaint.gradient);
       if (children.empty() && !child.dynamic()) {
         folded = blendOnto(mode, std::move(folded), std::move(child.shader));
         continue;
@@ -673,7 +826,8 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
       if (children.empty()) {
         children.reserve(boundedCount(r, count));
         if (folded != nullptr) {
-          children.push_back({std::move(folded), nullptr, nullptr, nullptr});
+          children.push_back(
+              {std::move(folded), nullptr, nullptr, nullptr, nullptr});
         }
       }
       children.push_back(std::move(child));
@@ -699,71 +853,66 @@ std::shared_ptr<tgfx::Shader> SceneRenderer::readShader(SceneReader& r, PaintCmd
                      : tgfx::Shader::MakeTurbulence(fx, fy, octaves, seed);
   }
 
-  std::vector<tgfx::Color> colors;
-  std::vector<float> positions;
-  if (kind == 0) {
-    auto start = tgfx::Point::Make(static_cast<float>(r.next()),
-                                   static_cast<float>(r.next()));
-    auto end = tgfx::Point::Make(static_cast<float>(r.next()),
-                                 static_cast<float>(r.next()));
-    readStops(r, colors, positions);
-    if (colors.size() < 2) {
-      return nullptr;
-    }
-    return tgfx::Shader::MakeLinearGradient(start, end, colors, positions);
+  // Gradients: geometry words then the stops block, all animatable. A static
+  // one still builds exactly once, here; only a live one is rebuilt per frame.
+  auto gradient = std::make_shared<GradientShaderCmd>();
+  gradient->kind = kind;
+  int geometryWords = kind == 0 || kind == 2 ? 4 : 3;
+  for (int i = 0; i < geometryWords; i++) {
+    gradient->geometry[static_cast<size_t>(i)] = r.nextAnim();
   }
-  auto center = tgfx::Point::Make(static_cast<float>(r.next()),
-                                  static_cast<float>(r.next()));
-  if (kind == 2) {
-    float startAngle = static_cast<float>(r.next());
-    float endAngle = static_cast<float>(r.next());
-    readStops(r, colors, positions);
-    if (colors.size() < 2) {
-      return nullptr;
-    }
-    return tgfx::Shader::MakeConicGradient(center, startAngle, endAngle, colors,
-                                           positions);
+  readStops(r, *gradient);
+  if (!gradient->animated()) {
+    return gradient->build({});
   }
-  float radius = static_cast<float>(r.next());
-  readStops(r, colors, positions);
-  if (colors.size() < 2) {
+  if (out != nullptr) {
+    out->gradient = std::move(gradient);
     return nullptr;
   }
-  return kind == 3
-             ? tgfx::Shader::MakeDiamondGradient(center, radius, colors, positions)
-             : tgfx::Shader::MakeRadialGradient(center, radius, colors, positions);
+  return gradient->build({});
 }
 
 size_t filterBuildCount() {
   return gFilterBuilds.load(std::memory_order_relaxed);
 }
 
-std::shared_ptr<tgfx::ColorFilter> SceneRenderer::readColorFilter(SceneReader& r, int depth) {
-  if (depth > kMaxNodeDepth) {
-    r.ok = false;
-    return nullptr;
+bool ColorFilterCmd::animated() const {
+  if (animColor || mode.slot >= 0) {
+    return true;
   }
-  int kind = r.nextInt();
+  for (const auto& word : matrix) {
+    if (word.slot >= 0) {
+      return true;
+    }
+  }
+  return (inner != nullptr && inner->animated()) ||
+         (outer != nullptr && outer->animated());
+}
+
+std::shared_ptr<tgfx::ColorFilter> ColorFilterCmd::build(
+    std::span<const double> v) const {
   std::shared_ptr<tgfx::ColorFilter> filter;
   if (kind == 0) {
-    std::array<float, 20> matrix{};
-    for (auto& value : matrix) {
-      value = static_cast<float>(r.next());
+    std::array<float, 20> resolved{};
+    for (size_t i = 0; i < resolved.size(); i++) {
+      resolved[i] = matrix[i].resolve(v);
     }
-    filter = tgfx::ColorFilter::Matrix(matrix);
+    filter = tgfx::ColorFilter::Matrix(resolved);
   } else if (kind == 1) {
-    auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
-    filter = tgfx::ColorFilter::Blend(color, blendModeOf(r.nextInt()));
+    auto c = animColor
+                 ? tgfx::Color::FromRGBA(channelOf(rgba[0], v), channelOf(rgba[1], v),
+                                         channelOf(rgba[2], v), channelOf(rgba[3], v))
+                 : colorFromPacked(color);
+    filter = tgfx::ColorFilter::Blend(c, blendModeOf(mode.resolveInt(v)));
   } else if (kind == 2) {
     filter = tgfx::ColorFilter::Luma();
   } else if (kind == 4) {
-    // Read both sides whatever happens, or a null child would strand the cursor.
-    auto inner = readColorFilter(r, depth + 1);
-    auto outer = readColorFilter(r, depth + 1);
-    if (inner == nullptr || outer == nullptr) {
-      return inner != nullptr ? inner : outer;
+    auto a = inner != nullptr ? inner->build(v) : nullptr;
+    auto b = outer != nullptr ? outer->build(v) : nullptr;
+    if (a == nullptr || b == nullptr) {
+      return a != nullptr ? a : b;
     }
-    filter = tgfx::ColorFilter::Compose(std::move(inner), std::move(outer));
+    filter = tgfx::ColorFilter::Compose(std::move(a), std::move(b));
   } else {
     return nullptr;
   }
@@ -771,49 +920,147 @@ std::shared_ptr<tgfx::ColorFilter> SceneRenderer::readColorFilter(SceneReader& r
   return filter;
 }
 
-std::shared_ptr<tgfx::ImageFilter> SceneRenderer::readImageFilter(SceneReader& r, int depth) {
+bool ImageFilterCmd::animated() const {
+  return animColor || blurX.slot >= 0 || blurY.slot >= 0 || dx.slot >= 0 ||
+         dy.slot >= 0 || (first != nullptr && first->animated()) ||
+         (then != nullptr && then->animated());
+}
+
+std::shared_ptr<tgfx::ImageFilter> ImageFilterCmd::build(
+    std::span<const double> v) const {
+  std::shared_ptr<tgfx::ImageFilter> filter;
+  if (kind == 0) {
+    filter = tgfx::ImageFilter::Blur(blurX.resolve(v), blurY.resolve(v), tile);
+  } else if (kind == 1) {
+    auto c = animColor
+                 ? tgfx::Color::FromRGBA(channelOf(rgba[0], v), channelOf(rgba[1], v),
+                                         channelOf(rgba[2], v), channelOf(rgba[3], v))
+                 : colorFromPacked(color);
+    float x = dx.resolve(v);
+    float y = dy.resolve(v);
+    float bx = blurX.resolve(v);
+    float by = blurY.resolve(v);
+    bool only = (flags & 1) != 0;
+    filter = (flags & 2) != 0
+                 ? (only ? tgfx::ImageFilter::InnerShadowOnly(x, y, bx, by, c)
+                         : tgfx::ImageFilter::InnerShadow(x, y, bx, by, c))
+                 : (only ? tgfx::ImageFilter::DropShadowOnly(x, y, bx, by, c)
+                         : tgfx::ImageFilter::DropShadow(x, y, bx, by, c));
+  } else if (kind == 2) {
+    auto a = first != nullptr ? first->build(v) : nullptr;
+    auto b = then != nullptr ? then->build(v) : nullptr;
+    if (a == nullptr || b == nullptr) {
+      return a != nullptr ? a : b;
+    }
+    filter = tgfx::ImageFilter::Compose(std::move(a), std::move(b));
+  } else {
+    return nullptr;
+  }
+  gFilterBuilds++;
+  return filter;
+}
+
+std::shared_ptr<ColorFilterCmd> SceneRenderer::readColorFilterCmd(SceneReader& r, int depth) {
   if (depth > kMaxNodeDepth) {
     r.ok = false;
     return nullptr;
   }
   int kind = r.nextInt();
-  std::shared_ptr<tgfx::ImageFilter> filter;
+  auto cmd = std::make_shared<ColorFilterCmd>();
   if (kind == 0) {
-    float blurX = static_cast<float>(r.next());
-    float blurY = static_cast<float>(r.next());
-    filter = tgfx::ImageFilter::Blur(blurX, blurY, tileModeOf(r.nextInt()));
-  } else if (kind == 1) {
-    float dx = static_cast<float>(r.next());
-    float dy = static_cast<float>(r.next());
-    float blurX = static_cast<float>(r.next());
-    float blurY = static_cast<float>(r.next());
-    auto color = colorFromPacked(static_cast<uint32_t>(r.next()));
-    int flags = r.nextInt();
-    bool only = (flags & 1) != 0;
-    filter = (flags & 2) != 0
-                 ? (only ? tgfx::ImageFilter::InnerShadowOnly(dx, dy, blurX, blurY, color)
-                         : tgfx::ImageFilter::InnerShadow(dx, dy, blurX, blurY, color))
-                 : (only ? tgfx::ImageFilter::DropShadowOnly(dx, dy, blurX, blurY, color)
-                         : tgfx::ImageFilter::DropShadow(dx, dy, blurX, blurY, color));
-  } else if (kind == 2) {
-    auto first = readImageFilter(r, depth + 1);
-    auto then = readImageFilter(r, depth + 1);
-    if (first == nullptr || then == nullptr) {
-      return first != nullptr ? first : then;
+    cmd->kind = 0;
+    for (auto& word : cmd->matrix) {
+      word = r.nextAnim();
     }
-    filter = tgfx::ImageFilter::Compose(std::move(first), std::move(then));
+  } else if (kind == 1 || kind == 5) {
+    // Kind 5 is kind 1 with the colour as four live channels after the word.
+    cmd->kind = 1;
+    cmd->color = static_cast<uint32_t>(r.next());
+    if (kind == 5) {
+      cmd->animColor = true;
+      for (auto& channel : cmd->rgba) {
+        channel = r.nextAnim();
+      }
+    }
+    cmd->mode = r.nextAnim();
+  } else if (kind == 2) {
+    cmd->kind = 2;
+  } else if (kind == 4) {
+    cmd->kind = 4;
+    // Read both sides whatever happens, or a null child would strand the cursor.
+    cmd->inner = readColorFilterCmd(r, depth + 1);
+    cmd->outer = readColorFilterCmd(r, depth + 1);
+    if (cmd->inner == nullptr || cmd->outer == nullptr) {
+      return cmd->inner != nullptr ? cmd->inner : cmd->outer;
+    }
   } else {
     return nullptr;
   }
-  gFilterBuilds++;
-  return filter;
+  return cmd;
+}
+
+std::shared_ptr<ImageFilterCmd> SceneRenderer::readImageFilterCmd(SceneReader& r, int depth) {
+  if (depth > kMaxNodeDepth) {
+    r.ok = false;
+    return nullptr;
+  }
+  int kind = r.nextInt();
+  auto cmd = std::make_shared<ImageFilterCmd>();
+  if (kind == 0) {
+    cmd->kind = 0;
+    cmd->blurX = r.nextAnim();
+    cmd->blurY = r.nextAnim();
+    cmd->tile = tileModeOf(r.nextInt());
+  } else if (kind == 1) {
+    cmd->kind = 1;
+    cmd->dx = r.nextAnim();
+    cmd->dy = r.nextAnim();
+    cmd->blurX = r.nextAnim();
+    cmd->blurY = r.nextAnim();
+    cmd->color = static_cast<uint32_t>(r.next());
+    int flags = r.nextInt();
+    cmd->flags = flags & 3;
+    // Bit 4: the colour follows as four live channels.
+    if ((flags & 4) != 0) {
+      cmd->animColor = true;
+      for (auto& channel : cmd->rgba) {
+        channel = r.nextAnim();
+      }
+    }
+  } else if (kind == 2) {
+    cmd->kind = 2;
+    cmd->first = readImageFilterCmd(r, depth + 1);
+    cmd->then = readImageFilterCmd(r, depth + 1);
+    if (cmd->first == nullptr || cmd->then == nullptr) {
+      return cmd->first != nullptr ? cmd->first : cmd->then;
+    }
+  } else {
+    return nullptr;
+  }
+  return cmd;
 }
 
 void SceneRenderer::readFilters(SceneReader& r, PaintCmd& paint) {
-  paint.blend = blendModeOf(r.nextInt());
-  paint.colorFilter = readColorFilter(r, 0);
-  paint.imageFilter = readImageFilter(r, 0);
-  if (paint.imageFilter != nullptr && paint.blend != tgfx::BlendMode::SrcOver) {
+  paint.blendWord = r.nextAnim();
+  paint.blend = blendModeOf(paint.blendWord.resolveInt({}));
+  auto colorCmd = readColorFilterCmd(r, 0);
+  if (colorCmd != nullptr) {
+    if (colorCmd->animated()) {
+      paint.colorFilterCmd = std::move(colorCmd);
+    } else {
+      paint.colorFilter = colorCmd->build({});
+    }
+  }
+  auto imageCmd = readImageFilterCmd(r, 0);
+  if (imageCmd != nullptr) {
+    if (imageCmd->animated()) {
+      paint.imageFilterCmd = std::move(imageCmd);
+    } else {
+      paint.imageFilter = imageCmd->build({});
+    }
+  }
+  if (paint.imageFilter != nullptr && paint.blend != tgfx::BlendMode::SrcOver &&
+      paint.blendWord.slot < 0) {
     // Taking the layer here keeps the blend mode tgfx would otherwise composite away.
     paint.layer = std::make_shared<tgfx::Paint>();
     paint.layer->setBlendMode(paint.blend);
@@ -828,6 +1075,12 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   int flags = r.nextInt();
   paint.stroke = (flags & 1) != 0;
   paint.antiAlias = (flags & 2) != 0;
+  // Bit 32: style and antiAlias travel as their own (possibly live) words.
+  paint.animStyle = (flags & 32) != 0;
+  if (paint.animStyle) {
+    paint.styleWord = r.nextAnim();
+    paint.aaWord = r.nextAnim();
+  }
   // Bit 8: the colour is animated and travels as four live channels.
   paint.animColor = (flags & 8) != 0;
   if (paint.animColor) {
@@ -836,10 +1089,10 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
     }
   }
   paint.strokeWidth = r.nextAnim();
-  paint.cap = r.nextInt();
-  paint.join = r.nextInt();
+  paint.cap = r.nextAnim();
+  paint.join = r.nextAnim();
   // Bit 16: a miter limit other than tgfx's default of 4.
-  paint.miter = (flags & 16) != 0 ? static_cast<float>(r.next()) : 4;
+  paint.miter = (flags & 16) != 0 ? r.nextAnim() : AnimF{4, -1};
   paint.alpha = r.nextAnim();
   // Bit 4: the paint carries a filter block; unset costs no words at all.
   if ((flags & 4) != 0) {
@@ -917,6 +1170,11 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
   int kind = r.nextInt();
   if (!r.ok) {
     return false;
+  }
+  // Bit 64: a visibility word follows the kind. See pushKind() in compile.ts.
+  if ((kind & 64) != 0) {
+    kind &= ~64;
+    cmd.visible = r.nextAnim();
   }
   switch (kind) {
     case KGroup:
@@ -1098,11 +1356,14 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       break;
     case KPath: {
       cmd.kind = DrawCmd::Path;
-      cmd.path = parseSvgPath(r.nextString());
+      auto data = r.nextStringRef();
+      cmd.pathSlot = data.slot;
+      cmd.path = parseSvgPath(*data.value);
       // Through contains, not getBounds: it is SkPathRef's own lazy bounds that a later
       // hitTest would otherwise compute while the render thread is reading them.
       (void)cmd.path.contains(0, 0);
       int flags = r.nextInt();
+      cmd.pathFlags = flags;
       if ((flags & 8) != 0) {
         cmd.path.setFillType(tgfx::PathFillType::EvenOdd);
       }
@@ -1127,9 +1388,10 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
           effects->corner = static_cast<float>(r.next());
         }
         // Bake the longest static prefix now; only what actually moves stays per frame.
+        // A slotted path cannot bake at all: every re-parse needs the full effect chain.
         bool movingTrim = effects->trim && (effects->start.slot >= 0 || effects->end.slot >= 0);
         bool movingDash = effects->dash && effects->phase.slot >= 0;
-        if (movingTrim) {
+        if (movingTrim || cmd.pathSlot >= 0) {
           cmd.effects = std::move(effects);
         } else {
           PathEffectCmd baked = *effects;
@@ -1152,62 +1414,113 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.y = r.nextAnim();
       cmd.w = r.nextAnim();
       cmd.h = r.nextAnim();
-      int handle = r.nextInt();
+      cmd.imageWord = r.nextAnim();
+      int handle = cmd.imageWord.resolveInt({});
       cmd.fit = static_cast<Fit>(r.nextInt());
       cmd.sampling = samplingOf(r.nextInt());
       if (r.nextInt() != 0) {
-        float sx = static_cast<float>(r.next());
-        float sy = static_cast<float>(r.next());
-        float sw = static_cast<float>(r.next());
-        float sh = static_cast<float>(r.next());
-        cmd.srcRect = tgfx::Rect::MakeXYWH(sx, sy, sw, sh);
+        for (auto& word : cmd.srcRectWords) {
+          word = r.nextAnim();
+        }
+        cmd.animSrcRect = cmd.srcRectWords[0].slot >= 0 ||
+                          cmd.srcRectWords[1].slot >= 0 ||
+                          cmd.srcRectWords[2].slot >= 0 ||
+                          cmd.srcRectWords[3].slot >= 0;
+        cmd.srcRect = tgfx::Rect::MakeXYWH(
+            cmd.srcRectWords[0].literal, cmd.srcRectWords[1].literal,
+            cmd.srcRectWords[2].literal, cmd.srcRectWords[3].literal);
       }
-      // `cmd.image` is only a compile-time cache, empty for a buffer or an evicted asset.
+      // `cmd.image` is only a compile-time cache, empty for a buffer, an evicted
+      // asset, or a live handle the draw resolves per frame.
       cmd.imageHandle = handle;
-      bool external = false;
-      cmd.image = resolveImage(handle, cmd.sampling, &external);
-      if (external) {
-        cmd.image = nullptr;
+      if (cmd.imageWord.slot < 0) {
+        bool external = false;
+        cmd.image = resolveImage(handle, cmd.sampling, &external);
+        if (external) {
+          cmd.image = nullptr;
+        }
       }
       break;
     }
     case KAtlas: {
       cmd.kind = DrawCmd::Atlas;
-      int handle = r.nextInt();
+      cmd.imageWord = r.nextAnim();
+      int handle = cmd.imageWord.resolveInt({});
       cmd.sampling = samplingOf(r.nextInt());
-      int count = r.nextInt();
       cmd.atlas = std::make_shared<AtlasCmd>();
-      // Seven words per sprite: the buffer bounds the loop, so bound the reserve to match.
-      size_t bounded = std::min(static_cast<size_t>(std::max(0, count)), r.remaining() / 7);
-      cmd.atlas->sprites.reserve(bounded);
-      cmd.atlas->matrices.reserve(bounded);
-      for (size_t i = 0; i < bounded && r.ok; i++) {
-        float sx = static_cast<float>(r.next());
-        float sy = static_cast<float>(r.next());
-        float sw = static_cast<float>(r.next());
-        float sh = static_cast<float>(r.next());
-        cmd.atlas->sprites.push_back(tgfx::Rect::MakeXYWH(sx, sy, sw, sh));
-        float scale = static_cast<float>(r.next());
-        float tx = static_cast<float>(r.next());
-        float ty = static_cast<float>(r.next());
-        cmd.atlas->matrices.push_back(tgfx::Matrix::MakeAll(scale, 0, tx, 0, scale, ty));
+      int bufferId = r.nextInt();
+      if (bufferId > 0) {
+        // Shared-buffer sprites: seven floats each, read straight from the
+        // registry block at draw. Always per-frame by design.
+        cmd.atlas->bufferId = bufferId;
+        cmd.atlas->count = r.nextAnim();
+        r.dynamic++;
+      } else {
+        int count = r.nextInt();
+        // Seven words per sprite: the buffer bounds the loop, so bound the reserve to match.
+        size_t bounded = std::min(static_cast<size_t>(std::max(0, count)), r.remaining() / 7);
+        auto& atlas = *cmd.atlas;
+        atlas.words.reserve(bounded * 7);
+        bool animated = false;
+        for (size_t i = 0; i < bounded * 7 && r.ok; i++) {
+          AnimF word = r.nextAnim();
+          animated = animated || word.slot >= 0;
+          atlas.words.push_back(word);
+        }
+        atlas.animated = animated;
+        if (!animated) {
+          // Every field literal: bake the rects and matrices once, as before.
+          atlas.sprites.reserve(bounded);
+          atlas.matrices.reserve(bounded);
+          for (size_t i = 0; i + 6 < atlas.words.size(); i += 7) {
+            float sw = atlas.words[i + 2].literal;
+            float sh = atlas.words[i + 3].literal;
+            atlas.sprites.push_back(tgfx::Rect::MakeXYWH(
+                atlas.words[i].literal, atlas.words[i + 1].literal, sw, sh));
+            float scale = atlas.words[i + 4].literal;
+            atlas.matrices.push_back(tgfx::Matrix::MakeAll(
+                scale, 0, atlas.words[i + 5].literal - scale * sw / 2, 0, scale,
+                atlas.words[i + 6].literal - scale * sh / 2));
+          }
+          atlas.words.clear();
+          atlas.words.shrink_to_fit();
+        }
       }
       cmd.imageHandle = handle;
-      bool external = false;
-      cmd.image = resolveImage(handle, cmd.sampling, &external);
-      if (external) {
-        cmd.image = nullptr;
-      }
-      if (cmd.image == nullptr && handle != 0) {
-        // A stream, or a decode still to arrive: either way it is not the same next frame.
-        r.dynamic++;
+      if (cmd.imageWord.slot < 0) {
+        bool external = false;
+        cmd.image = resolveImage(handle, cmd.sampling, &external);
+        if (external) {
+          cmd.image = nullptr;
+        }
+        if (cmd.image == nullptr && handle != 0) {
+          // A stream, or a decode still to arrive: either way it is not the same next frame.
+          r.dynamic++;
+        }
       }
       break;
     }
-    case KVertices:
+    case KVertices: {
       cmd.kind = DrawCmd::Vertices;
-      readMesh(r, cmd);
+      int bufferId = r.nextInt();
+      if (bufferId > 0) {
+        auto mesh = std::make_shared<MeshBufferCmd>();
+        mesh->bufferId = bufferId;
+        mesh->strip = r.nextInt() == 1;
+        mesh->maxVertices = std::clamp(r.nextInt(), 0, 65536);
+        mesh->maxIndices = std::clamp(r.nextInt(), 0, 1 << 20);
+        int flags = r.nextInt();
+        mesh->hasTextures = (flags & 1) != 0;
+        mesh->hasColors = (flags & 2) != 0;
+        mesh->vertexCount = r.nextAnim();
+        mesh->indexCount = r.nextAnim();
+        cmd.meshBuffer = std::move(mesh);
+        r.dynamic++;
+      } else {
+        readMesh(r, cmd);
+      }
       break;
+    }
     case KText: {
       cmd.kind = DrawCmd::Text;
       cmd.x = r.nextAnim();
@@ -1312,8 +1625,18 @@ void SceneRenderer::setScene(std::span<const double> words,
     TGFXRN_LOGW("draw program patch table is truncated");
     return;
   }
+  size_t stringPatchStart = patchStart + 1 + patchCount * 2;
+  size_t stringPatchCount = 0;
+  if (stringPatchStart >= total ||
+      !index(words[stringPatchStart], stringPatchCount) ||
+      stringPatchStart + 1 + stringPatchCount * 2 > total) {
+    TGFXRN_LOGW("draw program string-patch table is truncated");
+    return;
+  }
   SceneReader reader(words.first(patchStart),
-                     words.subspan(patchStart + 1, patchCount * 2), strings);
+                     words.subspan(patchStart + 1, patchCount * 2),
+                     words.subspan(stringPatchStart + 1, stringPatchCount * 2),
+                     strings);
 
   auto program = std::make_shared<Program>();
   int rootCount = reader.nextInt();
@@ -1331,10 +1654,13 @@ void SceneRenderer::setScene(std::span<const double> words,
     return;
   }
   if (reader.at != reader.words.size() ||
-      reader.patchAt != reader.patches.size()) {
-    TGFXRN_LOGW("draw program not fully consumed: %zu/%zu words, %zu/%zu patch words",
-                reader.at, reader.words.size(), reader.patchAt,
-                reader.patches.size());
+      reader.patchAt != reader.patches.size() ||
+      reader.stringPatchAt != reader.stringPatches.size()) {
+    TGFXRN_LOGW(
+        "draw program not fully consumed: %zu/%zu words, %zu/%zu patch words, "
+        "%zu/%zu string-patch words",
+        reader.at, reader.words.size(), reader.patchAt, reader.patches.size(),
+        reader.stringPatchAt, reader.stringPatches.size());
   }
 
   std::lock_guard<std::mutex> lock(programMutex_);
@@ -1343,6 +1669,27 @@ void SceneRenderer::setScene(std::span<const double> words,
 
 
 namespace {
+
+/**
+ * The path a hit test should judge a `<Path>` by. A string-slotted path is
+ * re-parsed here from the pushed value — `livePath` belongs to the render
+ * thread, and hit tests run on whichever thread asked.
+ */
+const tgfx::Path* hitPathOf(const DrawCmd& cmd,
+                            std::span<const std::string> strings,
+                            std::span<const uint8_t> pushed,
+                            tgfx::Path& scratch) {
+  if (cmd.pathSlot < 0 || static_cast<size_t>(cmd.pathSlot) >= strings.size() ||
+      static_cast<size_t>(cmd.pathSlot) >= pushed.size() ||
+      pushed[static_cast<size_t>(cmd.pathSlot)] == 0) {
+    return &cmd.path;
+  }
+  scratch = parseSvgPath(strings[static_cast<size_t>(cmd.pathSlot)]);
+  if ((cmd.pathFlags & 8) != 0) {
+    scratch.setFillType(tgfx::PathFillType::EvenOdd);
+  }
+  return &scratch;
+}
 
 /// The geometry a node covers, in its own space. Empty means it draws nothing to hit.
 tgfx::Rect hitBounds(const DrawCmd& cmd, std::span<const double> v) {
@@ -1368,13 +1715,17 @@ tgfx::Rect hitBounds(const DrawCmd& cmd, std::span<const double> v) {
 
 /// Does the node cover `local`? `precise` asks the fill region rather than the box.
 bool hitNode(const DrawCmd& cmd, const tgfx::Point& local, bool precise,
-             std::span<const double> v) {
+             std::span<const double> v,
+             std::span<const std::string> strings,
+             std::span<const uint8_t> pushed) {
   if (cmd.kind == DrawCmd::Path) {
+    tgfx::Path scratch;
+    const tgfx::Path* path = hitPathOf(cmd, strings, pushed, scratch);
     // The cached bounds first: they are thread-safe and skip `contains` for most nodes.
-    if (!cmd.path.getBounds().contains(local.x, local.y)) {
+    if (!path->getBounds().contains(local.x, local.y)) {
       return false;
     }
-    return !precise || cmd.path.contains(local.x, local.y);
+    return !precise || path->contains(local.x, local.y);
   }
   if (precise && cmd.kind == DrawCmd::Circle) {
     float dx = local.x - cmd.cx.resolve(v);
@@ -1400,11 +1751,18 @@ bool hitNode(const DrawCmd& cmd, const tgfx::Point& local, bool precise,
 /// Walks back to front so the first hit reported is the one drawn last, i.e. on top.
 void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
              const tgfx::Point& point, bool precise, std::span<const double> v,
-             std::vector<int32_t>& path, std::vector<double>& out) {
+             std::span<const std::string> strings,
+             std::span<const uint8_t> pushed, std::vector<int32_t>& path,
+             std::vector<double>& out) {
   for (size_t i = nodes.size(); i-- > 0;) {
     const auto& cmd = nodes[i];
     if (cmd.kind == DrawCmd::CameraFrame) {
       // Its matrix needs the surface, which a hit test has not got: no answer beats a wrong one.
+      continue;
+    }
+    // Hidden nodes are not drawn, so they are not hit either — subtree included.
+    if ((cmd.visible.slot >= 0 || cmd.visible.literal < 0.5f) &&
+        cmd.visible.resolve(v) < 0.5f) {
       continue;
     }
     auto matrix = parent;
@@ -1428,9 +1786,9 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
     }
     path.push_back(static_cast<int32_t>(i));
     if (!cmd.children.empty()) {
-      hitWalk(cmd.children, matrix, point, precise, v, path, out);
+      hitWalk(cmd.children, matrix, point, precise, v, strings, pushed, path, out);
     }
-    if (hitNode(cmd, local, precise, v)) {
+    if (hitNode(cmd, local, precise, v, strings, pushed)) {
       out.push_back(static_cast<double>(path.size()));
       for (int32_t step : path) {
         out.push_back(static_cast<double>(step));
@@ -1448,7 +1806,9 @@ size_t SceneRenderer::rootCount() const {
 }
 
 std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
-                                           std::span<const double> values) {
+                                           std::span<const double> values,
+                                           std::span<const std::string> stringValues,
+                                           std::span<const uint8_t> stringPushed) {
   std::shared_ptr<const Program> program;
   {
     std::lock_guard<std::mutex> lock(programMutex_);
@@ -1459,13 +1819,23 @@ std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
     return out;
   }
   std::vector<int32_t> path;
-  hitWalk(*program, tgfx::Matrix::I(), {x, y}, precise, values, path, out);
+  hitWalk(*program, tgfx::Matrix::I(), {x, y}, precise, values, stringValues,
+          stringPushed, path, out);
   return out;
 }
 
 void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             std::span<const double> v,
+                            std::span<const std::string> strings,
+                            uint64_t stringGen,
+                            std::span<const uint8_t> stringPushed,
                             tgfx::Paint& paint) const {
+  // The pool gate: a hidden node costs one resolve and nothing else.
+  if (cmd.visible.slot >= 0 || cmd.visible.literal < 0.5f) {
+    if (cmd.visible.resolve(v) < 0.5f) {
+      return;
+    }
+  }
   if (cmd.kind == DrawCmd::Group) {
     bool transformed = cmd.hasMatrix || !cmd.ops.empty();
     bool saved = transformed || cmd.clipKind != 0 || cmd.layer;
@@ -1498,7 +1868,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
         tgfx::PictureRecorder recorder;
         auto* into = recorder.beginRecording();
         for (const auto& child : cmd.children) {
-          drawCmd(into, child, v, paint);
+          drawCmd(into, child, v, strings, stringGen, stringPushed, paint);
         }
         cmd.picture = recorder.finishRecordingAsPicture();
       }
@@ -1507,7 +1877,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       }
     } else {
       for (const auto& child : cmd.children) {
-        drawCmd(canvas, child, v, paint);
+        drawCmd(canvas, child, v, strings, stringGen, stringPushed, paint);
       }
     }
     if (cmd.layer) {
@@ -1528,7 +1898,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     // Content into a layer, then the mask over it with DstIn: what survives is the overlap.
     canvas->saveLayer(nullptr);
     for (const auto& child : cmd.children) {
-      drawCmd(canvas, child, v, paint);
+      drawCmd(canvas, child, v, strings, stringGen, stringPushed, paint);
     }
     tgfx::Paint maskPaint;
     maskPaint.setBlendMode(tgfx::BlendMode::DstIn);
@@ -1549,7 +1919,7 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       canvas->drawPaint(clear);
     }
     for (const auto& child : cmd.maskChildren) {
-      drawCmd(canvas, child, v, paint);
+      drawCmd(canvas, child, v, strings, stringGen, stringPushed, paint);
     }
     canvas->restore();
     canvas->restore();
@@ -1572,21 +1942,32 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     }
     canvas->drawImage(std::move(image), cmd.sampling, framePaint);
     for (const auto& child : cmd.children) {
-      drawCmd(canvas, child, v, paint);
+      drawCmd(canvas, child, v, strings, stringGen, stringPushed, paint);
     }
     canvas->restore();
     return;
   }
 
-  // Only alpha and strokeWidth move per frame; a static paint is handed over untouched.
+  // A static paint is handed over untouched; an animated one is rebuilt here.
   const tgfx::Paint* p = &cmd.paint.cached;
   if (cmd.paint.animated()) {
     applyPaint(cmd.paint, v, paint);
     p = &paint;
   }
   // Replaces the layer tgfx would take for the image filter — the same one, not an extra.
-  if (cmd.paint.layer != nullptr) {
+  bool tookLayer = cmd.paint.layer != nullptr;
+  if (tookLayer) {
     canvas->saveLayer(cmd.paint.layer.get());
+  } else if (p == &paint && paint.getImageFilter() != nullptr &&
+             paint.getBlendMode() != tgfx::BlendMode::SrcOver) {
+    // The animated form of the same fix: blend + image filter cannot share a paint.
+    tgfx::Paint layerPaint;
+    layerPaint.setBlendMode(paint.getBlendMode());
+    layerPaint.setImageFilter(paint.getImageFilter());
+    paint.setBlendMode(tgfx::BlendMode::SrcOver);
+    paint.setImageFilter(nullptr);
+    canvas->saveLayer(&layerPaint);
+    tookLayer = true;
   }
 
   switch (cmd.kind) {
@@ -1619,51 +2000,216 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
         canvas->drawPath(cmd.path, *p);
       }
       break;
-    case DrawCmd::Path:
+    case DrawCmd::Path: {
+      const tgfx::Path* path = &cmd.path;
+      if (cmd.pathSlot >= 0 &&
+          static_cast<size_t>(cmd.pathSlot) < strings.size() &&
+          static_cast<size_t>(cmd.pathSlot) < stringPushed.size() &&
+          stringPushed[static_cast<size_t>(cmd.pathSlot)] != 0) {
+        // Re-parse only when a push changed this slot; render thread only.
+        if (stringGen != cmd.pathGen) {
+          cmd.pathGen = stringGen;
+          tgfx::Path parsed =
+              parseSvgPath(strings[static_cast<size_t>(cmd.pathSlot)]);
+          if ((cmd.pathFlags & 8) != 0) {
+            parsed.setFillType(tgfx::PathFillType::EvenOdd);
+          }
+          cmd.livePath = std::move(parsed);
+        }
+        path = &cmd.livePath;
+      }
       if (cmd.effects != nullptr) {
-        tgfx::Path trimmed = cmd.path;
+        tgfx::Path trimmed = *path;
         cmd.effects->apply(&trimmed, v);
         canvas->drawPath(trimmed, *p);
       } else {
-        canvas->drawPath(cmd.path, *p);
+        canvas->drawPath(*path, *p);
       }
       break;
+    }
     case DrawCmd::Image: {
       std::shared_ptr<tgfx::Image> live;
-      if (cmd.image == nullptr && cmd.imageHandle != 0) {
-        live = resolveImage(cmd.imageHandle, cmd.sampling);
+      int32_t handle = cmd.imageWord.slot >= 0 ? cmd.imageWord.resolveInt(v)
+                                               : cmd.imageHandle;
+      if (cmd.imageWord.slot >= 0) {
+        // One compare per frame while the handle is stable; a swap re-resolves.
+        if (handle != cmd.liveHandle || cmd.liveImage == nullptr) {
+          cmd.liveHandle = handle;
+          bool external = false;
+          cmd.liveImage = resolveImage(handle, cmd.sampling, &external);
+          if (external) {
+            // A producer-owned buffer must be re-acquired every frame.
+            live = std::move(cmd.liveImage);
+          }
+        }
+        if (live == nullptr) {
+          live = cmd.liveImage;
+        }
+      } else if (cmd.image == nullptr && handle != 0) {
+        live = resolveImage(handle, cmd.sampling);
       }
-      const auto& image = cmd.image != nullptr ? cmd.image : live;
+      const auto& image = cmd.imageWord.slot >= 0
+                              ? live
+                              : (cmd.image != nullptr ? cmd.image : live);
       if (image == nullptr || image->width() <= 0) {
         break;
       }
+      auto srcRect = cmd.srcRect;
+      if (cmd.animSrcRect) {
+        srcRect = tgfx::Rect::MakeXYWH(
+            cmd.srcRectWords[0].resolve(v), cmd.srcRectWords[1].resolve(v),
+            cmd.srcRectWords[2].resolve(v), cmd.srcRectWords[3].resolve(v));
+      }
       // `fit` crops the source, so cover needs no clip and no save/restore.
-      auto source = cmd.srcRect.isEmpty()
+      auto source = srcRect.isEmpty()
                         ? tgfx::Rect::MakeWH(static_cast<float>(image->width()),
                                              static_cast<float>(image->height()))
-                        : cmd.srcRect;
+                        : srcRect;
       auto fitted = fitRects(cmd.fit, source, rectOf(cmd, v));
       canvas->drawImageRect(image, fitted.src, fitted.dst, cmd.sampling, p);
       break;
     }
     case DrawCmd::Atlas: {
-      if (cmd.atlas == nullptr || cmd.atlas->sprites.empty()) {
+      if (cmd.atlas == nullptr) {
         break;
       }
       std::shared_ptr<tgfx::Image> live;
-      if (cmd.image == nullptr && cmd.imageHandle != 0) {
-        live = resolveImage(cmd.imageHandle, cmd.sampling);
+      int32_t handle = cmd.imageWord.slot >= 0 ? cmd.imageWord.resolveInt(v)
+                                               : cmd.imageHandle;
+      if (cmd.image == nullptr && handle != 0) {
+        live = resolveImage(handle, cmd.sampling);
       }
       const auto& sheet = cmd.image != nullptr ? cmd.image : live;
       if (sheet == nullptr || sheet->width() <= 0) {
         break;
       }
+      auto& atlas = *cmd.atlas;
+      const tgfx::Matrix* matrices = atlas.matrices.data();
+      const tgfx::Rect* rects = atlas.sprites.data();
+      size_t count = atlas.sprites.size();
+      if (atlas.bufferId > 0) {
+        // Shared buffer: seven floats per sprite, resolved into the scratch
+        // vectors — sized once, refilled in place, no per-frame allocation.
+        auto block = BufferRegistry::instance().acquire(atlas.bufferId);
+        if (block == nullptr) {
+          break;
+        }
+        size_t capacity = block->data.size() / 7;
+        size_t wanted = static_cast<size_t>(
+            std::max(0, atlas.count.resolveInt(v)));
+        count = std::min(wanted, capacity);
+        atlas.scratchMatrices.resize(count);
+        atlas.scratchSprites.resize(count);
+        const float* f = block->data.data();
+        for (size_t i = 0; i < count; i++) {
+          const float* s = f + i * 7;
+          atlas.scratchSprites[i] = tgfx::Rect::MakeXYWH(s[0], s[1], s[2], s[3]);
+          atlas.scratchMatrices[i] = tgfx::Matrix::MakeAll(
+              s[4], 0, s[5] - s[4] * s[2] / 2, 0, s[4], s[6] - s[4] * s[3] / 2);
+        }
+        matrices = atlas.scratchMatrices.data();
+        rects = atlas.scratchSprites.data();
+      } else if (atlas.animated) {
+        size_t spriteCount = atlas.words.size() / 7;
+        atlas.scratchMatrices.resize(spriteCount);
+        atlas.scratchSprites.resize(spriteCount);
+        for (size_t i = 0; i < spriteCount; i++) {
+          const AnimF* s = atlas.words.data() + i * 7;
+          float sw = s[2].resolve(v);
+          float sh = s[3].resolve(v);
+          float scale = s[4].resolve(v);
+          atlas.scratchSprites[i] =
+              tgfx::Rect::MakeXYWH(s[0].resolve(v), s[1].resolve(v), sw, sh);
+          atlas.scratchMatrices[i] = tgfx::Matrix::MakeAll(
+              scale, 0, s[5].resolve(v) - scale * sw / 2, 0, scale,
+              s[6].resolve(v) - scale * sh / 2);
+        }
+        matrices = atlas.scratchMatrices.data();
+        rects = atlas.scratchSprites.data();
+        count = spriteCount;
+      }
+      if (count == 0) {
+        break;
+      }
       // No per-sprite colours: tgfx only applies them to an alpha-only atlas.
-      canvas->drawAtlas(sheet, cmd.atlas->matrices.data(), cmd.atlas->sprites.data(), nullptr,
-                        cmd.atlas->sprites.size(), cmd.sampling, p);
+      canvas->drawAtlas(sheet, matrices, rects, nullptr, count, cmd.sampling, p);
       break;
     }
     case DrawCmd::Vertices: {
+      if (cmd.meshBuffer != nullptr) {
+        auto& mb = *cmd.meshBuffer;
+        auto block = BufferRegistry::instance().acquire(mb.bufferId);
+        if (block == nullptr) {
+          break;
+        }
+        // Section offsets are fixed by the declared capacities; counts are live.
+        size_t maxV = static_cast<size_t>(mb.maxVertices);
+        size_t need = maxV * 2 + (mb.hasTextures ? maxV * 2 : 0) +
+                      (mb.hasColors ? maxV * 4 : 0) +
+                      static_cast<size_t>(mb.maxIndices);
+        if (block->data.size() < need) {
+          break;
+        }
+        size_t vCount = std::min(
+            static_cast<size_t>(std::max(0, mb.vertexCount.resolveInt(v))),
+            maxV);
+        size_t iCount = std::min(
+            static_cast<size_t>(std::max(0, mb.indexCount.resolveInt(v))),
+            static_cast<size_t>(mb.maxIndices));
+        if (vCount == 0) {
+          break;
+        }
+        const float* f = block->data.data();
+        const float* tex = f + maxV * 2;
+        const float* col = tex + (mb.hasTextures ? maxV * 2 : 0);
+        const float* idx = col + (mb.hasColors ? maxV * 4 : 0);
+        mb.scratchPositions.resize(vCount);
+        for (size_t i = 0; i < vCount; i++) {
+          mb.scratchPositions[i] = {f[i * 2], f[i * 2 + 1]};
+        }
+        if (mb.hasTextures) {
+          mb.scratchTexCoords.resize(vCount);
+          for (size_t i = 0; i < vCount; i++) {
+            mb.scratchTexCoords[i] = {tex[i * 2], tex[i * 2 + 1]};
+          }
+        }
+        if (mb.hasColors) {
+          mb.scratchColors.resize(vCount);
+          for (size_t i = 0; i < vCount; i++) {
+            mb.scratchColors[i] = tgfx::Color{
+                std::clamp(col[i * 4], 0.0f, 1.0f),
+                std::clamp(col[i * 4 + 1], 0.0f, 1.0f),
+                std::clamp(col[i * 4 + 2], 0.0f, 1.0f),
+                std::clamp(col[i * 4 + 3], 0.0f, 1.0f)};
+          }
+        }
+        bool badIndex = false;
+        mb.scratchIndices.resize(iCount);
+        for (size_t i = 0; i < iCount; i++) {
+          float raw = idx[i];
+          // Validate before the cast: an out-of-range float to int is UB.
+          if (!(raw >= 0 && raw < static_cast<float>(vCount))) {
+            badIndex = true;
+            break;
+          }
+          mb.scratchIndices[i] = static_cast<uint16_t>(raw);
+        }
+        if (badIndex) {
+          break;
+        }
+        auto mesh = tgfx::Mesh::MakeCopy(
+            mb.strip ? tgfx::MeshTopology::TriangleStrip
+                     : tgfx::MeshTopology::Triangles,
+            static_cast<int>(vCount), mb.scratchPositions.data(),
+            mb.hasTextures ? mb.scratchTexCoords.data() : nullptr,
+            mb.hasColors ? mb.scratchColors.data() : nullptr,
+            static_cast<int>(iCount),
+            iCount > 0 ? mb.scratchIndices.data() : nullptr);
+        if (mesh != nullptr) {
+          canvas->drawMesh(std::move(mesh), *p);
+        }
+        break;
+      }
       if (cmd.mesh != nullptr) {
         canvas->drawMesh(cmd.mesh, *p);
       }
@@ -1673,7 +2219,8 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       if (cmd.text == nullptr) {
         break;
       }
-      const auto& layout = cmd.text->resolve(cmd.fontSize.resolve(v));
+      const auto& layout = cmd.text->resolve(cmd.fontSize.resolve(v), strings,
+                                             stringGen, stringPushed);
       float x = cmd.x.resolve(v);
       float y = cmd.y.resolve(v);
       for (const auto& run : layout.runs) {
@@ -1699,13 +2246,16 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       break;
   }
 
-  if (cmd.paint.layer != nullptr) {
+  if (tookLayer) {
     canvas->restore();
   }
 }
 
 void SceneRenderer::render(tgfx::Canvas* canvas,
-                           std::span<const double> values) {
+                           std::span<const double> values,
+                           std::span<const std::string> stringValues,
+                           uint64_t stringGen,
+                           std::span<const uint8_t> stringPushed) {
   std::shared_ptr<const Program> program;
   {
     std::lock_guard<std::mutex> lock(programMutex_);
@@ -1716,7 +2266,7 @@ void SceneRenderer::render(tgfx::Canvas* canvas,
   }
   tgfx::Paint paint;
   for (const auto& cmd : *program) {
-    drawCmd(canvas, cmd, values, paint);
+    drawCmd(canvas, cmd, values, stringValues, stringGen, stringPushed, paint);
   }
 }
 

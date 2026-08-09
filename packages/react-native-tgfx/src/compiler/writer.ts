@@ -1,5 +1,10 @@
 import type { NodeHandle } from '../imperative'
-import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
+import {
+  isSharedValue,
+  resolveNumber,
+  resolveValue,
+  type MaybeSharedValue,
+} from './values'
 
 /**
  * Writer for the binary draw-program the native engine consumes.
@@ -21,9 +26,13 @@ import { isSharedValue, resolveNumber, type MaybeSharedValue } from './values'
  * A field backed by a Reanimated SharedValue is written as 0 and recorded in the
  * patch table, so the engine knows which words to resolve against the live value
  * array each frame.
+ *
+ * After the numeric patch table sits the string-patch table (a count, then
+ * (wordIndex, stringSlot) pairs): words whose string-table index is resolved
+ * against the live string array pushed with `setStringValues`.
  */
 // Every version and what it broke: docs/wire-format.md.
-export const SCENE_VERSION = 25
+export const SCENE_VERSION = 26
 
 /**
  * Encode a string table as a delta against the one the engine already holds:
@@ -77,26 +86,32 @@ export class SceneWriter {
   private words = new Float64Array(4096)
   private n = HEADER_WORDS
   private readonly patches: number[] = []
+  private readonly stringPatches: number[] = []
   readonly strings: string[] = []
   private readonly stringIds = new Map<string, number>()
   readonly values: MaybeSharedValue<unknown>[] = []
+  readonly stringValues: MaybeSharedValue<string>[] = []
   readonly refs: NodeHandle[] = []
   /// Where each handled node sits in the drawn tree, so a native hit can be named.
   readonly refPaths: { path: number[]; ref: NodeHandle }[] = []
   readonly pathStack: number[] = []
   reseed = true
   private readonly slots = new Map<object, number>()
+  private readonly stringSlots = new Map<object, number>()
 
   reset(): void {
     this.n = HEADER_WORDS
     this.patches.length = 0
+    this.stringPatches.length = 0
     this.strings.length = 0
     this.stringIds.clear()
     this.values.length = 0
+    this.stringValues.length = 0
     this.refs.length = 0
     this.refPaths.length = 0
     this.pathStack.length = 0
     this.slots.clear()
+    this.stringSlots.clear()
   }
 
   push(value: number): void {
@@ -139,8 +154,27 @@ export class SceneWriter {
     this.push(index)
   }
 
+  /**
+   * A string word that may be live: a SharedValue string gets a string slot the
+   * engine resolves against `setStringValues` pushes; a plain value is interned
+   * as usual. The literal written is the current value, so the program draws
+   * correctly before the first push.
+   */
+  pushStringAnim(value: unknown): void {
+    if (isSharedValue(value)) {
+      this.stringPatches.push(this.n, this.stringSlot(value))
+      this.pushString(String(resolveValue(value) ?? ''))
+      return
+    }
+    this.pushString(String(value ?? ''))
+  }
+
   hasSlot(value: MaybeSharedValue<unknown>): boolean {
     return this.slots.has(value as object)
+  }
+
+  hasStringSlot(value: MaybeSharedValue<unknown>): boolean {
+    return this.stringSlots.has(value as object)
   }
 
   private slot(sv: MaybeSharedValue<unknown>): number {
@@ -154,10 +188,25 @@ export class SceneWriter {
     return index
   }
 
+  private stringSlot(sv: MaybeSharedValue<unknown>): number {
+    const existing = this.stringSlots.get(sv as object)
+    if (existing !== undefined) {
+      return existing
+    }
+    const index = this.stringValues.length
+    this.stringValues.push(sv as MaybeSharedValue<string>)
+    this.stringSlots.set(sv as object, index)
+    return index
+  }
+
   finish(): ArrayBuffer {
     const patchStart = this.n
     this.push(this.patches.length / 2)
     for (const value of this.patches) {
+      this.push(value)
+    }
+    this.push(this.stringPatches.length / 2)
+    for (const value of this.stringPatches) {
       this.push(value)
     }
     this.words[0] = SCENE_VERSION

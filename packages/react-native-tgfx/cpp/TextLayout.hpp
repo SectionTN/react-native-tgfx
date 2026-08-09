@@ -28,6 +28,8 @@ struct TextRun {
   float size = 0;
   bool hasColor = false;
   uint32_t color = 0;
+  /// String slot the content follows (setStringValues), or -1 for static text.
+  int slot = -1;
 };
 
 struct TextSpec {

@@ -68,6 +68,7 @@ struct Writer {
     auto patchStart = words.size();
     words.push_back(static_cast<double>(patches.size() / 2));
     for (double p : patches) words.push_back(p);
+    words.push_back(0);  // empty string-patch table
     words[0] = tgfxrn::kSceneVersion;
     words[1] = static_cast<double>(words.size());
     words[2] = static_cast<double>(patchStart);
@@ -305,17 +306,25 @@ std::vector<double> textScene() {
     w.push(8);  // Text
     w.pushAnim(2);
     w.pushAnim(12 + (i % 4) * 12);
-    w.push(0);            // "Benchmark"
     w.pushAnim(kBaseSize, 0);
-    w.push(1);            // "Helvetica"
+    w.push(1);   // "Helvetica"
     w.push(400);
-    w.push(0);            // upright
-    w.push(0);            // letterSpacing
-    w.push(0);            // no wrap
-    w.push(0);            // align left
-    w.push(0);            // natural line height
-    w.push(0);            // no maxLines
-    w.push(2);            // empty ellipsis
+    w.push(0);   // style bits
+    w.push(0);   // letterSpacing
+    w.push(1);   // one run
+    w.push(0);   // "Benchmark"
+    w.push(2);   // run family ("")
+    w.push(0);   // run weight (inherit)
+    w.push(0);   // run italic (inherit)
+    w.push(0);   // run letterSpacing
+    w.push(0);   // run size (inherit)
+    w.push(0);   // run hasColor
+    w.push(0);   // run color
+    w.push(0);   // no wrap
+    w.push(0);   // align left
+    w.push(0);   // natural line height
+    w.push(0);   // no maxLines
+    w.push(2);   // empty ellipsis
     w.push(0xff000000);
     w.push(2);
     w.pushAnim(1);

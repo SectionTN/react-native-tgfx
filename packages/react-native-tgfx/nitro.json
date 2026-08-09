@@ -47,6 +47,12 @@
         "implementationClassName": "HybridTgfxSlotsFactory"
       }
     },
+    "TgfxBufferFactory": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTgfxBufferFactory"
+      }
+    },
     "TgfxVideoFactory": {
       "ios": {
         "language": "swift",

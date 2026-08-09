@@ -104,6 +104,10 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     target.setValues(values)
   }
 
+  override fun setStringValues(indices: DoubleArray, values: Array<String>) {
+    target.setStringValues(indices, values)
+  }
+
   override fun hitTest(x: Double, y: Double, precise: Boolean): DoubleArray {
     return target.hitTest(x.toFloat(), y.toFloat(), precise)
   }

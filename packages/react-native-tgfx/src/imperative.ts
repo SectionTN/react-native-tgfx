@@ -1,12 +1,17 @@
 import { useRef } from 'react'
 import { colorChannels, resolveColor, type Color } from './compiler/colors'
+import { BLEND_MODES, blendCode } from './compiler/filters'
+import { imageHandle } from './compiler/image'
+import { CAPS, JOINS, STYLES } from './compiler/paint'
 import type { Transform, TransformOp } from './compiler/transform'
 import { isSharedValue, type MaybeSharedValue } from './compiler/values'
 import type { SceneWriter } from './compiler/writer'
 import {
   getRunOnJS,
   makeLive,
+  makeLiveString,
   makeShared,
+  type LiveString,
   type LiveValue,
 } from './reanimated/liveValue'
 import { flagsOf, makeFlagBlock } from './reanimated/slotFlags'
@@ -30,7 +35,27 @@ const SLOT_PROPS = [
   'strokeWidth',
   'opacity',
   'fontSize',
+  'visible',
+  // Filter parameters, for a handle on <Blur> / <DropShadow>.
+  'blur',
+  'blurX',
+  'blurY',
+  'dx',
+  'dy',
+  // Gradient angles, for a handle on <SweepGradient>.
+  'startAngle',
+  'endAngle',
+  'strokeMiter',
 ] as const
+
+/** Enum props: the slot carries the wire code, seeded from the written name. */
+const ENUM_SLOTS = ['style', 'strokeCap', 'strokeJoin', 'blendMode', 'mode', 'antiAlias'] as const
+
+/** Vector props split across two slots each. */
+const VECTOR_SLOTS = ['start', 'end', 'center'] as const
+
+/** How many gradient stops a handle keeps live slots for. */
+const MAX_STOPS = 16
 
 const TRANSFORM_SLOTS = [
   'translateX',
@@ -52,7 +77,15 @@ for (const name of SLOT_PROPS) {
 for (const name of TRANSFORM_SLOTS) {
   KEY_INDEX[name] = Object.keys(KEY_INDEX).length
 }
-KEY_INDEX.color = Object.keys(KEY_INDEX).length
+for (const name of ENUM_SLOTS) {
+  KEY_INDEX[name] = Object.keys(KEY_INDEX).length
+}
+for (const name of VECTOR_SLOTS) {
+  KEY_INDEX[name] = Object.keys(KEY_INDEX).length
+}
+for (const name of ['color', 'image', 'rect', 'matrix', 'positions', 'colors', 'text', 'path']) {
+  KEY_INDEX[name] = Object.keys(KEY_INDEX).length
+}
 const FLAG_BYTES = Object.keys(KEY_INDEX).length
 
 const UNIFORM_SLOTS = 32
@@ -85,18 +118,20 @@ export interface NodeOwner {
  * `setValues`, no re-encode, and it works **inside a worklet**, so a gesture can
  * drive it without ever waking the JS thread. That covers the geometry props
  * (`x`, `y`, `width`, `height`, `cx`, `cy`, `r`, `rx`, `ry`, `x1`, `y1`, `x2`,
- * `y2`), `strokeWidth`, `opacity`, `fontSize`, `color`, a `<Group>`'s transform
- * operands (`translateX`, `translateY`, `scale`, `scaleX`, `scaleY`, `rotate`,
- * `skewX`, `skewY`) and a `<Shader>`'s `uniforms`. Anything else (`path`,
- * `text`, `image`) re-encodes the scene — still with no React render, no
- * reconciler commit and no Fabric commit — and from a worklet it hops to the JS
- * thread to do it.
+ * `y2`), `strokeWidth`, `strokeMiter`, `opacity`, `fontSize`, `visible`,
+ * `color`, the paint enums (`style`, `strokeCap`, `strokeJoin`, `blendMode`,
+ * `antiAlias`), `image` and `rect`, a `<Group>`'s transform operands, a
+ * `<Shader>`'s `uniforms`, a gradient's geometry / `positions` / `colors`, a
+ * filter's parameters, and `text` / `path` content (string slots, re-shaped or
+ * re-parsed on the render thread). A prop with no slot re-encodes the scene —
+ * still with no React render, no reconciler commit and no Fabric commit — and
+ * from a worklet it hops to the JS thread to do it.
  *
- * `color` and the transform operands are made live by the first write, not by
- * the `ref`: each costs the render thread work every frame, so that write
+ * Most of the non-geometry props are made live by the first write, not by the
+ * `ref`: each costs the render thread work every frame, so that write
  * re-encodes once and every one after it is a slot patch. A `ref` on a
  * `<Shader>` has no other job, so its `uniforms` are live from the first
- * compile.
+ * compile. Docs: docs/content/docs/imperative.mdx.
  *
  * **The next React commit wins.** An imperative write survives until the canvas
  * re-renders, and then the JSX props are the truth again. Drive a value from one
@@ -226,10 +261,33 @@ export function createHandle(): NodeHandle {
   const runOnJS = getRunOnJS()
   const slots: Record<string, LiveValue> = {}
   for (const name of SLOT_PROPS) {
-    slots[name] = makeLive(0)
+    slots[name] = makeLive(name === 'visible' ? 1 : 0)
   }
   for (const name of TRANSFORM_SLOTS) {
     slots[name] = makeLive(name.startsWith('scale') ? 1 : 0)
+  }
+  // Enum codes, vector axes, the image handle and the source rect are lazy,
+  // like the matrix and stop pools: most handles never touch them, and a
+  // worklet that captured them as null defers to the JS thread, which still
+  // lands the write as a slot patch.
+  let extra: Record<string, LiveValue> | null = null
+  const ensureExtras = (): Record<string, LiveValue> => {
+    if (extra == null) {
+      extra = {}
+      for (const name of ENUM_SLOTS) {
+        extra[name] = makeLive(0)
+      }
+      for (const name of VECTOR_SLOTS) {
+        extra[`${name}X`] = makeLive(0)
+        extra[`${name}Y`] = makeLive(0)
+      }
+      extra.image = makeLive(0)
+      extra.rectX = makeLive(0)
+      extra.rectY = makeLive(0)
+      extra.rectW = makeLive(0)
+      extra.rectH = makeLive(0)
+    }
+    return extra
   }
   const colorSlots: LiveValue[] = []
   for (let i = 0; i < 4; i++) {
@@ -238,6 +296,46 @@ export function createHandle(): NodeHandle {
   const uniformSlots: LiveValue[] = []
   for (let i = 0; i < UNIFORM_SLOTS; i++) {
     uniformSlots.push(makeLive(0))
+  }
+  // Live string content, for `text` and `path`: a write re-shapes or re-parses
+  // on the render thread with no re-encode. Live from the first write.
+  const textShared: LiveString = makeLiveString('')
+  const pathShared: LiveString = makeLiveString('')
+  // Big pools stay lazy: 20 matrix values and 16 stops x 5 would double every
+  // handle's cost for props most nodes never carry. Created when first needed
+  // on the JS thread; a worklet that captured them as null defers, which still
+  // lands as a slot patch pushed from JS.
+  let matrixSlots: LiveValue[] | null = null
+  let positionSlots: LiveValue[] | null = null
+  let stopColorSlots: LiveValue[] | null = null
+  // How many stops the mounted program compiled; a count change must re-encode.
+  const stopColorCount = makeShared(0)
+  const stopPositionCount = makeShared(0)
+  // Whether this handle sits on a gradient, so 'colors' means stops there only.
+  let onGradient = false
+  const ensureMatrix = (): LiveValue[] => {
+    if (matrixSlots == null) {
+      matrixSlots = []
+      for (let i = 0; i < 20; i++) {
+        matrixSlots.push(makeLive(i % 6 === 0 ? 1 : 0))
+      }
+    }
+    return matrixSlots
+  }
+  const ensureStops = (): { pos: LiveValue[]; col: LiveValue[] } => {
+    if (positionSlots == null) {
+      positionSlots = []
+      for (let i = 0; i < MAX_STOPS; i++) {
+        positionSlots.push(makeLive(0))
+      }
+    }
+    if (stopColorSlots == null) {
+      stopColorSlots = []
+      for (let i = 0; i < MAX_STOPS * 4; i++) {
+        stopColorSlots.push(makeLive(i % 4 === 3 ? 1 : 0))
+      }
+    }
+    return { pos: positionSlots, col: stopColorSlots }
   }
   const patchable: MaybeSharedValue<Record<string, boolean>> = makeShared({})
   const flagBlock = makeFlagBlock(FLAG_BYTES)
@@ -288,6 +386,23 @@ export function createHandle(): NodeHandle {
     return [num(raw)]
   }
 
+  /** The wire code for an enum prop's written value, or null when unknown. */
+  const enumCodeOnJS = (key: string, value: unknown): number | null => {
+    if (typeof value === 'number') {
+      return value
+    }
+    if (key === 'antiAlias') {
+      return value === false ? 0 : 1
+    }
+    if (key === 'blendMode' || key === 'mode') {
+      return blendCode(value)
+    }
+    const table =
+      key === 'style' ? STYLES : key === 'strokeCap' ? CAPS : JOINS
+    const code = (table as Record<string, number>)[String(value)]
+    return code === undefined ? null : code
+  }
+
   const applyOnJS = (props: Record<string, unknown>): void => {
     let recompile = false
     let touched = false
@@ -305,6 +420,132 @@ export function createHandle(): NodeHandle {
           continue
         }
         overrides.color = colorSlots
+      } else if (key === 'text' || key === 'path') {
+        const shared = key === 'text' ? textShared : pathShared
+        shared.value = String(value ?? '')
+        if (patchable.value[key] === true) {
+          touched = true
+          continue
+        }
+        overrides[key] = shared
+      } else if (key === 'image') {
+        const pool = ensureExtras()
+        const handle =
+          typeof value === 'number' ? value : imageHandle(value)
+        pool.image!.value = handle
+        if (patchable.value.image === true) {
+          touched = true
+          continue
+        }
+        overrides.image = pool.image
+      } else if (key === 'rect') {
+        const pool = ensureExtras()
+        const r = (value ?? {}) as Record<string, unknown>
+        pool.rectX!.value = Number(r.x) || 0
+        pool.rectY!.value = Number(r.y) || 0
+        pool.rectW!.value = Number(r.width) || 0
+        pool.rectH!.value = Number(r.height) || 0
+        if (patchable.value.rect === true) {
+          touched = true
+          continue
+        }
+        overrides.rect = {
+          x: pool.rectX,
+          y: pool.rectY,
+          width: pool.rectW,
+          height: pool.rectH,
+        }
+      } else if (key === 'matrix') {
+        const pool = ensureMatrix()
+        const written = Array.isArray(value) ? value : []
+        for (let i = 0; i < 20; i++) {
+          pool[i]!.value = Number(written[i]) || 0
+        }
+        if (patchable.value.matrix === true) {
+          touched = true
+          continue
+        }
+        overrides.matrix = pool
+      } else if (key === 'positions' && onGradient) {
+        const { pos } = ensureStops()
+        const written = Array.isArray(value) ? value : []
+        const n = Math.min(written.length, MAX_STOPS)
+        for (let i = 0; i < n; i++) {
+          pos[i]!.value = Number(written[i]) || 0
+        }
+        // A different stop count than compiled cannot patch: re-encode with it.
+        if (
+          patchable.value.positions === true &&
+          n === stopPositionCount.value
+        ) {
+          touched = true
+          continue
+        }
+        stopPositionCount.value = n
+        overrides.positions = pos.slice(0, n)
+      } else if (key === 'colors' && onGradient) {
+        const { col } = ensureStops()
+        const written = Array.isArray(value) ? value : []
+        const n = Math.min(written.length, MAX_STOPS)
+        const live: LiveValue[][] = []
+        for (let i = 0; i < n; i++) {
+          const channels = colorChannels(resolveColor(written[i] as Color))
+          for (let c = 0; c < 4; c++) {
+            col[i * 4 + c]!.value = channels[c]!
+          }
+          live.push(col.slice(i * 4, i * 4 + 4))
+        }
+        if (patchable.value.colors === true && n === stopColorCount.value) {
+          touched = true
+          continue
+        }
+        stopColorCount.value = n
+        overrides.colors = live
+      } else if (
+        (VECTOR_SLOTS as readonly string[]).includes(key) &&
+        value != null &&
+        typeof value === 'object' &&
+        !isSharedValue(value)
+      ) {
+        const v = value as { x?: unknown; y?: unknown }
+        const pool = ensureExtras()
+        const sx = pool[`${key}X`]!
+        const sy = pool[`${key}Y`]!
+        sx.value = Number(v.x) || 0
+        sy.value = Number(v.y) || 0
+        if (patchable.value[key] === true) {
+          touched = true
+          continue
+        }
+        overrides[key] = { x: sx, y: sy }
+      } else if (key === 'start' || key === 'end') {
+        // A numeric start/end is a sweep gradient's angle.
+        const angle = key === 'start' ? slots.startAngle! : slots.endAngle!
+        angle.value = Number(value) || 0
+        if (patchable.value[key === 'start' ? 'startAngle' : 'endAngle'] === true) {
+          touched = true
+          continue
+        }
+        overrides[key] = angle
+      } else if ((ENUM_SLOTS as readonly string[]).includes(key)) {
+        const code = enumCodeOnJS(key, value)
+        if (code == null) {
+          continue
+        }
+        const pool = ensureExtras()
+        pool[key]!.value = code
+        if (patchable.value[key] === true) {
+          touched = true
+          continue
+        }
+        overrides[key] = pool[key]
+      } else if (key === 'visible' && typeof value === 'boolean') {
+        slots.visible!.value = value ? 1 : 0
+        if (patchable.value.visible === true) {
+          touched = true
+          continue
+        }
+        overrides.visible = slots.visible
       } else if (key === 'uniforms') {
         if (boundVia === 'node') {
           warnUniformsOnNode()
@@ -459,12 +700,159 @@ export function createHandle(): NodeHandle {
         if (flags === null && live === null) {
           live = patchable.value
         }
-        const at = KEY_INDEX[key]
-        const patchableHere =
-          flags !== null
+        const flagged = (name: string): boolean => {
+          const at = KEY_INDEX[name]
+          return flags !== null
             ? at !== undefined && flags[at] === 1
-            : live![key] === true
-        if (typeof value === 'number' && patchableHere) {
+            : live![name] === true
+        }
+        if (key === 'text' || key === 'path') {
+          if (flagged(key) && typeof value === 'string') {
+            const shared = key === 'text' ? textShared : pathShared
+            shared.value = value
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'image') {
+          if (flagged('image') && extra != null && typeof value === 'number') {
+            extra.image!.value = value
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'rect') {
+          const r = value as Record<string, unknown> | null
+          if (flagged('rect') && extra != null && r != null && typeof r === 'object') {
+            extra.rectX!.value = num(r.x)
+            extra.rectY!.value = num(r.y)
+            extra.rectW!.value = num(r.width)
+            extra.rectH!.value = num(r.height)
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'matrix') {
+          if (flagged('matrix') && matrixSlots != null && Array.isArray(value)) {
+            for (let i = 0; i < 20; i++) {
+              matrixSlots[i]!.value = num(value[i])
+            }
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'positions') {
+          if (
+            flagged('positions') &&
+            positionSlots != null &&
+            Array.isArray(value) &&
+            Math.min(value.length, MAX_STOPS) === stopPositionCount.value
+          ) {
+            const n = Math.min(value.length, positionSlots.length)
+            for (let i = 0; i < n; i++) {
+              positionSlots[i]!.value = num(value[i])
+            }
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'colors') {
+          // Packed 0xAARRGGBB numbers or [r, g, b, a] arrays; strings need the JS parser.
+          let ok =
+            flagged('colors') &&
+            stopColorSlots != null &&
+            Array.isArray(value) &&
+            Math.min(value.length, MAX_STOPS) === stopColorCount.value
+          if (ok) {
+            const list = value as unknown[]
+            for (let i = 0; i < list.length && ok; i++) {
+              const entry = list[i]
+              ok = typeof entry === 'number' || Array.isArray(entry)
+            }
+            if (ok) {
+              const n = Math.min(list.length, MAX_STOPS)
+              for (let i = 0; i < n; i++) {
+                const entry = list[i]
+                if (typeof entry === 'number') {
+                  const packed = entry >>> 0
+                  stopColorSlots![i * 4]!.value = ((packed >>> 16) & 0xff) / 255
+                  stopColorSlots![i * 4 + 1]!.value = ((packed >>> 8) & 0xff) / 255
+                  stopColorSlots![i * 4 + 2]!.value = (packed & 0xff) / 255
+                  stopColorSlots![i * 4 + 3]!.value = ((packed >>> 24) & 0xff) / 255
+                } else {
+                  for (let c = 0; c < 4; c++) {
+                    stopColorSlots![i * 4 + c]!.value = num((entry as unknown[])[c])
+                  }
+                }
+              }
+              served[key] = true
+            }
+          }
+          if (!ok) {
+            deferred = true
+          }
+        } else if (
+          (key === 'start' || key === 'end' || key === 'center') &&
+          value != null &&
+          typeof value === 'object' &&
+          !Array.isArray(value)
+        ) {
+          const v = value as { x?: unknown; y?: unknown }
+          if (flagged(key) && extra != null) {
+            extra[`${key}X`]!.value = num(v.x)
+            extra[`${key}Y`]!.value = num(v.y)
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'start' || key === 'end') {
+          const name = key === 'start' ? 'startAngle' : 'endAngle'
+          if (flagged(name) && typeof value === 'number') {
+            slots[name]!.value = value
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (
+          key === 'style' ||
+          key === 'strokeCap' ||
+          key === 'strokeJoin' ||
+          key === 'blendMode' ||
+          key === 'mode' ||
+          key === 'antiAlias'
+        ) {
+          let code: number | null = typeof value === 'number' ? value : null
+          if (code == null) {
+            if (key === 'antiAlias') {
+              code = value === false ? 0 : 1
+            } else if (key === 'blendMode' || key === 'mode') {
+              const at = BLEND_MODES.indexOf(value as never)
+              code = at < 0 ? null : at
+            } else if (key === 'style') {
+              code = value === 'stroke' ? 1 : value === 'fill' ? 0 : null
+            } else {
+              const table: Record<string, number> =
+                key === 'strokeCap'
+                  ? { butt: 0, round: 1, square: 2 }
+                  : { miter: 0, round: 1, bevel: 2 }
+              const at = table[String(value)]
+              code = at === undefined ? null : at
+            }
+          }
+          if (code != null && flagged(key) && extra != null) {
+            extra[key]!.value = code
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (key === 'visible' && typeof value === 'boolean') {
+          if (flagged('visible')) {
+            slots.visible!.value = value ? 1 : 0
+            served[key] = true
+          } else {
+            deferred = true
+          }
+        } else if (typeof value === 'number' && flagged(key)) {
           slots[key]!.value = value
           served[key] = true
         } else {
@@ -566,6 +954,11 @@ export function createHandle(): NodeHandle {
       }
       boundVia = 'node'
       nodeTakesOps = node.type === NodeType.Group
+      onGradient =
+        node.type === NodeType.LinearGradient ||
+        node.type === NodeType.RadialGradient ||
+        node.type === NodeType.SweepGradient ||
+        node.type === NodeType.DiamondGradient
       if (nodeTakesOps) {
         const transform = applyOps(node)
         if (transform !== undefined) {
@@ -655,6 +1048,39 @@ export function createHandle(): NodeHandle {
         if (w.hasSlot(slots[key]!)) {
           next[key] = true
         }
+      }
+      if (extra != null) {
+        for (const key of ENUM_SLOTS) {
+          if (w.hasSlot(extra[key]!)) {
+            next[key] = true
+          }
+        }
+        for (const key of VECTOR_SLOTS) {
+          if (w.hasSlot(extra[`${key}X`]!)) {
+            next[key] = true
+          }
+        }
+        if (w.hasSlot(extra.image!)) {
+          next.image = true
+        }
+        if (w.hasSlot(extra.rectX!)) {
+          next.rect = true
+        }
+      }
+      if (matrixSlots != null && w.hasSlot(matrixSlots[0]!)) {
+        next.matrix = true
+      }
+      if (positionSlots != null && w.hasSlot(positionSlots[0]!)) {
+        next.positions = true
+      }
+      if (stopColorSlots != null && w.hasSlot(stopColorSlots[0]!)) {
+        next.colors = true
+      }
+      if (w.hasStringSlot(textShared)) {
+        next.text = true
+      }
+      if (w.hasStringSlot(pathShared)) {
+        next.path = true
       }
       if (w.hasSlot(colorSlots[0]!)) {
         next.color = true

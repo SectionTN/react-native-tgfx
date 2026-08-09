@@ -106,6 +106,12 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) override {
+      auto __result = _swiftPart.setStringValues(indices, values);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline void setColorSpace(const std::string& colorSpace) override {
       auto __result = _swiftPart.setColorSpace(colorSpace);
       if (__result.hasError()) [[unlikely]] {

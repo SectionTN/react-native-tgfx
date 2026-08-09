@@ -125,11 +125,15 @@ export function Canvas({
   ref,
 }: CanvasProps): React.ReactElement {
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
+  const [stringValues, setStringValues] = useState<MaybeSharedValue<string>[]>(
+    []
+  )
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
   const viewRef = useRef<TgfxViewRef | null>(null)
   const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
+  const prevStringValues = useRef<MaybeSharedValue<string>[]>([])
   const sentStrings = useRef<string[]>([])
   const hybridRef = useRef<ReturnType<
     typeof callback<(ref: TgfxViewRef) => void>
@@ -170,7 +174,7 @@ export function Canvas({
 
   if (rootRef.current == null) {
     // Straight to the hybrid object: as a prop it would ride a React and a Fabric commit per frame.
-    rootRef.current = new TgfxRoot((buffer, strings, vals) => {
+    rootRef.current = new TgfxRoot((buffer, strings, vals, stringVals) => {
       scene.current = { buffer, strings }
       if (viewRef.current != null) {
         viewRef.current.setScene(
@@ -183,9 +187,15 @@ export function Canvas({
         prevValues.current = vals.slice()
         setValues(prevValues.current)
       }
+      if (!sameValueSet(prevStringValues.current, stringVals)) {
+        prevStringValues.current = stringVals.slice()
+        setStringValues(prevStringValues.current)
+      }
     })
     rootRef.current.container.onValues = (vals) =>
       viewRef.current?.setValues(vals)
+    rootRef.current.container.onStrings = (indices, vals) =>
+      viewRef.current?.setStringValues?.(indices, vals)
   }
 
   useImperativeHandle(
@@ -279,7 +289,8 @@ export function Canvas({
   if (
     AnimationDriver == null &&
     !warnedNoDriver &&
-    values.some((value) => !isLive(value))
+    (values.some((value) => !isLive(value)) ||
+      stringValues.some((value) => !isLive(value)))
   ) {
     warnedNoDriver = true
     console.warn(
@@ -295,8 +306,10 @@ export function Canvas({
         style={viewStyle}
         hybridRef={hybrid}
       />
-      {AnimationDriver != null && view != null && values.length > 0 ? (
-        <AnimationDriver view={view} values={values} />
+      {AnimationDriver != null &&
+      view != null &&
+      (values.length > 0 || stringValues.length > 0) ? (
+        <AnimationDriver view={view} values={values} strings={stringValues} />
       ) : null}
     </>
   )

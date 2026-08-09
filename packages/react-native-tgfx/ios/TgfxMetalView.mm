@@ -204,6 +204,22 @@ void TgfxSnapshotRelease(void* token) {
   [self wakeUp];
 }
 
+- (void)setStringValues:(const double*)indices
+                  count:(int32_t)count
+                 values:(NSArray<NSString*>*)values {
+  if (_renderer != nullptr && indices != nullptr && values != nil) {
+    std::vector<double> slots(indices, indices + count);
+    std::vector<std::string> strings;
+    strings.reserve(values.count);
+    for (NSString* value in values) {
+      const char* utf = value.UTF8String;
+      strings.emplace_back(utf != nullptr ? utf : "");
+    }
+    _renderer->setStringValues(slots, strings);
+  }
+  [self wakeUp];
+}
+
 - (void)setDisplayP3:(BOOL)displayP3 {
   if (_renderer != nullptr) {
     _renderer->setColorSpace(displayP3 == YES);

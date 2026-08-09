@@ -40,6 +40,13 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     }
   }
 
+  func setStringValues(indices: [Double], values: [String]) throws {
+    indices.withUnsafeBufferPointer { buffer in
+      guard let base = buffer.baseAddress else { return }
+      metalView.setStringValues(base, count: Int32(buffer.count), values: values)
+    }
+  }
+
   func hitTest(x: Double, y: Double, precise: Bool) throws -> [Double] {
     return metalView.hitTestX(Float(x), y: Float(y), precise: precise).map { $0.doubleValue }
   }

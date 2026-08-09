@@ -37,6 +37,7 @@ import {
 } from './src/customShapes';
 import { AnimatedSection } from './src/animatedExamples';
 import { ImperativeSection } from './src/imperativeExample';
+import { ImperativeSlotsSection } from './src/imperativeSlotsExample';
 import { SnapshotSection } from './src/snapshotExample';
 import {
   BlurPanel,
@@ -244,6 +245,8 @@ function Demo() {
       </View>
 
       <ImperativeSection />
+
+      <ImperativeSlotsSection />
 
       <SnapshotSection />
     </ScrollView>

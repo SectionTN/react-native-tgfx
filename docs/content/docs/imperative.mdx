@@ -62,15 +62,21 @@ gesture, a clock or a per-frame callback belongs in the slot column.
 | `x`, `y`, `width`, `height` | slot |
 | `cx`, `cy`, `r`, `rx`, `ry` | slot |
 | `x1`, `y1`, `x2`, `y2` | slot |
-| `strokeWidth` | slot |
+| `strokeWidth`, `strokeMiter` | slot |
 | `fontSize` | slot |
+| `visible` | slot, from the first write |
 | `opacity` | slot, from the first write |
 | `color` | slot, from the first write |
 | `<Group>` transform operands | slot, from the first write |
 | `<Shader>` `uniforms` | slot |
-| `path`, `text`, `image` | re-encode |
-| `style`, `strokeCap`, `strokeJoin`, `antiAlias`, `blendMode` | re-encode |
-| gradient stops and geometry | re-encode |
+| `text`, `path` | string slot, from the first write |
+| `image`, `rect` | slot, from the first write |
+| `style`, `strokeCap`, `strokeJoin`, `antiAlias`, `blendMode` | slot, from the first write |
+| `<Path>` trim `start` / `end` | slot, from the first write |
+| gradient geometry, `positions`, `colors` (on a gradient `ref`) | slot, from the first write |
+| `blur`, `blurX`, `blurY`, `dx`, `dy`, `matrix`, filter `color` / `mode` (on a filter `ref`) | slot, from the first write |
+| `<Atlas>` / `<Vertices>` bulk data | shared buffer (see below) |
+| structural add / remove | re-encode (pool `visible` instead, see below) |
 | anything else | re-encode |
 
 "From the first write" means the first write re-encodes and every write after it
@@ -174,6 +180,155 @@ drawing node. Writing any other prop to a shader handle is dropped, with a
 warning, rather than re-encoding a scene that would come back unchanged. The
 reverse holds too: `uniforms` written to a handle on a *drawing* node is dropped,
 because the node carries none. Put the handle on the `<Shader>` itself.
+
+## Text and path content
+
+`text` and `path` are **string slots**: the first `set()` re-encodes once to
+hand the content a slot, and every write after that crosses as a sparse
+`setStringValues` push. The engine re-shapes the paragraph (or re-parses the
+path) **on the render thread** when the value changes — no scene rebuild, no
+React, and it works from a worklet. This is the live-counter and
+gesture-drawn-stroke path.
+
+```tsx
+const label = useNode()
+<Text ref={label} x={8} y={40} fontSize={32} text="0" />
+
+// per frame, from a worklet — only changed strings cross the bridge
+label.set({ text: String(Math.round(fps.value)) })
+```
+
+A declarative `SharedValue<string>` does the same thing without a handle:
+`<Text text={sharedString} />` and `<Path path={sharedPath} />` take a string
+slot at compile time and follow the value.
+
+## Image swap and sprite-sheet stepping
+
+`set({ image })` patches the node's registry id in place — the draw program
+carries an integer, so pointing the node at other pixels never re-encodes. On
+the JS thread pass the `useImage` handle; from a worklet pass `image.handle`
+(a number).
+
+`set({ rect: { x, y, width, height } })` patches the source rect — four
+floats, which is a sprite-sheet animation stepping frames.
+
+```tsx
+const sprite = useNode()
+<Image ref={sprite} x={0} y={0} width={64} height={64}
+       image={sheet} rect={{ x: 0, y: 0, width: 32, height: 32 }} />
+
+sprite.set({ rect: { x: frame * 32, y: 0, width: 32, height: 32 } })
+```
+
+## Gradients
+
+A `ref` on a gradient patches its geometry and stops: `start` / `end`
+(`<LinearGradient>` vectors, or sweep angles as numbers), `center`, `r`,
+`positions` and `colors`. From a worklet, colours are packed numbers or
+`[r, g, b, a]` arrays; strings need the JS-thread parser. A handle keeps live
+slots for up to 16 stops.
+
+```tsx
+const fade = useNode()
+<Rect x={0} y={0} width={300} height={80}>
+  <LinearGradient ref={fade} start={{ x: 0, y: 0 }} end={{ x: 300, y: 0 }}
+                  colors={['#ff0044', '#4400ff']} />
+</Rect>
+
+fade.set({ end: { x: drag.x, y: 0 }, positions: [0, t] })
+```
+
+Declarative SharedValues work on the same props — a `SharedValue` axis,
+radius, angle, stop position, or `[r, g, b, a]` channel compiles to a slot.
+
+## Filters
+
+A `ref` on `<Blur>`, `<DropShadow>`, `<ColorMatrix>` or `<BlendColor>` patches
+its parameters: `blur` / `blurX` / `blurY`, `dx` / `dy`, the 20-entry
+`matrix`, the filter's `color` (packed or `[r, g, b, a]`) and `mode`. Press
+feedback that animates a shadow, or a focus transition that animates a blur,
+is a slot write per frame.
+
+```tsx
+const glow = useNode()
+<RoundedRect x={20} y={20} width={120} height={80} r={16} color="#222">
+  <DropShadow ref={glow} dx={0} dy={2} blur={4} color="#66aaff" />
+</RoundedRect>
+
+glow.set({ blur: 4 + press.value * 12, dy: 2 + press.value * 6 })
+```
+
+A filter whose parameters are all literals is still built exactly once, at
+commit; only a filter that actually animates is rebuilt per frame — and only
+that filter.
+
+## Paint enums
+
+`style`, `strokeCap`, `strokeJoin`, `blendMode` and `antiAlias` are single
+wire words, so they patch too — live from the first write. Write the same
+names the props take (`set({ style: 'stroke' })`), or the numeric wire code
+from a worklet; both work on either thread.
+
+## Visibility and node pools
+
+`visible` skips a node — and its subtree, and its hit-testing — for one slot
+write. That makes the **pool pattern** the supported answer to "add and remove
+nodes imperatively" until structural mutations land (#160): mount the maximum
+you need, hide the idle ones, and drive each from its handle.
+
+```tsx
+// createHandle is useNode without the hook, for making N handles at once.
+const POOL = 64
+const dots = useRef(Array.from({ length: POOL }, () => createHandle())).current
+
+<Canvas>
+  {dots.map((ref, i) => (
+    <Circle key={i} ref={ref} cx={0} cy={0} r={4} visible={false} color="#fff" />
+  ))}
+</Canvas>
+
+// spawn: show a pooled node and place it — two slot writes, no commit
+dots[next].set({ visible: true, cx: x, cy: y })
+// despawn
+dots[used].set({ visible: false })
+```
+
+A hidden node costs one resolve per frame and draws nothing, so an idle pool
+is effectively free.
+
+## Bulk data: sprite and vertex buffers
+
+Per-frame bulk data — atlas sprites, mesh vertices — does not travel through
+`set()` at all. A **shared buffer** is a native float block mapped into JS as
+a `Float32Array`: write into it (from JS or a worklet — it is the same memory
+on every runtime), and the renderer reads it directly at draw. No
+marshalling, no per-frame allocation, no re-encode.
+
+```tsx
+const sprites = useSpriteBuffer(512)          // 7 floats per sprite
+const count = useSharedValue(0)
+
+<Atlas image={sheet} buffer={sprites} count={count} />
+
+// per frame, in a worklet: srcX, srcY, srcW, srcH, scale, centreX, centreY
+sprites.set(i, 0, 0, 16, 16, p.scale, p.x, p.y)
+count.value = alive                            // publish counts last
+```
+
+`useVertexBuffer` is the mesh equivalent: sectioned views for `positions`,
+`textures`, `colors` and `indices`, with `<Vertices buffer vertexCount
+indexCount>` drawing a live prefix. Inside a worklet, get this runtime's views
+with `meshViews(buffer)` — a worklet's captured copy of a plain typed array
+writes to a clone, and `sprites.set` handles the same hop for you. Write data
+first and the count slot last, so a frame never sees half a sprite.
+
+## Recorded pictures
+
+`<Group picture>` records its subtree once and replays it; the recording is
+static by design. To move, fade or transform a recorded background
+imperatively, wrap it in a `<Group>` and drive that group's handle — the
+replay stays cached while the transform animates. Changing what the picture
+*contains* is a React commit, which rebuilds the recording.
 
 ## From a worklet
 
