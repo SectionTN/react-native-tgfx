@@ -25,9 +25,22 @@ export function load(app: MarkdownApplication) {
     }
   })
 
-  // Fumadocs routes have no file extension, so the emitted `.mdx` links 404.
+  // Typedoc emits directory-relative links (e.g. `interfaces/Foo` from the
+  // `/api` index page, with no `../`). Next serves `/api` without a trailing
+  // slash, so the browser resolves that against `/` instead of `/api/` and
+  // 404s. Rewrite every local link to an absolute `/api/...` path instead.
   app.renderer.on(MarkdownPageEvent.END, (page) => {
-    page.contents = page.contents?.replace(/\.mdx(?=[)#])/g, '')
+    page.contents = page.contents?.replace(/\]\(([^)\s]+)\)/g, (match, href: string) => {
+      if (/^([a-z][a-z0-9+.-]*:)?\/\//i.test(href) || href.startsWith('mailto:') || href.startsWith('/') || href.startsWith('#')) {
+        return match
+      }
+      const [target, hash] = href.split('#')
+      if (!target) return match
+      const resolved = path
+        .posix.normalize(path.posix.join(path.posix.dirname(page.url), target))
+        .replace(/\.mdx$/, '')
+      return `](/api/${resolved}${hash ? `#${hash}` : ''})`
+    })
   })
 
   // Typedoc emits no meta.json, so fumadocs would title the groups by folder name.
