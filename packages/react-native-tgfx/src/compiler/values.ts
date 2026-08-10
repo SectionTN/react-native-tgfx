@@ -11,8 +11,11 @@
  * scene writer allocate a value slot for each SharedValue, which the native
  * engine patches on the UI thread.
  */
-export interface MaybeSharedValue<T> {
+export interface SharedValueLike<T> {
   value: T
+}
+
+export interface MaybeSharedValue<T> extends SharedValueLike<T> {
   _isReanimatedSharedValue?: true
 }
 

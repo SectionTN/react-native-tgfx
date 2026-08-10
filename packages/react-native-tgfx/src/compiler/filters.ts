@@ -1,11 +1,39 @@
 import { isColorComponents, resolveColor, type Color } from './colors'
 import { tileCode, type TileMode } from './image'
-import {
-  isSharedValue,
-  resolveValue,
-  type MaybeSharedValue,
-} from './values'
+import { isSharedValue, resolveValue, type MaybeSharedValue } from './values'
 import type { SceneWriter } from './writer'
+
+export type BlendMode =
+  | 'clear'
+  | 'src'
+  | 'dst'
+  | 'srcOver'
+  | 'dstOver'
+  | 'srcIn'
+  | 'dstIn'
+  | 'srcOut'
+  | 'dstOut'
+  | 'srcATop'
+  | 'dstATop'
+  | 'xor'
+  | 'plusLighter'
+  | 'modulate'
+  | 'screen'
+  | 'overlay'
+  | 'darken'
+  | 'lighten'
+  | 'colorDodge'
+  | 'colorBurn'
+  | 'hardLight'
+  | 'softLight'
+  | 'difference'
+  | 'exclusion'
+  | 'multiply'
+  | 'hue'
+  | 'saturation'
+  | 'color'
+  | 'luminosity'
+  | 'plusDarker'
 
 /**
  * Blend modes, in the order of tgfx's `BlendMode` enum — the index is what
@@ -42,9 +70,7 @@ export const BLEND_MODES = [
   'color',
   'luminosity',
   'plusDarker',
-] as const
-
-export type BlendMode = (typeof BLEND_MODES)[number]
+] as const satisfies readonly BlendMode[]
 
 const SRC_OVER = BLEND_MODES.indexOf('srcOver')
 

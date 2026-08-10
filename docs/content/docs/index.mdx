@@ -1,10 +1,8 @@
 ---
 title: Overview
-description: A declarative GPU 2D canvas for React Native, backed by Tencent's tgfx.
+description: Declarative GPU 2D canvas for React Native, backed by Tencent's tgfx.
+icon: Rocket
 ---
-
-Draw shapes, paths, text, images and runtime shaders with React components. The
-scene compiles to a binary buffer the native renderer executes on its own thread.
 
 ```tsx
 import { Canvas, Circle, Rect } from 'react-native-tgfx'
@@ -19,54 +17,14 @@ export default function App() {
 }
 ```
 
-## The one idea worth knowing first
+Each scene commit compiles the drawing structure to a binary buffer. Between
+commits, animated values live in slots that the native renderer patches on the
+UI thread, so they need no JavaScript work per frame.
 
-A canvas library has to get your drawing across to the renderer. The
-straightforward way is to rebuild and re-send it whenever anything changes —
-which means an animation rebuilds it on every frame, on the thread your app's
-logic runs on.
+- Shapes, paths, [text](/docs/text), [images](/docs/images), atlases, meshes
+- [Paint](/api/variables/Paint) as a component, inherited through [`Group`](/api/variables/Group)
+- Gradients, noise, colour matrices, blurs, shadows, masks
+- Runtime [shaders](/docs/shaders) with UI-thread uniforms
+- [Camera frames](/docs/camera), [snapshots, PDF and SVG export](/docs/snapshots)
 
-This library splits it in two. Static structure is compiled once. Values that
-move are written as *slots* — positions in a flat array the native side patches
-directly, on the UI thread, without waking JavaScript.
-
-<Owned by="js">
-Compiling the scene: walking your React children, packing them into a buffer,
-interning strings. Happens when the tree **changes**, not when a value changes.
-</Owned>
-
-<Owned by="native">
-Resolving slots and drawing: reading the patched values and issuing GPU work.
-Happens every frame, and JavaScript is not involved.
-</Owned>
-
-That split is why a `SharedValue` driving `x`, `opacity`, `strokeWidth` or a
-shader uniform needs no JavaScript work per frame — and it is the thing to keep
-in mind when a prop unexpectedly refuses to animate. See
-[animation](/docs/animation).
-
-## What you get
-
-- **Shapes and paths** — rect, rounded rect, oval, circle, line, SVG path data.
-- **Text and images** with a font family and a fit mode.
-- **Paint as a component** — fill or stroke, caps, joins, opacity, anti-aliasing,
-  inherited down a `<Group>`.
-- **Gradients and noise** — linear, radial, sweep, diamond, fractal noise,
-  turbulence.
-- **Runtime shaders** in SkSL, with uniforms that animate on the UI thread.
-
-## Where it fits
-
-Scenes that draw a lot and animate continuously: data visualisation, generative
-backgrounds, custom controls — anything where you would otherwise reach for a
-native view per element.
-
-[Performance](/docs/performance) covers what makes a scene fast here, and ships
-the harness to measure your own rather than take any characterisation on faith.
-
-## Status
-
-Alpha, released as `0.0.1` under the `alpha` dist-tag. It has been installed from
-npm into a fresh app and verified drawing on a device — see
-[installation](/docs/installation), which documents the two setup steps that are
-easy to miss. iOS still needs a manual build step.
+The package version in this source revision is an alpha release.

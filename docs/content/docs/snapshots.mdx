@@ -1,86 +1,70 @@
 ---
-title: Snapshots and export
-description: Reading a canvas back as pixels or a file, and what that costs.
+title: Export
+description: Snapshots, offscreen rendering, PDF and SVG.
+icon: Download
 ---
 
-## Reading pixels back
-
-A `ref` on `<Canvas>` gives a `CanvasHandle`: two async readback methods,
-and a synchronous `redraw()` that forces a frame without a React commit.
+## Snapshot a live canvas
 
 ```tsx
-import { useRef } from 'react'
-import { Button, View } from 'react-native'
-import { Canvas, Rect, type CanvasHandle } from 'react-native-tgfx'
+const canvas = useRef<CanvasHandle>(null)
 
-export function Exportable() {
-  const canvas = useRef<CanvasHandle>(null)
-
-  async function exportPng(): Promise<void> {
-    // Null until the canvas has mounted.
-    if (canvas.current == null) {
-      return
-    }
-    // Encoded bytes in a zero-copy ArrayBuffer — never a base64 string.
-    const shot = await canvas.current.snapshot()
-    console.log(shot.width, shot.height, shot.format)
-
-    // Encoded and written natively; the image bytes never enter JS.
-    await canvas.current.save('/absolute/path/out.png')
-  }
-
-  return (
-    <View>
-      <Canvas ref={canvas} style={{ width: 300, height: 140 }}>
-        <Rect x={0} y={0} width={300} height={140} color="#101725" />
-      </Canvas>
-      <Button title="Export" onPress={exportPng} />
-    </View>
-  )
+async function exportCanvas() {
+  if (canvas.current == null) return
+  const shot = await canvas.current.snapshot()   // Snapshot
+  await canvas.current.save('/absolute/path/out.png')
 }
 ```
 
-Both take the same options:
+[`snapshot`](/api/interfaces/CanvasHandle) returns a [`Snapshot`](/api/interfaces/Snapshot):
+PNG/JPEG/WebP bytes, or straight-alpha RGBA8888 rows for `format: 'raw'`, in an
+`ArrayBuffer` rather than base64. iOS wraps the native result without a copy;
+Android copies the temporary JNI buffer into a Nitro-owned `ArrayBuffer` once.
+`save` encodes and writes natively, so the bytes never enter JS.
 
-| option | type | default |
-| --- | --- | --- |
-| `format` | `'png' \| 'jpeg' \| 'webp' \| 'raw'` | `'png'` |
-| `quality` | `number` (1–100, JPEG/WEBP) | `100` |
-| `rect` | `{ x, y, width, height }` in logical px | whole canvas |
-| `scale` | `number` | `1` |
+[`SnapshotOptions`](/api/interfaces/SnapshotOptions) · [`SnapshotFormat`](/api/type-aliases/SnapshotFormat)
 
-The result is top-left origin, straight-alpha RGBA at the canvas's device pixel
-ratio times `scale`; `'raw'` returns tightly packed RGBA8888 rows instead of an
-encoded image. A `rect` is rounded to whole device pixels, so the `width` and
-`height` you get back are the ones that were read.
+## Offscreen
 
-The readback is issued on the render thread inside a frame it forces, collected
-on a later tick, and encoded on a worker — so the animation loop keeps its
-cadence and (on Android, where one render thread serves every canvas in the
-process) no other canvas stalls either. That snapshot frame does cost more than
-a plain one: it adds a flush and a GPU→buffer transfer, and the tick that
-collects the result waits briefly on the GPU queue before copying it out.
+[`renderToImage`](/api/functions/renderToImage) renders elements with no canvas
+mounted ([`RenderToImageOptions`](/api/interfaces/RenderToImageOptions)).
 
-`snapshot()` and `save()` reject rather than resolving a black frame when the
-canvas has no surface bound, is zero-sized, or is unmounted before the frame
-lands. `save()` needs an absolute path in a directory the app can write to —
-get one from `expo-file-system` or `react-native-fs`.
+```tsx
+const image = await renderToImage(
+  <Rect x={0} y={0} width={512} height={512}>
+    <LinearGradient start={{ x: 0, y: 0 }} end={{ x: 512, y: 512 }} colors={['#f0f', '#0ff']} />
+  </Rect>,
+  { width: 512, height: 512 }
+)
+```
 
-## What a canvas pays for being readable
+[`useOffscreenImage`](/api/functions/useOffscreenImage) is the hook form, re-run
+on a dependency change:
 
-Two costs are per-canvas and permanent, and both start at the *first*
-`snapshot()` or `save()` — a canvas you never read back pays neither.
+```tsx
+const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 }, [n])
+```
 
-On iOS, a `CAMetalLayer` hands out framebuffer-only drawables, which cannot be
-read from at all. The first request flips `framebufferOnly` to `NO` and skips one
-frame while the surface is recreated, so the readback provably runs against a
-drawable acquired after the flip. From then on that canvas's drawables give up
-lossless compression, for the life of the view; it is not restored, because
-restoring it would put that surface recreation on every snapshot instead of on
-the first.
+## PDF
 
-On Android, `snapshot()` copies the encoded bytes once on the way into JS.
-Nitro's Kotlin `ArrayBuffer` cannot tell C++ when JS drops a buffer, so wrapping
-the native one would leak; iOS wraps it with no copy. It is one memcpy of
-already-compressed bytes on a worker thread, and `save()` never crosses into JS
-on either platform, so it is unaffected.
+```tsx
+await renderToPdf(
+  `${RNFS.DocumentDirectoryPath}/report.pdf`,
+  [
+    { width: 612, height: 792, element: <Cover /> },
+    { width: 612, height: 792, element: <Chart data={data} /> },
+  ],
+  { title: 'Quarterly report', author: 'Acme' }
+)
+```
+
+[`PdfPage`](/api/interfaces/PdfPage) · [`PdfMetadata`](/api/interfaces/PdfMetadata) ·
+[`useOffscreenPdf`](/api/functions/useOffscreenPdf) → [`PdfExportState`](/api/interfaces/PdfExportState)
+
+## SVG
+
+```tsx
+const svg = await renderToSvg(<Chart data={data} />, { width: 400, height: 300 })
+```
+
+[`RenderToSvgOptions`](/api/interfaces/RenderToSvgOptions) · [`useOffscreenSvg`](/api/functions/useOffscreenSvg)

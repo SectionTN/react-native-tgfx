@@ -4,7 +4,8 @@ import type { HybridObject, UInt64 } from 'react-native-nitro-modules'
  * How a hardware buffer's YUV planes map to RGB. `rgba` means the buffer is not
  * YUV at all — a single-plane RGBA surface, imported without a conversion.
  *
- * Camera frames are `bt601-limited`.
+ * The camera hook infers the matrix and range from the producer's pixel-format
+ * string, falling back to `bt601-limited` when it carries no recognised tag.
  */
 export type PixelFormat =
   | 'rgba'
@@ -49,10 +50,11 @@ export interface TgfxImage extends HybridObject<{
   /**
    * Point this handle at a different hardware buffer, keeping its id.
    *
-   * This is the per-frame path: the scene keeps referencing the same handle, so
-   * a new frame costs no scene re-commit and no allocation, and a frame the
-   * renderer has not drawn yet is *superseded* by the next rather than queued
-   * behind it. Zero-copy, like {@link TgfxImageFactory.fromNativeBuffer}.
+   * This is the per-frame path: native code imports the new buffer and replaces
+   * the registry entry while the scene keeps referencing the same handle. It
+   * needs no scene re-commit, and a frame the renderer has not drawn yet is
+   * *superseded* by the next rather than queued behind it. The pixels remain
+   * zero-copy, like the exported `imageFromNativeBuffer` function.
    *
    * The handle takes a reference to the new buffer and drops the previous one
    * before returning, so a producer recycling a fixed pool gets its slot back

@@ -1,253 +1,93 @@
 ---
-title: Blend modes and filters
-description: How a drawing composites onto the canvas, and the colour and image filters it can carry.
+title: Effects
+description: Blend modes, filters, shadows, gradients, masks and backdrops.
+icon: Sparkles
 ---
+
+Paint effects and shaders are children of a drawing or
+[`Paint`](/api/variables/Paint). A `Paint` child on a
+[`Group`](/api/variables/Group) supplies inherited paint defaults. Masks and
+backdrops are drawing nodes; dash and corner effects are children of `Path`.
 
 ## Blend modes
 
-`blendMode` is a paint prop, so it sits on a shape, on a `<Paint>`, or on a
-`<Group>` that passes it down. It decides how the drawing (src) composites onto
-what is already on the canvas (dst).
+`blendMode` on any drawing or [`Paint`](/api/variables/Paint) ([`BlendMode`](/api/type-aliases/BlendMode)).
 
 ```tsx
-import { Canvas, Circle, Paint } from 'react-native-tgfx'
-
-function Venn() {
-  return (
-    <Canvas style={{ width: 200, height: 140 }}>
-      <Circle cx={80} cy={70} r={45} color="#f2c088" />
-      <Circle cx={120} cy={70} r={45} color="#6aa9ff" blendMode="multiply" />
-      <Circle cx={100} cy={40} r={45}>
-        <Paint color="#e06c9f" blendMode="screen" />
-      </Circle>
-    </Canvas>
-  )
-}
+<Circle cx={80} cy={70} r={45} color="#f2c088" />
+<Circle cx={120} cy={70} r={45} color="#6aa9ff" blendMode="multiply" />
 ```
 
-The two amber and blue discs overlap in a darker olive where `multiply` keeps
-only what both have; the pink disc lightens whatever it crosses.
-
-The full set, in tgfx's own order — the Porter-Duff operators first, then the
-separable and non-separable modes:
-
-`'clear'`, `'src'`, `'dst'`, `'srcOver'` (the default), `'dstOver'`, `'srcIn'`,
-`'dstIn'`, `'srcOut'`, `'dstOut'`, `'srcATop'`, `'dstATop'`, `'xor'`,
-`'plusLighter'`, `'modulate'`, `'screen'`, `'overlay'`, `'darken'`, `'lighten'`,
-`'colorDodge'`, `'colorBurn'`, `'hardLight'`, `'softLight'`, `'difference'`,
-`'exclusion'`, `'multiply'`, `'hue'`, `'saturation'`, `'color'`, `'luminosity'`,
-`'plusDarker'`.
-
-A blend mode is one enum on the paint. It costs nothing per frame and does not
-change the drawing's bounds — writing `blendMode="srcOver"` explicitly produces
-a byte-identical draw program to omitting it.
-
-**iOS Simulator caveat.** The modes that cannot be expressed as fixed-function
-blending — `multiply`, `difference`, `colorDodge`, `luminosity` and the rest of
-the non-separable set — need the GPU to read back what is already on the canvas.
-On the iOS Simulator that read is unavailable and those drawings paint *nothing
-at all*. They render correctly on Android and on macOS Metal. The Porter-Duff
-modes and `screen` are fixed-function and work everywhere. Check an advanced mode
-on a physical iPhone before shipping it. Tracked in
-[#141](https://github.com/riteshshukla04/react-native-tgfx/issues/141).
-
-## Filters
-
-Children of a shape or `<Paint>`, exactly like gradients. They draw nothing on
-their own. Two filters of the same class **compose** in declaration order: the
-first one written runs first and the next runs over its result. The two classes
-are independent, so a colour filter and an image filter both apply.
-
-Composing image filters costs what the filters cost: two `<Blur>` on one paint
-take two offscreens and roughly twice the frame time of one. Composed colour
-filters are free by comparison — they take no offscreen at all.
-
-| component | props |
-| --- | --- |
-| `ColorMatrix` | `matrix` — 20 numbers, row-major 4x5 |
-| `BlendColor` | `color`, `mode` |
-| `Blur` | `blur`, or `blurX`/`blurY`, plus `tileMode` |
-| `DropShadow` | `dx`, `dy`, `blur` or `blurX`/`blurY`, `color`, `shadowOnly`, `inner` |
-| `Luma` | none — replaces each colour with its luminance |
-
-Every filter parameter is read once at commit and **does not animate**. Filters
-are built once, when the scene is compiled, and only applied per frame — an
-animated parameter would mean constructing a filter per frame for every filtered
-node, which is exactly what this engine's compile-once command list exists to
-avoid. Animate `opacity`, geometry or a `<Shader>` uniform instead.
-
-### ColorMatrix
-
-`R' = a*R + b*G + c*B + d*A + e` and so on per channel, then clamped to 0–1 —
-the same 4x5 matrix Skia's `ColorMatrix` takes. Anything that is not exactly 20
-numbers is treated as the identity.
+## Colour filters
 
 ```tsx
-import { Canvas, ColorMatrix, Image, useImage } from 'react-native-tgfx'
-
-// Rec. 709 luma into every channel: a greyscale conversion.
-const GREYSCALE = [
-  0.213, 0.715, 0.072, 0, 0,
-  0.213, 0.715, 0.072, 0, 0,
-  0.213, 0.715, 0.072, 0, 0,
-  0, 0, 0, 1, 0,
-]
-
-function Greyed() {
-  const photo = useImage(require('./cat.png'))
-  if (photo == null) {
-    return null
-  }
-  return (
-    <Canvas style={{ width: 200, height: 200 }}>
-      <Image image={photo} x={0} y={0} width={200} height={200} fit="cover">
-        <ColorMatrix matrix={GREYSCALE} />
-      </Image>
-    </Canvas>
-  )
-}
+<Image image={photo} x={0} y={0} width={200} height={200} fit="cover">
+  <ColorMatrix matrix={GREYSCALE} />
+</Image>
 ```
 
-The photo draws with all colour removed. Saturation, hue rotation and channel
-swaps are the same shape — only the numbers change. A colour matrix is one more
-stage in the fragment shader: no offscreen, no bounds change, and the cheapest
-of the filters here.
-
-### BlendColor
-
-Blends a constant colour into the drawing's own colours. `mode` is the same
-`BlendMode` set as above, defaulting to `'srcOver'`; `'src'` replaces the
-drawing's colour outright, which is the usual way to tint a monochrome sprite.
+[`ColorMatrix`](/api/variables/ColorMatrix) (4×5, row-major) ·
+[`BlendColor`](/api/variables/BlendColor) ·
+[`Luma`](/api/variables/Luma)
 
 ```tsx
-import { BlendColor, Canvas, Path } from 'react-native-tgfx'
-
-function Tinted() {
-  return (
-    <Canvas style={{ width: 160, height: 160 }}>
-      <Path path="M20 80 L80 20 L140 80 L80 140 Z" color="#ffffff">
-        <BlendColor color="#e0533d" mode="src" />
-      </Path>
-    </Canvas>
-  )
-}
+<Path path="M20 80 L80 20 L140 80 L80 140 Z" color="#ffffff">
+  <BlendColor color="#e0533d" mode="src" />
+</Path>
 ```
 
-The white diamond comes out solid vermilion. Swap `mode` for `'multiply'` and it
-darkens the white instead of replacing it.
-
-### Blur
-
-A Gaussian blur, `blur` being the sigma. This is an **image** filter: the
-drawing goes through an offscreen layer and spreads *past its own geometry*, so
-it costs a render target per filtered drawing and is meaningfully more expensive
-than a colour matrix. `tileMode` is how the kernel samples outside the drawing —
-`'decal'` (the default) fades to transparent, `'clamp'` smears the edge pixel.
+## Blur and shadow
 
 ```tsx
-import { Blur, Canvas, Circle, Fill } from 'react-native-tgfx'
-
-function Glow() {
-  return (
-    <Canvas style={{ width: 200, height: 200 }}>
-      <Fill color="#101725" />
-      <Circle cx={100} cy={100} r={40} color="#6aa9ff">
-        <Blur blur={12} />
-      </Circle>
-      <Circle cx={100} cy={100} r={40} color="#dceaff" />
-    </Canvas>
-  )
-}
-```
-
-A soft blue halo bleeding well outside the 40px radius, with a crisp pale disc
-on top of it. Use `blurX`/`blurY` for a directional blur — `blurX={16} blurY={0}`
-is a horizontal smear.
-
-### DropShadow
-
-A shadow under the drawing, offset by `dx`/`dy` and blurred by `blur`. Same
-offscreen cost as `<Blur>`. `shadowOnly` drops the content that cast it and
-keeps just the shadow.
-
-```tsx
-import { Canvas, DropShadow, RoundedRect } from 'react-native-tgfx'
-
-function Card() {
-  return (
-    <Canvas style={{ width: 220, height: 160 }}>
-      <RoundedRect x={30} y={25} width={160} height={100} r={16} color="#f5f7fa">
-        <DropShadow dx={0} dy={6} blur={8} color="rgba(0,0,0,0.45)" />
-      </RoundedRect>
-    </Canvas>
-  )
-}
-```
-
-An off-white card sitting above a soft shadow. With `blur={0}` the shadow is a
-hard offset copy.
-
-`inner` casts the shadow *inside* the shape instead of under it — the inset look
-a pressed button or a cut-out well wants. It composes with `shadowOnly` the same
-way, so `inner shadowOnly` gives the shadow alone with no fill behind it.
-
-### Luma
-
-`<Luma>` replaces every colour with its luminance, carried into the alpha
-channel — bright pixels stay, dark ones fade out. It is what luminance masking is
-built on.
-
-```tsx
-<Circle cx={60} cy={60} r={40} color="#f2a33c">
-  <Luma />
+<Circle cx={100} cy={100} r={40} color="#6aa9ff">
+  <Blur blur={12} />
 </Circle>
 ```
 
-It is a colour filter, so unlike `<Blur>` and `<DropShadow>` it costs no
-offscreen.
-
-### Where a filter applies
-
-A filter on a `<Group>` (or on a `<Paint>` inside one) is inherited by every
-descendant and applied to **each of them separately** — the same way an
-inherited gradient works. It is not a single layer over the group, so two
-overlapping blurred children blur individually rather than as one shape. Put the
-filter on one drawing when that matters.
-
-### With a blend mode
-
-An image filter already draws through an offscreen layer, and a `blendMode` on
-the same paint composites that layer's **filtered** result onto the canvas — so
-a blurred glow that multiplies does what it says. The blend runs after the
-filter, never inside the layer, and it costs the same single offscreen the
-filter was already paying for.
-
 ```tsx
-import { Blur, Canvas, Circle, Fill } from 'react-native-tgfx'
-
-function GlowMultiplied() {
-  return (
-    <Canvas style={{ width: 200, height: 200 }}>
-      <Fill color="#f2c088" />
-      <Circle cx={100} cy={100} r={40} color="#6aa9ff" blendMode="multiply">
-        <Blur blur={12} />
-      </Circle>
-    </Canvas>
-  )
-}
+<RoundedRect x={30} y={25} width={160} height={100} r={16} color="#f5f7fa">
+  <DropShadow dx={0} dy={6} blur={8} color="rgba(0,0,0,0.45)" />
+</RoundedRect>
 ```
 
-A soft blue halo darkening the amber underneath it rather than covering it.
+[`BlurProps`](/api/interfaces/BlurProps) · [`DropShadowProps`](/api/interfaces/DropShadowProps)
+
+## Gradients and noise
+
+[`LinearGradient`](/api/variables/LinearGradient) ·
+[`RadialGradient`](/api/variables/RadialGradient) ·
+[`SweepGradient`](/api/variables/SweepGradient) ·
+[`DiamondGradient`](/api/variables/DiamondGradient) ·
+[`ColorShader`](/api/variables/ColorShader) ·
+[`FractalNoise`](/api/variables/FractalNoise) ·
+[`Turbulence`](/api/variables/Turbulence)
+
+```tsx
+<Rect x={0} y={0} width={300} height={140}>
+  <LinearGradient
+    start={{ x: 0, y: 0 }}
+    end={{ x: 300, y: 0 }}
+    colors={['#d98a4a', '#6aa9ff']}
+  />
+</Rect>
+```
+
+[`Blend`](/api/variables/Blend) folds its shader children from left to right:
+
+```tsx
+<Rect x={0} y={0} width={256} height={256}>
+  <Blend mode="multiply">
+    <RadialGradient center={{ x: 128, y: 128 }} r={128} colors={['blue', 'yellow']} />
+    <Turbulence freqX={0.05} freqY={0.05} octaves={4} />
+  </Blend>
+</Rect>
+```
 
 ## Mask
 
-`<Mask>` hides its children through another drawing — the CSS-mask equivalent.
-`mode="alpha"` (the default) keeps what the mask is opaque under; `"luminance"`
-keeps what it is bright under.
+[`MaskProps`](/api/interfaces/MaskProps) — `mode` is `'alpha'` or `'luminance'`.
 
 ```tsx
-import { Circle, Image, Mask, RadialGradient, Rect } from 'react-native-tgfx'
-
 <Mask
   mode="luminance"
   mask={
@@ -260,14 +100,15 @@ import { Circle, Image, Mask, RadialGradient, Rect } from 'react-native-tgfx'
 </Mask>
 ```
 
-The mask arrives as a prop rather than a child, as in react-native-skia, so the
-two subtrees stay distinguishable.
+## Backdrop
 
-The mask is a matte, not part of the picture: it inherits neither paint nor
-opacity from above, so a `<Group opacity={0.5}>` fades the content and leaves the
-mask's own coverage alone.
+[`BackdropBlur`](/api/variables/BackdropBlur) and [`Glass`](/api/variables/Glass)
+read the pixels already drawn beneath them.
 
-A mask costs **two clip-sized render targets** — the blend has to reach every
-pixel the content covers, and the mask layer's unbounded fill propagates into the
-content layer. A small mask on a large canvas is as expensive as a large one.
-Reach for it when a shape or a gradient cannot do the job.
+```tsx
+<Image image={photo} x={0} y={0} width={300} height={200} />
+<BackdropBlur x={20} y={40} width={260} height={120} r={24} blur={16} />
+<Glass x={20} y={40} width={260} height={120} r={24} refraction={40} frost={30} />
+```
+
+[`BackdropProps`](/api/interfaces/BackdropProps) · [`GlassProps`](/api/interfaces/GlassProps)

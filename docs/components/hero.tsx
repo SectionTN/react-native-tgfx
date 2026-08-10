@@ -4,8 +4,6 @@ import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import { Spider } from './spider'
 
-const HEADLINE = 'Draw with React components. Animate on the thread that paints.'
-
 function useSpotlight() {
   const layer = useRef<HTMLDivElement>(null)
 
@@ -72,31 +70,18 @@ export function Hero() {
       </div>
 
       <div className="tg-hero-content">
-        <p className="tg-status">alpha · 0.0.1</p>
-        <h1 className="tg-hero-headline">
-          {HEADLINE.split(' ').map((word, i) => (
-            <span key={`${word}-${i}`} className="tg-word" style={{ animationDelay: `${i * 0.045}s` }}>
-              {word}
-            </span>
-          ))}
-        </h1>
-        <p className="tg-hero-sub">
-          A GPU 2D canvas for React Native, backed by Tencent&rsquo;s tgfx. Shapes,
-          paths, text, images and runtime shaders &mdash; drawn by the GPU,
-          animated on the thread that paints.
-        </p>
         <div className="tg-hero-actions">
           <Link href="/docs" className="tg-cta">
             <span className="tg-cta-bg" />
-            <span className="tg-cta-text">Read the docs</span>
+            <span className="tg-cta-text">Let&rsquo;s draw</span>
             <span className="tg-cta-circle" aria-hidden="true">
               <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
                 <path d="M5 13L13 5M13 5H6M13 5V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </span>
           </Link>
-          <Link href="/docs/installation" className="tg-ghost">
-            Install
+          <Link href="/api" className="tg-ghost">
+            API Reference
           </Link>
         </div>
       </div>

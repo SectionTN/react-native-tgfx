@@ -1,5 +1,5 @@
 import type { TgfxImage } from '../specs/TgfxImage.nitro'
-import type { MaybeSharedValue } from './values'
+import type { SharedValueLike } from './values'
 import type { SceneWriter } from './writer'
 
 /**
@@ -26,10 +26,10 @@ export type Sampling = 'nearest' | 'linear' | 'mipmap'
 export type TileMode = 'clamp' | 'repeat' | 'mirror' | 'decal'
 
 export interface SrcRect {
-  x: number | MaybeSharedValue<number>
-  y: number | MaybeSharedValue<number>
-  width: number | MaybeSharedValue<number>
-  height: number | MaybeSharedValue<number>
+  x: number | SharedValueLike<number>
+  y: number | SharedValueLike<number>
+  width: number | SharedValueLike<number>
+  height: number | SharedValueLike<number>
 }
 
 // Mirrored by the Fit enum and samplingOf()/tileModeOf() in cpp/TgfxScene.cpp.

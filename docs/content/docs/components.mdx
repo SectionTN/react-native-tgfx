@@ -1,381 +1,61 @@
 ---
-title: Components
-description: The canvas, the shapes, paint, groups and gradients — the core drawing primitives.
+title: Drawing
+description: Shapes, paint, groups and hit testing.
+icon: Shapes
 ---
 
-The drawing primitives and the paint that fills them. The larger topics live on
-their own pages: [text](/docs/text), [images](/docs/images),
-[blend modes and filters](/docs/effects), and
-[snapshots and export](/docs/snapshots).
-
-## Canvas
-
-The root. Everything else must be a descendant.
+Every drawing is a child of [`Canvas`](/api/functions/Canvas).
 
 ```tsx
 import { Canvas, Rect } from 'react-native-tgfx'
 
-function Panel() {
-  return (
-    <Canvas style={{ width: 300, height: 140 }}>
-      <Rect x={0} y={0} width={300} height={140} color="#101725" />
-    </Canvas>
-  )
-}
+<Canvas style={{ width: 300, height: 140 }}>
+  <Rect x={0} y={0} width={300} height={140} color="#101725" />
+</Canvas>
 ```
-
-| prop | type | default |
-| --- | --- | --- |
-| `style` | view style | — |
-| `composite` | `'layer' \| 'texture'` | `'layer'` |
-| `opaque` | `boolean` | `false` |
-| `debug` | `boolean` | `false` |
-
-`composite: 'layer'` punches through the window: React Native content *behind*
-the canvas does not show through its transparent pixels, and view transforms do
-not apply to it. Use `'texture'` when the canvas has to compose with views
-behind it or be transformed.
-
-Children draw in document order — later siblings paint over earlier ones.
-
-A `ref` on `<Canvas>` gives a `CanvasHandle` for reading pixels back — see
-[snapshots and export](/docs/snapshots).
 
 ## Shapes
 
-| component | props |
+| Component | Props |
 | --- | --- |
-| `Rect` | `x`, `y`, `width`, `height` |
-| `RoundedRect` | `x`, `y`, `width`, `height`, `r`, or `rx`/`ry` to override `r` per axis |
-| `Oval` | `x`, `y`, `width`, `height` |
-| `Circle` | `cx`, `cy`, `r` |
-| `Line` | `x1`, `y1`, `x2`, `y2` |
-| `Path` | `path` — SVG path data, `string`; plus `start`, `end`, `fillType` and the path effects below |
-| `Image` | `image`, `x`, `y`, `width`, `height`, `fit`, `sampling`, `rect` — see [images](/docs/images#image) |
-| `Atlas` | `image`, `sprites`, `sampling` — many sprites from one sheet in one node, see below |
-| `Vertices` | `vertices`, `colors`, `textures`, `indices`, `mode` — a raw triangle mesh, see below |
-| `Text` | `text`, `x`, `y`, plus the font and paragraph props — see [text](/docs/text) |
-| `TextPath` | `path`, `text`, `startOffset`, plus the font props — see [text](/docs/text) |
-| `Fill` | none of its own — covers the canvas |
-
-Every geometric prop above is `Animated<number>`, so it may be a plain number or
-a Reanimated `SharedValue`. The exceptions are `path`, `text` and `fontFamily`
-(plain `string` — there is no value slot for a string, so a `SharedValue` there
-would never animate), `image` (a native handle from
-[`useImage`](/docs/images#useimage)), and the `fit`/`sampling`/`rect` enums.
-
-`Text.fontSize` defaults to `14`. All of these take the paint props below.
-
-### Line ignores `style`
-
-A line has no interior, so it is always stroked. Passing `style="fill"` to
-`<Line>` still draws a stroke.
-
-### Fill
-
-`Fill` has no geometry of its own but takes every paint prop and accepts
-children, which makes it the natural host for a shader:
-
-```tsx
-import { Canvas, Fill, Shader } from 'react-native-tgfx'
-
-const source = `
-uniform float2 uSize;
-half4 main(float2 pos) {
-  float2 uv = pos / uSize;
-  return half4(uv.x, uv.y, 0.6, 1.0);
-}
-`
-
-function Backdrop({ width, height }: { width: number; height: number }) {
-  return (
-    <Canvas style={{ width, height }}>
-      <Fill>
-        <Shader source={source} uniforms={{ uSize: [width, height] }} />
-      </Fill>
-    </Canvas>
-  )
-}
-```
-
-Coverage comes from the device-space clip, so a transform on an enclosing
-`Group` moves the paint but not the area filled — as in Skia.
-
-### Path effects
-
-`<Path>` can trim itself, dash itself, and round its own corners. Trim is the
-line-drawing animation: `start` and `end` are 0-1 along the path and both are
-animatable, so a `SharedValue` on `end` draws the path on.
-
-```tsx
-import { DashPathEffect, Path } from 'react-native-tgfx'
-
-<Path path={route} style="stroke" strokeWidth={4} end={progress}>
-  <DashPathEffect intervals={[10, 5]} phase={march} />
-</Path>
-```
-
-| prop | what it does |
-| --- | --- |
-| `start`, `end` | the segment to keep, 0-1. `end` below `start` reverses it |
-| `fillType` | `'winding'` (default) or `'evenOdd'` |
-| `<DashPathEffect>` | `intervals` — alternating on/off lengths, even count; `phase` — offset, animatable |
-| `<CornerPathEffect>` | `r` — corner radius, applied before any stroke |
-
-Trim is applied first — react-native-skia bakes it into the path the same way —
-then corner, then dash. So a dash pattern re-flows as a trim shortens the path
-rather than staying pinned in place.
-
-`intervals` needs an even count of at least two; anything else is skipped and the
-path draws solid, with a warning in dev.
-
-Only what actually moves is re-run. The longest static run of effects is baked
-into the path once at commit, so a static trim in front of a marching dash costs
-nothing per frame. The exception is an animated `start`/`end`: trim runs first,
-so anything after it has to run again too — pairing a moving trim with a
-`<CornerPathEffect>` on a long path is by far the most expensive combination
-here, and a rounded path you trim is cheaper drawn as a pre-rounded `path`.
-
-### Atlas
-
-`<Atlas>` draws N sprites cut from one image from a **single node**. N `<Image>`
-nodes cost N host nodes, N paint resolutions and ~15 wire words each; an atlas is
-one node, one paint, and seven words per sprite, which is what makes tile maps
-and particle fields affordable. (The GPU work is the same either way — tgfx
-already merges consecutive draws of one image into one batched op.)
-
-```tsx
-import { Atlas, Canvas, useImage } from 'react-native-tgfx'
-
-const sheet = useImage(require('./sprites.png'))
-
-<Canvas style={{ flex: 1 }}>
-  {sheet != null && (
-    <Atlas
-      image={sheet}
-      sprites={particles.map((p) => ({
-        rect: { x: 0, y: 0, width: 16, height: 16 },
-        x: p.x,
-        y: p.y,
-        scale: p.size,
-      }))}
-    />
-  )}
-</Canvas>
-```
-
-Each sprite takes a `rect` — its box in the sheet, in image pixels — and an
-`x`/`y` naming where the sprite's **centre** lands on the canvas, plus an
-optional uniform `scale`. The `rect` must lie inside the sheet: tgfx clips one
-that runs past the edge, and the clipped sprite is drawn smaller and off its
-stated centre.
-
-Sprites are placed axis-aligned. tgfx's `drawAtlas` maps each sprite's bounding
-box, so a per-sprite rotation would stretch the sprite rather than turn it, and
-the prop is not offered rather than being offered and ignored. Rotate a `<Group>`
-around the whole batch, or fall back to one `<Image>` per sprite when each needs
-its own angle. Per-sprite tint colours are missing for the same reason: tgfx
-applies them only to an alpha-only atlas.
-
-The `sprites` array is read when the scene compiles, so moving a particle field
-means a React render. A worklet-driven bulk update is tracked separately.
-
-### Vertices
-
-`<Vertices>` draws an arbitrary triangle mesh — the one component that works
-below the shape level. Mesh gradients, image warping, and quads you build
-yourself all live here.
-
-```tsx
-import { Canvas, Vertices } from 'react-native-tgfx'
-
-<Canvas style={{ flex: 1 }}>
-  <Vertices
-    vertices={[
-      { x: 0, y: 0 },
-      { x: 200, y: 0 },
-      { x: 0, y: 200 },
-      { x: 200, y: 200 },
-    ]}
-    colors={['#ff0000', '#00ff00', '#0000ff', '#ffff00']}
-    indices={[0, 1, 2, 1, 2, 3]}
-  />
-</Canvas>
-```
-
-`vertices` are canvas points. `colors`, if given, are one per vertex and are
-interpolated across each triangle — that is the whole mesh-gradient trick.
-`indices` reuse vertices so a shared edge is stored once; without them the
-vertices are taken in order. `mode` is `'triangles'` (default, three vertices per
-triangle) or `'triangleStrip'` (each new vertex closes a triangle with the
-previous two). Skia's `'triangleFan'` has no tgfx topology and is not offered.
-
-`textures` are one coordinate per vertex, in the **pixels** of the image behind
-an `<ImageShader>` on the same node — that is how you warp an image across a
-mesh. Without a shader they do nothing.
-
-An attribute array shorter than `vertices` is dropped rather than padded, and a
-longer one is truncated: the reader takes exactly one entry per vertex, so a
-partial block would put it out of step with the rest of the program.
-
-Every index must point at a vertex that exists. One that does not skips the whole
-mesh — nothing below this layer range-checks them, so an index past the end would
-sample another draw's buffer. An indexed mesh is also capped at 65536 vertices;
-past that it draws nothing. Both warn in dev.
-
-Like `<Atlas>`, the arrays are read when the scene compiles, so a moving mesh
-means a React render — a Reanimated shared value inside `vertices` is frozen at
-its last commit.
-
-How the colour is resolved follows tgfx: a shader with per-vertex colours
-multiplies the two; a shader alone gives the texture colour; per-vertex colours
-alone give the vertex colour; neither gives the paint colour. A solid
-`<ColorShader>` is folded into the paint colour before any of that, so per-vertex
-colours replace it rather than multiplying with it.
-
-### Backdrop effects
-
-`<BackdropBlur>` frosts whatever is already drawn beneath it; `<Glass>` is
-tgfx's liquid-glass material — edge refraction, chromatic aberration and
-background frost, not a blur approximation.
-
-```tsx
-<Image image={photo} x={0} y={0} width={300} height={200} />
-<BackdropBlur x={20} y={40} width={260} height={120} r={24} blur={16} />
-<Glass x={20} y={40} width={260} height={120} r={24} refraction={40} frost={30} />
-```
-
-**Order is what makes it a backdrop.** The node samples the pixels below it, so
-it must come *after* the content it frosts. Its rect is the panel; the region it
-reads is that rect grown by the blur, so colour is pulled in from outside it.
-
-The panel is sampled rather than painted, so of the paint props only `opacity`,
-`visible` and `ref` apply, plus the alpha of `color`. It has no hit bounds, so
-it is never the answer to a hit test, and inside a `<Group layer>` or a `<Mask>`
-it samples the surface as it was before that layer opened.
-
-| prop | meaning |
-| --- | --- |
-| `x`, `y`, `width`, `height`, `r` | the panel, and what it samples |
-| `blur` | Gaussian blur of the backdrop, default 12 |
-| `refraction` | edge refraction; 40 under `<Glass>`, 0 under `<BackdropBlur>`, which is what makes that one a plain blur |
-| `depth` | how far refraction reaches in from the edge, default 20 |
-| `frost` | background frost, default 20 |
-| `dispersion` | chromatic aberration at the edge, default 0 |
-
-It reads the surface it is drawing into, so it works in `renderToImage` (which
-has a real offscreen surface) but draws nothing in `renderToPdf`, whose canvas
-has none. A `<Group picture>` containing one is never recorded either, since a
-recording would freeze the backdrop.
+| [`Rect`](/api/variables/Rect) | [`RectProps`](/api/interfaces/RectProps) |
+| [`RoundedRect`](/api/variables/RoundedRect) | [`RoundedRectProps`](/api/interfaces/RoundedRectProps) |
+| [`Circle`](/api/variables/Circle) | [`CircleProps`](/api/interfaces/CircleProps) |
+| [`Oval`](/api/variables/Oval) | [`OvalProps`](/api/interfaces/OvalProps) |
+| [`Line`](/api/variables/Line) | [`LineProps`](/api/interfaces/LineProps) |
+| [`Path`](/api/variables/Path) | [`PathProps`](/api/interfaces/PathProps) |
+| [`Fill`](/api/variables/Fill) | fills the clip |
+| [`Atlas`](/api/variables/Atlas) | [`AtlasProps`](/api/interfaces/AtlasProps) |
+| [`Vertices`](/api/variables/Vertices) | [`VerticesProps`](/api/interfaces/VerticesProps) |
 
 ## Paint
 
-Set directly on a shape, or inherited from a `<Paint>` child:
+Props inline, or a [`Paint`](/api/variables/Paint) child ([`PaintProps`](/api/interfaces/PaintProps)):
 
 ```tsx
-import { Circle, Paint } from 'react-native-tgfx'
-
 <Circle cx={70} cy={70} r={40}>
   <Paint color="#f2c088" style="stroke" strokeWidth={3} />
 </Circle>
 ```
 
-| prop | type | default |
-| --- | --- | --- |
-| `color` | `Animated<Color>` — hex, `rgb()`/`rgba()`, `hsl()`/`hsla()`, `color(display-p3 …)`, or a named colour | black |
-| `style` | `'fill' \| 'stroke'` | `'fill'` |
-| `strokeWidth` | `Animated<number>` | `1` |
-| `strokeCap` | `'butt' \| 'round' \| 'square'` | `'butt'` |
-| `strokeJoin` | `'miter' \| 'round' \| 'bevel'` | `'miter'` |
-| `strokeMiter` | `number` — past this length-over-width ratio a `'miter'` join bevels | `4` |
-| `opacity` | `Animated<number>` | `1` |
-| `antiAlias` | `boolean` | `true` |
-| `blendMode` | `BlendMode` | `'srcOver'` |
-
-A `<Paint>` inside a `<Group>` sets the inherited default for descendants; inside
-a shape it overrides that shape only, including its `opacity`.
-
-To stroke *and* fill one shape, draw it twice — one fill, one stroke. That is
-what the engine does anyway.
-
-### Background colour
-
-A `backgroundColor` in the canvas's `style` is drawn as the first thing in the
-scene, because the platform view cannot always show it: on Android the canvas is
-a SurfaceView, which punches a hole through the window it sits in. The colour is
-cleared off the view at the same time, so it is painted once on every platform.
-
-It is drawn exactly as `<Fill color={...}>` would be, so it must be a colour
-string `<Fill>` accepts — `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`,
-`hsl()` or a CSS name. A `PlatformColor()`, a `processColor()` number, or
-`'transparent'` is left to the platform view untouched, which on Android means
-it will not appear behind the canvas; draw those with `<Fill>` instead.
-
-### Wide-gamut colours
-
-`<Canvas colorSpace="display-p3">` creates the drawing surface in Display P3, so
-wide-gamut images and gradients keep their colour on a P3 screen instead of being
-clamped to sRGB. `snapshot()` tags its output with the surface's space rather
-than assuming sRGB.
-
-It is **read once, when the canvas mounts** — the surface takes its space from the
-platform window, and that window is created with the view. Changing the prop
-later warns in dev and does nothing; remount with a `key` if you need to switch.
-
-A `color` prop is a separate matter: the draw program carries one packed sRGB
-word per colour, so a P3 surface does not widen what a `color` can express.
-
-CSS Color 4's `color()` syntax is accepted, with components in 0..1:
+[`Color`](/api/type-aliases/Color) accepts named colours, hex, `rgb()`/`rgba()`,
+`hsl()`/`hsla()`, packed `0xAARRGGBB`, `[r, g, b, a]` in 0..1, and the
+`color(srgb ...)` and `color(display-p3 ...)` forms:
 
 ```tsx
 <Rect color="color(display-p3 1 0.2 0.1)" />
 <Rect color="color(srgb 1 0 0 / 0.5)" />
 ```
 
-A `display-p3` colour is **converted to sRGB when the scene compiles**, because
-the draw program carries one packed sRGB word per colour. A value outside the
-sRGB gamut clips to the nearest one that fits — so this buys the syntax and
-correct relative colour, not extra gamut on screen. Painting a P3 surface with
-P3 values needs the colour space to reach the wire format and the drawing
-surface, which is separate work.
-
 ## Group
 
-Applies transforms and inherited paint to its children.
+[`GroupProps`](/api/interfaces/GroupProps). Paint and [`Transform`](/api/type-aliases/Transform) inherit down.
 
 ```tsx
-import { Group, Rect } from 'react-native-tgfx'
-
 <Group transform={[{ translate: [40, 0] }, { rotate: '12deg' }, { scale: 1.5 }]}>
   <Rect x={0} y={0} width={40} height={40} />
 </Group>
 ```
-
-| prop | type |
-| --- | --- |
-| `transform` | `Transform[]` |
-| `origin` | `Vector` — `{ x, y }`, the point transforms are applied about |
-| `clip` | `{ x, y, width, height, r?, rx?, ry? }` or SVG path data |
-| `invertClip` | `boolean` — keep what falls outside `clip` instead of inside |
-| `layer` | `boolean` — composite the subtree once, offscreen |
-
-Operations apply in array order. The full set is `translate`, `translateX`,
-`translateY`, `scale`, `scaleX`, `scaleY`, `rotate`, `rotateZ`, `skewX`, `skewY`.
-
-Rotations accept a string with a `deg` or `rad` suffix. A bare number is
-radians — and an **animated** rotation is always radians, because a `SharedValue`
-carries no unit. Convert in your worklet if you are thinking in degrees.
-
-When no operand is animated the matrix is folded at compile time and costs
-nothing per frame. One animated operand moves the whole group onto the per-frame
-path — worth knowing when a static group sits inside an animated one.
-
-### Clipping
-
-`clip` confines the subtree. Give it a rect, add `r` (or `rx`/`ry`) for a rounded
-one, or hand it SVG path data for anything else. `invertClip` keeps the
-complement instead — a spotlight cut out of a dim overlay is `clip` plus
-`invertClip`.
 
 ```tsx
 <Group clip={{ x: 0, y: 0, width: 100, height: 100, r: 12 }}>
@@ -383,21 +63,12 @@ complement instead — a spotlight cut out of a dim overlay is `clip` plus
 </Group>
 ```
 
-Like `<Path path>`, `clip` is read once per commit — a `SharedValue` there would
-never animate.
+`clip` takes a [`ClipRect`](/api/interfaces/ClipRect) or SVG path data;
+`invertClip` keeps what falls *outside* it instead of inside. `origin` shifts
+the pivot `transform` rotates and scales around, away from `(0, 0)`.
 
-A rect or rounded-rect clip is free: the GPU scissors it, with no offscreen. A
-path clip rasterises a mask per group per frame, which is far more expensive.
-`invertClip` moves a rect into that second class too, because an inverse fill
-only exists on a path — so invert a rect clip when you want the effect, not out
-of habit.
-
-### Layers
-
-By default a group's `opacity` multiplies into each child, so two overlapping
-children blend twice and the overlap reads darker than either one. `layer`
-composites the whole subtree once into an offscreen and applies the opacity to
-the result, which is what you usually mean:
+`layer` composites children into one offscreen layer first, so a group opacity
+applies to the union rather than to each child:
 
 ```tsx
 <Group layer opacity={0.5}>
@@ -406,124 +77,44 @@ the result, which is what you usually mean:
 </Group>
 ```
 
-That offscreen costs a render target, so reach for it when the double-blend is
-visible, not by default.
-
-### Recording a static subtree
-
-`<Group picture>` records its subtree once and replays the recording every frame
-— for the parts of a scene that redraw constantly but never change, like a map
-background or a chart's grid and axes.
+`picture` records children once and replays them — for static subtrees.
 
 ```tsx
 <Group picture>
   <Path path={gridPath} color="#e5e5ea" style="stroke" />
-  {ticks.map((t) => (
-    <Text key={t.at} x={t.x} y={h} text={t.label} fontSize={11} />
-  ))}
 </Group>
 ```
 
-The flag is **ignored, with a warning, if anything under it changes between
-frames** — an animated value, a `<CameraFrame>`, an `<Image>` on a video handle,
-or one whose decode has not arrived yet. A recording would freeze those. The
-check runs in the reader, which is the only place that can see all of them: a
-shared value used twice in a scene is written once, and an image handle is a
-plain integer with no hint of what backs it.
-
-One such child opts the entire group out, so split the moving parts into a
-sibling group to keep the static ones recorded.
-
-What it replays is the recorded draw calls, not rasterized pixels — tgfx still
-builds and tessellates every op each frame. Measured on 125-500 nodes of real
-geometry that is **roughly 10-15% of frame CPU**, rising towards 50% on many
-simple shapes. It is a way to trim a static background, not a step change, and
-it does not reduce allocations.
-
-The recording is rebuilt whenever the scene recommits, so it costs one frame
-after any React render that changes the tree. It composes with `clip` and
-`layer` on the same group.
-
-## Shader composition
-
-`<Blend>` folds its shader children together with a blend mode, left to right:
-the first child is the destination and each next one blends over it.
-`<ColorShader>` is the leaf that makes a solid colour usable as an input.
+## Atlas and meshes
 
 ```tsx
-import { Blend, ColorShader, RadialGradient, Rect, Turbulence } from 'react-native-tgfx'
-
-<Rect x={0} y={0} width={256} height={256}>
-  <Blend mode="multiply">
-    <RadialGradient center={{ x: 128, y: 128 }} r={128} colors={['blue', 'yellow']} />
-    <Turbulence freqX={0.05} freqY={0.05} octaves={4} />
-  </Blend>
-</Rect>
+<Atlas
+  image={sheet}
+  sprites={particles.map((p) => ({
+    rect: { x: 0, y: 0, width: 16, height: 16 },
+    x: p.x,
+    y: p.y,
+    scale: p.size,
+  }))}
+/>
 ```
-
-Nesting is allowed: a `<Blend>` can be a child of another `<Blend>`. A child that
-resolves per frame — an animated `<Shader>` uniform, or a `<ImageShader>` on a
-video or camera handle — keeps doing so inside the fold; only a tree of entirely
-static children is folded once at commit.
-
-## Gradients and noise
-
-Children of a shape or `<Paint>`. They draw nothing on their own.
-
-| component | props |
-| --- | --- |
-| `LinearGradient` | `start`, `end`, `colors`, `positions` |
-| `RadialGradient` | `center` (or `cx`/`cy`), `r`, `colors`, `positions` |
-| `SweepGradient` | `c` (or `center`, or `cx`/`cy`), `start`, `end`, `colors`, `positions` |
-| `DiamondGradient` | same props as `RadialGradient` |
-| `FractalNoise` | `freqX`, `freqY`, `octaves`, `seed` |
-| `Turbulence` | same props as `FractalNoise` |
-| `Shader` | `source`, `uniforms` — see [shaders](/docs/shaders) |
-| `ImageShader` | `image`, `tx`, `ty`, `sampling`, `rect`, `fit` — see [images](/docs/images#imageshader) |
-| `Blend` | `mode` — folds its shader children, see [above](#shader-composition) |
-| `ColorShader` | `color` |
-
-`colors` is `Color[]` and `positions` is `number[]`. `SweepGradient`'s `start`
-and `end` are **degrees**, as in Skia, defaulting to a full 0–360 turn. Noise
-defaults are `freqX` and `freqY` `0.05`, `octaves` `1`, `seed` `0`.
-
-Gradient geometry (`start`, `end`, `center`, `r`), `positions`, `colors` and all
-noise parameters are read once at commit and do not animate.
 
 ```tsx
-import { LinearGradient, Rect } from 'react-native-tgfx'
-
-<Rect x={0} y={0} width={300} height={140}>
-  <LinearGradient
-    start={{ x: 0, y: 0 }}
-    end={{ x: 300, y: 0 }}
-    colors={['#d98a4a', '#6aa9ff']}
-  />
-</Rect>
+<Vertices
+  vertices={[
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 0, y: 200 },
+    { x: 200, y: 200 },
+  ]}
+  colors={['#ff0000', '#00ff00', '#0000ff', '#ffff00']}
+  indices={[0, 1, 2, 1, 2, 3]}
+/>
 ```
-
-## Hooks
-
-### useClock
-
-Returns a `SharedValue<number>` holding **seconds** since the first frame,
-written on the UI thread. See [animation](/docs/animation).
-
-The image and font hooks live with their subjects: [`useImage`, `useImageState`,
-`imageFromNativeBuffer` and `setImageCacheLimit`](/docs/images#hooks), and
-[`useFonts` and `measureText`](/docs/text#usefonts).
-
-## Escape hatch
-
-`TgfxNativeView` is exported for callers who want to drive the native view
-directly — pushing a `scene` buffer and a values buffer themselves rather than
-going through `<Canvas>`. Its ref type is `TgfxViewRef`. Most code should not
-need it.
 
 ## Hit testing
 
-`canvasRef.current.hitTest(x, y)` returns the nodes under a canvas-space point,
-topmost first.
+[`CanvasHandle.hitTest`](/api/interfaces/CanvasHandle) returns [`HitTestResult`](/api/interfaces/HitTestResult) topmost first.
 
 ```tsx
 const canvas = useRef<CanvasHandle>(null)
@@ -531,9 +122,7 @@ const bar = useNode()
 
 <GestureDetector gesture={Gesture.Tap().onEnd((e) => {
   const hits = canvas.current?.hitTest(e.x, e.y) ?? []
-  if (hits.some((hit) => hit.node === bar)) {
-    // the bar was tapped
-  }
+  if (hits.some((hit) => hit.node === bar)) select(bar)
 })}>
   <Canvas ref={canvas} style={{ flex: 1 }}>
     <Rect ref={bar} x={10} y={10} width={40} height={80} color="#0a84ff" />
@@ -541,52 +130,13 @@ const bar = useNode()
 </GestureDetector>
 ```
 
-It is answered natively from the geometry the renderer is drawing **this frame**,
-so it follows animated values rather than the last committed props, and it
-inverse-transforms through every `<Group>` exactly as the renderer transforms
-forward.
-
-Each result is `{ node, path }`. Only a node carrying a `useNode()` handle can be
-named, so `node` is `null` for one that was never given a handle — `path` is the
-child-index route from the root, which stays distinct between anonymous hits.
-
-| option | meaning |
-| --- | --- |
-| `precise` | test the filled region rather than the bounding box; defaults to false |
-
-`precise` matters for paths and circles, where a bounding box is much larger than
-the shape. It is the more expensive test, and a bounding box is usually what a
-tap target wants.
-
-Nodes with no geometry of their own — `<Group>`, `<Fill>`, `<Text>` — are never
-reported; their children are. A `<Mask>`'s content is hit-tested, its mask source
-is not, since the source is a matte rather than something on screen. A `<Group
-clip>` bounds its subtree, so nothing clipped away is reported. `<CameraFrame>`
-and its children are skipped: placing them needs the surface, which a hit test
-does not have, and no answer beats a confidently wrong one.
-
-`precise` is exact for `<Path>`, `<Circle>` and `<Oval>`; every other kind uses
-its box either way.
-
-It walks the whole scene, so it suits a tap rather than a per-move pan handler:
-roughly 200 µs for 5000 nodes on a desktop, and several times that on a phone.
-A `clip` prunes the subtree it bounds, which is the cheapest way to keep a deep
-scene fast.
-
-One caveat worth knowing: a tap landing between a structural commit and the next
-frame is answered against the tree that is still on screen, while the handles
-were already remapped — so a hit can be named against the previous layout for a
-single frame.
-
-### useCanvasPress
-
-The declarative half. Give it the handles you care about and what to run for
-each, and it dispatches a tap instead of handing you coordinates.
+[`useCanvasPress`](/api/functions/useCanvasPress) wires the same thing to the responder system:
 
 ```tsx
-const canvas = useRef<CanvasHandle>(null)
-const bar = useNode()
-const onTouch = useCanvasPress(canvas, [[bar, () => select(bar)]])
+const onTouch = useCanvasPress(canvas, [[bar, () => select(bar)]], {
+  precise: true,
+  onPress: ({ x, y, nodes }) => track(x, y, nodes),
+})
 
 <View onStartShouldSetResponder={() => true} onResponderRelease={onTouch}>
   <Canvas ref={canvas}>
@@ -595,38 +145,7 @@ const onTouch = useCanvasPress(canvas, [[bar, () => select(bar)]])
 </View>
 ```
 
-Only the **topmost** hit with a handler fires — a tap belongs to one target, not
-to everything beneath it — and a hit with no handler falls through to the one
-under it. Pass `onPress` to see every hit including unnamed nodes, and `precise`
-to test the filled region.
-
-## Types
-
-The package exports its prop types alongside the components — `CanvasProps`,
-`RectProps`, `CircleProps`, `PaintProps`, `GroupProps`, `ShaderProps`,
-`ImageState`, `ImageShaderProps`, `ColorMatrixProps`, `BlendColorProps`,
-`BlurProps`, `DropShadowProps`, `MaskProps`, `BlendProps`, `ColorShaderProps`,
-`LumaProps`, `DashPathEffectProps`, `CornerPathEffectProps`, `ClipRect`,
-`TextProps`, `TextPathProps`, `FontProps`,
-`CameraFrameProps`,
-`ParagraphProps`, `FontWeight`, `TextStyle`, `TextMeasurement`, `TgfxImage`,
-`CanvasHandle`, `Snapshot`, `SnapshotOptions`, `SnapshotFormat`, and the shared
-`Animated<T>`, `BlendMode`,
-`Color`, `Fit`, `Sampling`, `SrcRect`, `TileMode`, `Vector`, `Transform` and
-`TransformOp`. `DiamondGradient` and `Turbulence` reuse `RadialGradientProps` and
-`NoiseProps` respectively.
-
-## What is not supported
-
-- No clipping primitive is exposed.
-- No `ImageSVG`: SVG documents are not parsed, only single path data strings.
-- No child shaders — `uniform shader` is rejected at compile time. See
-  [shaders](/docs/shaders).
-- Colours, paths, text, images, gradient geometry, noise and filter parameters
-  do not animate. See [animation](/docs/animation).
-- A filter on a `<Group>` applies per descendant, not to the group as one layer.
-- Blend modes that need a canvas read-back do not render on the iOS Simulator.
-- No bidi reordering or complex-script shaping in text: Arabic, Hebrew and the
-  Indic scripts lay out in logical order with unshaped glyphs.
-- No styled runs inside one paragraph, no `Glyphs`, and no text-as-path exposed
-  to JS.
+Third argument is a [`CanvasPressOptions`](/api/interfaces/CanvasPressOptions):
+`precise` tests the filled region rather than the bounding box, and `onPress`
+gets a [`CanvasPress`](/api/interfaces/CanvasPress) for every press, whatever
+it landed on — including nothing.

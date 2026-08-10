@@ -102,7 +102,7 @@ export interface TgfxViewMethods extends HybridViewMethods {
   setColorSpace(colorSpace: string): void
 
   /**
-   * Index paths of the nodes under a canvas-space point, front-to-back,
+   * Index paths of the nodes under a canvas-space point, topmost first,
    * flattened as `[depth, i0, i1, ..., depth, j0, ...]`.
    *
    * Answered from the same resolved geometry the renderer draws, so it follows

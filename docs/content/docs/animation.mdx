@@ -1,25 +1,14 @@
 ---
 title: Animation
-description: How a value gets from a SharedValue to the GPU without waking JavaScript.
+description: Driving props from the UI thread with shared values.
+icon: Activity
 ---
 
-## Two ways a value can change
-
-A prop takes either a plain number or a Reanimated `SharedValue`. Which you pass
-decides which thread pays for the animation.
-
-<Owned by="js">
-**A plain value that changes.** Your component re-renders, the reconciler diffs,
-the scene is recompiled and re-encoded, and the new buffer crosses to native.
-Correct, and fine at interaction rates. At 60 fps it is 60 of those a second.
-</Owned>
-
-<Owned by="native">
-**A `SharedValue`.** At compile time the value's position in the buffer is
-recorded as a *slot*. Reanimated writes the current numbers into a flat array on
-the UI thread, and the renderer resolves slots against it as it draws. No
-re-render, no re-encode, no buffer crossing.
-</Owned>
+Numeric, boolean and string props typed
+[`Animated<T>`](/api/type-aliases/Animated) accept a Reanimated `SharedValue`
+([`SharedValueLike`](/api/type-aliases/SharedValueLike)). The compiler gives
+each one a slot that the renderer patches on the UI thread — no re-render and
+no JavaScript work per frame. Colour is the exception described below.
 
 ```tsx
 import { useEffect } from 'react'
@@ -41,67 +30,28 @@ function Pulse() {
 }
 ```
 
-`r` is never read on the JS thread after the first commit.
+## Animated colour
 
-## Which props animate
-
-These resolve through a slot and animate:
-
-- shape geometry — `x`, `y`, `width`, `height`, `cx`, `cy`, `r`, `rx`, `ry`, and
-  the `Line` endpoints `x1`, `y1`, `x2`, `y2`
-- `opacity`, `strokeWidth`, `strokeMiter` and `visible`
-- `Text`'s `fontSize` — and `text` itself, as a **string slot**: the engine
-  re-shapes on the render thread when the value changes
-- `Path`'s `path` (a string slot, re-parsed on change), and its trim
-  `start` / `end`
-- `Image`'s `rect`, and the `rect` fields of each `<Atlas>` sprite, plus its
-  `x`, `y` and `scale`
-- `Group` transform operands
-- shader uniform components
-- gradient geometry (`start`, `end`, `center`, `r`, sweep angles), stop
-  `positions`, and stop `colors` in four-channel form
-- filter parameters — `<Blur>`'s sigmas, `<DropShadow>`'s `dx` / `dy` / `blur`
-  and four-channel `color`, every `<ColorMatrix>` entry
-- a **paint** `color` in its four-channel form — a drawing node's own `color`, or
-  one on `<Paint>`
-
-Everything else is read once at commit:
-
-| prop | why it freezes |
-| --- | --- |
-| `color` as a string or packed number | packed to a single integer at compile time |
-| `<Span>` `color` and its other run overrides | baked into the shaped run |
-| `Image`'s `image` object | a native handle, resolved once — swap it through a [node handle](/docs/imperative) |
-| `fontFamily` | plain `string`, resolved once |
-| noise `freqX`, `freqY`, `octaves`, `seed` | written as literals |
-| `style`, `strokeCap`, `strokeJoin`, `antiAlias`, `blendMode` | static strings in JSX — animate them through a [node handle](/docs/imperative) |
-| `<TextPath>`'s `path` | the baseline is laid out once per commit |
-
-If something you expect to move is frozen, check this table first — and check
-the [imperative page](/docs/imperative) for the handle-write equivalents.
-
-### Animating a colour
-
-A colour string or packed number is one integer, and a slot carries one float —
-32 bits of mantissa cannot hold `0xAARRGGBB` without shifting the channels. So a
-live colour travels as four channels instead, red, green, blue and alpha in
-`0..1`, each free to be a `SharedValue`:
+A shared value in a [`ColorComponents`](/api/type-aliases/ColorComponents) tuple
+animates a channel. A `SharedValue` holding a colour string or packed number
+does not animate, since conversion into channels happens during scene
+compilation on the JS thread.
 
 ```tsx
-const red = useSharedValue(0)
-
 <Rect x={0} y={0} width={40} height={40} color={[red, 0.2, 0.4, 1]} />
 ```
 
-All four literal (`color={[1, 0, 0, 1]}`) costs nothing extra — it packs into the
-same word a string does. One `SharedValue` among them puts the paint on the
-per-frame path, which is what buys the animation.
+## Clock
 
-## Opacity has one slot per draw
+```tsx
+const t = useClock()
+<Shader source={source} uniforms={{ uTime: t, uSize: [300, 300] }} />
+```
 
-Each draw command carries a single alpha slot. Nesting two animated opacities —
-an animated `<Group opacity>` around an animated shape — cannot be represented,
-so their product freezes at the last commit. The compiler warns:
+## One opacity per chain
+
+A draw command has a single alpha slot, so two opacities multiply at commit
+time and freeze:
 
 ```
 [tgfx] two opacities in one chain, at least one animated: a draw command has a
@@ -109,71 +59,8 @@ single alpha slot, so their product is frozen at the last commit. Animate one
 opacity per chain.
 ```
 
-It fires once per process.
+## Without Reanimated
 
-## useClock
-
-`useClock()` returns **seconds** since the first frame as a `SharedValue`,
-written on the UI thread. It is the intended driver for time-based shaders:
-
-```tsx
-import { Canvas, Fill, Shader, useClock } from 'react-native-tgfx'
-
-const source = `
-uniform float2 uSize;
-uniform float uTime;
-half4 main(float2 pos) {
-  float2 uv = pos / uSize;
-  return half4(half(0.5 + 0.5 * sin(uTime + uv.x * 6.0)), half(uv.y), 0.6, 1.0);
-}
-`
-
-function Sweep() {
-  const t = useClock()
-  return (
-    <Canvas style={{ width: 300, height: 300 }}>
-      <Fill>
-        <Shader source={source} uniforms={{ uTime: t, uSize: [300, 300] }} />
-      </Fill>
-    </Canvas>
-  )
-}
-```
-
-<Owned by="native">
-Seconds rather than milliseconds is deliberate. GLSL ES `mediump` floats stop
-being representable above 65504, so a millisecond clock turns every shader that
-reads it black after about a minute of uptime, silently. Seconds buy eighteen
-hours.
-</Owned>
-
-Driving a uniform from `setInterval` instead re-encodes the entire scene on every
-tick. It works, and it is the thing this library exists to avoid.
-
-## Changing a value once, without React
-
-`SharedValue`s are for values that *keep* moving. For a value that changes once —
-from a tap, a gesture, a network reply — take a handle on the node instead:
-
-```tsx
-import { Button } from 'react-native'
-import { Canvas, RoundedRect, useNode } from 'react-native-tgfx'
-
-function Box() {
-  const box = useNode()
-
-  return (
-    <>
-      <Canvas style={{ width: 300, height: 200 }}>
-        <RoundedRect ref={box} x={20} y={20} width={70} height={50} r={12} color="#4F8EF7" />
-      </Canvas>
-      <Button title="move" onPress={() => box.set({ x: 120 })} />
-    </>
-  )
-}
-```
-
-`set()` never re-renders: no component render, no reconciler commit, no Fabric
-commit. The [imperative API](/docs/imperative) page has the whole surface —
-which props patch a slot, which re-encode, what that costs, and the rule that
-settles what happens when both React and a handle write the same value.
+[`useNode`](/api/functions/useNode) works from JavaScript event handlers without
+Reanimated. With Reanimated and Worklets installed, slot-backed writes also run
+inside worklets — see [Imperative](/docs/imperative).

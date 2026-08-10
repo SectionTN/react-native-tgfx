@@ -1,19 +1,23 @@
 // React-Native-style transform arrays of single-key objects, composed left to right natively.
 
-type Num = number | { value: number }
-type Angle = number | `${number}deg` | `${number}rad` | { value: number }
+export type TransformNumber = number | { value: number }
+export type TransformAngle =
+  | number
+  | `${number}deg`
+  | `${number}rad`
+  | { value: number }
 
 export type TransformOp =
-  | { translateX: Num }
-  | { translateY: Num }
-  | { translate: [Num, Num] }
-  | { scale: Num }
-  | { scaleX: Num }
-  | { scaleY: Num }
-  | { rotate: Angle }
-  | { rotateZ: Angle }
-  | { skewX: Angle }
-  | { skewY: Angle }
+  | { translateX: TransformNumber }
+  | { translateY: TransformNumber }
+  | { translate: [TransformNumber, TransformNumber] }
+  | { scale: TransformNumber }
+  | { scaleX: TransformNumber }
+  | { scaleY: TransformNumber }
+  | { rotate: TransformAngle }
+  | { rotateZ: TransformAngle }
+  | { skewX: TransformAngle }
+  | { skewY: TransformAngle }
 
 export type Transform = TransformOp[]
 

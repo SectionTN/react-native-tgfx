@@ -3,3 +3,4 @@
 next-env.d.ts
 tsconfig.tsbuildinfo
 .open-next
+content/api

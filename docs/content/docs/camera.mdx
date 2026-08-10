@@ -1,51 +1,34 @@
 ---
 title: Camera frames
-description: Drawing a live camera stream as an ordinary scene input, with the rest of the scene composited over it.
+description: Drawing VisionCamera frames through tgfx.
+icon: Camera
 ---
 
-A camera frame is an ordinary **scene input**. `<CameraFrame>` places it, and the
-rest of the React tree draws over it like it draws over anything else. The frame
-arrives as a platform hardware buffer and is imported straight to a GPU texture:
-no decode, no CPU round trip, nothing is copied.
-
-```sh
-yarn add react-native-vision-camera react-native-vision-camera-worklets react-native-tgfx-vision-camera
+```bash
+npm install react-native-vision-camera react-native-vision-camera-worklets
 ```
 
-## Quick start
-
-`useCameraFrame()` gives the handle to draw, the frame's `posture` (rotation,
-mirroring and size, read off the buffer) and the `onFrame` worklet.
-`useTgfxCameraSink()` from `react-native-tgfx-vision-camera` then takes the
-per-frame work into native: after `attach()`, the camera thread writes the handle
-directly and no frame reaches a JS runtime.
+[`useCameraFrame`](/api/functions/useCameraFrame) turns a VisionCamera frame into
+a [`TgfxImage`](/api/interfaces/TgfxImage) plus a
+[`CameraFramePosture`](/api/interfaces/CameraFramePosture) — together a
+[`CameraFrameSource`](/api/interfaces/CameraFrameSource). Frames are typed
+structurally ([`FrameLike`](/api/interfaces/FrameLike)), so the core package does
+not depend on VisionCamera.
 
 ```tsx title="Preview.tsx"
-import { useEffect } from 'react'
-import { StyleSheet } from 'react-native'
 import { Camera, useCameraDevice, useFrameOutput } from 'react-native-vision-camera'
 import { Canvas, CameraFrame, useCameraFrame } from 'react-native-tgfx'
-import { useTgfxCameraSink } from 'react-native-tgfx-vision-camera'
 
 export function Preview() {
   const device = useCameraDevice('back')
   const { image, posture, onFrame } = useCameraFrame()
-  const sink = useTgfxCameraSink()
 
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
-    // Keeps `orientation` 'up' for the session, which is what lets `posture`
-    // freeze at its first value once the sink takes over.
     enablePhysicalBufferRotation: true,
     onFrame,
   })
-
-  // The hook's worklet still mints the handle from the first frame; the sink
-  // takes every frame after it.
-  useEffect(() => {
-    if (image != null) sink.attach(frameOutput, image.handle)
-  }, [sink, frameOutput, image])
 
   if (device == null) return null
   return (
@@ -57,109 +40,123 @@ export function Preview() {
     </>
   )
 }
-
-// The camera is a frame *source* only; every visible pixel is drawn by tgfx.
-const styles = StyleSheet.create({
-  hidden: { width: 1, height: 1, opacity: 0, position: 'absolute' },
-})
 ```
 
-`image` is `null` until the first frame lands, and a `null` frame draws nothing —
-that is the loading state.
+The example assumes camera permission has already been granted; the repository's
+face-blur app uses VisionCamera's `useCameraPermission` before mounting it.
 
-## Neon shader
+The camera view is a frame source only; every visible pixel is drawn by tgfx.
 
-A runtime `<Shader>` whose `uniform shader` child is an `<ImageShader>` on the
-frame handle, so the SkSL samples the live buffer. `pos` is in **frame pixels**,
-because the shape is inside `<CameraFrame>`:
+[`CameraFrameProps`](/api/interfaces/CameraFrameProps) · [`CameraFrameOptions`](/api/interfaces/CameraFrameOptions)
+
+## Zero copy
+
+The frame's platform buffer — `AHardwareBuffer*` on Android, `CVPixelBufferRef`
+on iOS, wrapped as a [`NativeBufferLike`](/api/interfaces/NativeBufferLike) —
+is imported straight to a texture. No decode, no pixel copy, no
+promise: [`imageFromNativeBuffer`](/api/functions/imageFromNativeBuffer) is
+synchronous, and YUV planes are converted in the fragment shader rather than on
+the CPU. Such a handle is not charged against the decoded-pixel budget; the
+memory belongs to whoever produced the buffer.
+
+The first frame creates the handle. Every later frame imports the new native
+buffer and replaces the registry entry behind the same handle — no React
+render, reconciler commit or program recompile:
+
+```ts
+handle.value == null
+  ? imageFromNativeBuffer(buffer.pointer, format)   // first frame
+  : handle.value.setNativeBuffer(buffer.pointer, format)  // every frame after
+```
+
+[`setNativeBuffer`](/api/interfaces/TgfxImage) retains the new buffer and drops
+the previous one before returning, so a producer recycling a fixed pool gets its
+slot back on the swap.
+
+<Callout type="warn">
+The buffer's *contents* must stay unchanged while a handle points at it — tgfx
+samples it directly. Write into a pool slot only after it has been swapped out.
+</Callout>
+
+`useCameraFrame` owns that lifetime for you: the raw pointer never leaves its
+worklet, and a `try`/`finally` releases the buffer and disposes the frame on
+every path including a throw.
+
+<Callout type="warn">
+The frame passed to your own per-frame callback dies when it returns. Do not
+retain it, do not call `getNativeBuffer()` on it again — that is a second retain
+nothing releases, and one unreleased buffer stalls the producer's bounded pool —
+and never store `getNativeBuffer().pointer`. A stale pointer does not throw; it
+imports whatever memory now sits at that address.
+</Callout>
+
+## No JS per frame
+
+```bash
+npm install react-native-tgfx-vision-camera
+```
+
+`useTgfxCameraSink` can move the same zero-copy import into a native
+frame-processor plugin so, after attachment completes, no frame reaches a JS
+runtime. Attach it once the hook's worklet has minted the handle:
 
 ```tsx
-const NEON = `
-uniform shader cam;
+const sink = useTgfxCameraSink()
 
-float luma(half4 c) { return dot(c.rgb, half3(0.2126, 0.7152, 0.0722)); }
+useEffect(() => {
+  if (image != null) sink.attach(frameOutput, image.handle)
+}, [sink, frameOutput, image])
+```
 
-half4 main(float2 pos) {
-  float t = 1.7;
-  // Signed diagonal difference: which side of the edge we are on.
-  float dir = luma(cam.eval(pos + float2(t, t))) - luma(cam.eval(pos - float2(t, t)));
-  // Unsigned cross gradient: how strong the edge is, in any direction.
-  float gx = luma(cam.eval(pos + float2(t, 0.0))) - luma(cam.eval(pos - float2(t, 0.0)));
-  float gy = luma(cam.eval(pos + float2(0.0, t))) - luma(cam.eval(pos - float2(0.0, t)));
-  float edge = pow(clamp(sqrt(gx * gx + gy * gy) * 6.5, 0.0, 1.0), 0.70);
+`attach` is asynchronous. The worklet keeps receiving frames until the native
+callback is installed; after that, orientation state no longer reaches JS, so
+keep `enablePhysicalBufferRotation: true` or stay on `useCameraFrame` alone when
+orientation must continue to track.
 
-  half3 tint = mix(half3(0.25, 1.0, 0.95), half3(1.0, 0.15, 0.9),
-                   clamp(dir * 7.0 + 0.5, 0.0, 1.0));
-  half4 base = cam.eval(pos);
-  return half4(clamp(base.rgb * 0.2 + tint * edge * 1.45, 0.0, 1.0), base.a);
-}
-`
+Not usable when the frame processor has JS work of its own — a per-frame
+detector, for instance.
 
+## Shading a frame
+
+```tsx
 <CameraFrame image={image} {...posture}>
   <Fill>
     <Shader source={NEON}>
-      {/* Tile modes left at 'clamp': a YUV frame sampled with any other one
-          comes back transparent. */}
       <ImageShader image={image} />
     </Shader>
   </Fill>
 </CameraFrame>
 ```
 
-Add `uniforms={{ uTime: useClock() }}` to animate it — the clock is a
-`SharedValue`, so the scene is not re-encoded per frame.
-
-Two ways to move a uniform, and neither re-encodes: a `SharedValue` in the JSX
-for a value that drives itself, like a clock, and a `ref` on the `<Shader>` for
-one you push per frame — see [the imperative API](/docs/imperative).
+<Callout type="warn">
+Leave tile modes at `'clamp'`. A YUV frame sampled with any other one comes back
+transparent.
+</Callout>
 
 ## Face blur
 
-A detector needs the frame in JS, so this one stays on the worklet and **cannot**
-use the sink: `setOnFrameCallback` holds exactly one callback, so `attach()`
-would replace the detector rather than join it.
-
-MLKit's bounds arrive already in frame pixels — the space `<CameraFrame>`'s
-children draw in — so they go through unscaled, into node handles:
+The scene compiles once, so allocate a fixed number of slots. An unused slot has
+zero size and draws nothing.
 
 ```tsx
-import { useCallback } from 'react'
-import type { Frame } from 'react-native-vision-camera'
-import { useFaceDetector } from 'react-native-vision-camera-face-detector'
-import { Blur, CameraFrame, ImageShader, Oval, Paint, useCameraFrame, useNode } from 'react-native-tgfx'
-
-// The scene is compiled once, so the number of faces it can draw is fixed; an
-// unused slot has zero size and draws nothing.
 const SLOTS = [0, 1, 2, 3]
+const [ovals] = useState(() => SLOTS.map(() => createHandle()))
 
-export function useFaceBlur() {
-  const detector = useFaceDetector({ performanceMode: 'fast' })
-  // One handle per slot, stable for the life of the component.
-  const ovals = [useNode(), useNode(), useNode(), useNode()]
+const detect = useCallback((frame: Frame) => {
+  'worklet'
+  const faces = detector.detectFaces(frame)
+  for (const i of SLOTS) {
+    const b = faces[i]?.bounds
+    ovals[i]!.set({
+      x: b?.x ?? 0,
+      y: b?.y ?? 0,
+      width: b?.width ?? 0,
+      height: b?.height ?? 0,
+    })
+  }
+}, [detector, ovals])
 
-  const detect = useCallback(
-    (frame: Frame) => {
-      'worklet'
-      const faces = detector.detectFaces(frame)
-      for (const i of SLOTS) {
-        const b = faces[i]?.bounds
-        // x/y/width/height are all slot props, so this completes on the
-        // frame-processor runtime: one setValues, no re-encode, no hop to JS.
-        ovals[i]!.set({
-          x: b?.x ?? 0,
-          y: b?.y ?? 0,
-          width: b?.width ?? 0,
-          height: b?.height ?? 0,
-        })
-      }
-    },
-    [detector, ovals]
-  )
-
-  // `detect` runs inside the hook's try, so detector work that throws still
-  // cannot leak the frame.
-  return { ...useCameraFrame(detect), ovals }
-}
+return { ...useCameraFrame(detect), ovals }
 ```
 
 ```tsx
@@ -167,8 +164,6 @@ export function useFaceBlur() {
   {SLOTS.map((i) => (
     <Oval key={i} ref={ovals[i]} x={0} y={0} width={0} height={0}>
       <Paint>
-        {/* The same frame, sampled 1:1 in this space, so the blurred pixels
-            really are the pixels underneath. */}
         <ImageShader image={image} />
         <Blur blur={25} />
       </Paint>
@@ -176,74 +171,3 @@ export function useFaceBlur() {
   ))}
 </CameraFrame>
 ```
-
-<Owned by="native">
-Nothing per frame reaches React, and nothing reaches the JS thread either. The
-detector writes value slots from the frame-processor runtime; the renderer
-resolves them as it draws. See [the imperative API](/docs/imperative) for which
-props patch a slot and which re-encode.
-</Owned>
-
-The bounds go in **uninflated** — an oval inscribed in the detector's box is what
-[mrousavy/FaceBlurApp](https://github.com/mrousavy/FaceBlurApp) clips to, and the
-corners it drops are background rather than face. Growing the box, or feathering
-the oval's edge, is what makes a blur read as covering more than the face.
-
-### Why not a runtime shader
-
-A `<Shader>` taking the bounds as `uniforms` reaches the same imperative API —
-uniform components are value slots too — and it is the wrong tool for a blur. A
-fragment shader gets **one pass**, so it has to stand in for a 2D kernel with a
-handful of point samples; at any tap count worth paying for per frame, a hard
-edge comes back as a few ghosts of itself rather than a blur. `<Blur>` is an
-image filter: two 1D passes over an offscreen, which is exact and cheaper for the
-quality. Reach for `<Shader>` when the effect *is* the shader, as the neon one
-above is.
-
-Both screens run in [`apps/faceblur`](https://github.com/riteshshukla04/react-native-tgfx/tree/main/apps/faceblur).
-
-## `<CameraFrame>`
-
-```tsx
-interface CameraFrameProps {
-  image: TgfxImage | null
-  fit?: Fit               // default 'cover'
-  sampling?: Sampling     // default 'linear'
-  rotation?: number       // clockwise degrees, rounded to a quarter turn
-  mirror?: boolean
-}
-```
-
-It has no geometry of its own: the frame is centre-cropped to cover the canvas,
-and `fit="contain"` letterboxes instead. `rotation` and `mirror` come from
-`posture`, so spreading it is the whole of it.
-
-Children are drawn through the **same matrix**, in frame pixels — pass detector
-output through unchanged, never scaled to the view. That also means they are
-mirrored and rotated with the frame, so a `<Text>` label belongs in the
-`<Canvas>` beside `<CameraFrame>`, not inside it.
-
-## Rules
-
-<Owned by="js">
-- **The frame dies when your callback returns.** Do not retain it, do not hand it
-  to anything async, do not call `getNativeBuffer()` on it yourself, and never
-  store `getNativeBuffer().pointer` — a stale pointer does not throw, it imports
-  whatever memory is now at that address.
-- **`pixelFormat: 'yuv'`**, not `'rgb'`: `'rgb'` converts the whole frame on every
-  frame, which is the copy this path exists to avoid. tgfx converts YUV inside
-  the fragment shader instead.
-- **Leave tile modes at `'clamp'`.** A YUV image sampled with any other one comes
-  back fully transparent at the pinned tgfx.
-- **Android needs API 26+** for `AHardwareBuffer` to exist at all.
-</Owned>
-
-An undrawn frame is **superseded** by the next rather than queued behind it, so
-latency stays bounded when rendering is slower than capture. For work that
-genuinely cannot keep up, use `useAsyncRunner` and dispose the frame in whichever
-branch `runAsync` chose.
-
-For a buffer that does not arrive as a frame object at all — a decoder, a screen
-capture — `imageFromNativeBuffer(pointer, format)` mints the handle and
-`image.setNativeBuffer(...)` re-points it per frame; you then own the lifetime the
-hook would otherwise enforce.

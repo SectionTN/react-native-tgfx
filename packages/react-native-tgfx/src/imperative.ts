@@ -49,7 +49,14 @@ const SLOT_PROPS = [
 ] as const
 
 /** Enum props: the slot carries the wire code, seeded from the written name. */
-const ENUM_SLOTS = ['style', 'strokeCap', 'strokeJoin', 'blendMode', 'mode', 'antiAlias'] as const
+const ENUM_SLOTS = [
+  'style',
+  'strokeCap',
+  'strokeJoin',
+  'blendMode',
+  'mode',
+  'antiAlias',
+] as const
 
 /** Vector props split across two slots each. */
 const VECTOR_SLOTS = ['start', 'end', 'center'] as const
@@ -83,7 +90,16 @@ for (const name of ENUM_SLOTS) {
 for (const name of VECTOR_SLOTS) {
   KEY_INDEX[name] = Object.keys(KEY_INDEX).length
 }
-for (const name of ['color', 'image', 'rect', 'matrix', 'positions', 'colors', 'text', 'path']) {
+for (const name of [
+  'color',
+  'image',
+  'rect',
+  'matrix',
+  'positions',
+  'colors',
+  'text',
+  'path',
+]) {
   KEY_INDEX[name] = Object.keys(KEY_INDEX).length
 }
 const FLAG_BYTES = Object.keys(KEY_INDEX).length
@@ -131,7 +147,9 @@ export interface NodeOwner {
  * `ref`: each costs the render thread work every frame, so that write
  * re-encodes once and every one after it is a slot patch. A `ref` on a
  * `<Shader>` has no other job, so its `uniforms` are live from the first
- * compile. Docs: docs/content/docs/imperative.mdx.
+ * compile. A handle keeps at most 16 gradient stops (longer imperative writes
+ * are truncated) and 32 uniform floats (uniforms outside that pool re-encode).
+ * Docs: docs/content/docs/imperative.mdx.
  *
  * **The next React commit wins.** An imperative write survives until the canvas
  * re-renders, and then the JSX props are the truth again. Drive a value from one
@@ -397,8 +415,7 @@ export function createHandle(): NodeHandle {
     if (key === 'blendMode' || key === 'mode') {
       return blendCode(value)
     }
-    const table =
-      key === 'style' ? STYLES : key === 'strokeCap' ? CAPS : JOINS
+    const table = key === 'style' ? STYLES : key === 'strokeCap' ? CAPS : JOINS
     const code = (table as Record<string, number>)[String(value)]
     return code === undefined ? null : code
   }
@@ -430,8 +447,7 @@ export function createHandle(): NodeHandle {
         overrides[key] = shared
       } else if (key === 'image') {
         const pool = ensureExtras()
-        const handle =
-          typeof value === 'number' ? value : imageHandle(value)
+        const handle = typeof value === 'number' ? value : imageHandle(value)
         pool.image!.value = handle
         if (patchable.value.image === true) {
           touched = true
@@ -522,7 +538,9 @@ export function createHandle(): NodeHandle {
         // A numeric start/end is a sweep gradient's angle.
         const angle = key === 'start' ? slots.startAngle! : slots.endAngle!
         angle.value = Number(value) || 0
-        if (patchable.value[key === 'start' ? 'startAngle' : 'endAngle'] === true) {
+        if (
+          patchable.value[key === 'start' ? 'startAngle' : 'endAngle'] === true
+        ) {
           touched = true
           continue
         }
@@ -723,7 +741,12 @@ export function createHandle(): NodeHandle {
           }
         } else if (key === 'rect') {
           const r = value as Record<string, unknown> | null
-          if (flagged('rect') && extra != null && r != null && typeof r === 'object') {
+          if (
+            flagged('rect') &&
+            extra != null &&
+            r != null &&
+            typeof r === 'object'
+          ) {
             extra.rectX!.value = num(r.x)
             extra.rectY!.value = num(r.y)
             extra.rectW!.value = num(r.width)
@@ -733,7 +756,11 @@ export function createHandle(): NodeHandle {
             deferred = true
           }
         } else if (key === 'matrix') {
-          if (flagged('matrix') && matrixSlots != null && Array.isArray(value)) {
+          if (
+            flagged('matrix') &&
+            matrixSlots != null &&
+            Array.isArray(value)
+          ) {
             for (let i = 0; i < 20; i++) {
               matrixSlots[i]!.value = num(value[i])
             }
@@ -776,12 +803,16 @@ export function createHandle(): NodeHandle {
                 if (typeof entry === 'number') {
                   const packed = entry >>> 0
                   stopColorSlots![i * 4]!.value = ((packed >>> 16) & 0xff) / 255
-                  stopColorSlots![i * 4 + 1]!.value = ((packed >>> 8) & 0xff) / 255
+                  stopColorSlots![i * 4 + 1]!.value =
+                    ((packed >>> 8) & 0xff) / 255
                   stopColorSlots![i * 4 + 2]!.value = (packed & 0xff) / 255
-                  stopColorSlots![i * 4 + 3]!.value = ((packed >>> 24) & 0xff) / 255
+                  stopColorSlots![i * 4 + 3]!.value =
+                    ((packed >>> 24) & 0xff) / 255
                 } else {
                   for (let c = 0; c < 4; c++) {
-                    stopColorSlots![i * 4 + c]!.value = num((entry as unknown[])[c])
+                    stopColorSlots![i * 4 + c]!.value = num(
+                      (entry as unknown[])[c]
+                    )
                   }
                 }
               }

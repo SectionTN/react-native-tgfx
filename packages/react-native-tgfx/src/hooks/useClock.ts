@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { MaybeSharedValue } from '../compiler/values'
+import type { SharedValueLike } from '../compiler/values'
 import { requireReanimated } from '../reanimated/peer'
 
 interface Frame {
@@ -17,7 +17,7 @@ interface Frame {
  * 65504: a millisecond clock turns every shader that reads it black after about
  * a minute of uptime, silently. Seconds buy eighteen hours instead.
  */
-export function useClock(): MaybeSharedValue<number> {
+export function useClock(): SharedValueLike<number> {
   const mod = requireReanimated('useClock', [
     'useSharedValue',
     'useFrameCallback',

@@ -1,5 +1,5 @@
 // Every colour input is normalized to a packed 0xAARRGGBB integer; an unparseable one is black.
-import { resolveNumber, type MaybeSharedValue } from './values'
+import { resolveNumber, type SharedValueLike } from './values'
 
 /**
  * Red, green, blue, alpha, each 0..1. The one colour form that can carry a
@@ -7,10 +7,10 @@ import { resolveNumber, type MaybeSharedValue } from './values'
  * packed integer cannot survive the float32 slot it would have to travel in.
  */
 export type ColorComponents = readonly [
-  MaybeSharedValue<number> | number,
-  MaybeSharedValue<number> | number,
-  MaybeSharedValue<number> | number,
-  MaybeSharedValue<number> | number,
+  SharedValueLike<number> | number,
+  SharedValueLike<number> | number,
+  SharedValueLike<number> | number,
+  SharedValueLike<number> | number,
 ]
 
 export type Color = string | number | ColorComponents
@@ -375,7 +375,11 @@ function clamp255(value: number): number {
 }
 
 /// Linearise, apply the P3-to-sRGB matrix, re-encode. Out-of-gamut clips.
-function p3ToSrgb(r: number, g: number, b: number): readonly [number, number, number] {
+function p3ToSrgb(
+  r: number,
+  g: number,
+  b: number
+): readonly [number, number, number] {
   const lin = (c: number) =>
     c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
   // Clamped first: an out-of-gamut channel goes negative, and Math.pow of that is NaN.
@@ -385,8 +389,8 @@ function p3ToSrgb(r: number, g: number, b: number): readonly [number, number, nu
   }
   const [lr, lg, lb] = [lin(r), lin(g), lin(b)]
   return [
-    enc(1.2249401 * lr - 0.2249404 * lg + 0.0000000 * lb),
-    enc(-0.0420569 * lr + 1.0420571 * lg + 0.0000000 * lb),
+    enc(1.2249401 * lr - 0.2249404 * lg + 0.0 * lb),
+    enc(-0.0420569 * lr + 1.0420571 * lg + 0.0 * lb),
     enc(-0.0196376 * lr - 0.0786361 * lg + 1.0982735 * lb),
   ] as const
 }

@@ -97,12 +97,7 @@ export {
   pathTransform,
 } from './hooks/usePath'
 export type { ClipRect } from './types'
-export type {
-  PathBounds,
-  PathMatrix,
-  PathOp,
-  PathPoint,
-} from './hooks/usePath'
+export type { PathBounds, PathMatrix, PathOp, PathPoint } from './hooks/usePath'
 export type {
   FontsState,
   FontSource,
@@ -132,8 +127,18 @@ export type {
   VertexBuffer,
   VertexBufferOptions,
 } from './hooks/useBuffers'
-export type { PixelFormat, Orientation } from './specs/TgfxImage.nitro'
+export type {
+  ImageSampling,
+  PixelFormat,
+  Orientation,
+} from './specs/TgfxImage.nitro'
 export type { TgfxVideo } from './specs/TgfxVideo.nitro'
+export type {
+  NativeSnapshot,
+  NativeSnapshotOptions,
+  TgfxViewMethods,
+  TgfxViewProps,
+} from './specs/TgfxView.nitro'
 
 export { TgfxNativeView } from './views/TgfxNativeView'
 export type { TgfxViewRef } from './views/TgfxNativeView'
@@ -165,6 +170,7 @@ export type {
   GlyphsProps,
   GroupProps,
   ImageProps,
+  ImageLike,
   AtlasProps,
   AtlasSprite,
   VerticesProps,
@@ -198,6 +204,10 @@ export type {
   TgfxImage,
   TileMode,
   Transform,
+  TransformAngle,
+  TransformNumber,
   TransformOp,
+  UniformValue,
   Vector,
+  AnimatedVector,
 } from './types'

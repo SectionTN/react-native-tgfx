@@ -108,9 +108,9 @@ const UPRIGHT: CameraFramePosture = Object.freeze({
  * bounded producer pool; a stored pointer is a use-after-free that does not
  * throw.
  *
- * The first frame creates the handle and every later one re-points it, so the
- * scene is committed once and a new frame costs one pointer swap — no React
- * render, no reconciler commit, no program recompile. `posture` only reaches
+ * The first frame creates the handle. Every later frame imports the new native
+ * buffer and replaces the registry entry behind that handle, so there is no
+ * React render, reconciler commit or program recompile. `posture` only reaches
  * React state when it actually changes. The handle is disposed on unmount: an
  * external registry entry is never evicted, so nothing else would ever free it.
  *

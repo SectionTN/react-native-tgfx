@@ -1,111 +1,48 @@
 ---
 title: Performance
-description: What is fast, what is not, and how to measure your own scene.
+description: What makes a scene cheap, and how to measure it.
+icon: Gauge
 ---
 
-## Measured
+## Animate slots, not the tree
 
-400 animated objects, Samsung device, median of three runs, all three renderers
-drawing the same scene in the same fifteen-second window.
+A `SharedValue` prop or a slot-backed
+[`NodeHandle.set`](/api/interfaces/NodeHandle) patches native slot data on the UI
+thread. Changing ordinary JSX props through React recompiles and uploads the
+scene. An unslotted handle write also recompiles, but skips the React and Fabric
+commits.
 
-| renderer | CPU | CPU per frame | frames drawn | main fps | JS fps | jank | memory |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| tgfx | 260.6% | 36.1 ms | 1082 | 59.1 | 56.5 | 43.2% | 143.9 MB |
-| nitro-thor | 151.2% | 19.3 ms | 1177 | 60.1 | 60.1 | 39.3% | 241.6 MB |
-| skia-graphite | 193.4% | 71.6 ms | 405 | 38.0 | 21.1 | 86.5% | 206.2 MB |
+## Keep children primitive
 
-What the table says, plainly:
-
-- **Memory is the strongest result.** 143.9 MB against 206–242 MB, consistently
-  across runs.
-- **Frame delivery is solid.** 59.1 fps and 43.2% jank, against skia-graphite's
-  38.0 fps and 86.5% jank in the identical scene.
-- **Against nitro-thor, CPU is the weak result and it is unresolved.** It draws
-  more frames than tgfx for 58% of the CPU — 19.3 ms per frame against 36.1 ms.
-  That gap is real, reproducible, and not a measurement artifact.
-
-Numbers come from the harness below. Reproduce them before relying on them:
-device, thermal state and build all move the result.
-
-## Making your scene faster
-
-Ordered by how much they typically matter.
-
-### Animate through SharedValues, not state
-
-The single biggest lever. A `useState` driving a value at 60 fps recompiles and
-re-encodes the whole scene 60 times a second; a `SharedValue` does none of that.
-See [animation](/docs/animation).
-
-### Keep children as host elements
-
-When every child of a `<Canvas>` is a drawing primitive — `Rect`, `Circle`,
-`Group`, a `.map()` over them — the tree is walked straight into scene nodes and
-the reconciler is skipped entirely. One function component anywhere in the
-children falls back to the full reconciler path for that commit.
+The reconciler recognises the exported drawings directly. A wrapper function
+component falls back to the slower path.
 
 ```tsx
-{/* fast path */}
+{/* fast */}
 <Canvas>{shapes.map((s) => <Rect key={s.id} {...s} />)}</Canvas>
 
-{/* falls back — Star is a function component */}
+{/* falls back */}
 <Canvas>{shapes.map((s) => <Star key={s.id} {...s} />)}</Canvas>
 ```
 
-The fallback is correct, just slower. If you want the abstraction, keep it
-*outside* the canvas and let it return primitives into the children array.
+## Other levers
 
-### Hold shader source constant
+- `<Group picture>` records a static subtree once; dynamic children fall back
+  to direct drawing.
+- `<Group layer>` costs an offscreen surface — use it only for group opacity or
+  group filters.
+- Pool handles with [`createHandle`](/api/functions/createHandle) and toggle
+  `visible` instead of mounting and unmounting.
+- For large sprite or mesh collections, move to
+  [`useSpriteBuffer`](/api/functions/useSpriteBuffer) or
+  [`useVertexBuffer`](/api/functions/useVertexBuffer).
+- One animated opacity per chain — see [Animation](/docs/animation).
 
-The SkSL transpile is cached by source text. A template literal rebuilt each
-render is a fresh cache key every time. Hoist it to a module constant.
+## Measure
 
-### Prefer one animated opacity per chain
-
-Each draw command has a single alpha slot. Nesting animated opacities freezes
-their product — the compiler warns, and the fix is to animate one of them.
-
-### Animate a transform, not `fontSize`
-
-Text lays out once and the result is memoised against the size, rounded to a
-quarter of a pixel. Static text is therefore much cheaper than it used to be —
-measured at 467 allocations per frame for 100 nodes, against 1114 for the old
-per-draw rebuild, and about half the record time.
-
-An animated `fontSize` re-runs that layout whenever it crosses a quantum, so
-past roughly **6 px/s at 60 Hz** it costs *more* than the old path — about 2.1×
-the allocations at 15 px/s and above. Scale a `<Group>` instead when you can.
-Numbers from `cpp/tests/AllocBench`.
-
-### Don't fight the group matrix
-
-A `<Group>` whose transform has no animated operand gets its matrix folded at
-compile time and costs nothing per frame. Adding one animated operand moves the
-whole group onto the per-frame path.
-
-## Where the time goes
-
-For an animated scene the JavaScript side is already off the per-frame path, so
-the frame is dominated by native drawing rather than by encoding. The practical
-consequence is that reducing *draw calls* tends to pay off and shaving JavaScript
-tends not to. Measure before acting on that — it is a rule of thumb, not a
-guarantee for your scene.
-
-## Measuring your own scene
-
-The repository ships the harness these observations came from:
+With the repository's benchmark app installed and an Android device configured:
 
 ```bash
 node benchmarks/renderer-benchmark/scripts/run-quick.mjs \
   --tag=mine --renderers=tgfx,thor-gpu,skia-graphite
 ```
-
-It runs each renderer three times by default with cooldowns between, rejects runs
-whose thermal state drifts mid-run, and reports the median. Single runs on a warm phone are not
-worth much: build-to-build CPU variance on one device is wide enough to swallow
-most micro-optimisations, so compare medians.
-
-For render-thread attribution on **Android**, capture a Perfetto trace. The
-native side emits `tgfx.draw`, `tgfx.render`, `tgfx.flush` and `tgfx.submit`
-around each frame, plus `tgfx.setScene` when a new scene is uploaded. These are
-atrace markers and compile to nothing on iOS.

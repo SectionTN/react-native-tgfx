@@ -30,11 +30,12 @@ export function setImageCacheLimit(bytes: number): void {
  *
  * Zero-copy and synchronous: the buffer is imported straight to a GPU texture,
  * with no decode and no CPU round trip. For a stream of frames, keep the handle
- * and call `image.setNativeBuffer(...)` per frame — the draw path resolves the
- * handle every frame, so nothing is re-committed, the swap alone schedules a
+ * and call `image.setNativeBuffer(...)` per frame — native code imports the new
+ * buffer and replaces the registry entry, while the draw path resolves the
+ * stable handle every frame. Nothing is re-committed, replacement schedules a
  * redraw, and an undrawn frame is superseded by the next rather than queued
- * behind it. The previous buffer is released on the swap; do not write into a
- * buffer while the handle still points at it.
+ * behind it. The previous buffer is released on replacement; do not write into
+ * a buffer while the handle still points at it.
  *
  * Such a handle is not accounted against the decoded-pixel budget: the memory
  * belongs to whoever produced the buffer.
@@ -50,7 +51,6 @@ export function setImageCacheLimit(bytes: number): void {
  * once-per-stream use, but it is not free — do not call it per frame. Use
  * `image.setNativeBuffer(...)` for the second and every later buffer.
  *
- * @remarks
  * **`buffer` is a raw pointer, and nothing here can check it.** It is only
  * valid for as long as its producer says it is — for a VisionCamera frame, the
  * body of the `onFrame` callback. Passing a stale or already-released pointer

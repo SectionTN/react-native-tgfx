@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Image as RNImage } from 'react-native'
 import { NitroModules } from 'react-native-nitro-modules'
-import type { MaybeSharedValue } from '../compiler/values'
+import type { SharedValueLike } from '../compiler/values'
 import { requireReanimated, worklets } from '../reanimated/peer'
 import type { TgfxVideo, TgfxVideoFactory } from '../specs/TgfxVideo.nitro'
 import type { ImageLike } from '../types'
@@ -53,7 +53,7 @@ export interface Video {
    */
   readonly currentFrame: ImageLike | null
   /** Playback position in milliseconds, written on the UI thread every frame. */
-  readonly currentTime: MaybeSharedValue<number>
+  readonly currentTime: SharedValueLike<number>
   /** Total length in milliseconds. 0 until the video is open. */
   readonly duration: number
   readonly framerate: number
@@ -198,9 +198,7 @@ export function useVideo(
 
   const size = useMemo(
     () =>
-      video == null
-        ? EMPTY_SIZE
-        : { width: video.width, height: video.height },
+      video == null ? EMPTY_SIZE : { width: video.width, height: video.height },
     [video]
   )
 

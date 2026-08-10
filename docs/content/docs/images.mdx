@@ -1,38 +1,26 @@
 ---
 title: Images
-description: Drawing images, using one as a paint source, and the handles they travel as.
+description: Loading, drawing, sampling and deriving images.
+icon: Image
 ---
 
-An image reaches the scene as a `TgfxImage` **handle** — a small integer on the
-wire, never bytes. `<Image>` draws it; [`<ImageShader>`](#imageshader) uses it as
-a paint source for any other shape.
+```tsx
+import { Canvas, Image, useImage } from 'react-native-tgfx'
 
-## Image
+const photo = useImage(require('./cat.png'))
 
-`image` is a `TgfxImage` handle from [`useImage`](#useimage) — a small integer on
-the wire, never bytes.
+photo != null && (
+  <Image image={photo} x={0} y={0} width={300} height={200} fit="cover" />
+)
+```
 
-`fit` is the full Skia set, default `'contain'`:
+[`useImage`](/api/functions/useImage) returns [`TgfxImage`](/api/interfaces/TgfxImage) or `null`.
+[`useImageState`](/api/functions/useImageState) returns [`ImageState`](/api/interfaces/ImageState) with `loading` and `error`.
+[`loadImage`](/api/functions/loadImage) is the promise form. SVG sources decode to a resolution-independent picture that replays at whatever size it's drawn, not a fixed-resolution raster.
 
-| fit | what it does |
-| --- | --- |
-| `'contain'` | scales down to fit inside the box, letterboxed |
-| `'cover'` | fills the box, cropping the source |
-| `'fill'` | stretches to the box, ignoring aspect ratio |
-| `'fitWidth'` | matches the box width, cropping vertically if needed |
-| `'fitHeight'` | matches the box height, cropping horizontally if needed |
-| `'none'` | native size, centred |
-| `'scaleDown'` | like `'fill'`, but never enlarges |
+[`ImageProps`](/api/interfaces/ImageProps) · [`Fit`](/api/type-aliases/Fit) · [`Sampling`](/api/type-aliases/Sampling)
 
-As in Skia, `cover` crops the *source* rather than overflowing the destination,
-so nothing is ever drawn outside the box.
-
-`sampling` is `'nearest' | 'linear' | 'mipmap'`, default `'linear'`. Use
-`'mipmap'` when a large image is drawn into a much smaller box — it builds the
-mip chain, which `'linear'` alone does not.
-
-`rect` is a source sub-rect in image pixels, so a sprite sheet is drawn without
-slicing it in JS:
+## Sub-rects
 
 ```tsx
 <Image
@@ -43,247 +31,20 @@ slicing it in JS:
 />
 ```
 
-## ImageShader
+## As a shader
 
-An image as the paint source for any shape — textured fills, image-backed masks,
-tiled patterns:
-
-```tsx
-import { Circle, ImageShader, useImage } from 'react-native-tgfx'
-
-const photo = useImage(require('./cat.png'))
-
-photo != null && (
-  <Circle cx={60} cy={60} r={50}>
-    <ImageShader image={photo} rect={{ x: 10, y: 10, width: 100, height: 100 }} fit="cover" />
-  </Circle>
-)
-```
-
-`tx` and `ty` are `'clamp' | 'repeat' | 'mirror' | 'decal'`, both defaulting to
-`'clamp'` — the tile mode outside the image's own bounds. `sampling` is the same
-set as `<Image>`. `rect` is the destination rect the image is mapped into with
-`fit`; omit both to sample the image 1:1 in canvas space, which is what tiling
-usually wants.
-
-## Hooks
-
-### useImage
+[`ImageShader`](/api/variables/ImageShader) paints any shape with an image.
 
 ```tsx
-const image: TgfxImage | null = useImage(require('./cat.png'))
+<Circle cx={60} cy={60} r={50}>
+  <ImageShader image={photo} rect={{ x: 10, y: 10, width: 100, height: 100 }} fit="cover" />
+</Circle>
 ```
 
-Takes `number | string` — a `require()` asset, an `http(s)`, `file:`, `data:`,
-`asset:` or `content:` URI, or a raw base64 string. Returns a native image
-handle, or `null` until it is ready.
+## Derived images
 
-The handle carries `width`, `height` and a `dispose()`. The draw program only
-ever carries its integer id, so a scene's string table does not grow with the
-image bytes on screen and a re-commit costs no hashing and no decode.
-
-A local file (`file:` URI, or a bundled asset that resolves to a path) is opened
-and decoded natively — its bytes never enter JS. A remote or Metro-served URI
-still goes through `fetch`, but as an `ArrayBuffer`; nothing is base64-encoded on
-the JS thread. Every path decodes on a background thread, so no frame waits on a
-decode. PNG, JPEG and WebP all decode on both platforms, and an SVG document is
-parsed and drawn on the same paths — see [SVG documents](#svg-documents).
-
-A photo shot in portrait draws the right way up: the EXIF orientation marker is
-read during the decode and the image is oriented before anything measures it, so
-`image.width`/`height` are the dimensions you see rather than the ones on disk.
-
-Which decoder does that differs by platform, and the answer only matters when
-something goes wrong. Android decodes PNG, JPEG and WebP with tgfx's own codecs,
-in-process — not `BitmapFactory` behind JNI — and anything else (HEIF, AVIF) with
-the platform decoder. iOS decodes WebP in-process and everything else through
-ImageIO.
-
-JPEG and WebP carry their orientation on every one of those paths. A PNG is the
-exception: tgfx's own PNG decoder does not read the `eXIf` chunk, so a PNG that
-has one draws unrotated on Android and rotated on iOS. Almost nothing writes it —
-cameras produce JPEG or HEIF — but if you are generating PNGs, bake the rotation
-into the pixels.
-
-The handle is disposed when the source changes or the component unmounts.
-
-### useImageState
-
-```tsx
-const { data, error, loading } = useImageState(source)
-```
-
-Returns `ImageState`: `data: TgfxImage | null`, `error: Error | null`,
-`loading: boolean`. `data` is cleared the moment `source` changes, so a slow or
-failing load never leaves the previous image on screen.
-
-### SVG documents
-
-```tsx
-const icon = useImage(require('./logo.svg'))
-```
-
-There is no separate SVG hook, node or wire format: an SVG **document** is just
-another image source. `useImage`, `useImageState` and `loadImage` all take one,
-and `<Image>` and `<ImageShader>` draw the handle like any other.
-
-It is recognised from its bytes rather than its file extension, so a bundled
-asset, a `file:` path and an `http(s)` URL all reach the parser on their own, and
-a `.svg` served with the wrong MIME type still works.
-
-**Its size is nominal, not a resolution cap.** The handle reports the size the
-document itself asks for — a 24×24 icon reports 24×24 — but that is not a size it
-was flattened to. The document is parsed once into a picture that is replayed at
-whatever size it is drawn, so one handle stays crisp at 24 px and at 240 px.
-There is no size to pass and none to keep in sync with your layout.
-
-The cost sits where it usually belongs: the picture is replayed per draw rather
-than cached as pixels. Right for an icon; worth knowing for a large document
-redrawn every frame.
-
-Malformed markup, a non-`<svg>` root, or a document with no resolvable size
-rejects the load — `useImageState().error` rather than a crash or a blank draw.
-
-**Text inside an SVG** renders through the same faces `<Text>` can see: whatever
-[`loadFont`](/docs/text#loadfont) has registered, plus the system fonts. A
-`font-family` naming something neither has does not render at all — register the
-face first, or convert the text to paths when authoring the file.
-
-`<Path d="…" />` is a different thing and still the right one for a single shape:
-it takes SVG *path data*, takes its fill and stroke from the node's own props,
-and involves no document and no parser.
-
-### imageFromNativeBuffer
-
-```tsx
-const frameImage = imageFromNativeBuffer(
-  frame.getNativeBuffer().pointer,
-  'bt601-limited'
-)
-```
-
-Wraps a platform hardware buffer — an `AHardwareBuffer*` on Android, a
-`CVPixelBufferRef` on iOS — as an image handle. Zero-copy and synchronous: the
-buffer is imported straight to a GPU texture through
-`tgfx::Image::MakeFrom(HardwareBufferRef, YUVColorSpace)`, with no decode and no
-CPU round trip.
-
-`format` is `PixelFormat`: `'rgba'` for a single-plane surface, or one of
-`'bt601-limited'` (the camera default), `'bt601-full'`, `'bt709-limited'`,
-`'bt709-full'`, `'bt2020-limited'`, `'bt2020-full'`, `'jpeg-full'`.
-
-For a stream of frames, keep the handle and call `image.setNativeBuffer(...)` per
-frame: the scene keeps referencing the same id, so nothing is re-committed and an
-undrawn frame is superseded by the next rather than queued behind it. Such a
-handle is not accounted against the decoded-pixel budget — the memory belongs to
-whoever produced the buffer.
-
-It is a worklet, so a VisionCamera frame processor can call it directly — the
-buffer is only alive for the duration of the callback.
-
-`pointer` is a **raw pointer and nothing can validate one**: a stale value does
-not throw, it imports whatever memory is now at that address. If your buffers
-arrive as camera frames, use [`useCameraFrame`](/docs/camera#quick-start)
-instead — it owns the whole lifetime and the pointer never leaves its scope.
-This function is the escape hatch for producers that are not frame objects. See
-[camera frames](/docs/camera) for both, and for how `<CameraFrame>` draws them.
-
-### loadImage
-
-```tsx
-const image = await loadImage(require('./cat.png'))
-```
-
-The same load without React — same sources, `.svg` included. Unlike the hooks,
-the caller owns the handle and must `dispose()` it.
-
-### setImageCacheLimit
-
-```tsx
-setImageCacheLimit(32 * 1024 * 1024)
-```
-
-Byte budget for decoded pixel buffers held between draws — a real LRU keyed on
-the handle, defaulting to 64 MB. An image the budget drops is re-decoded on next
-use, never lost. Decoded GPU textures are bounded separately by the tgfx context
-cache limit (192 MB).
-
-## renderToImage
-
-Draw a scene to an image without mounting a `<Canvas>` — share cards, sticker
-exports, thumbnails, generated textures.
-
-```tsx
-import { renderToImage, Rect, LinearGradient } from 'react-native-tgfx'
-
-const image = await renderToImage(
-  <Rect x={0} y={0} width={512} height={512}>
-    <LinearGradient
-      start={{ x: 0, y: 0 }}
-      end={{ x: 512, y: 512 }}
-      colors={['#f0f', '#0ff']}
-    />
-  </Rect>,
-  { width: 512, height: 512 }
-)
-```
-
-The tree goes through the same reconciler a canvas uses, so function components,
-`.map()`, hooks and context all expand. The result is an ordinary image handle:
-pass it to `<Image>`, `<ImageShader>`, or `<Atlas>`.
-
-| option | meaning |
-| --- | --- |
-| `width`, `height` | logical points, like a `<Canvas>` of that size |
-| `pixelRatio` | pixels per point, default 1 — pass the screen scale for a display-resolution render |
-| `opaque` | default false, leaving everything the scene did not cover transparent |
-
-The surface belongs to no view, so the pixels are read back to the CPU and
-re-uploaded wherever they are next drawn. That readback is the cost of a handle
-that works in any canvas, and it means `renderToImage` is not a per-frame tool:
-render once and reuse the handle.
-
-Animated props are read at their committed value. There is no view driving them,
-and the result is a single still frame.
-
-### useOffscreenImage
-
-The declarative half: it renders on mount, hands back the handle, and disposes
-it when the component unmounts or the inputs change.
-
-```tsx
-const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 }, [n])
-return <Canvas>{badge && <Image image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
-```
-
-`null` on the first frame, then the handle. The `element` is a dependency, so
-memoise it unless the scene really changed — an inline tree re-renders every
-commit.
-
-The caller owns the handle and must `dispose()` it. The result is **not** covered
-by `setImageCacheLimit`: it is registered as an external image, so it is never
-evicted and lives until you dispose it. Its size is reported to the JS garbage
-collector, so an unreferenced handle is collected eventually — but a large render
-held in state is held until you let it go.
-
-A suspending subtree commits its fallback rather than waiting, and a component
-that throws rejects the promise instead of resolving with a blank image.
-
-The tree is compiled synchronously on the JS thread before the promise is
-returned — about 0.2 ms for 500 nodes — and the GPU work then runs on a worker.
-Concurrent calls share one offscreen GPU context and so run strictly one at a
-time; a 4096x4096 render occupies a worker for roughly 10 ms, most of it the
-pixel readback.
-
-Renders are capped at 8192 pixels on a side after `pixelRatio` is applied, which
-at the limit is a 256 MB pixel readback — in practice memory bites first.
-
-## Handle operations
-
-A `TgfxImage` can derive new handles from itself. All four are **lazy**: nothing
-is copied and no pixels round-trip through JS. Every derivation of one parent
-shares a single decode and a single source texture, so a sprite sheet cut into
-handles decodes once.
+These transforms are native-side and reuse the decoded source instead of
+decoding the original file again.
 
 ```ts
 const thumb = photo.scaled(200, 200)
@@ -292,148 +53,63 @@ const upright = photo.oriented('rightTop')
 const frosted = photo.blurred(20, 20)
 ```
 
-| method | what it gives |
-| --- | --- |
-| `subset(x, y, width, height)` | a crop, in source pixels |
-| `scaled(width, height, sampling?)` | a resampled copy; `sampling` defaults to `'linear'` |
-| `oriented(orientation)` | rotated or flipped by an EXIF-style orientation |
-| `blurred(blurX, blurY)` | a Gaussian blur baked in, so it is filtered once rather than per frame |
+`oriented` takes an [`Orientation`](/api/type-aliases/Orientation) — the EXIF
+tags `topLeft`/`topRight`/`bottomRight`/`bottomLeft`/`leftTop`/`rightTop`/`rightBottom`/`leftBottom`,
+naming where the stored top-left pixel belongs.
 
-`scaled()` is the memory one. A 12 MP photo drawn at 200x200 otherwise keeps
-full-resolution pixels in both the decode budget and texture memory; a scaled
-handle samples the source down once.
-
-Each derived handle is independent: you own it and must `dispose()` it, and
-disposing the parent does not disturb it. Derivation is taken from the decoder
-rather than from cached pixels, so a derived handle also survives the parent
-being evicted — the source re-decodes on demand.
-
-A derived handle keeps the source's pixels alive for as long as it exists, so it
-reports those bytes to the garbage collector — an abandoned derivative is
-collected on its own merits rather than looking free. `blurred` reports its
-filtered surface on top of that. None of it counts against `setImageCacheLimit`,
-which governs eviction, and a derived handle is never evicted.
-
-A handle backed by something someone else recycles — a camera frame, or a video
-stream — has no stable source, and these methods throw on it.
-
-### useDerivedImage
-
-The declarative half, which disposes the derivative with the component and
-returns `null` while the source is still loading, so it composes with
-`useImage` directly.
+[`useDerivedImage`](/api/functions/useDerivedImage) does the same as a hook ([`Derivation`](/api/type-aliases/Derivation)).
 
 ```tsx
-const photo = useImage(require('./photo.jpg'))
 const thumb = useDerivedImage(photo, { type: 'scaled', width: 200, height: 200 })
 ```
 
-The derivation is `{ type: 'subset' | 'scaled' | 'oriented' | 'blurred' }` plus
-that type's arguments — the same four the handle exposes.
+## Native buffers
 
-## renderToPdf
-
-Write a scene to a PDF, one page per element. Geometry and text stay **vectors**
-— only images rasterize — so a chart drawn with the same components that render
-on screen exports as a real document rather than a screenshot.
-
-```tsx
-import { renderToPdf } from 'react-native-tgfx'
-
-await renderToPdf(
-  `${RNFS.DocumentDirectoryPath}/report.pdf`,
-  [
-    { width: 612, height: 792, element: <Cover /> },
-    { width: 612, height: 792, element: <Chart data={data} /> },
-  ],
-  { title: 'Quarterly report', author: 'Acme' }
-)
-```
-
-Sizes are in points: 612 x 792 is US Letter, 595 x 842 is A4. Metadata takes
-`title`, `author`, `subject` and `creator`; `creator` defaults to
-`react-native-tgfx`.
-
-Like `renderToImage`, each page is a still — animated props are read at their
-committed value, since there is no view driving them.
-
-Two limits come from the format itself. PDF supports **affine transforms only**,
-so a perspective component in a `<Group transform>` is dropped rather than
-approximated. And anything that needs an offscreen surface rasterizes — an
-`<Image>`, a blur or other image filter, a `<Mask>`, a `<Group layer>`; plain
-shapes, strokes and text stay resolution-independent.
-
-`<CameraFrame>` has no surface to size itself against on a page, so it falls
-back to one frame-pixel per point at the page origin. Draw an `<Image>` instead.
-
-The write is atomic: the document goes to a scratch file and is renamed on
-success, so a failure part-way through leaves whatever was already at `path`
-untouched rather than replacing it with a truncated document. An unwritable
-path throws with the path in the message.
-
-An export holds the shared offscreen GPU context for the whole document, so a
-long image-heavy one delays other `renderToImage` calls. Measured: 50 vector
-pages take ~33 ms, 50 pages each carrying their own 1024px bitmap take ~4.9 s.
-
-### useOffscreenPdf
-
-The declarative half: a file that stays in step with the scene, rewritten
-whenever the path, pages or metadata change.
+[`imageFromNativeBuffer`](/api/functions/imageFromNativeBuffer) wraps a camera or
+decoder buffer without a copy ([`PixelFormat`](/api/type-aliases/PixelFormat)).
+The producer's reference still has to be released after tgfx retains the
+buffer; prefer [`useCameraFrame`](/api/functions/useCameraFrame) for frame
+lifecycle management.
 
 ```tsx
-const { path, pending, error } = useOffscreenPdf(target, pages, { title })
+let frameImage: TgfxImage
+const buffer = frame.getNativeBuffer()
+try {
+  frameImage = imageFromNativeBuffer(buffer.pointer, 'bt601-limited')
+} finally {
+  buffer.release()
+  frame.dispose()
+}
+
+// Draw with frameImage, then dispose it when the stream ends.
 ```
 
-Memoise `pages` — an inline array rewrites the document on every render.
-
-## renderToSvg
-
-Render a scene to SVG markup, returned as a string — the vector counterpart to
-`snapshot()`. Drawing-app export, sharing a chart as vectors, feeding a design
-tool.
+## Cache
 
 ```tsx
-import { renderToSvg } from 'react-native-tgfx'
-
-const svg = await renderToSvg(<Chart data={data} />, { width: 400, height: 300 })
+setImageCacheLimit(32 * 1024 * 1024)
 ```
 
-| option | meaning |
-| --- | --- |
-| `width`, `height` | the document's width and height, in points; content outside is clipped |
-| `textAsPaths` | write glyphs as `<path>` outlines instead of `<text>` — drops the reader's font dependency. Defaults to false |
+The default decoded-image budget is 64 MB. The limit is applied to both the
+decoded-pixel cache and the tgfx GPU resource cache.
 
-Needs no build-flag change: the SVG module is already compiled in, since it is
-what renders `.svg` image sources.
+## Video
 
-Like the other offscreen entry points it is a still, so animated props resolve
-to their committed value.
+[`useVideo`](/api/functions/useVideo) gives a [`Video`](/api/interfaces/Video)
+whose `currentFrame` can be passed straight to `<Image>`. It requires
+Reanimated and Worklets because frames are pulled from a UI-thread frame
+callback.
+[`loadVideo`](/api/functions/loadVideo) is the promise form outside React — it
+resolves the raw native player, not a `Video`, so the caller drives
+`updateFrame()` and `release()` itself.
 
-**What does not survive the format.** SVG has no equivalent of the `Clear` blend
-mode, so a `<Mask>` exports as a black box rather than masked content — do not
-export a scene containing one. Conic gradients and composed or runtime image
-filters are unsupported too, and transforms are affine-only, so a perspective
-`<Group transform>` is flattened. An `<Image>` embeds as pixels; plain shapes,
-strokes and text stay resolution-independent.
-
-`textAsPaths` re-emits every glyph outline with no reuse between them. Measured
-on 500 text nodes: **14 ms and 314 KB** as `<text>`, **691 ms and 17.9 MB** as
-outlines. That whole time is spent holding the shared offscreen GPU context, so
-it delays other `renderToImage`, `renderToPdf` and `renderToSvg` calls — and the
-result crosses the bridge as one JS string. Reach for it when the reader will
-not have your fonts, not by default.
-
-### useOffscreenSvg
-
-The declarative half: `null` on the first frame, then the markup.
+Its second argument is a [`VideoOptions`](/api/interfaces/VideoOptions):
 
 ```tsx
-const svg = useOffscreenSvg(<Chart data={data} />, { width: 400, height: 300 }, [data])
+useVideo(require('./clip.mp4'), {
+  seek: 1500,     // jump to 1.5s; seeks again whenever this changes
+  paused: false,  // plays as soon as it's open (the default)
+  looping: true,
+  volume: 0.5,    // 0 to 1, defaults to 0 — a canvas video is usually decoration
+})
 ```
-
-The third argument is the dependency list. Without it the hook keys on the
-element, which is a new object every render — measured at 55 native exports over
-109 parent renders, each taking the GPU lock. Pass the values the scene actually
-depends on, or memoise the tree. `useOffscreenImage` takes the same argument and
-needs it more: without one it re-exports fast enough to trip React's update-depth
-limit.

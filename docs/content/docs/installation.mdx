@@ -1,11 +1,8 @@
 ---
 title: Installation
-description: Every step needed to get a canvas drawing, including the two that are easy to miss.
+description: Install, configure and render a canvas.
+icon: Download
 ---
-
-These steps were verified by installing the published package into a fresh React
-Native app and running it on a device. Two of them are not obvious, and skipping
-either fails — one at build time, one at runtime.
 
 ## 1. Install
 
@@ -13,97 +10,23 @@ either fails — one at build time, one at runtime.
 npm install react-native-tgfx@alpha react-native-nitro-modules
 ```
 
-The current release is `0.0.1`, published under the `alpha` dist-tag rather than
-`latest`, so the tag is not optional.
+tgfx ships prebuilt per ABI (Android archive, iOS `xcframework`). No postinstall
+step.
 
-The package ships tgfx as prebuilt static libraries for every CPU ABI on both
-platforms — an `armeabi-v7a`/`arm64-v8a`/`x86`/`x86_64` archive on Android and a
-device + simulator (`arm64` and `x86_64`) `xcframework` on iOS. Nothing is
-fetched or compiled at install time; there is no postinstall script.
+Also install `react-native-reanimated` and `react-native-worklets` — required
+for animated, camera-frame and video paths; skip if nothing animates.
 
-## 2. Install Reanimated *and* worklets
-
-```bash
-npm install react-native-reanimated react-native-worklets
-```
-
-Reanimated 4 moved worklets into their own package. Installing Reanimated alone
-fails the Android build during configuration:
-
-```
-[Reanimated] `react-native-worklets` library not found. Please install it as a
-dependency in your project. Install `react-native-worklets` with your package
-manager, i.e. `yarn add react-native-worklets` or `npm i react-native-worklets`.
-```
-
-Skip both if nothing in your scene animates — the library loads Reanimated
-through a guarded `require`, so its absence is not an error. Any `SharedValue`
-prop simply holds its committed value.
-
-## 3. Add the worklets Babel plugin
-
-```js title="babel.config.js"
-module.exports = {
-  presets: ['module:@react-native/babel-preset'],
-  plugins: ['react-native-worklets/plugin'],
-}
-```
-
-Without it the app builds and installs, then **crashes on the first `<Canvas>`**
-with `TypeError: Cannot read property 'bytecode' of undefined`, thrown from
-Reanimated's worklets module.
-
-Worklets need this transform to produce their bytecode. The stack points at
-`Canvas` and reads like a rendering bug, which is why it is worth stating.
-
-## 4. Build
+## 2. Build
 
 ```bash
 npx react-native run-android
 ```
 
-tgfx arrives prebuilt per ABI, so only the thin native glue compiles — a normal
-React Native library build, not a graphics-engine one.
-
-[#139](https://github.com/riteshshukla04/react-native-tgfx/issues/139) still
-tracks a `Couldn't determine Hermesc location` failure in the release bundle
-step.
-
-### iOS
-
 ```bash
 cd ios && pod install
 ```
 
-The podspec links the shipped `libtgfx.xcframework`; no extra step.
-
-## Optional: the camera
-
-Camera frames need [`react-native-vision-camera`](https://visioncamera.margelo.com)
-v5 or newer, plus its worklets package for `useFrameOutput`:
-
-```sh
-npm install react-native-vision-camera react-native-vision-camera-worklets
-```
-
-`useCameraFrame()` from `react-native-tgfx` is all most apps need — see
-[Camera frames](/docs/camera). Nothing extra to install: the frame is typed
-structurally, so the core package has no dependency on VisionCamera.
-
-If the frame processor has **no** JS work to do, `react-native-tgfx-vision-camera`
-moves the import into a native frame-processor plugin so no frame reaches a JS
-runtime at all:
-
-```sh
-npm install react-native-tgfx-vision-camera
-```
-
-It links the core package's native library directly — an Android prefab, an iOS
-pod dependency — so it needs no extra build step of its own beyond the one in
-step 4. A screen running a detector every frame cannot use it — see
-[face blur](/docs/camera#face-blur) for why.
-
-## 5. Draw something
+## 3. Draw
 
 ```tsx title="App.tsx"
 import { Canvas, Circle, Group, Rect } from 'react-native-tgfx'
@@ -122,15 +45,24 @@ export default function App() {
 }
 ```
 
-## If the canvas is blank
+## Camera (optional)
 
-A blank canvas in a running app means the JavaScript resolved and the native
-library did not. On Android, check it is actually in the APK:
+```bash
+npm install react-native-vision-camera react-native-vision-camera-worklets
+```
+
+See [Camera frames](/docs/camera).
+
+## Native binary check
+
+The JavaScript writer and C++ reader share a scene version. After that version
+changes, an `unexpected header` warning or blank canvas means the installed APK
+still contains the old native reader, so rebuild the app. To inspect a release
+APK directly:
 
 ```bash
 unzip -l android/app/build/outputs/apk/release/app-release.apk | grep NitroTgfx
 ```
 
-You should see one `lib/<abi>/libNitroTgfx.so` per ABI you built — at minimum
-the one your device runs. A build can succeed with that file missing, so check
-directly rather than trusting a green build.
+The packaged Android build contains one `lib/<abi>/libNitroTgfx.so` for each of
+`arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`.

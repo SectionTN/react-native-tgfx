@@ -1,11 +1,10 @@
 import './global.css'
-import { Archivo, IBM_Plex_Mono, Newsreader } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { RootProvider } from 'fumadocs-ui/provider/next'
 import type { ReactNode } from 'react'
 
-const display = Archivo({ subsets: ['latin'], variable: '--font-archivo', weight: ['400', '500', '600', '700'] })
-const body = Newsreader({ subsets: ['latin'], variable: '--font-newsreader', weight: ['400', '500', '600'] })
-const mono = IBM_Plex_Mono({ subsets: ['latin'], variable: '--font-plex', weight: ['400', '500', '600'] })
+const sans = Geist({ subsets: ['latin'], variable: '--font-geist' })
+const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata = {
   title: { default: 'react-native-tgfx', template: '%s · react-native-tgfx' },
@@ -15,9 +14,9 @@ export const metadata = {
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col">
-        <RootProvider>{children}</RootProvider>
+        <RootProvider search={{ options: { api: '/search' } }}>{children}</RootProvider>
       </body>
     </html>
   )

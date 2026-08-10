@@ -92,7 +92,11 @@ function backgroundOf(style: unknown): string | undefined {
     // Last wins, and an entry that names the key at all settles it — even as undefined.
     for (let i = style.length - 1; i >= 0; i--) {
       const entry = style[i] as Record<string, unknown> | null | undefined
-      if (entry != null && !Array.isArray(entry) && 'backgroundColor' in entry) {
+      if (
+        entry != null &&
+        !Array.isArray(entry) &&
+        'backgroundColor' in entry
+      ) {
         return backgroundOf(entry)
       }
       if (Array.isArray(entry)) {
@@ -106,7 +110,9 @@ function backgroundOf(style: unknown): string | undefined {
   }
   const value = (style as { backgroundColor?: unknown } | null | undefined)
     ?.backgroundColor
-  return typeof value === 'string' && value !== 'transparent' ? value : undefined
+  return typeof value === 'string' && value !== 'transparent'
+    ? value
+    : undefined
 }
 
 /**
@@ -114,7 +120,7 @@ function backgroundOf(style: unknown): string | undefined {
  * `<Image>`, `<Text>`, `<Group>`, ...) are reconciled into an immutable node
  * tree, compiled to a binary draw program (with live slots for any Reanimated
  * SharedValue props), and handed to the native GPU view. When the scene has
- * animated values, the {@link AnimationDriver} pushes them on the UI thread.
+ * animated values, the animation driver pushes them on the UI thread.
  */
 export function Canvas({
   children,

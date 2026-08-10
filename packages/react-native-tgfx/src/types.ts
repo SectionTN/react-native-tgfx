@@ -3,20 +3,21 @@ import type { Color } from './compiler/colors'
 import type { BlendMode } from './compiler/filters'
 import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
+import type { SharedValueLike } from './compiler/values'
 import type { NodeHandle } from './imperative'
 
 export type { Color, ColorComponents } from './compiler/colors'
 export type { BlendMode } from './compiler/filters'
 export type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
-export type { Transform, TransformOp, Vector } from './compiler/transform'
+export type {
+  Transform,
+  TransformAngle,
+  TransformNumber,
+  TransformOp,
+  Vector,
+} from './compiler/transform'
+export type { SharedValueLike } from './compiler/values'
 export type { PixelFormat, TgfxImage } from './specs/TgfxImage.nitro'
-
-/**
- * A value that may be a plain value or a Reanimated `SharedValue` (anything with
- * a `.value`). All geometric and paint props accept this so a single prop can be
- * static or animated on the UI thread.
- */
-export type SharedValueLike<T> = { value: T }
 
 /**
  * What a drawable image has to expose: a registry id and its size. A
@@ -92,10 +93,8 @@ export interface GroupProps extends PaintProps {
    * recording would freeze those. Cheap to leave on otherwise; the recording is
    * rebuilt whenever the scene recommits.
    *
-   * It replays recorded draw calls, not rasterized pixels, so the saving is the
-   * scene walk: roughly 10-15% of frame CPU on real geometry, more on many
-   * simple shapes. Reach for it to trim a static background, not as a step
-   * change.
+   * It replays recorded draw calls, not rasterized pixels, so it avoids walking
+   * the recorded subtree again without changing its resolution.
    */
   picture?: boolean
 }
@@ -500,8 +499,9 @@ export interface Snapshot {
 /** What a `ref` on `<Canvas>` gives you. */
 export interface CanvasHandle {
   /**
-   * Read the canvas back into memory. Resolves with a zero-copy `ArrayBuffer` —
-   * never a base64 string.
+   * Read the canvas back into memory. Resolves with an `ArrayBuffer`, never a
+   * base64 string. iOS wraps the encoded native buffer without copying;
+   * Android copies the temporary JNI buffer into Nitro-owned memory once.
    *
    * The readback is issued on the render thread inside a frame it forces, and
    * the encode runs on a worker, so the animation loop keeps its cadence.
@@ -632,7 +632,7 @@ export interface ShaderProps {
    * See {@link NodeHandle}.
    */
   ref?: NodeHandle
-  /** SkSL source with a `vec4 main(vec2 pos)` entry point. */
+  /** The supported SkSL subset, with a `half4`/`float4`/`vec4 main(vec2 pos)` entry point. */
   source: string
   uniforms?: Record<string, UniformValue>
   /**
