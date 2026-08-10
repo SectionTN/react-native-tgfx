@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.0.2-alpha.4](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.0...react-native-tgfx%400.0.2-alpha.4) (2026-08-10)
+
+### Features
+
+* **atlas:** draw many sprites from one image in a single op ([#199](https://github.com/riteshshukla04/react-native-tgfx/issues/199)) ([27655b0](https://github.com/riteshshukla04/react-native-tgfx/commit/27655b005fe134bd640d9d89d7e8208fa2c4145a))
+* Blend and ColorShader shaders, and composing filters ([468216c](https://github.com/riteshshukla04/react-native-tgfx/commit/468216c0017a591745bd1850543e0cf58c574171))
+* **color:** accept CSS Color 4 color(display-p3 ...) syntax ([#208](https://github.com/riteshshukla04/react-native-tgfx/issues/208)) ([6d860c8](https://github.com/riteshshukla04/react-native-tgfx/commit/6d860c8409b7b97217100d994f9ac2fa2a3270f7))
+* **color:** draw on a display-p3 surface and tag snapshots with its space ([#209](https://github.com/riteshshukla04/react-native-tgfx/issues/209)) ([f43c2c1](https://github.com/riteshshukla04/react-native-tgfx/commit/f43c2c11e58449567f8db7eee9d148ce78a7fca4))
+* Group clip, invertClip and layer ([856f515](https://github.com/riteshshukla04/react-native-tgfx/commit/856f5158be966cf5a68f821b55051ba695462ff4))
+* **hittest:** report which nodes are under a canvas point ([#205](https://github.com/riteshshukla04/react-native-tgfx/issues/205)) ([bb0c142](https://github.com/riteshshukla04/react-native-tgfx/commit/bb0c14239a85b98c0fedf1f8934927e6a47cf8d7))
+* **image:** draw SVG documents as image sources ([9065e8f](https://github.com/riteshshukla04/react-native-tgfx/commit/9065e8f5c2429903249007bbf85214ecb33e6e15))
+* **image:** draw SVG documents as image sources ([#169](https://github.com/riteshshukla04/react-native-tgfx/issues/169)) ([5b9bad6](https://github.com/riteshshukla04/react-native-tgfx/commit/5b9bad65fc7a207042b977a26df41c66c944942b))
+* **image:** subset, scaled, oriented and blurred handles that share the parent decode ([#202](https://github.com/riteshshukla04/react-native-tgfx/issues/202)) ([4b7cafb](https://github.com/riteshshukla04/react-native-tgfx/commit/4b7cafb1404071432203bbbf3daf0eeb0f4c11fe))
+* **imperative:** slot coverage for the whole surface — text, path, image, gradients, filters, enums, visibility, shared buffers ([#213](https://github.com/riteshshukla04/react-native-tgfx/issues/213)) ([7a0af16](https://github.com/riteshshukla04/react-native-tgfx/commit/7a0af16e616d1661931c3790838b44075d326da4)), closes [#204](https://github.com/riteshshukla04/react-native-tgfx/issues/204)
+* inner shadow, Luma and AlphaThreshold filters ([8fdb652](https://github.com/riteshshukla04/react-native-tgfx/commit/8fdb652219695593e6cc99d27b4d8893e816fc5d))
+* JS path utilities — boolean ops, bounds, contains, transform, measure ([b969f08](https://github.com/riteshshukla04/react-native-tgfx/commit/b969f08516dc328e0637e951652c15e498b9ef10))
+* **offscreen:** render a scene to an image without mounting a canvas ([#201](https://github.com/riteshshukla04/react-native-tgfx/issues/201)) ([84657b3](https://github.com/riteshshukla04/react-native-tgfx/commit/84657b335e691fd2db33cb6a438e715cbe971a79))
+* path effects — dash, corner, trim and fillType ([e4f832b](https://github.com/riteshshukla04/react-native-tgfx/commit/e4f832bed079d7c561ff7585f460f69d208b0f7d))
+* **pdf:** export a scene to a vector PDF ([#206](https://github.com/riteshshukla04/react-native-tgfx/issues/206)) ([6fd95df](https://github.com/riteshshukla04/react-native-tgfx/commit/6fd95dfe070fb5c5adcff2f4dd2829e5cee78e1b))
+* **picture:** record a static group once and replay it every frame ([#203](https://github.com/riteshshukla04/react-native-tgfx/issues/203)) ([272b67a](https://github.com/riteshshukla04/react-native-tgfx/commit/272b67aade4a1da2fb90a918ca092e438c7627a0))
+* strokeMiter, fauxBold and fauxItalic props ([1f4605d](https://github.com/riteshshukla04/react-native-tgfx/commit/1f4605da3cc03648333f86ca4a918393d93e6750))
+* **svg:** export a scene to SVG markup ([#207](https://github.com/riteshshukla04/react-native-tgfx/issues/207)) ([4cf8848](https://github.com/riteshshukla04/react-native-tgfx/commit/4cf88484751306865a26a20dac301fe9c084c1b0))
+* **vertices:** triangle meshes with per-vertex colours and texture coordinates ([#200](https://github.com/riteshshukla04/react-native-tgfx/issues/200)) ([101d5e6](https://github.com/riteshshukla04/react-native-tgfx/commit/101d5e6e61e9b48674a48015a48694a426019cb7))
+* **video:** play videos into a native image handle ([8dd424a](https://github.com/riteshshukla04/react-native-tgfx/commit/8dd424aef83a8c0a9ada7606d8e11a41ad2ac064))
+
+### Bug Fixes
+
+* **android:** build every ABI, not just arm64-v8a ([#166](https://github.com/riteshshukla04/react-native-tgfx/issues/166)) ([6822352](https://github.com/riteshshukla04/react-native-tgfx/commit/68223522c5d3c346f2a200ad9e2fd9d44c9ff499))
+* apply an inherited opacity once through a layer, and keep clipPath off every node ([3817d97](https://github.com/riteshshukla04/react-native-tgfx/commit/3817d97bd715332963276631cac67709a856053a))
+* **backdrop:** frosted and liquid-glass panels that read the scene beneath them ([#214](https://github.com/riteshshukla04/react-native-tgfx/issues/214)) ([1e0932f](https://github.com/riteshshukla04/react-native-tgfx/commit/1e0932fe76e952e78af71e1d08523cb9523bea7f))
+* draw the canvas style's backgroundColor ([#198](https://github.com/riteshshukla04/react-native-tgfx/issues/198)) ([320ca64](https://github.com/riteshshukla04/react-native-tgfx/commit/320ca644152c0905bc96d5660eef2813922ad578))
+* drop AlphaThreshold, whose tgfx shader never re-premultiplies ([0f0b627](https://github.com/riteshshukla04/react-native-tgfx/commit/0f0b6278c266b11dff9a8d0103304057fa0f7901))
+* faux emphasis reaches fallback faces and respects span overrides ([0c11d3e](https://github.com/riteshshukla04/react-native-tgfx/commit/0c11d3e4a2096535db081c9f46841b39e3ff6acd))
+* hide the content when either mask side is empty, and keep the matte unshaded ([de889e1](https://github.com/riteshshukla04/react-native-tgfx/commit/de889e1e446f1a237707109fc1cdbe274ee9ff80))
+* keep a Blend child resolving per frame instead of baking it ([431cdbe](https://github.com/riteshshukla04/react-native-tgfx/commit/431cdbe44f30fd7ea5bbdb6ae956865ff8709c5f))
+* keep the fill type across path effects and trim before reshaping ([6858656](https://github.com/riteshshukla04/react-native-tgfx/commit/6858656b3685fbe4210eeb1ed5e873178f9f7ff5))
+* **mask:** seed the mask layer with Clear so DstIn spans the clip ([081bb3a](https://github.com/riteshshukla04/react-native-tgfx/commit/081bb3a8eef7c9567659804ba7146ae210840d1d))
+* nest contours by outline sampling and measure every contour ([3d55e48](https://github.com/riteshshukla04/react-native-tgfx/commit/3d55e483703808070b8f68427dabe437cfe828c9))
+* **package:** make a clean install of the published tarball build ([#167](https://github.com/riteshshukla04/react-native-tgfx/issues/167)) ([4c6d10d](https://github.com/riteshshukla04/react-native-tgfx/commit/4c6d10d35ab6b70eaeb37c079871d991c69129d5))
+* releasse ([c507fd9](https://github.com/riteshshukla04/react-native-tgfx/commit/c507fd99e9556ac31b468487619213503079ffa7))
+* **video:** decode Android frames through a SurfaceTexture, not a hardware buffer ([78fe09a](https://github.com/riteshshukla04/react-native-tgfx/commit/78fe09ac0be9abaede4d1fc0058f3ef8449de373))
+* **video:** produce Android frames at draw time so a paused video keeps its frame ([d68193d](https://github.com/riteshshukla04/react-native-tgfx/commit/d68193d2efceac405fa92d5734a37db25a1bd1b3))
+* **video:** rebuild the Android frame reader across background and resume ([4fad058](https://github.com/riteshshukla04/react-native-tgfx/commit/4fad0589155247a12db53c702bdf4a5b25283f72))
+
+### Performance Improvements
+
+* bake the static effect prefix so only moving effects re-run ([73211ba](https://github.com/riteshshukla04/react-native-tgfx/commit/73211ba212fca271db7ac68b0172a0f24b745b1b))
+* build the mask Luma filter once instead of per frame ([701d25f](https://github.com/riteshshukla04/react-native-tgfx/commit/701d25f7c4c8812a40c93b0bf762aace5af6ae61))
+* fold a static Blend without materialising its children ([940743e](https://github.com/riteshshukla04/react-native-tgfx/commit/940743e4c85f046ccb6e2422b2a1c1dcd54e8cf4))
+* pre-filter contour nesting by bounds and skip single-contour work ([c67da0d](https://github.com/riteshshukla04/react-native-tgfx/commit/c67da0d0568456818138703c1cfca45aa6126962))
+* seed the mask layer with a clip rect, and fill the new demo panels ([75f1324](https://github.com/riteshshukla04/react-native-tgfx/commit/75f1324a3a7626d9cf11689fe792677fa8c4e793))
+
 ## [0.0.2-alpha.0](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%401.0.0-alpha.0...react-native-tgfx%400.0.2-alpha.0) (2026-08-05)
 
 ### Bug Fixes
