@@ -4,7 +4,7 @@
     {
       "name": "docs",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "--cwd", "docs", "dev", "--port", "3000"],
+      "runtimeArgs": ["run", "--filter", "@tgfx/docs", "dev"],
       "port": 3000
     }
   ]

@@ -29,6 +29,9 @@
   --font-body: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+
+  --tg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tg-settle: cubic-bezier(0.34, 1.36, 0.5, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -97,6 +100,7 @@ table {
 }
 
 #nd-sidebar,
+#nd-sidebar-mobile,
 #nd-tocnav,
 #nd-toc {
   font-family: var(--font-display);
@@ -334,6 +338,215 @@ table {
 
 .tg-ghost:hover {
   border-color: var(--tg-js);
+}
+
+/*
+ * On load a spider hangs on its silk at centre screen, resolves into the
+ * Margelo mark, moves to the corner, and the ground fades from under it. The
+ * curtain is the page's own ground and does not animate in, it is simply there
+ * until it clears.
+ *
+ * Every resting style here is the parked state, and the keyframes animate in
+ * from the start state. Swapping data-phase drops the animation, so a resting
+ * start state would blink for a frame at the handover.
+ */
+.tg-draw {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--tg-ground);
+}
+
+.tg-draw[data-phase='reveal'] {
+  animation: tg-draw-reveal 0.3s ease-out forwards;
+}
+
+/* The thread the spider hangs from, at full length from the first frame. */
+.tg-draw-silk {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 100%;
+  /* Solid for its whole length; only the very top softens into the edge. */
+  background: linear-gradient(to bottom, transparent 0, var(--tg-js) 9%, var(--tg-js) 100%);
+  transform-origin: 0 0;
+  transform: scaleY(0.5);
+  opacity: 0;
+}
+
+.tg-draw[data-phase='cover'] .tg-draw-silk {
+  animation: tg-draw-silk-hold 1.6s linear forwards;
+}
+
+/*
+ * Shrinks into the top-right corner as it moves and stays there once the
+ * curtain has gone, so it sits above it. Offsets are tuned to the mark's ink
+ * rather than the canvas box, which is mostly padding around it.
+ */
+.tg-draw-mark {
+  position: fixed;
+  z-index: 61;
+  width: 184px;
+  height: 184px;
+  top: calc(50vh - 92px);
+  left: calc(50vw - 92px);
+  pointer-events: none;
+  transform: translate(calc(50vw - 58px), calc(-50vh + 56px)) scale(0.42);
+}
+
+.tg-draw-mark[data-phase='cover'] {
+  animation: tg-draw-mark-park 1.6s linear forwards;
+}
+
+/* Hangs in place while the legs resolve, then lets go at 69%. */
+@keyframes tg-draw-silk-hold {
+  0%,
+  69% {
+    transform: scaleY(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes tg-draw-mark-park {
+  0%,
+  69% {
+    transform: translate(0, 0) scale(1);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.25, 1);
+  }
+}
+
+@keyframes tg-draw-reveal {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---- navigation ---- */
+
+/* The rail is portalled into the sidebar scroller so it scrolls with the list. */
+:is(#nd-sidebar, #nd-sidebar-mobile) [data-radix-scroll-area-viewport] > div {
+  position: relative;
+}
+
+.tg-nav-rail {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--tg-js);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform 0.42s var(--tg-settle);
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active] {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    translate 0.3s var(--tg-ease);
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active]:hover {
+  translate: 2px 0;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active] svg {
+  transition: scale 0.35s var(--tg-settle);
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active]:hover svg {
+  scale: 1.12;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active='true'] {
+  font-weight: 500;
+}
+
+/* Group labels are structure, not content, so they take the mono register. */
+:is(#nd-sidebar, #nd-sidebar-mobile) p {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--tg-muted);
+}
+
+#nd-toc a {
+  transition:
+    color 0.25s ease,
+    translate 0.3s var(--tg-ease);
+}
+
+#nd-toc a:hover {
+  translate: 2px 0;
+}
+
+#nd-toc a[data-active='true'] {
+  translate: 2px 0;
+}
+
+/* Fumadocs ships the track and the travelling dot; only the easing is ours. */
+#nd-toc svg,
+#nd-toc [style*='offset-path'] {
+  transition-duration: 0.45s;
+  transition-timing-function: var(--tg-ease);
+}
+
+.tg-enter > * {
+  animation: tg-enter-in 0.5s var(--tg-ease) both;
+}
+
+.tg-enter > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+
+.tg-enter > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+
+.tg-enter ~ * {
+  animation: tg-enter-in 0.5s 0.18s var(--tg-ease) both;
+}
+
+@keyframes tg-enter-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* Previous / next: the chevron leans the way the link goes. */
+article > div:last-child > a {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease;
+}
+
+article > div:last-child > a:hover {
+  border-color: color-mix(in srgb, var(--tg-js) 45%, var(--tg-line));
+}
+
+article > div:last-child > a svg {
+  transition: translate 0.3s var(--tg-ease);
+}
+
+article > div:last-child > a:hover .lucide-chevron-left {
+  translate: -3px 0;
+}
+
+article > div:last-child > a:hover .lucide-chevron-right {
+  translate: 3px 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -15,11 +15,14 @@ export function createDocsRoute(source: Source) {
 
     return (
       <DocsPage toc={page.data.toc} full={page.data.full}>
-        <DocsTitle>{page.data.title}</DocsTitle>
-        <DocsDescription>{page.data.description}</DocsDescription>
-        <DocsBody>
-          <MDX components={getMDXComponents()} />
-        </DocsBody>
+        {/* Keyed so the enter animation replays when the route changes under the same segment. */}
+        <div key={page.url} className="tg-enter flex flex-col gap-4">
+          <DocsTitle>{page.data.title}</DocsTitle>
+          <DocsDescription>{page.data.description}</DocsDescription>
+          <DocsBody>
+            <MDX components={getMDXComponents()} />
+          </DocsBody>
+        </div>
       </DocsPage>
     )
   }
