@@ -9,8 +9,8 @@
     "start": "next start",
     "clean": "rm -rf .next .source content/api",
     "postinstall": "fumadocs-mdx",
-    "preview": "bun run docs:api && opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "bun run docs:api && opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "fumadocs-core": "16.14.0",
