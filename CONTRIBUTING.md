@@ -1,5 +1,21 @@
 # Contributing
 
+## Setup without the tgfx submodule
+
+`cpp/third_party/tgfx` is a private repo. Without access to it, fetch the
+prebuilt static libs and tgfx's headers from R2 instead of cloning and building
+the submodule:
+
+```sh
+bun run bootstrap
+```
+
+That writes `packages/react-native-tgfx/{ios,android}/libs` and
+`cpp/third_party/tgfx/include`, which is everything the podspec and
+`android/CMakeLists.txt` need — both link the prebuilt archive and never compile
+tgfx. The object key is the submodule commit the checkout pins, so a bump has no
+cached build until the next release uploads one (`scripts/release.sh`, step 3).
+
 ## Imperative APIs first
 
 A lesson learned the hard way (see
