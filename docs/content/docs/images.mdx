@@ -20,6 +20,13 @@ photo != null && (
 
 [`ImageProps`](/api/interfaces/ImageProps) · [`Fit`](/api/type-aliases/Fit) · [`Sampling`](/api/type-aliases/Sampling)
 
+A `require()`d asset works in both build types. A release Android build compiles
+it into a drawable or raw resource rather than shipping a file, so the source
+resolves to a resource name; that name is read natively, and the bytes still
+never cross into JS. Two assets whose file names differ only by extension —
+`logo.png` beside `logo.webp` — collide as one Android resource, so give them
+distinct names.
+
 ## Sub-rects
 
 ```tsx

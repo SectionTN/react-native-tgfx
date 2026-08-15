@@ -9,6 +9,7 @@
 #include "ImageRegistry.hpp"
 #include "OffscreenRender.hpp"
 #include "PdfExport.hpp"
+#include "PlatformAsset.hpp"
 #include "SvgExport.hpp"
 #include "Log.hpp"
 #include "SvgImage.hpp"
@@ -92,6 +93,12 @@ std::string stripFileScheme(const std::string& path) {
 
 std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromFile(const std::string& path) {
   return ImagePromise::async([file = stripFileScheme(path)]() {
+    // A packaged resource has a name and no file, so it must be read before any path attempt.
+    if (tgfxrn::looksLikeAssetName(file)) {
+      if (auto data = tgfxrn::platformAssetData(file)) {
+        return registerData(std::move(data), file);
+      }
+    }
     // Codec first: it keeps the bytes on disk and re-reads them after an eviction, which
     // reading the file up front would give up. Only a non-raster falls through to the bytes.
     if (auto codec = ::tgfx::ImageCodec::MakeFrom(file)) {

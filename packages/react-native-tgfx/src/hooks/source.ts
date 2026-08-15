@@ -49,7 +49,10 @@ export async function loadSource<T>(
   if (payload != null) {
     return api.fromBase64(payload)
   }
-  if (uri.startsWith('file:') || (bareIsPath && uri.startsWith('/'))) {
+  // A release Android build compiles a bundled asset into a drawable/raw
+  // resource, so this is a bare resource name — no scheme, no path. Native
+  // reads it by name; base64 would only see the name's own characters.
+  if (uri.startsWith('file:') || (bareIsPath && !/^[a-z][a-z\d+.-]*:/i.test(uri))) {
     return api.fromFile(uri)
   }
   if (/^(https?|content|asset):/.test(uri)) {

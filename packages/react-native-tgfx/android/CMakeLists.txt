@@ -130,6 +130,7 @@ add_library(${PACKAGE_NAME} SHARED
         src/main/cpp/cpp-adapter.cpp
         src/main/cpp/TgfxAndroid.cpp
         src/main/cpp/TgfxVideoStream.cpp
+        src/main/cpp/PlatformAssetAndroid.cpp
         ../cpp/TgfxScene.cpp
         ../cpp/SvgPath.cpp
         ../cpp/SvgImage.cpp

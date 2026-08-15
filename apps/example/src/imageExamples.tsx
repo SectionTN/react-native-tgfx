@@ -22,8 +22,9 @@ import {
 } from 'react-native-tgfx';
 
 const sample = require('./assets/sample.png');
-const jpeg = require('./assets/sample.jpg');
-const webp = require('./assets/sample.webp');
+// Distinct basenames: same-stem assets collide as one Android drawable in a release build.
+const jpeg = require('./assets/sample-jpeg.jpg');
+const webp = require('./assets/sample-webp.webp');
 const sprites = require('./assets/sprites.png');
 const tile = require('./assets/tile.png');
 const logo = require('./assets/logo.svg');

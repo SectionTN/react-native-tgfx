@@ -141,7 +141,7 @@ class HybridTgfxVideoFactory : HybridTgfxVideoFactorySpec() {
   override fun load(uri: String): Promise<HybridTgfxVideoSpec> = Promise.parallel {
     val context = NitroModules.applicationContext
       ?: throw IllegalStateException("[tgfx] loadVideo: no application context")
-    open(context, source(uri))
+    open(context, source(context, uri))
   }
 
   private fun <T> onMainThread(work: () -> T): T {
@@ -153,8 +153,20 @@ class HybridTgfxVideoFactory : HybridTgfxVideoFactorySpec() {
     return task.get()
   }
 
-  private fun source(uri: String): Uri =
-    if (uri.startsWith("/")) Uri.fromFile(File(uri)) else Uri.parse(uri)
+  private fun source(context: Context, uri: String): Uri {
+    if (uri.startsWith("/")) {
+      return Uri.fromFile(File(uri))
+    }
+    // A release build compiles a bundled video into a raw resource, so this is a
+    // bare name that Uri.parse would turn into a relative URI with no scheme.
+    if (!uri.contains('/') && !uri.contains(':')) {
+      val id = context.resources.getIdentifier(uri, "raw", context.packageName)
+      if (id != 0) {
+        return Uri.parse("android.resource://${context.packageName}/$id")
+      }
+    }
+    return Uri.parse(uri)
+  }
 
   private fun open(context: Context, uri: Uri): HybridTgfxVideoSpec {
     val format = videoFormat(context, uri)

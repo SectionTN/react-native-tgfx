@@ -3,10 +3,12 @@ package com.margelo.nitro.tgfx
 import android.graphics.SurfaceTexture
 import android.hardware.HardwareBuffer
 import android.os.Build
+import android.util.Log
 import android.view.Surface
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import com.facebook.proguard.annotations.DoNotStrip
+import com.margelo.nitro.NitroModules
 import java.nio.ByteBuffer
 
 /** JNI bridge to libNitroTgfx; every method takes a native `TgfxRenderer` pointer from [create]. */
@@ -32,6 +34,28 @@ internal object TgfxNative {
 
   external fun hitTest(ptr: Long, x: Float, y: Float, precise: Boolean): DoubleArray
   external fun draw(ptr: Long): Boolean
+
+  /**
+   * Bytes of a packaged asset, or null if [name] names no resource. A release
+   * build compiles a `require()`d asset into a drawable/raw resource, so all JS
+   * ever sees is this name — there is no file for native to open.
+   */
+  @Keep
+  @DoNotStrip
+  @JvmStatic
+  fun resourceBytes(name: String): ByteArray? {
+    val context = NitroModules.applicationContext ?: return null
+    val resources = context.resources
+    for (kind in arrayOf("drawable", "raw", "mipmap")) {
+      val id = resources.getIdentifier(name, kind, context.packageName)
+      if (id != 0) {
+        return runCatching { resources.openRawResource(id).use { it.readBytes() } }
+          .onFailure { Log.w("tgfx", "could not read the asset resource $name: $it") }
+          .getOrNull()
+      }
+    }
+    return null
+  }
 
   /** Called once per [snapshot] on a native worker, never the render thread. [data] is call-scoped. */
   @Keep

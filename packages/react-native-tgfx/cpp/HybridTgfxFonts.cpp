@@ -6,6 +6,7 @@
 
 #include "Base64.hpp"
 #include "FontRegistry.hpp"
+#include "PlatformAsset.hpp"
 #include "SvgPath.hpp"
 #include "TextLayout.hpp"
 #include "tgfx/core/Data.h"
@@ -58,6 +59,12 @@ tgfxrn::TextSpec specOf(const TextLayoutStyle& style) {
 std::shared_ptr<NamePromise> HybridTgfxFonts::registerFromFile(const std::string& path,
                                                                const std::string& family) {
   return NamePromise::async([file = stripFileScheme(path), family]() {
+    // A packaged resource has a name and no file, so it must be read before any path attempt.
+    if (tgfxrn::looksLikeAssetName(file)) {
+      if (auto data = tgfxrn::platformAssetData(file)) {
+        return registerTypeface(::tgfx::Typeface::MakeFromData(std::move(data), 0), family, file);
+      }
+    }
     return registerTypeface(::tgfx::Typeface::MakeFromPath(file), family, file);
   });
 }
