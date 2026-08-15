@@ -16,6 +16,24 @@ That writes `packages/react-native-tgfx/{ios,android}/libs` and
 tgfx. The object key is the submodule commit the checkout pins, so a bump has no
 cached build until the next release uploads one (`scripts/release.sh`, step 3).
 
+## Running the example app
+
+```sh
+git clone https://github.com/riteshshukla04/react-native-tgfx.git
+cd react-native-tgfx
+bun install
+bun run bootstrap        # prebuilt tgfx, see above — no submodule needed
+
+cd apps/example
+bun run android          # ANDROID_HOME must be set; boot an emulator first
+
+bundle install && (cd ios && bundle exec pod install) && bun run ios
+```
+
+`pod install` needs a UTF-8 locale — under `LANG=C` CocoaPods dies with
+"Unicode Normalization not appropriate for ASCII-8BIT". Prefix it with
+`LANG=en_US.UTF-8` if your shell does not set one.
+
 ## Imperative APIs first
 
 A lesson learned the hard way (see
