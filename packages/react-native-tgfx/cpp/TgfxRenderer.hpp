@@ -134,6 +134,14 @@ class TgfxRenderer {
   std::atomic<bool> opaque_{false};
   std::atomic<uint64_t> version_{1};
   uint64_t drawnVersion_{0};
+  /// Zero unless the drawn scene reads that registry; see draw().
+  uint64_t drawnImageMark_{0};
+  uint64_t drawnFontMark_{0};
+  /// The compiled scene's registry dependencies. Read from the registry's wake,
+  /// which is not this thread, so they are atomics rather than SceneRenderer's
+  /// lock. True until the first scene lands, so no first frame is gated away.
+  std::atomic<bool> usesImages_{true};
+  std::atomic<bool> usesText_{true};
   uint64_t wakeToken_ = 0;
   std::vector<std::pair<SnapshotRequest, SnapshotCallback>> pendingSnapshots_;
   std::vector<InFlightSnapshot> inFlightSnapshots_;

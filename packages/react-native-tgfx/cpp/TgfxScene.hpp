@@ -416,8 +416,15 @@ class SceneRenderer {
   /// How many root nodes the last accepted program holds; 0 if it was rejected.
   size_t rootCount() const;
 
+  /// Whether the program reads the image / font registry, whose epochs are
+  /// process-wide: a scene that reads neither must not redraw when they move.
+  bool usesImages() const;
+  bool usesText() const;
+
  private:
   std::shared_ptr<const Program> program_;
+  bool usesImages_ = false;
+  bool usesText_ = false;
   mutable std::mutex programMutex_;
 
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);

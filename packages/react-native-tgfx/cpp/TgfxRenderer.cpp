@@ -37,7 +37,14 @@ void TgfxRenderer::setWakeCallback(std::function<void()> wake) {
     wakeToken_ = 0;
   }
   if (wake != nullptr) {
-    wakeToken_ = registry.addWakeListener(std::move(wake));
+    // The registry wakes every canvas in the process. One that draws no image
+    // would only reach draw()'s early-out, having cost a post and a JNI hop on
+    // a render thread that is already the busiest one here.
+    wakeToken_ = registry.addWakeListener([this, wake = std::move(wake)] {
+      if (usesImages_.load(std::memory_order_acquire)) {
+        wake();
+      }
+    });
   }
 }
 
@@ -179,10 +186,15 @@ void TgfxRenderer::setPixelRatio(float ratio) {
 bool TgfxRenderer::draw() {
   TGFXRN_TRACE("tgfx.draw");
   // Both epochs move with no commit behind them: a swapped buffer, a re-decode, a loaded face.
+  // Both are also process-wide, so they are only this canvas's business when its own scene
+  // reads that registry — otherwise one video frame redraws every canvas in the app.
   uint64_t fontEpoch = FontRegistry::instance().epoch();
-  uint64_t version = version_.load(std::memory_order_acquire) +
-                     ImageRegistry::instance().epoch() + fontEpoch;
-  if (version == drawnVersion_ && !snapshotPending()) {
+  uint64_t version = version_.load(std::memory_order_acquire);
+  uint64_t imageMark =
+      usesImages_.load(std::memory_order_acquire) ? ImageRegistry::instance().epoch() : 0;
+  uint64_t fontMark = usesText_.load(std::memory_order_acquire) ? fontEpoch : 0;
+  if (version == drawnVersion_ && imageMark == drawnImageMark_ &&
+      fontMark == drawnFontMark_ && !snapshotPending()) {
     return false;
   }
   std::shared_ptr<tgfx::Window> window;
@@ -218,6 +230,8 @@ bool TgfxRenderer::draw() {
   if (hasScene) {
     TGFXRN_TRACE("tgfx.setScene");
     scene_.setScene(drawScene_, *drawStrings_);
+    usesImages_.store(scene_.usesImages(), std::memory_order_release);
+    usesText_.store(scene_.usesText(), std::memory_order_release);
   } else if (dropCaches) {
     drawScene_.clear();
     drawScene_.shrink_to_fit();
@@ -296,6 +310,8 @@ bool TgfxRenderer::draw() {
   }
   if (rendered) {
     drawnVersion_ = version;
+    drawnImageMark_ = imageMark;
+    drawnFontMark_ = fontMark;
   }
   return rendered;
 }

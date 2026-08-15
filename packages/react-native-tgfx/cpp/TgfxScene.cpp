@@ -1611,6 +1611,38 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
   return r.ok;
 }
 
+namespace {
+
+/**
+ * Whether the program resolves anything from the image or font registry.
+ *
+ * Both epochs are process-wide, so without this every canvas in the app
+ * redraws on any decode, buffer swap or face load — a video frame would cost
+ * one full redraw per mounted canvas. Deliberately over-inclusive: a false
+ * positive only costs the redraw that used to happen anyway, a false negative
+ * drops a frame that should have been drawn.
+ */
+void scanDependencies(const Program& program, bool& images, bool& text) {
+  for (const auto& cmd : program) {
+    if (images && text) {
+      return;
+    }
+    if (cmd.kind == DrawCmd::Image || cmd.kind == DrawCmd::CameraFrame ||
+        cmd.kind == DrawCmd::Atlas || cmd.imageHandle != 0 ||
+        cmd.imageWord.slot >= 0 || cmd.paint.imageShader != nullptr ||
+        cmd.paint.runtime != nullptr || cmd.paint.blendShader != nullptr) {
+      images = true;
+    }
+    if (cmd.text != nullptr) {
+      text = true;
+    }
+    scanDependencies(cmd.children, images, text);
+    scanDependencies(cmd.maskChildren, images, text);
+  }
+}
+
+}  // namespace
+
 void SceneRenderer::setScene(std::span<const double> words,
                              const std::vector<std::string>& strings) {
   if (words.size() < 4 || words[0] != kSceneVersion) {
@@ -1680,8 +1712,14 @@ void SceneRenderer::setScene(std::span<const double> words,
         reader.stringPatchAt, reader.stringPatches.size());
   }
 
+  bool images = false;
+  bool text = false;
+  scanDependencies(*program, images, text);
+
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = std::move(program);
+  usesImages_ = images;
+  usesText_ = text;
 }
 
 
@@ -1820,6 +1858,16 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
 size_t SceneRenderer::rootCount() const {
   std::lock_guard<std::mutex> lock(programMutex_);
   return program_ == nullptr ? 0 : program_->size();
+}
+
+bool SceneRenderer::usesImages() const {
+  std::lock_guard<std::mutex> lock(programMutex_);
+  return usesImages_;
+}
+
+bool SceneRenderer::usesText() const {
+  std::lock_guard<std::mutex> lock(programMutex_);
+  return usesText_;
 }
 
 std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,

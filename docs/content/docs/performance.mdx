@@ -38,6 +38,21 @@ component falls back to the slower path.
   [`useVertexBuffer`](/api/functions/useVertexBuffer).
 - One animated opacity per chain — see [Animation](/docs/animation).
 
+## Redraws are scoped to what a canvas actually reads
+
+Decoded images and loaded typefaces live in process-wide registries, so a video
+frame, a decode landing or a newly loaded face moves a counter every mounted
+canvas can see. A canvas only reacts to the registry its own compiled scene
+reads: one that draws no image is neither woken nor redrawn when an image
+changes, and the same holds for text and fonts.
+
+Nothing to configure, but it is worth knowing what it keys on. The scene is
+treated as reading the image registry when it holds an `<Image>`,
+`<CameraFrame>` or `<Atlas>`, an image handle, an `<ImageShader>`, a runtime
+shader or a `<Blend>`; and as reading fonts when it holds any text. A canvas
+built entirely from shapes and gradients is therefore idle while a video plays
+beside it.
+
 ## Measure
 
 With the repository's benchmark app installed and an Android device configured:
