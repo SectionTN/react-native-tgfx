@@ -11,8 +11,12 @@ set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 # at publish time by scripts/build-tgfx-android.sh — an npm install compiles
 # only the glue code below, never tgfx itself. Absent (a git checkout of the
 # monorepo), fall back to building tgfx from source.
+# Vulkan backend switch (bench/experimental). The prebuilt archive is GL-only,
+# so ON always builds tgfx from source.
+option(TGFX_RN_VULKAN "Use the Vulkan backend instead of OpenGL ES" OFF)
+
 set(TGFX_LIB "${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libtgfx.a")
-if (EXISTS "${TGFX_LIB}")
+if (EXISTS "${TGFX_LIB}" AND NOT TGFX_RN_VULKAN)
   add_library(tgfx STATIC IMPORTED)
   set_target_properties(tgfx PROPERTIES IMPORTED_LOCATION "${TGFX_LIB}")
 else ()
@@ -70,9 +74,14 @@ string(REPLACE) above.")
   endif ()
 endif ()
 
-set(TGFX_USE_OPENGL ON CACHE BOOL "" FORCE)
+if (TGFX_RN_VULKAN)
+  set(TGFX_USE_OPENGL OFF CACHE BOOL "" FORCE)
+  set(TGFX_USE_VULKAN ON CACHE BOOL "" FORCE)
+else ()
+  set(TGFX_USE_OPENGL ON CACHE BOOL "" FORCE)
+  set(TGFX_USE_VULKAN OFF CACHE BOOL "" FORCE)
+endif ()
 set(TGFX_USE_METAL OFF CACHE BOOL "" FORCE)
-set(TGFX_USE_VULKAN OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_WEBGPU OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_QT OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_LAYERS ON CACHE BOOL "" FORCE)
@@ -148,6 +157,13 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/HybridTgfxPath.cpp
         ../cpp/BufferRegistry.cpp
 )
+
+if (TGFX_RN_VULKAN)
+  target_compile_definitions(${PACKAGE_NAME} PRIVATE TGFX_RN_VULKAN)
+  # AImage/AImageReader plane access for the video path lives in libmediandk.
+  find_library(MEDIANDK_LIB mediandk)
+  target_link_libraries(${PACKAGE_NAME} ${MEDIANDK_LIB})
+endif ()
 
 # Add Nitrogen specs :)
 include(${CMAKE_SOURCE_DIR}/../nitrogen/generated/android/NitroTgfx+autolinking.cmake)

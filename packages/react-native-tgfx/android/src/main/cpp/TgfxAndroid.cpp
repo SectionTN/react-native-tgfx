@@ -13,7 +13,12 @@
 #include "TgfxRenderer.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/ColorSpace.h"
+#ifdef TGFX_RN_VULKAN
+#include "tgfx/gpu/vulkan/VulkanDevice.h"
+#include "tgfx/gpu/vulkan/VulkanWindow.h"
+#else
 #include "tgfx/gpu/opengl/egl/EGLWindow.h"
+#endif
 #include "tgfx/platform/android/HardwareBufferJNI.h"
 
 namespace {
@@ -160,7 +165,13 @@ Java_com_margelo_nitro_tgfx_TgfxNative_surfaceCreated(JNIEnv* env, jobject,
   }
   auto space = view->renderer.wantsDisplayP3() ? tgfx::ColorSpace::DisplayP3()
                                                : tgfx::ColorSpace::SRGB();
+#ifdef TGFX_RN_VULKAN
+  // One VulkanDevice (VkInstance + VkDevice) for every surface of the process.
+  static auto vulkanDevice = tgfx::VulkanDevice::Make();
+  auto window = tgfx::VulkanWindow::MakeFrom(view->nativeWindow, vulkanDevice, space);
+#else
   auto window = tgfx::EGLWindow::MakeFrom(view->nativeWindow, nullptr, space);
+#endif
   view->renderer.setWindow(window);
 }
 

@@ -153,6 +153,11 @@ internal class TgfxRenderTarget {
     }
   }
 
+  // @JvmOverloads is load-bearing: setWakeTarget's JNI looks up requestRender
+  // with signature ()V, which a Kotlin default parameter alone does not emit —
+  // without the zero-arg overload every canvas silently loses its registry wake
+  // and stream-driven content (video, camera) freezes after its first frame.
+  @JvmOverloads
   fun requestRender(force: Boolean = false) {
     if (hidden && !force) {
       return

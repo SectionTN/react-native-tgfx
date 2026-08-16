@@ -18,6 +18,8 @@
 
 #if defined(__APPLE__)
 #include "tgfx/gpu/metal/MetalDevice.h"
+#elif defined(TGFX_RN_VULKAN)
+#include "tgfx/gpu/vulkan/VulkanDevice.h"
 #else
 #include "tgfx/gpu/opengl/GLDevice.h"
 #endif
@@ -28,6 +30,8 @@ namespace {
 std::shared_ptr<tgfx::Device> makeDevice() {
 #if defined(__APPLE__)
   return tgfx::MetalDevice::Make();
+#elif defined(TGFX_RN_VULKAN)
+  return tgfx::VulkanDevice::Make();
 #else
   return tgfx::GLDevice::Make();
 #endif

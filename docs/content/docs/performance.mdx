@@ -61,6 +61,30 @@ after the canvas scrolls back in picks them up. A canvas that never comes back
 costs nothing per frame. Snapshots still render while hidden — `snapshot()` and
 `save()` force the frame they need.
 
+## Vulkan backend (Android, experimental)
+
+The Android renderer normally runs on OpenGL ES. An experimental Vulkan backend
+can be enabled per app with a Gradle property:
+
+```properties
+# android/gradle.properties
+TgfxVulkan=ON
+```
+
+The flag makes the library build tgfx from source with `TGFX_USE_VULKAN` (the
+GL-only prebuilt is skipped), swap the window glue to `VulkanWindow` /
+`VulkanDevice`, and route video frames through an `AImageReader` — a
+SurfaceTexture cannot exist without a GL context. Video frames are converted
+via a CPU plane copy and tgfx's own YUV shader: on at least Mali, the driver
+ignores the color-range override on zero-copy external-format imports and
+full-range video renders washed out otherwise.
+
+Measured on a Galaxy F14 (90 Hz, Mali-G68), the same stress scene presents
+roughly 15–30% more frames per second than the GL backend at GPU-bound loads,
+at similar CPU and ~50 MB more PSS. Current limits: arm64-v8a only (the 32-bit
+slice does not compile), and expect a several-minute first build while tgfx
+compiles from source.
+
 ## Measure
 
 With the repository's benchmark app installed and an Android device configured:
