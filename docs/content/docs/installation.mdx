@@ -45,6 +45,21 @@ export default function App() {
 }
 ```
 
+## Vulkan backend (Android, optional)
+
+The Android renderer runs on OpenGL ES by default. To render through Vulkan
+instead, add one line to your app:
+
+```properties title="android/gradle.properties"
+TgfxVulkan=ON
+```
+
+Vulkan prebuilts for all four ABIs ship in the package, so this is the whole
+switch — no extra scripts, no source build. On a GPU-bound scene expect
+noticeably higher frame rates at lower CPU cost; see
+[the performance page](/docs/performance#vulkan-backend-android-experimental)
+for measured numbers and caveats.
+
 ## Camera (optional)
 
 ```bash
