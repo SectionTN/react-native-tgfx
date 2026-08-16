@@ -4,9 +4,7 @@
 # them as imported libraries — so an npm install never compiles tgfx:
 #
 #   android/libs/<abi>/libtgfx.a          OpenGL ES backend (all ABIs)
-#   android/libs-vulkan/<abi>/libtgfx.a   Vulkan backend (64-bit ABIs only:
-#                                         TGFX_USE_VULKAN does not compile on
-#                                         32-bit targets)
+#   android/libs-vulkan/<abi>/libtgfx.a   Vulkan backend (all ABIs)
 #
 # Run once before publishing:
 #
@@ -23,7 +21,7 @@ MIN_SDK="${MIN_SDK:-23}"
 BACKENDS="${TGFX_BACKENDS:-gl vulkan}"
 ABIS=("$@")
 [ ${#ABIS[@]} -eq 0 ] && ABIS=(armeabi-v7a arm64-v8a x86 x86_64)
-VULKAN_ABIS=(${VULKAN_ABIS:-arm64-v8a x86_64})
+VULKAN_ABIS=(${VULKAN_ABIS:-armeabi-v7a arm64-v8a x86 x86_64})
 
 # Pinned to React Native 0.86's NDK (libs.versions.toml), also what the example
 # app builds with. NDK 29's clang 20 rejects the vendored highway's SVE code
