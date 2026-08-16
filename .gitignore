@@ -30,6 +30,7 @@ local.properties
 **/ios/libs/
 packages/react-native-tgfx/ios/libs/
 packages/react-native-tgfx/android/libs/
+packages/react-native-tgfx/android/libs-vulkan/
 # CMake build output for the tgfx static libs
 packages/react-native-tgfx/build/
 
