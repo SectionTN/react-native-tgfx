@@ -1,20 +1,29 @@
 #!/bin/bash
-# Builds tgfx (OpenGL ES backend) from source for every Android ABI, merges
-# tgfx + its vendored static libs into one archive per ABI, and writes them to
-# android/libs/<abi>/libtgfx.a, which android/CMakeLists.txt links as an
-# imported library — so an npm install never compiles tgfx. Run once before
-# publishing:
+# Builds tgfx from source for Android, merges tgfx + its vendored static libs
+# into one archive per ABI, and writes them where android/CMakeLists.txt links
+# them as imported libraries — so an npm install never compiles tgfx:
+#
+#   android/libs/<abi>/libtgfx.a          OpenGL ES backend (all ABIs)
+#   android/libs-vulkan/<abi>/libtgfx.a   Vulkan backend (64-bit ABIs only:
+#                                         TGFX_USE_VULKAN does not compile on
+#                                         32-bit targets)
+#
+# Run once before publishing:
 #
 #   bash packages/react-native-tgfx/scripts/build-tgfx-android.sh
+#
+# TGFX_BACKENDS="gl vulkan" selects which backends build (default both);
+# positional args override the GL ABI list, VULKAN_ABIS the Vulkan one.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PKG="$(cd "$HERE/.." && pwd)"
 TGFX_DIR="$PKG/cpp/third_party/tgfx"
-OUT_DIR="$PKG/android/libs"
 MIN_SDK="${MIN_SDK:-23}"
+BACKENDS="${TGFX_BACKENDS:-gl vulkan}"
 ABIS=("$@")
 [ ${#ABIS[@]} -eq 0 ] && ABIS=(armeabi-v7a arm64-v8a x86 x86_64)
+VULKAN_ABIS=(${VULKAN_ABIS:-arm64-v8a x86_64})
 
 # Pinned to React Native 0.86's NDK (libs.versions.toml), also what the example
 # app builds with. NDK 29's clang 20 rejects the vendored highway's SVE code
@@ -50,24 +59,36 @@ if (s !== o) fs.writeFileSync(f, s)
 ' "$TGFX_DIR/third_party/vendor_tools/vendor.cmake"
 
 # shaderc is only needed by the Metal/Vulkan/WebGPU backends, but tgfx's CMake
-# unconditionally git-syncs its sub-deps; satisfy the existence check instead.
+# unconditionally git-syncs its sub-deps; satisfy the existence check for the
+# GL build. The Vulkan build compiles shaderc for real, so its sub-deps must
+# actually be synced (release.sh runs depsync).
 mkdir -p "$TGFX_DIR/third_party/shaderc/third_party/glslang"
 
-build_abi() {
-  local abi="$1" build_dir="$PKG/build/android-$1"
+build_abi() { # abi backend(gl|vulkan)
+  local abi="$1" backend="$2"
+  local build_dir="$PKG/build/android-$backend-$abi" out_dir="$PKG/android/libs"
+  local gl=ON vulkan=OFF platform="$MIN_SDK"
+  if [ "$backend" = vulkan ]; then
+    gl=OFF; vulkan=ON; out_dir="$PKG/android/libs-vulkan"
+    # libvulkan.so enters the NDK sysroot at API 24; find_library fails below it.
+    [ "$platform" -lt 24 ] && platform=24
+    [ -f "$TGFX_DIR/third_party/shaderc/third_party/glslang/CMakeLists.txt" ] || {
+      echo ">>> shaderc sub-deps are not synced (needed by the Vulkan backend):" >&2
+      echo ">>>   cd $TGFX_DIR && npx depsync" >&2; exit 1; }
+  fi
 
-  # Same feature set android/CMakeLists.txt used when it built tgfx from
-  # source: OpenGL ES backend, SVG on, embedded codecs on (tgfx only declares
-  # the codec options for desktop targets, but the `if (TGFX_USE_*)` checks
-  # read the cache entries regardless — without them Canvas.snapshot()/save()
-  # returns null and decoding falls back to BitmapFactory, dropping EXIF).
+  # Same feature set android/CMakeLists.txt uses when it builds tgfx from
+  # source: SVG on, embedded codecs on (tgfx only declares the codec options
+  # for desktop targets, but the `if (TGFX_USE_*)` checks read the cache
+  # entries regardless — without them Canvas.snapshot()/save() returns null
+  # and decoding falls back to BitmapFactory, dropping EXIF).
   cmake -S "$TGFX_DIR" -B "$build_dir" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-    -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$MIN_SDK" \
+    -DANDROID_ABI="$abi" -DANDROID_PLATFORM="android-$platform" \
     -DANDROID_STL=c++_shared -DANDROID_CPP_FEATURES="rtti exceptions" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-fstack-protector-all" -DCMAKE_C_FLAGS="-fstack-protector-all" \
-    -DTGFX_USE_OPENGL=ON -DTGFX_USE_METAL=OFF -DTGFX_USE_VULKAN=OFF -DTGFX_USE_WEBGPU=OFF -DTGFX_USE_QT=OFF \
+    -DTGFX_USE_OPENGL=$gl -DTGFX_USE_METAL=OFF -DTGFX_USE_VULKAN=$vulkan -DTGFX_USE_WEBGPU=OFF -DTGFX_USE_QT=OFF \
     -DTGFX_BUILD_LAYERS=ON -DTGFX_BUILD_SVG=ON -DTGFX_BUILD_PDF=ON -DTGFX_BUILD_HELLO2D=OFF \
     -DTGFX_USE_PNG_ENCODE=ON -DTGFX_USE_JPEG_ENCODE=ON -DTGFX_USE_WEBP_ENCODE=ON \
     -DTGFX_USE_PNG_DECODE=ON -DTGFX_USE_JPEG_DECODE=ON -DTGFX_USE_WEBP_DECODE=ON
@@ -99,9 +120,14 @@ build_abi() {
   # NDK compiles with -g even in Release; debug info is ~5x the shippable size.
   "$STRIP" --strip-debug "$merged"
 
-  mkdir -p "$OUT_DIR/$abi"
-  cp "$merged" "$OUT_DIR/$abi/libtgfx.a"
-  echo ">>> wrote $OUT_DIR/$abi/libtgfx.a ($(du -sh "$OUT_DIR/$abi/libtgfx.a" | cut -f1))"
+  mkdir -p "$out_dir/$abi"
+  cp "$merged" "$out_dir/$abi/libtgfx.a"
+  echo ">>> wrote $out_dir/$abi/libtgfx.a ($(du -sh "$out_dir/$abi/libtgfx.a" | cut -f1))"
 }
 
-for abi in "${ABIS[@]}"; do build_abi "$abi"; done
+case " $BACKENDS " in *" gl "*)
+  for abi in "${ABIS[@]}"; do build_abi "$abi" gl; done
+esac
+case " $BACKENDS " in *" vulkan "*)
+  for abi in "${VULKAN_ABIS[@]}"; do build_abi "$abi" vulkan; done
+esac

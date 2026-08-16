@@ -19,7 +19,7 @@ PKG="$ROOT/packages/react-native-tgfx"
 echo "=== 1/5 tgfx iOS (arm64 device, arm64+x86_64 simulator) ==="
 bash "$PKG/scripts/build-tgfx-ios.sh"
 
-echo "=== 2/5 tgfx Android (armeabi-v7a, arm64-v8a, x86, x86_64) ==="
+echo "=== 2/5 tgfx Android (GL: armeabi-v7a, arm64-v8a, x86, x86_64 · Vulkan: arm64-v8a, x86_64) ==="
 bash "$PKG/scripts/build-tgfx-android.sh"
 
 echo "=== 3/5 cache the prebuilt tgfx artifacts in R2 ==="

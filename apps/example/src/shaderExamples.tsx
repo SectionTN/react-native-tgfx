@@ -6,6 +6,7 @@ import {
   Shader,
   useImage,
 } from 'react-native-tgfx';
+import type { NodeHandle } from 'react-native-tgfx';
 
 /**
  * A real separable-kernel blur — of a procedurally generated pattern, not of
@@ -129,17 +130,20 @@ export function BlurPanel({
   );
 }
 
-/** Cyberpunk demo. `time` advances the grid and the CRT roll. */
+/** Cyberpunk demo. `time` advances the grid and the CRT roll; pass `shaderRef`
+ * to patch `uTime` imperatively without a React render. */
 export function CyberpunkPanel({
   x,
   y,
   width,
   height,
   time = 0,
-}: Box & { time?: number }) {
+  shaderRef,
+}: Box & { time?: number; shaderRef?: NodeHandle }) {
   return (
     <RoundedRect x={x} y={y} width={width} height={height} r={14}>
       <Shader
+        ref={shaderRef}
         source={cyberpunkSource}
         uniforms={{
           uOrigin: [x, y],

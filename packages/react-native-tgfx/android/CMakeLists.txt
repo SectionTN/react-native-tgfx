@@ -11,12 +11,17 @@ set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 # at publish time by scripts/build-tgfx-android.sh — an npm install compiles
 # only the glue code below, never tgfx itself. Absent (a git checkout of the
 # monorepo), fall back to building tgfx from source.
-# Vulkan backend switch (bench/experimental). The prebuilt archive is GL-only,
-# so ON always builds tgfx from source.
+# Vulkan backend switch. Each backend has its own prebuilt archive directory
+# (build-tgfx-android.sh writes both); missing prebuilts fall back to a source
+# build of the vendored tgfx.
 option(TGFX_RN_VULKAN "Use the Vulkan backend instead of OpenGL ES" OFF)
 
-set(TGFX_LIB "${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libtgfx.a")
-if (EXISTS "${TGFX_LIB}" AND NOT TGFX_RN_VULKAN)
+if (TGFX_RN_VULKAN)
+  set(TGFX_LIB "${CMAKE_SOURCE_DIR}/libs-vulkan/${ANDROID_ABI}/libtgfx.a")
+else ()
+  set(TGFX_LIB "${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libtgfx.a")
+endif ()
+if (EXISTS "${TGFX_LIB}")
   add_library(tgfx STATIC IMPORTED)
   set_target_properties(tgfx PROPERTIES IMPORTED_LOCATION "${TGFX_LIB}")
 else ()

@@ -19,6 +19,7 @@
     "android/consumer-rules.pro",
     "android/src",
     "android/libs",
+    "android/libs-vulkan",
     "ios/**/*.h",
     "ios/**/*.m",
     "ios/**/*.mm",

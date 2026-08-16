@@ -22,13 +22,15 @@ BASE_URL="${TGFX_PREBUILT_URL:-https://pub-51ab65c551a54296b3296849fbb8cf5f.r2.d
 
 SHA="$(git -C "$ROOT" ls-tree HEAD -- "$SUBMODULE" | awk '{print $3}')"
 [ -n "$SHA" ] || { echo "no gitlink for $SUBMODULE — not a git checkout?" >&2; exit 1; }
-KEY="tgfx-${SHA:0:12}.tar.gz"
+# v2: the tarball also carries the Vulkan prebuilts (android/libs-vulkan).
+KEY="tgfx-${SHA:0:12}-v2.tar.gz"
 STAMP="$PKG/build/.prebuilt-sha"
 
 # Relative to $PKG so the tarball extracts straight back over the package.
 PATHS=(
   ios/libs
   android/libs
+  android/libs-vulkan
   cpp/third_party/tgfx/include
   cpp/third_party/tgfx/LICENSE.txt
 )
@@ -75,7 +77,7 @@ fi
 mv "$TARBALL.part" "$TARBALL"
 
 tar -xzf "$TARBALL" -C "$PKG"
-for p in ios/libs/libtgfx.xcframework/Info.plist cpp/third_party/tgfx/include/tgfx; do
+for p in ios/libs/libtgfx.xcframework/Info.plist android/libs-vulkan/arm64-v8a/libtgfx.a cpp/third_party/tgfx/include/tgfx; do
   [ -e "$PKG/$p" ] || { echo "tarball is missing $p" >&2; exit 1; }
 done
 echo "$SHA" >"$STAMP"

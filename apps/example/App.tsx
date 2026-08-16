@@ -1,5 +1,5 @@
 // react-native-tgfx example — shapes, strokes, gradients, image and text through <Canvas>.
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Text as RNText, ScrollView, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import {
   RoundedRect,
   Text,
   useImage,
+  useNode,
 } from 'react-native-tgfx';
 import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
@@ -254,21 +255,33 @@ function Demo() {
 }
 
 function ShaderScreenSection() {
-  const [time, setTime] = useState(0);
+  // Patched through the node handle: 20 ticks/s as setState was a full React
+  // commit each — the single largest JS cost in the whole app's Perfetto trace.
+  const shader = useNode();
 
   useEffect(() => {
     const started = Date.now();
-    const id = setInterval(() => setTime((Date.now() - started) / 1000), 50);
+    const id = setInterval(
+      () => shader.set({ uniforms: { uTime: (Date.now() - started) / 1000 } }),
+      50
+    );
     return () => clearInterval(id);
-  }, []);
+  }, [shader]);
 
   return (
     <View style={styles.section}>
       <RNText style={styles.sectionLabel}>
-        Runtime shader · cyberpunk screen (uniform re-encodes per tick)
+        Runtime shader · cyberpunk screen (uniform patched per tick, no
+        re-render)
       </RNText>
       <Canvas style={[styles.canvas, { height: 200 }]}>
-        <CyberpunkPanel x={0} y={0} width={350} height={180} time={time} />
+        <CyberpunkPanel
+          x={0}
+          y={0}
+          width={350}
+          height={180}
+          shaderRef={shader}
+        />
       </Canvas>
     </View>
   );

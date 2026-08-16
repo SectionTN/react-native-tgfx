@@ -71,19 +71,19 @@ can be enabled per app with a Gradle property:
 TgfxVulkan=ON
 ```
 
-The flag makes the library build tgfx from source with `TGFX_USE_VULKAN` (the
-GL-only prebuilt is skipped), swap the window glue to `VulkanWindow` /
-`VulkanDevice`, and route video frames through an `AImageReader` — a
-SurfaceTexture cannot exist without a GL context. Video frames are converted
+The flag links the Vulkan prebuilt (`android/libs-vulkan`, shipped alongside
+the GL one; absent prebuilts fall back to compiling the vendored tgfx with
+`TGFX_USE_VULKAN`), swaps the window glue to `VulkanWindow` / `VulkanDevice`,
+and routes video frames through an `AImageReader` — a SurfaceTexture cannot
+exist without a GL context. Video frames are converted
 via a CPU plane copy and tgfx's own YUV shader: on at least Mali, the driver
 ignores the color-range override on zero-copy external-format imports and
 full-range video renders washed out otherwise.
 
 Measured on a Galaxy F14 (90 Hz, Mali-G68), the same stress scene presents
 roughly 15–30% more frames per second than the GL backend at GPU-bound loads,
-at similar CPU and ~50 MB more PSS. Current limits: arm64-v8a only (the 32-bit
-slice does not compile), and expect a several-minute first build while tgfx
-compiles from source.
+at similar CPU and ~50 MB more PSS. Current limits: 64-bit ABIs only (the
+32-bit slice does not compile).
 
 ## Measure
 
