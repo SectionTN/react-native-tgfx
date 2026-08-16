@@ -38,7 +38,7 @@
     "cpp/third_party/tgfx/include"
   ],
   "scripts": {
-    "prepack": "npx --no-install tsc --build --force && ls lib/index.js lib/index.d.ts LICENSE NOTICE android/libs/arm64-v8a/libtgfx.a ios/libs/libtgfx.xcframework/Info.plist > /dev/null",
+    "prepack": "npx --no-install tsc --build --force && ls lib/index.js lib/index.d.ts LICENSE NOTICE android/libs/arm64-v8a/libtgfx.a android/libs-vulkan/arm64-v8a/libtgfx.a ios/libs/libtgfx.xcframework/Info.plist > /dev/null",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "clean": "rm -rf android/build node_modules/**/android/build lib tsconfig.tsbuildinfo",
