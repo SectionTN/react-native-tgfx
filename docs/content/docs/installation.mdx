@@ -54,11 +54,12 @@ instead, add one line to your app:
 TgfxVulkan=ON
 ```
 
-Vulkan prebuilts for all four ABIs ship in the package, so this is the whole
-switch — no extra scripts, no source build. On a GPU-bound scene expect
-noticeably higher frame rates at lower CPU cost; see
-[the performance page](/docs/performance#vulkan-backend-android-experimental)
-for measured numbers and caveats.
+Vulkan is faster: on our device stress benchmark it presents up to 24% more
+frames per second than the OpenGL ES backend at 15–30% lower CPU cost, with
+the biggest wins on GPU-bound scenes. Prebuilts for all four ABIs ship in the
+package, so this one line is the whole switch — no extra scripts, no source
+build. See [the performance page](/docs/performance#vulkan-backend-android-experimental)
+for the measured numbers and caveats.
 
 ## Camera (optional)
 
