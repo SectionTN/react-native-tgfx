@@ -11,10 +11,21 @@ internal class TgfxSurfaceView(context: Context, private val target: TgfxRenderT
   SurfaceHolder.Callback {
 
   private var bound = false
+  private val visibilityGate = TgfxVisibilityGate(this, target)
 
   init {
     setZOrderMediaOverlay(true)
     holder.addCallback(this)
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    visibilityGate.attach()
+  }
+
+  override fun onDetachedFromWindow() {
+    visibilityGate.detach()
+    super.onDetachedFromWindow()
   }
 
   fun setOpaqueSurface(opaque: Boolean) {

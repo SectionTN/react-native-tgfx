@@ -1,9 +1,12 @@
 package com.margelo.nitro.tgfx
 
+import android.graphics.Rect
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
 import android.view.Surface
+import android.view.View
+import android.view.ViewTreeObserver
 import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 
@@ -12,6 +15,31 @@ internal object TgfxRenderThread {
     val thread = HandlerThread("TgfxRender", Process.THREAD_PRIORITY_DISPLAY)
     thread.start()
     Handler(thread.looper)
+  }
+}
+
+/** Tracks whether a canvas view is actually on screen and feeds [TgfxRenderTarget.setHidden]. */
+internal class TgfxVisibilityGate(private val view: View, private val target: TgfxRenderTarget) :
+  ViewTreeObserver.OnPreDrawListener {
+  private val visibleRect = Rect()
+
+  fun attach() {
+    view.viewTreeObserver.addOnPreDrawListener(this)
+    update()
+  }
+
+  fun detach() {
+    view.viewTreeObserver.removeOnPreDrawListener(this)
+    target.setHidden(false)
+  }
+
+  private fun update() {
+    target.setHidden(!(view.isShown && view.getLocalVisibleRect(visibleRect)))
+  }
+
+  override fun onPreDraw(): Boolean {
+    update()
+    return true
   }
 }
 
@@ -105,13 +133,30 @@ internal class TgfxRenderTarget {
       staged = true
     }
     if (staged) {
-      requestRender()
+      requestRender(force = true)
     } else {
       callback.onSnapshot(null, 0, 0, "[tgfx] snapshot: the canvas is no longer mounted")
     }
   }
 
-  fun requestRender() {
+  // Scrolled-out canvases keep their surface, so without this gate every offscreen
+  // animation still drew at full rate.
+  @Volatile private var hidden = false
+
+  fun setHidden(value: Boolean) {
+    if (hidden == value) {
+      return
+    }
+    hidden = value
+    if (!value) {
+      requestRender()
+    }
+  }
+
+  fun requestRender(force: Boolean = false) {
+    if (hidden && !force) {
+      return
+    }
     handler.removeCallbacks(drawRunnable)
     handler.post(drawRunnable)
   }

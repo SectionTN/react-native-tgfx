@@ -1622,6 +1622,17 @@ namespace {
  * positive only costs the redraw that used to happen anyway, a false negative
  * drops a frame that should have been drawn.
  */
+bool childShadersReadImages(const std::vector<ChildShaderCmd>& children) {
+  for (const auto& c : children) {
+    if (c.image != nullptr ||
+        (c.runtime != nullptr && childShadersReadImages(c.runtime->children)) ||
+        (c.blend != nullptr && childShadersReadImages(c.blend->children))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void scanDependencies(const Program& program, bool& images, bool& text) {
   for (const auto& cmd : program) {
     if (images && text) {
@@ -1630,7 +1641,10 @@ void scanDependencies(const Program& program, bool& images, bool& text) {
     if (cmd.kind == DrawCmd::Image || cmd.kind == DrawCmd::CameraFrame ||
         cmd.kind == DrawCmd::Atlas || cmd.imageHandle != 0 ||
         cmd.imageWord.slot >= 0 || cmd.paint.imageShader != nullptr ||
-        cmd.paint.runtime != nullptr || cmd.paint.blendShader != nullptr) {
+        (cmd.paint.runtime != nullptr &&
+         childShadersReadImages(cmd.paint.runtime->children)) ||
+        (cmd.paint.blendShader != nullptr &&
+         childShadersReadImages(cmd.paint.blendShader->children))) {
       images = true;
     }
     if (cmd.text != nullptr) {
@@ -2111,7 +2125,19 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
           live = cmd.liveImage;
         }
       } else if (cmd.image == nullptr && handle != 0) {
-        live = resolveImage(handle, cmd.sampling);
+        // Same one-compare cache as the slot path: without it an image that
+        // finished decoding after parse re-acquired (and re-mipmapped) per frame.
+        if (handle != cmd.liveHandle || cmd.liveImage == nullptr) {
+          cmd.liveHandle = handle;
+          bool external = false;
+          cmd.liveImage = resolveImage(handle, cmd.sampling, &external);
+          if (external) {
+            live = std::move(cmd.liveImage);
+          }
+        }
+        if (live == nullptr) {
+          live = cmd.liveImage;
+        }
       }
       const auto& image = cmd.imageWord.slot >= 0
                               ? live

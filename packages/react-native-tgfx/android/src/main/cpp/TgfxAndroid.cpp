@@ -258,7 +258,7 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
   if (len > 0) {
     env->GetDoubleArrayRegion(arr, 0, len, values.data());
   }
-  view->renderer.setValues(values);
+  view->renderer.setValues(std::move(values));
 }
 
 JNIEXPORT void JNICALL

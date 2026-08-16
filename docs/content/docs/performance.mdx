@@ -48,10 +48,18 @@ changes, and the same holds for text and fonts.
 
 Nothing to configure, but it is worth knowing what it keys on. The scene is
 treated as reading the image registry when it holds an `<Image>`,
-`<CameraFrame>` or `<Atlas>`, an image handle, an `<ImageShader>`, a runtime
-shader or a `<Blend>`; and as reading fonts when it holds any text. A canvas
-built entirely from shapes and gradients is therefore idle while a video plays
-beside it.
+`<CameraFrame>` or `<Atlas>`, an image handle, an `<ImageShader>`, or a runtime
+shader or `<Blend>` whose child shaders sample an image; and as reading fonts
+when it holds any text. A canvas built entirely from shapes, gradients and
+image-free runtime shaders is therefore idle while a video plays beside it.
+
+## Offscreen canvases do not draw (Android)
+
+A canvas scrolled out of view keeps its surface, but Android skips its draws
+entirely: animated values keep flowing into their slots, and the first frame
+after the canvas scrolls back in picks them up. A canvas that never comes back
+costs nothing per frame. Snapshots still render while hidden — `snapshot()` and
+`save()` force the frame they need.
 
 ## Measure
 

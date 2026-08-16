@@ -122,10 +122,11 @@ void TgfxRenderer::setOpaque(bool opaque) {
   version_.fetch_add(1, std::memory_order_release);
 }
 
-void TgfxRenderer::setValues(const std::vector<double>& values) {
+void TgfxRenderer::setValues(std::vector<double> values) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    values_ = values;
+    values_ = std::move(values);
+    valuesGen_++;
   }
   version_.fetch_add(1, std::memory_order_release);
 }
@@ -203,7 +204,10 @@ bool TgfxRenderer::draw() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     window = window_;
-    drawValues_.assign(values_.begin(), values_.end());
+    if (drawValuesGen_ != valuesGen_) {
+      drawValues_.assign(values_.begin(), values_.end());
+      drawValuesGen_ = valuesGen_;
+    }
     // Strings copy only when a push moved the generation; idle frames skip it.
     if (drawStringGen_ != stringGen_) {
       drawStringValues_.assign(stringValues_.begin(), stringValues_.end());

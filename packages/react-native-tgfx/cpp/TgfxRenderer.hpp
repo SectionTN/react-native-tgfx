@@ -44,7 +44,7 @@ class TgfxRenderer {
 
   void setOpaque(bool opaque);
 
-  void setValues(const std::vector<double>& values);
+  void setValues(std::vector<double> values);
 
   /// Sparse writes into the string-slot array (live text and path data).
   void setStringValues(const std::vector<double>& indices,
@@ -123,6 +123,8 @@ class TgfxRenderer {
   std::vector<uint8_t> drawStringPushed_;
   uint64_t stringGen_ = 0;
   uint64_t drawStringGen_ = 0;
+  uint64_t valuesGen_ = 0;
+  uint64_t drawValuesGen_ = 0;
   std::vector<double> drawScene_;
   std::shared_ptr<const StringTable> drawStrings_;
   SceneRenderer scene_;

@@ -10,9 +10,21 @@ internal class TgfxTextureView(context: Context, private val target: TgfxRenderT
   TextureView(context),
   TextureView.SurfaceTextureListener {
 
+  private val visibilityGate = TgfxVisibilityGate(this, target)
+
   init {
     isOpaque = false
     surfaceTextureListener = this
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    visibilityGate.attach()
+  }
+
+  override fun onDetachedFromWindow() {
+    visibilityGate.detach()
+    super.onDetachedFromWindow()
   }
 
   fun setOpaqueSurface(opaque: Boolean) {
