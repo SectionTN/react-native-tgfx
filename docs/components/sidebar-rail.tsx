@@ -24,8 +24,11 @@ export function SidebarRail() {
       const item = active?.[active.length - 1]
       // Mid-navigation the old entry can clear before the new one sets, so hold
       // the last position rather than blinking the rail out and back in.
-      if (!item) return
-      const next = { y: item.offsetTop, h: item.offsetHeight }
+      if (!item || !container) return
+      // Rects, not offsetTop: inside a collapsible folder the link's offsetParent
+      // is the folder, which would park the rail near the top of the list.
+      const y = item.getBoundingClientRect().top - container.getBoundingClientRect().top
+      const next = { y, h: item.offsetHeight }
       setBox((prev) => (prev?.y === next.y && prev?.h === next.h ? prev : next))
     }
 
@@ -36,9 +39,16 @@ export function SidebarRail() {
       attributes: true,
       attributeFilter: ['data-active'],
     })
+    // Folder collapse animations move the active link after the mutation settles.
+    const sizeObserver = new ResizeObserver(resolve)
+    const container = document.querySelector<HTMLElement>(CONTAINER)
+    if (container) sizeObserver.observe(container)
     resolve()
 
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      sizeObserver.disconnect()
+    }
   }, [])
 
   // Held back until the position is known, or the first paint transitions in
