@@ -176,7 +176,8 @@ function transpile(source: string): TranspiledShader {
   }
 
   const param = /\b(?:half2|float2|vec2)\s+(\w+)/.exec(signature[1] ?? '')
-  const bind = param != null ? `vec2 ${param[1]} = fragCoord;\n` : ''
+  // highp: mediump (GL ES default) quantizes pixel coords past 1024.
+  const bind = param != null ? `highp vec2 ${param[1]} = fragCoord;\n` : ''
 
   // A declaration the uniform pass could not consume would be emitted verbatim and fail in the driver.
   if (/\buniform\b/.test(before)) {
