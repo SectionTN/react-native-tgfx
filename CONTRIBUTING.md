@@ -34,6 +34,49 @@ bundle install && (cd ios && bundle exec pod install) && bun run ios
 "Unicode Normalization not appropriate for ASCII-8BIT". Prefix it with
 `LANG=en_US.UTF-8` if your shell does not set one.
 
+The app has three screens behind the tab bar: the feature gallery, face blur,
+and the camera effects. The two camera screens ask for the camera permission
+the first time they are opened, and fall back to a message when the device has
+no camera — an emulator without a webcam included.
+
+## Running the tests
+
+`apps/example/src/*.harness.tsx` runs on a device through
+[React Native Harness](https://github.com/margelo/react-native-harness): the
+tests render into the real app and screenshot the GPU output, so a rendering
+regression shows up as an image diff rather than a passing unit test.
+
+```sh
+cd apps/example
+bun run harness                     # every suite
+bun run harness src/paths.harness.tsx   # one of them
+```
+
+There is one runner, `android`, and it names a specific phone in
+`rn-harness.config.mjs`. Point it at yours (`adb shell getprop
+ro.product.manufacturer` and `ro.product.model`) and regenerate — the pixels
+are the GPU's, so baselines do not carry between devices. Install a **debug**
+build first (`bun run android`); Harness drives the app through `run-as`, which
+a release build refuses.
+
+Baselines live in `src/__image_snapshots__/<runner>/`, and the directory is
+named after the runner — a second runner forks the whole set, which is why
+there is only one. A missing baseline is **written** on the first run rather
+than failing, so open the new PNG before committing it: whatever lands there is
+what every later run is compared to.
+
+The failure that costs the most time is a baseline of a blank canvas. A canvas
+that has not presented screenshots as one flat colour, and two flat frames in a
+row look as settled as a finished one — so the blank is written, and every run
+after it passes. Anything a scene waits for (an image decode, a font, a face
+detector) belongs in `beforeAll`, not inside the rendered tree. Note also that
+image decodes are cached per source: `dispose()`ing a handle from `loadImage`
+kills the handle every other test drawing that asset is using.
+
+Run the image suites on a real phone. On the `Pixel_8_API_35` AVD's software
+renderer every image-backed scene comes back blank, so those tests fail there
+by design rather than writing an empty baseline.
+
 ## Imperative APIs first
 
 A lesson learned the hard way (see

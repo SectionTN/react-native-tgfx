@@ -264,14 +264,12 @@ bool TgfxRenderer::draw() {
   }
   collectSnapshots(context);
 
-  // Read before the surface is (re)created, so a later barrier is not cleared by it.
-  uint64_t barrier = snapshotBarrier_.load(std::memory_order_acquire);
   if (surfaceDirty_.exchange(false)) {
     surface_ = nullptr;
+    offscreen_ = nullptr;
   }
   if (surface_ == nullptr) {
     surface_ = tgfx::Surface::MakeFrom(context, window);
-    surfaceBarrier_ = barrier;
   }
   bool rendered = false;
   std::vector<InFlightSnapshot> orphaned;
@@ -280,7 +278,29 @@ bool TgfxRenderer::draw() {
     dropGpuHandles(orphaned);
   }
   if (surface_ != nullptr) {
-    auto* canvas = surface_->getCanvas();
+    auto* target = surface_.get();
+#ifdef __APPLE__
+    // A Backdrop snapshots its own surface, and copying the framebuffer-only Metal
+    // drawable is invalid (Metal API validation aborts). Those scenes render into a
+    // readable texture surface composited onto the drawable; the snapshot is then a
+    // plain texture wrap instead of the full-surface blit the drawable would need.
+    // ponytail: the intermediate is 8-bit, so P3 backdrop scenes lose the drawable's
+    // 10 bits; RGBA_1010102 would fix that but its 2-bit alpha breaks translucency.
+    if (scene_.usesBackdrop()) {
+      if (offscreen_ == nullptr || offscreen_->width() != surface_->width() ||
+          offscreen_->height() != surface_->height()) {
+        offscreen_ =
+            tgfx::Surface::Make(context, surface_->width(), surface_->height(),
+                                false, 1, false, 0, surface_->colorSpace());
+      }
+      if (offscreen_ != nullptr) {
+        target = offscreen_.get();
+      }
+    } else {
+      offscreen_ = nullptr;
+    }
+#endif
+    auto* canvas = target->getCanvas();
     canvas->clear(opaque_ ? tgfx::Color::Black() : tgfx::Color::Transparent());
     // Scene coordinates are logical pixels, the surface physical. One load, or save/restore skews.
     float pixelRatio = pixelRatio_.load(std::memory_order_relaxed);
@@ -295,6 +315,14 @@ bool TgfxRenderer::draw() {
     }
     if (pixelRatio != 1.0f) {
       canvas->restore();
+    }
+    if (target != surface_.get()) {
+      auto frame = target->makeImageSnapshot();
+      auto* windowCanvas = surface_->getCanvas();
+      windowCanvas->clear();
+      if (frame != nullptr) {
+        windowCanvas->drawImage(frame);
+      }
     }
     startSnapshots(context);
     auto recording = [&] {
@@ -343,19 +371,44 @@ void TgfxRenderer::updateSnapshotPending() {
 }
 
 void TgfxRenderer::startSnapshots(tgfx::Context* context) {
-  // A surface predating the barrier may be a framebuffer-only drawable; blitting one wedges the GPU.
-  if (surfaceBarrier_ != snapshotBarrier_.load(std::memory_order_acquire)) {
-    return;
-  }
   std::vector<std::pair<SnapshotRequest, SnapshotCallback>> staged;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     staged.swap(pendingSnapshots_);
   }
+  if (staged.empty()) {
+    updateSnapshotPending();
+    return;
+  }
+  // The window's drawable may be framebuffer-only (iOS Metal), and a readback blit from
+  // one aborts the process. Render the frame once more into a readable offscreen surface
+  // and read from that; the extra render only runs on frames with a snapshot staged.
+  // The window surface's own space, or a P3 canvas snapshots with untagged colors.
+  auto readable = tgfx::Surface::Make(context, surface_->width(), surface_->height(),
+                                      false, 1, false, 0, surface_->colorSpace());
+  if (readable == nullptr) {
+    for (auto& [request, callback] : staged) {
+      deliverError(std::move(callback),
+                   "[tgfx] snapshot: could not allocate a readable surface");
+    }
+    updateSnapshotPending();
+    return;
+  }
   float ratio = pixelRatio_.load(std::memory_order_relaxed);
+  auto* canvas = readable->getCanvas();
+  canvas->clear(opaque_ ? tgfx::Color::Black() : tgfx::Color::Transparent());
+  if (ratio != 1.0f) {
+    canvas->save();
+    canvas->concat(tgfx::Matrix::MakeScale(ratio, ratio));
+  }
+  scene_.render(canvas, drawValues_, drawStringValues_, drawStringGen_,
+                drawStringPushed_);
+  if (ratio != 1.0f) {
+    canvas->restore();
+  }
   for (auto& [request, callback] : staged) {
-    auto bounds = tgfx::Rect::MakeWH(static_cast<float>(surface_->width()),
-                                     static_cast<float>(surface_->height()));
+    auto bounds = tgfx::Rect::MakeWH(static_cast<float>(readable->width()),
+                                     static_cast<float>(readable->height()));
     auto source = snapshotSourceRect(request, ratio, bounds);
     if (source.isEmpty()) {
       deliverError(std::move(callback), "[tgfx] snapshot: rect lies outside the canvas");
@@ -365,15 +418,17 @@ void TgfxRenderer::startSnapshots(tgfx::Context* context) {
     entry.request = request;
     entry.callback = std::move(callback);
     if (request.scale == 1.0f) {
-      entry.readback = surface_->asyncReadPixels(source);
-      entry.flipY = surface_->origin() == tgfx::ImageOrigin::BottomLeft;
+      entry.readback = readable->asyncReadPixels(source);
+      entry.flipY = readable->origin() == tgfx::ImageOrigin::BottomLeft;
+      // The readback targets the shared readable surface; keep it alive until collected.
+      entry.scratch = readable;
     } else {
       int width = static_cast<int>(std::lround(source.width() * request.scale));
       int height = static_cast<int>(std::lround(source.height() * request.scale));
       auto scratch = width > 0 && height > 0
                          ? tgfx::Surface::Make(context, width, height)
                          : nullptr;
-      auto image = scratch != nullptr ? surface_->makeImageSnapshot() : nullptr;
+      auto image = scratch != nullptr ? readable->makeImageSnapshot() : nullptr;
       if (image == nullptr) {
         deliverError(std::move(entry.callback),
                      "[tgfx] snapshot: could not allocate a scaled target");
@@ -456,6 +511,7 @@ void TgfxRenderer::releaseGpuObjects(const std::shared_ptr<tgfx::Window>& window
   auto device = window != nullptr ? window->getDevice() : nullptr;
   auto* context = device != nullptr ? device->lockContext() : nullptr;
   surface_ = nullptr;
+  offscreen_ = nullptr;
   dropGpuHandles(entries);
   if (context != nullptr) {
     device->unlock();
@@ -488,9 +544,19 @@ void TgfxRenderer::failSnapshots(const std::shared_ptr<tgfx::Window>& window,
   failSnapshots(std::move(orphaned), error);
 }
 
-void TgfxRenderer::deferSnapshotsToNextSurface() {
-  snapshotBarrier_.fetch_add(1, std::memory_order_release);
-  onResize();
+std::shared_ptr<tgfx::Window> TgfxRenderer::detachWindow() {
+  auto orphaned = takeSnapshots();
+  std::shared_ptr<tgfx::Window> window;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    window = std::move(window_);
+    window_ = nullptr;
+    cacheLimitApplied_ = false;
+  }
+  // No releaseGpuObjects: the window's context dies with it, orphaned surfaces included.
+  failSnapshots(std::move(orphaned),
+                "[tgfx] snapshot: the canvas was unmounted before the frame landed");
+  return window;
 }
 
 void TgfxRenderer::releaseWindow() {

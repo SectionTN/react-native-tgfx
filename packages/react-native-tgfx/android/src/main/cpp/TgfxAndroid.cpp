@@ -193,6 +193,40 @@ Java_com_margelo_nitro_tgfx_TgfxNative_surfaceDestroyed(JNIEnv*, jobject,
   }
 }
 
+// Owned by the handle surfaceDetach returns until releaseDetached destroys it.
+struct DetachedSurface {
+  std::shared_ptr<tgfx::Window> window;
+  ANativeWindow* nativeWindow = nullptr;
+};
+
+JNIEXPORT jlong JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_surfaceDetach(JNIEnv*, jobject,
+                                                     jlong ptr) {
+  auto* view = asView(ptr);
+  if (view == nullptr) {
+    return 0;
+  }
+  auto* detached = new DetachedSurface();
+  detached->window = view->renderer.detachWindow();
+  detached->nativeWindow = view->nativeWindow;
+  view->nativeWindow = nullptr;
+  return reinterpret_cast<jlong>(detached);
+}
+
+JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_releaseDetached(JNIEnv*, jobject,
+                                                       jlong handle) {
+  auto* detached = reinterpret_cast<DetachedSurface*>(handle);
+  if (detached == nullptr) {
+    return;
+  }
+  detached->window = nullptr;
+  if (detached->nativeWindow != nullptr) {
+    ANativeWindow_release(detached->nativeWindow);
+  }
+  delete detached;
+}
+
 JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setPixelRatio(JNIEnv*, jobject, jlong ptr,
                                                      jfloat ratio) {

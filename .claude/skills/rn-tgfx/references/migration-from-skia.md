@@ -259,17 +259,16 @@ const frameOutput = useFrameOutput({
   onFrame,
 })
 
-<>
-  <Camera style={styles.hidden} device={device} isActive outputs={[frameOutput]} />
-  <Canvas style={StyleSheet.absoluteFill} opaque={true}>
-    <CameraFrame image={image} {...posture}>
-      {boxes.map((ref, i) => (
-        <Rect key={i} ref={ref} x={0} y={0} width={0} height={0}
-              color="red" style="stroke" strokeWidth={3} />
-      ))}
-    </CameraFrame>
-  </Canvas>
-</>
+useCamera({ isActive: true, device, outputs: [frameOutput] })
+
+<Canvas style={StyleSheet.absoluteFill} opaque={true}>
+  <CameraFrame image={image} {...posture}>
+    {boxes.map((ref, i) => (
+      <Rect key={i} ref={ref} x={0} y={0} width={0} height={0}
+            color="red" style="stroke" strokeWidth={3} />
+    ))}
+  </CameraFrame>
+</Canvas>
 ```
 
 Note the two structural moves: `frameProcessor` → `outputs={[frameOutput]}`
@@ -297,7 +296,7 @@ import { SkiaCamera } from 'react-native-vision-camera-skia'
 ```
 
 ```tsx
-// After — the Camera becomes an invisible frame source, the Canvas is the preview
+// After — useCamera drives the session headlessly, the Canvas is the preview
 const { image, posture, onFrame } = useCameraFrame()
 const frameOutput = useFrameOutput({
   pixelFormat: 'yuv',
@@ -305,8 +304,8 @@ const frameOutput = useFrameOutput({
   enablePhysicalBufferRotation: true,
   onFrame,
 })
+useCamera({ isActive: true, device, outputs: [frameOutput] })
 
-<Camera style={styles.hidden} device={device} isActive={true} outputs={[frameOutput]} />
 <Canvas style={StyleSheet.absoluteFill} opaque={true}>
   <CameraFrame image={image} {...posture} />
 </Canvas>

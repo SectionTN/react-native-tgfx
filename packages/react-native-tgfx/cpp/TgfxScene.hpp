@@ -420,11 +420,14 @@ class SceneRenderer {
   /// process-wide: a scene that reads neither must not redraw when they move.
   bool usesImages() const;
   bool usesText() const;
+  /// Whether the program samples its own surface (Backdrop); see TgfxRenderer::draw.
+  bool usesBackdrop() const;
 
  private:
   std::shared_ptr<const Program> program_;
   bool usesImages_ = false;
   bool usesText_ = false;
+  bool usesBackdrop_ = false;
   mutable std::mutex programMutex_;
 
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);

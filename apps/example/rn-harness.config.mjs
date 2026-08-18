@@ -1,5 +1,4 @@
 import {
-  androidEmulator,
   androidPlatform,
   physicalAndroidDevice,
 } from '@react-native-harness/platform-android';
@@ -12,19 +11,14 @@ export default {
   disableViewFlattening: true,
 
   runners: [
-    // Authoritative baselines: an AVD anyone can recreate, so a diff here is a
-    // rendering change rather than a different phone.
-    androidPlatform({
-      name: 'android-emulator',
-      device: androidEmulator('Pixel_8_API_35'),
-      bundleId: 'com.tgfxexample',
-    }),
-    // Advisory: real GPU, real driver. Its baselines only match this phone.
+    // One runner, so one baseline directory: __image_snapshots__/android.
+    // A runner is a specific device, and the directory is named after the
+    // runner — a second runner would fork the baselines again.
     androidPlatform({
       name: 'android',
-      device: physicalAndroidDevice('motorola', 'moto g35 5G'),
+      device: physicalAndroidDevice('samsung', 'SM-E146B'),
       bundleId: 'com.tgfxexample',
     }),
   ],
-  defaultRunner: 'android-emulator',
+  defaultRunner: 'android',
 };

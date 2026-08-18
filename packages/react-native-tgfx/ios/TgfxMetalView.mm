@@ -25,6 +25,8 @@ void TgfxSnapshotRelease(void* token) {
 
 @implementation TgfxMetalView {
   std::unique_ptr<tgfxrn::TgfxRenderer> _renderer;
+  // Captured on the main thread; -[UIView layer] itself is main-thread-only.
+  CAMetalLayer* _layer;
   CADisplayLink* _displayLink;
   dispatch_queue_t _renderQueue;
   std::atomic<bool> _drawPending;
@@ -34,6 +36,11 @@ void TgfxSnapshotRelease(void* token) {
   std::atomic<bool> _released;
   std::atomic<double> _drawableWidth;
   std::atomic<double> _drawableHeight;
+  // Layer properties are UIKit state, so the render queue asks the main thread to
+  // write them and binds only once the written config matches what it wants.
+  std::atomic<bool> _layerWantsP3;
+  std::atomic<bool> _layerConfigPending;
+  bool _pendingRecycleClear;
 }
 
 + (Class)layerClass {
@@ -41,7 +48,7 @@ void TgfxSnapshotRelease(void* token) {
 }
 
 - (CAMetalLayer*)metalLayer {
-  return (CAMetalLayer*)self.layer;
+  return _layer;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -73,9 +80,17 @@ void TgfxSnapshotRelease(void* token) {
       _renderQueue, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0));
   self.contentScaleFactor = UIScreen.mainScreen.nativeScale;
   self.opaque = NO;
-  CAMetalLayer* layer = [self metalLayer];
+  _layer = (CAMetalLayer*)self.layer;
+  CAMetalLayer* layer = _layer;
   layer.device = MTLCreateSystemDefaultDevice();
   layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+  // sRGB is pre-applied here so the common bind never has to hop back to the main thread.
+  CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  layer.colorspace = srgb;
+  CGColorSpaceRelease(srgb);
+  _layerWantsP3 = false;
+  _layerConfigPending = false;
+  _pendingRecycleClear = false;
   layer.contentsScale = self.contentScaleFactor;
 
   _displayLink = [CADisplayLink displayLinkWithTarget:self
@@ -108,16 +123,26 @@ void TgfxSnapshotRelease(void* token) {
     return;
   }
   // The layer's own space too, or the surface is P3 while the layer still presents sRGB.
-  bool wantsP3 = _renderer != nullptr && _renderer->wantsDisplayP3();
+  bool wantsP3 = _renderer->wantsDisplayP3();
+  if (_layerWantsP3.load() != wantsP3) {
+    if (!_layerConfigPending.exchange(true)) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        // +1 from Create; the layer retains it, so this scope has to give its reference back.
+        CGColorSpaceRef cgSpace = CGColorSpaceCreateWithName(
+            wantsP3 ? kCGColorSpaceDisplayP3 : kCGColorSpaceSRGB);
+        self->_layer.colorspace = cgSpace;
+        CGColorSpaceRelease(cgSpace);
+        self->_layer.pixelFormat =
+            wantsP3 ? MTLPixelFormatBGRA10_XR_sRGB : MTLPixelFormatBGRA8Unorm;
+        self->_layerWantsP3 = wantsP3;
+        self->_layerConfigPending = false;
+        [self wakeUp];
+      });
+    }
+    return;
+  }
   auto space = wantsP3 ? tgfx::ColorSpace::DisplayP3() : tgfx::ColorSpace::SRGB();
-  auto layer = [self metalLayer];
-  // +1 from Create; the layer retains it, so this scope has to give its reference back.
-  CGColorSpaceRef cgSpace = CGColorSpaceCreateWithName(
-      wantsP3 ? kCGColorSpaceDisplayP3 : kCGColorSpaceSRGB);
-  layer.colorspace = cgSpace;
-  CGColorSpaceRelease(cgSpace);
-  layer.pixelFormat = wantsP3 ? MTLPixelFormatBGRA10_XR_sRGB : MTLPixelFormatBGRA8Unorm;
-  auto window = tgfx::MetalWindow::MakeFrom(layer, nullptr, space);
+  auto window = tgfx::MetalWindow::MakeFrom(_layer, nullptr, space);
   if (window != nullptr) {
     _renderer->setWindow(window);
     _windowBound = true;
@@ -190,11 +215,28 @@ void TgfxSnapshotRelease(void* token) {
   [self wakeUp];
 }
 
+// Deferred while on screen: painting the still-visible view empty flashed white during unmount.
 - (void)clearScene {
+  if (self.window != nil) {
+    _pendingRecycleClear = true;
+    return;
+  }
+  [self clearSceneNow];
+}
+
+- (void)clearSceneNow {
+  _pendingRecycleClear = false;
   if (_renderer != nullptr) {
     _renderer->clearScene();
   }
   [self wakeUp];
+}
+
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  if (self.window == nil && _pendingRecycleClear) {
+    [self clearSceneNow];
+  }
 }
 
 - (void)setValues:(const double*)values count:(int32_t)count {
@@ -273,20 +315,9 @@ void TgfxSnapshotRelease(void* token) {
     completion(const_cast<void*>((*token)->data()),
                static_cast<NSInteger>((*token)->size()), token, width, height, nil);
   };
-  // Blitting a framebuffer-only drawable wedges the Metal device, so this is paired with deferSnapshotsToNextSurface().
-  dispatch_async(dispatch_get_main_queue(), ^{
-    if (self->_renderer == nullptr || self->_released) {
-      deliver(nullptr, 0, 0, "[tgfx] snapshot: the canvas is no longer mounted");
-      return;
-    }
-    CAMetalLayer* layer = [self metalLayer];
-    if (layer.framebufferOnly) {
-      layer.framebufferOnly = NO;
-      self->_renderer->deferSnapshotsToNextSurface();
-    }
-    self->_renderer->requestSnapshot(request, deliver);
-    [self wakeUp];
-  });
+  // Readbacks never touch the framebuffer-only drawable (see startSnapshots), so no layer work here.
+  _renderer->requestSnapshot(request, deliver);
+  [self wakeUp];
 }
 
 - (void)requestRender {

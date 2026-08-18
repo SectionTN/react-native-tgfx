@@ -384,7 +384,7 @@ Why each piece is written that way:
 - **`posture.width > 0` guard** — the first frame has not landed yet, and a
   zero `uSize` divides by zero.
 
-## Shorter camera shader (from `apps/faceblur`)
+## Shorter camera shader (from `apps/example`)
 
 ```tsx
 const NEON_EDGE = `

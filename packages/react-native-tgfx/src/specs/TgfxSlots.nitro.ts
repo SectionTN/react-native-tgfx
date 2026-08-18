@@ -13,7 +13,7 @@ import type { HybridObject } from 'react-native-nitro-modules'
  * and does not update the writer's own copy, so the thread that published the
  * answer reads back the previous one; and a read from a third runtime is a
  * *blocking* call into the host, taken on the calling thread — 8 per frame in
- * the face-blur app, on the camera thread.
+ * the face-blur screen, on the camera thread.
  *
  * So the answer lives in bytes instead. {@link flags} wraps a native
  * allocation, and Nitro hands each runtime its own `ArrayBuffer` over the *same

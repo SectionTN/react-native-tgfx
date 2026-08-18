@@ -1,8 +1,8 @@
 # VisionCamera — drawing frames through tgfx
 
-The camera view is a **frame source only**. Every visible pixel is drawn by
-tgfx: the `<Camera>` is 1×1 and invisible, and a full-screen `<Canvas>` renders
-the frame plus whatever you compose over it.
+The camera is a **headless frame source only**. Every visible pixel is drawn by
+tgfx: `useCamera()` runs the session with no camera view mounted, and a
+full-screen `<Canvas>` renders the frame plus whatever you compose over it.
 
 ```bash
 npm install react-native-vision-camera react-native-vision-camera-worklets
@@ -15,11 +15,10 @@ outlive one callback on the producer's worklet runtime).
 
 ```tsx
 import { StyleSheet } from 'react-native'
-import { Camera, useCameraDevice, useFrameOutput } from 'react-native-vision-camera'
+import { useCamera, useFrameOutput } from 'react-native-vision-camera'
 import { Canvas, CameraFrame, useCameraFrame } from 'react-native-tgfx'
 
 export function Preview() {
-  const device = useCameraDevice('back')
   const { image, posture, onFrame } = useCameraFrame()
 
   const frameOutput = useFrameOutput({
@@ -29,23 +28,21 @@ export function Preview() {
     onFrame,
   })
 
-  if (device == null) return null
+  useCamera({
+    isActive: true,
+    device: 'back',                      // a CameraPosition or a CameraDevice
+    outputs: [frameOutput],
+  })
+
   return (
-    <>
-      <Camera style={styles.hidden} device={device} isActive={true} outputs={[frameOutput]} />
-      <Canvas style={StyleSheet.absoluteFill} opaque={true}>
-        <CameraFrame image={image} {...posture} />
-      </Canvas>
-    </>
+    <Canvas style={StyleSheet.absoluteFill} opaque={true}>
+      <CameraFrame image={image} {...posture} />
+    </Canvas>
   )
 }
-
-const styles = StyleSheet.create({
-  hidden: { width: 1, height: 1, opacity: 0, position: 'absolute' },
-})
 ```
 
-Gate on `useCameraPermission()` before mounting — `apps/faceblur` does.
+Gate on `useCameraPermission()` before mounting — `apps/example` does.
 
 ## `useCameraFrame`
 
@@ -142,14 +139,14 @@ behind it.
 
 ## Face blur — the reference app
 
-`apps/faceblur/src/TgfxFaceBlur.tsx`. The scene compiles once, so allocate a
+`apps/example/src/TgfxFaceBlur.tsx`. The scene compiles once, so allocate a
 **fixed** number of slots; an unused slot has zero size and draws nothing.
 
 ```tsx
 import { useCallback } from 'react'
 import { StyleSheet, View } from 'react-native'
 import type { Frame } from 'react-native-vision-camera'
-import { Camera, useCameraDevice, useCameraPermission, useFrameOutput } from 'react-native-vision-camera'
+import { useCamera, useCameraDevice, useCameraPermission, useFrameOutput } from 'react-native-vision-camera'
 import { useFaceDetector } from 'react-native-vision-camera-face-detector'
 import {
   Blur, CameraFrame, Canvas, ImageShader, Oval, Paint,
@@ -207,12 +204,17 @@ export function TgfxFaceBlur() {
     onFrame,
   })
 
+  useCamera({
+    isActive: hasPermission && device != null,
+    device: device ?? 'front',
+    outputs: [frameOutput],
+  })
+
   if (!hasPermission) return <TapToGrant onPress={requestPermission} />
   if (device == null) return null
 
   return (
     <View style={styles.fill}>
-      <Camera style={styles.hidden} device={device} isActive={true} outputs={[frameOutput]} />
       <Canvas style={StyleSheet.absoluteFill} opaque={true}>
         <CameraFrame image={image} {...posture}>
           {SLOTS.map((slot) => (
@@ -337,7 +339,7 @@ Full shader sources and the rules of the SkSL subset are in
 - [ ] `pixelFormat: 'yuv'` — never `'rgb'` (a full-frame CPU copy per frame).
 - [ ] `enablePhysicalBufferRotation: true`, especially with the native sink.
 - [ ] `dropFramesWhileBusy: true` unless every frame must be processed.
-- [ ] `<Camera>` styled 1×1 / invisible; the `<Canvas>` is the preview.
+- [ ] `useCamera()` drives the session headlessly — no `<Camera>` view; the `<Canvas>` is the preview.
 - [ ] `opaque={true}` on a full-screen camera canvas.
 - [ ] No `tx`/`ty` on an `<ImageShader>` fed a YUV frame — it renders fully
       transparent.

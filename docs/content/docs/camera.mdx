@@ -16,11 +16,10 @@ structurally ([`FrameLike`](/api/interfaces/FrameLike)), so the core package doe
 not depend on VisionCamera.
 
 ```tsx title="Preview.tsx"
-import { Camera, useCameraDevice, useFrameOutput } from 'react-native-vision-camera'
+import { useCamera, useFrameOutput } from 'react-native-vision-camera'
 import { Canvas, CameraFrame, useCameraFrame } from 'react-native-tgfx'
 
 export function Preview() {
-  const device = useCameraDevice('back')
   const { image, posture, onFrame } = useCameraFrame()
 
   const frameOutput = useFrameOutput({
@@ -30,22 +29,26 @@ export function Preview() {
     onFrame,
   })
 
-  if (device == null) return null
+  useCamera({
+    isActive: true,
+    device: 'back',
+    outputs: [frameOutput],
+  })
+
   return (
-    <>
-      <Camera style={styles.hidden} device={device} isActive={true} outputs={[frameOutput]} />
-      <Canvas style={StyleSheet.absoluteFill} opaque={true}>
-        <CameraFrame image={image} {...posture} />
-      </Canvas>
-    </>
+    <Canvas style={StyleSheet.absoluteFill} opaque={true}>
+      <CameraFrame image={image} {...posture} />
+    </Canvas>
   )
 }
 ```
 
-The example assumes camera permission has already been granted; the repository's
-face-blur app uses VisionCamera's `useCameraPermission` before mounting it.
+The snippet assumes camera permission has already been granted; the example
+app's face-blur screen uses VisionCamera's `useCameraPermission` before
+mounting it.
 
-The camera view is a frame source only; every visible pixel is drawn by tgfx.
+The camera is a headless frame source driven by `useCamera` — no camera view is
+mounted; every visible pixel is drawn by tgfx.
 
 [`CameraFrameProps`](/api/interfaces/CameraFrameProps) · [`CameraFrameOptions`](/api/interfaces/CameraFrameOptions)
 

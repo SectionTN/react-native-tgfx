@@ -1633,10 +1633,14 @@ bool childShadersReadImages(const std::vector<ChildShaderCmd>& children) {
   return false;
 }
 
-void scanDependencies(const Program& program, bool& images, bool& text) {
+void scanDependencies(const Program& program, bool& images, bool& text,
+                      bool& backdrop) {
   for (const auto& cmd : program) {
-    if (images && text) {
+    if (images && text && backdrop) {
       return;
+    }
+    if (cmd.kind == DrawCmd::Backdrop) {
+      backdrop = true;
     }
     if (cmd.kind == DrawCmd::Image || cmd.kind == DrawCmd::CameraFrame ||
         cmd.kind == DrawCmd::Atlas || cmd.imageHandle != 0 ||
@@ -1650,8 +1654,8 @@ void scanDependencies(const Program& program, bool& images, bool& text) {
     if (cmd.text != nullptr) {
       text = true;
     }
-    scanDependencies(cmd.children, images, text);
-    scanDependencies(cmd.maskChildren, images, text);
+    scanDependencies(cmd.children, images, text, backdrop);
+    scanDependencies(cmd.maskChildren, images, text, backdrop);
   }
 }
 
@@ -1728,12 +1732,14 @@ void SceneRenderer::setScene(std::span<const double> words,
 
   bool images = false;
   bool text = false;
-  scanDependencies(*program, images, text);
+  bool backdrop = false;
+  scanDependencies(*program, images, text, backdrop);
 
   std::lock_guard<std::mutex> lock(programMutex_);
   program_ = std::move(program);
   usesImages_ = images;
   usesText_ = text;
+  usesBackdrop_ = backdrop;
 }
 
 
@@ -1882,6 +1888,11 @@ bool SceneRenderer::usesImages() const {
 bool SceneRenderer::usesText() const {
   std::lock_guard<std::mutex> lock(programMutex_);
   return usesText_;
+}
+
+bool SceneRenderer::usesBackdrop() const {
+  std::lock_guard<std::mutex> lock(programMutex_);
+  return usesBackdrop_;
 }
 
 std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,

@@ -14,7 +14,6 @@ metadata:
     - "**/*CameraEffects*.tsx"
     - "packages/react-native-tgfx/**"
     - "packages/react-native-tgfx-vision-camera/**"
-    - "apps/faceblur/**"
     - "apps/example/**"
   importPatterns:
     - "react-native-tgfx"
@@ -232,7 +231,7 @@ import { Canvas, Circle, Rect } from 'react-native-tgfx'
 
 - Monorepo: `packages/react-native-tgfx` (core),
   `packages/react-native-tgfx-vision-camera` (native frame sink),
-  `apps/example` (feature gallery), `apps/faceblur` (camera reference app),
+  `apps/example` (feature gallery, including the camera screens),
   `docs/` (Fumadocs site).
 - **Imperative API first.** Design which props get value slots and what a
   worklet write costs *before* wrapping a declarative component over it. A prop

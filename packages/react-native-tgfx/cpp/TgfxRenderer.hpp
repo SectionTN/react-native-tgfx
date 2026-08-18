@@ -71,14 +71,14 @@ class TgfxRenderer {
 
   void requestSnapshot(const SnapshotRequest& request, SnapshotCallback callback);
 
-  /// Hold readbacks until a surface created after this call exists, for iOS's framebufferOnly flip.
-  void deferSnapshotsToNextSurface();
-
   bool snapshotPending() const {
     return snapshotPending_.load(std::memory_order_acquire);
   }
 
   void releaseWindow();
+
+  // Swaps the window out without GPU work so the caller can destroy it on another thread.
+  std::shared_ptr<tgfx::Window> detachWindow();
 
  private:
   struct InFlightSnapshot {
@@ -104,6 +104,8 @@ class TgfxRenderer {
 
   std::shared_ptr<tgfx::Window> window_;
   std::shared_ptr<tgfx::Surface> surface_;
+  /// Backdrop scenes on Metal render here, then composite onto the drawable; see draw().
+  std::shared_ptr<tgfx::Surface> offscreen_;
   std::vector<double> pendingScene_;
   // Shared, never copied: a geometry-only commit must not re-copy the image payloads.
   std::shared_ptr<const StringTable> pendingStrings_;
@@ -149,9 +151,6 @@ class TgfxRenderer {
   std::vector<InFlightSnapshot> inFlightSnapshots_;
   std::atomic<bool> displayP3_{false};
   std::atomic<bool> snapshotPending_{false};
-  // A counter, not a flag: a surface created before the bump must not clear it.
-  std::atomic<uint64_t> snapshotBarrier_{0};
-  uint64_t surfaceBarrier_{0};
 };
 
 }  // namespace tgfxrn

@@ -14,6 +14,14 @@ import com.margelo.nitro.core.Promise
 import com.margelo.nitro.views.RecyclableView
 
 private class HostLayout(context: Context) : FrameLayout(context) {
+  var onDetached: (() -> Unit)? = null
+
+  override fun onDetachedFromWindow() {
+    super.onDetachedFromWindow()
+    onDetached?.invoke()
+    onDetached = null
+  }
+
   fun setCanvas(child: View) {
     removeAllViews()
     addView(
@@ -141,8 +149,13 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     return promise
   }
 
+  // Deferred until detach: clearing the still-visible view flashed it blank during unmount.
   override fun prepareForRecycle() {
-    target.clearScene()
+    if (host.isAttachedToWindow) {
+      host.onDetached = { target.clearScene() }
+    } else {
+      target.clearScene()
+    }
   }
 
   override fun onDropView() {

@@ -18,6 +18,15 @@ internal object TgfxRenderThread {
   }
 }
 
+// GPU teardown of detached surfaces, kept off the render thread so destroy latches never wait behind it.
+internal object TgfxTeardownThread {
+  val handler: Handler by lazy {
+    val thread = HandlerThread("TgfxTeardown", Process.THREAD_PRIORITY_BACKGROUND)
+    thread.start()
+    Handler(thread.looper)
+  }
+}
+
 /** Tracks whether a canvas view is actually on screen and feeds [TgfxRenderTarget.setHidden]. */
 internal class TgfxVisibilityGate(private val view: View, private val target: TgfxRenderTarget) :
   ViewTreeObserver.OnPreDrawListener {
@@ -85,9 +94,9 @@ internal class TgfxRenderTarget {
     requestRender()
   }
 
+  // No redraw: only recycle calls this, and painting the still-visible view empty flashed white.
   fun clearScene() {
     withPtr { TgfxNative.clearScene(it) }
-    requestRender()
   }
 
   fun setColorSpace(displayP3: Boolean) {
@@ -166,10 +175,14 @@ internal class TgfxRenderTarget {
     handler.post(drawRunnable)
   }
 
+  // Bumped on destroy so a stale surfaceAvailable/surfaceResized post cannot touch the dead surface.
+  @Volatile private var surfaceGeneration = 0
+
   fun surfaceAvailable(surface: Surface, width: Int, height: Int, density: Float) {
+    val generation = surfaceGeneration
     handler.post {
       val ptr = nativePtr
-      if (ptr != 0L) {
+      if (ptr != 0L && generation == surfaceGeneration) {
         TgfxNative.surfaceCreated(ptr, surface)
         TgfxNative.surfaceChanged(ptr, width, height)
         TgfxNative.setPixelRatio(ptr, density)
@@ -179,9 +192,10 @@ internal class TgfxRenderTarget {
   }
 
   fun surfaceResized(width: Int, height: Int, density: Float) {
+    val generation = surfaceGeneration
     handler.post {
       val ptr = nativePtr
-      if (ptr != 0L) {
+      if (ptr != 0L && generation == surfaceGeneration) {
         TgfxNative.surfaceChanged(ptr, width, height)
         TgfxNative.setPixelRatio(ptr, density)
         TgfxNative.draw(ptr)
@@ -192,15 +206,18 @@ internal class TgfxRenderTarget {
   /** @param await block until the surface is released — a SurfaceView must, a TextureView need not. */
   fun surfaceDestroyed(await: Boolean, onReleased: () -> Unit = {}) {
     handler.removeCallbacks(drawRunnable)
+    surfaceGeneration++
     val released = CountDownLatch(1)
     synchronized(lock) {
       val ptr = nativePtr
-      handler.post {
-        if (ptr != 0L) {
-          TgfxNative.surfaceDestroyed(ptr)
-        }
-        onReleased()
+      // Front of the queue: awaiting a whole GPU teardown froze commits that unmount many canvases.
+      handler.postAtFrontOfQueue {
+        val detached = if (ptr != 0L) TgfxNative.surfaceDetach(ptr) else 0L
         released.countDown()
+        TgfxTeardownThread.handler.post {
+          TgfxNative.releaseDetached(detached)
+          onReleased()
+        }
       }
     }
     if (await) {

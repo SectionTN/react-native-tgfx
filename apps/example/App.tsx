@@ -1,8 +1,17 @@
 // react-native-tgfx example — shapes, strokes, gradients, image and text through <Canvas>.
-import { useEffect } from 'react';
-import { Text as RNText, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Pressable,
+  Text as RNText,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import {
   Canvas,
   Circle,
@@ -48,6 +57,8 @@ import {
   HelperCollisionPanels,
   SdCirclePanel,
 } from './src/shaderExamples';
+import { TgfxCameraEffects } from './src/TgfxCameraEffects';
+import { TgfxFaceBlur } from './src/TgfxFaceBlur';
 
 function Demo() {
   const insets = useSafeAreaInsets();
@@ -56,19 +67,34 @@ function Demo() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 32 }}>
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 32 }}
+    >
       <RNText style={styles.title}>react-native-tgfx</RNText>
       <RNText style={styles.subtitle}>declarative tgfx canvas · Nitro</RNText>
 
       <Section label="Shapes (fill)">
         <Rect x={0} y={0} width={80} height={56} color="#4F8EF7" />
-        <RoundedRect x={96} y={0} width={80} height={56} r={14} color="#34C759" />
+        <RoundedRect
+          x={96}
+          y={0}
+          width={80}
+          height={56}
+          r={14}
+          color="#34C759"
+        />
         <Circle cx={216} cy={28} r={28} color="#FF9500" />
         <Oval x={256} y={0} width={92} height={56} color="#AF52DE" />
       </Section>
 
       <Section label="Strokes (cap / join / path)">
-        <Circle cx={28} cy={28} r={24} color="#FF3B30" style="stroke" strokeWidth={6} />
+        <Circle
+          cx={28}
+          cy={28}
+          r={24}
+          color="#FF3B30"
+          style="stroke"
+          strokeWidth={6}
+        />
         <RoundedRect
           x={72}
           y={2}
@@ -135,7 +161,11 @@ function Demo() {
           />
         </RoundedRect>
         <Circle cx={250} cy={32} r={32}>
-          <RadialGradient center={{ x: 250, y: 32 }} r={32} colors={['#FFE259', '#FFA751']} />
+          <RadialGradient
+            center={{ x: 250, y: 32 }}
+            r={32}
+            colors={['#FFE259', '#FFA751']}
+          />
         </Circle>
         <Group transform={[{ translateX: 300 }]}>
           <Rect x={0} y={0} width={56} height={64}>
@@ -151,8 +181,19 @@ function Demo() {
       </Section>
 
       <Section label="Image (fit: cover / contain)">
-        {img != null && <Image x={0} y={0} width={88} height={88} image={img} fit="cover" />}
-        {img != null && <Image x={104} y={0} width={88} height={88} image={img} fit="contain" />}
+        {img != null && (
+          <Image x={0} y={0} width={88} height={88} image={img} fit="cover" />
+        )}
+        {img != null && (
+          <Image
+            x={104}
+            y={0}
+            width={88}
+            height={88}
+            image={img}
+            fit="contain"
+          />
+        )}
         {img != null && (
           <Group transform={[{ translateX: 208 }, { rotate: '8deg' }]}>
             <Image x={0} y={0} width={88} height={88} image={img} fit="cover" />
@@ -161,10 +202,28 @@ function Demo() {
       </Section>
 
       <Section label="Text">
-        <Text x={0} y={26} text="Shapes · Strokes · Image · Text" fontSize={20} color="#111" />
-        <Text x={0} y={56} text="rendered through tgfx + Nitro" fontSize={16} color="#888" />
+        <Text
+          x={0}
+          y={26}
+          text="Shapes · Strokes · Image · Text"
+          fontSize={20}
+          color="#111"
+        />
+        <Text
+          x={0}
+          y={56}
+          text="rendered through tgfx + Nitro"
+          fontSize={16}
+          color="#888"
+        />
         <Group transform={[{ translateX: 0 }, { translateY: 72 }]}>
-          <Text x={0} y={20} text="GPU 2D · Metal / OpenGL" fontSize={15} color="#4F8EF7" />
+          <Text
+            x={0}
+            y={20}
+            text="GPU 2D · Metal / OpenGL"
+            fontSize={15}
+            color="#4F8EF7"
+          />
         </Group>
       </Section>
 
@@ -206,7 +265,15 @@ function Demo() {
       <Section label="Procedural / generative (hsl palettes)" height={220}>
         <Spiral cx={80} cy={102} count={120} spacing={7} dotR={3.5} />
         <CircleField x={175} y={16} cols={5} rows={6} cell={28} />
-        <Wave x={8} y={200} width={345} amplitude={12} wavelength={80} color="#0A84FF" strokeWidth={3} />
+        <Wave
+          x={8}
+          y={200}
+          width={345}
+          amplitude={12}
+          wavelength={80}
+          color="#0A84FF"
+          strokeWidth={3}
+        />
       </Section>
 
       <Section label="Bar chart from data" height={140}>
@@ -232,7 +299,10 @@ function Demo() {
         <HelperCollisionPanels x={182} y={0} width={168} height={120} />
       </Section>
 
-      <Section label="Runtime shader · child shaders (eval / sample)" height={140}>
+      <Section
+        label="Runtime shader · child shaders (eval / sample)"
+        height={140}
+      >
         <ChildShaderPanels x={0} y={0} width={350} height={120} />
       </Section>
 
@@ -263,7 +333,7 @@ function ShaderScreenSection() {
     const started = Date.now();
     const id = setInterval(
       () => shader.set({ uniforms: { uTime: (Date.now() - started) / 1000 } }),
-      50
+      50,
     );
     return () => clearInterval(id);
   }, [shader]);
@@ -299,7 +369,85 @@ function Section({
   return (
     <View style={styles.section}>
       <RNText style={styles.sectionLabel}>{label}</RNText>
-      <Canvas style={[styles.canvas, { height }]}>{children}</Canvas>
+      <Canvas composite="texture" style={[styles.canvas, { height }]}>
+        {children}
+      </Canvas>
+    </View>
+  );
+}
+
+const SCREENS = ['gallery', 'faceblur', 'effects'] as const;
+type Screen = (typeof SCREENS)[number];
+
+// Camera-session init blocks the main thread; mounting it a frame late keeps the tab switch instant.
+function DeferredMount({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return ready ? <>{children}</> : null;
+}
+
+function Screens() {
+  const [screen, setScreen] = useState<Screen>('gallery');
+  // Trails one frame behind: unmounting the gallery's many canvases is slow, so hide first, unmount hidden.
+  const [mounted, setMounted] = useState<Screen>('gallery');
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (mounted !== screen) {
+      const id = requestAnimationFrame(() => setMounted(screen));
+      return () => cancelAnimationFrame(id);
+    }
+  }, [screen, mounted]);
+
+  return (
+    <View style={styles.root}>
+      {/* One container per screen, each with a fixed testID: a testID that
+          changes on a mounted view does not reach the native view. */}
+      {screen === 'gallery' || mounted === 'gallery' ? (
+        <View
+          style={[styles.screen, screen !== 'gallery' && styles.hiddenScreen]}
+          testID="screen-gallery"
+        >
+          <Demo />
+        </View>
+      ) : null}
+      {screen === 'faceblur' ? (
+        <View style={styles.screenDark} testID="screen-faceblur">
+          <DeferredMount>
+            <TgfxFaceBlur />
+          </DeferredMount>
+        </View>
+      ) : null}
+      {screen === 'effects' ? (
+        <View style={styles.screenDark} testID="screen-effects">
+          <DeferredMount>
+            <TgfxCameraEffects />
+          </DeferredMount>
+        </View>
+      ) : null}
+      <View style={[styles.tabs, { paddingBottom: insets.bottom + 8 }]}>
+        {SCREENS.map(name => (
+          <Pressable
+            key={name}
+            testID={`tab-${name}`}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={name}
+            accessibilityState={{ selected: screen === name }}
+            style={[styles.tab, screen === name && styles.tabOn]}
+            onPress={() => setScreen(name)}
+          >
+            <RNText
+              style={[styles.tabText, screen === name && styles.tabTextOn]}
+            >
+              {name}
+            </RNText>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
@@ -308,7 +456,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <Demo />
+        <Screens />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -316,11 +464,46 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  screen: { flex: 1 },
+  screenDark: { flex: 1, backgroundColor: '#000' },
+  hiddenScreen: { display: 'none' },
+  tabs: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    paddingTop: 8,
+    backgroundColor: '#111',
+  },
+  tab: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#fff4',
+  },
+  tabOn: { backgroundColor: '#fff2', borderColor: '#fff' },
+  tabText: { color: '#fff9', fontSize: 14, fontWeight: '600' },
+  tabTextOn: { color: '#fff' },
   scroll: { flex: 1, backgroundColor: '#F2F2F7' },
-  title: { fontSize: 28, fontWeight: '700', color: '#111', paddingHorizontal: 16 },
-  subtitle: { fontSize: 14, color: '#888', paddingHorizontal: 16, marginBottom: 8 },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111',
+    paddingHorizontal: 16,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#888',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
   section: { paddingHorizontal: 16, marginTop: 14 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 6 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
   canvas: {
     height: 100,
     backgroundColor: '#FFFFFF',

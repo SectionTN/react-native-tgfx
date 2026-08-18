@@ -23,6 +23,12 @@ internal object TgfxNative {
   external fun surfaceCreated(ptr: Long, surface: Surface)
   external fun surfaceChanged(ptr: Long, width: Int, height: Int)
   external fun surfaceDestroyed(ptr: Long)
+
+  /** Swaps the window out without GPU work; the returned handle owns it. */
+  external fun surfaceDetach(ptr: Long): Long
+
+  /** Destroys a detached window's GPU resources; safe off the render thread. */
+  external fun releaseDetached(handle: Long)
   external fun setPixelRatio(ptr: Long, ratio: Float)
   external fun setScene(ptr: Long, scene: ByteBuffer, strings: Array<String>)
   external fun clearScene(ptr: Long)

@@ -1,5 +1,5 @@
 // The #204 surface: every write here is a slot patch — no re-encode, no React.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native';
 import { useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import {
