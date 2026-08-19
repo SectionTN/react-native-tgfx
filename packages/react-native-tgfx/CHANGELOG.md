@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.0.2-alpha.6](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.4...react-native-tgfx%400.0.2-alpha.6) (2026-08-19)
+
+### Features
+
+* **android:** experimental Vulkan backend + registry-wake regression fix ([#218](https://github.com/riteshshukla04/react-native-tgfx/issues/218)) ([b4eb393](https://github.com/riteshshukla04/react-native-tgfx/commit/b4eb393a5a9b11d6d5850188ce4a50d8ad9f6d58))
+
+### Bug Fixes
+
+* **android:** convert Vulkan camera frames to RGB via immutable YCbCr conversion samplers ([1d7a326](https://github.com/riteshshukla04/react-native-tgfx/commit/1d7a326c5d18a1e78c5826242b197b5bc4b0b481))
+* camera black-forever from guest shared-value race, faster camera start ([13506ee](https://github.com/riteshshukla04/react-native-tgfx/commit/13506eea1a13663e8ddc10dcb440c90aa51bc0aa))
+* docs: ([415441d](https://github.com/riteshshukla04/react-native-tgfx/commit/415441d1da27c936ccb747672fe17ab97209e01c))
+* eval child shaders at the requested coordinate on GL and bind runtime shader coords at highp ([e453e14](https://github.com/riteshshukla04/react-native-tgfx/commit/e453e145a37530f4157e5c7dba1c2abb91f9105e))
+* load require()d images, fonts and video in Android release builds ([f2a199d](https://github.com/riteshshukla04/react-native-tgfx/commit/f2a199db453f683066e416dd2d097490e52b4daf))
+
+### Performance Improvements
+
+* **android:** skip draws for offscreen canvases, cache decoded image handles, tighten registry dependency scan ([#217](https://github.com/riteshshukla04/react-native-tgfx/issues/217)) ([f458575](https://github.com/riteshshukla04/react-native-tgfx/commit/f458575cca33db9f0a678f82068f9b974c68c57b))
+* redraw a canvas only for the registries its own scene reads ([dfe30d3](https://github.com/riteshshukla04/react-native-tgfx/commit/dfe30d31fa8bb4b8105fd38283d9acd78321ba73))
+
 ## [0.0.2-alpha.4](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.0...react-native-tgfx%400.0.2-alpha.4) (2026-08-10)
 
 ### Features
