@@ -1,5 +1,5 @@
 // react-native-tgfx example — shapes, strokes, gradients, image and text through <Canvas>.
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import {
   Pressable,
   Text as RNText,
@@ -60,7 +60,9 @@ import {
 import { TgfxCameraEffects } from './src/TgfxCameraEffects';
 import { TgfxFaceBlur } from './src/TgfxFaceBlur';
 
-function Demo() {
+// Memoised: the tab switch re-renders Screens, and re-rendering the hidden
+// gallery's dozens of canvases is pure waste on the camera-start path.
+const Demo = memo(function Demo() {
   const insets = useSafeAreaInsets();
   const img = useImage(require('./src/assets/sample.png'));
 
@@ -322,7 +324,7 @@ function Demo() {
       <SnapshotSection />
     </ScrollView>
   );
-}
+});
 
 function ShaderScreenSection() {
   // Patched through the node handle: 20 ticks/s as setState was a full React
@@ -379,16 +381,6 @@ function Section({
 const SCREENS = ['gallery', 'faceblur', 'effects'] as const;
 type Screen = (typeof SCREENS)[number];
 
-// Camera-session init blocks the main thread; mounting it a frame late keeps the tab switch instant.
-function DeferredMount({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setReady(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-  return ready ? <>{children}</> : null;
-}
-
 function Screens() {
   const [screen, setScreen] = useState<Screen>('gallery');
   // Trails one frame behind: unmounting the gallery's many canvases is slow, so hide first, unmount hidden.
@@ -416,16 +408,12 @@ function Screens() {
       ) : null}
       {screen === 'faceblur' ? (
         <View style={styles.screenDark} testID="screen-faceblur">
-          <DeferredMount>
-            <TgfxFaceBlur />
-          </DeferredMount>
+          <TgfxFaceBlur />
         </View>
       ) : null}
       {screen === 'effects' ? (
         <View style={styles.screenDark} testID="screen-effects">
-          <DeferredMount>
-            <TgfxCameraEffects />
-          </DeferredMount>
+          <TgfxCameraEffects />
         </View>
       ) : null}
       <View style={[styles.tabs, { paddingBottom: insets.bottom + 8 }]}>

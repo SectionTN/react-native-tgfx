@@ -25,6 +25,7 @@ export function Preview() {
     pixelFormat: 'yuv',                  // never 'rgb'
     dropFramesWhileBusy: true,
     enablePhysicalBufferRotation: true,
+    allowDeferredStart: false,           // headless: nothing to defer behind
     onFrame,
   })
 
@@ -340,6 +341,11 @@ Full shader sources and the rules of the SkSL subset are in
 - [ ] `enablePhysicalBufferRotation: true`, especially with the native sink.
 - [ ] `dropFramesWhileBusy: true` unless every frame must be processed.
 - [ ] `useCamera()` drives the session headlessly — no `<Camera>` view; the `<Canvas>` is the preview.
+- [ ] `allowDeferredStart: false` — the default defers the frame output behind
+      a preview output that a headless screen never mounts.
+- [ ] Every options object handed to VisionCamera hooks (`useFrameOutput`,
+      detector options) is a module constant or memoised — a fresh identity
+      re-registers the output every render.
 - [ ] `opaque={true}` on a full-screen camera canvas.
 - [ ] No `tx`/`ty` on an `<ImageShader>` fed a YUV frame — it renders fully
       transparent.

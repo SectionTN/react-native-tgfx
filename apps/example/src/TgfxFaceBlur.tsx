@@ -22,6 +22,13 @@ import {
 
 const BLUR_RADIUS = 25
 const SLOTS = [0, 1, 2, 3, 4, 5, 6, 7]
+// Module const: a fresh options object re-creates the ML Kit client every render.
+const DETECTOR_OPTIONS = {
+  performanceMode: 'fast',
+  runContours: false,
+  runLandmarks: false,
+  runClassifications: false,
+} as const
 
 /**
  * The gate is its own component: the frame and face-detector hooks below reach
@@ -74,12 +81,7 @@ function FaceBlurCamera({ device }: { device: CameraDevice }) {
     [slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7]
   )
 
-  const faceDetector = useFaceDetector({
-    performanceMode: 'fast',
-    runContours: false,
-    runLandmarks: false,
-    runClassifications: false,
-  })
+  const faceDetector = useFaceDetector(DETECTOR_OPTIONS)
 
   const detect = useCallback(
     (frame: Frame) => {
@@ -111,6 +113,8 @@ function FaceBlurCamera({ device }: { device: CameraDevice }) {
     dropFramesWhileBusy: true,
     // The pipeline rotates the buffers, so `orientation` arrives 'up' and `isMirrored` false.
     enablePhysicalBufferRotation: true,
+    // Headless: this output is the only one, so deferring it behind a preview starts it late.
+    allowDeferredStart: false,
     onFrame,
   })
   useCamera({

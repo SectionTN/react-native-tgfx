@@ -17,11 +17,17 @@ export interface Reanimated {
   useFrameCallback?: (cb: (frame: Frame) => void) => unknown
 }
 
+export interface Synchronizable<T> {
+  getBlocking(): T
+  setBlocking(value: T): void
+}
+
 export interface Worklets {
   scheduleOnRN?: <A extends unknown[]>(
     fn: (...a: A) => void,
     ...args: A
   ) => void
+  createSynchronizable?: <T>(initial: T) => Synchronizable<T>
 }
 
 let absent = false

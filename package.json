@@ -17,5 +17,8 @@
     "@release-it/conventional-changelog": "^12.0.0",
     "release-it": "^21.0.1",
     "typescript": "^6.0.3"
+  },
+  "patchedDependencies": {
+    "react-native-vision-camera@5.2.0": "patches/react-native-vision-camera@5.2.0.patch"
   }
 }

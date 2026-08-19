@@ -112,6 +112,8 @@ function EffectsCamera({ device }: { device: CameraDevice }) {
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
     enablePhysicalBufferRotation: true,
+    // Headless: this output is the only one, so deferring it behind a preview starts it late.
+    allowDeferredStart: false,
     onFrame,
   })
 

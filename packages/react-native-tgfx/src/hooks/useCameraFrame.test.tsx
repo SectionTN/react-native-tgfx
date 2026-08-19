@@ -11,13 +11,53 @@ import type {
   FrameLike,
 } from './useCameraFrame'
 
+// On a guest runtime a shared-value write lands asynchronously; `land()` makes
+// that hazard drivable from a test instead of a matter of thread timing.
+class AsyncMutable<T> {
+  committed: T
+  pending: T
+  constructor(initial: T) {
+    this.committed = initial
+    this.pending = initial
+  }
+  get value(): T {
+    return this.committed
+  }
+  set value(v: T) {
+    this.pending = v
+  }
+  land(): void {
+    this.committed = this.pending
+  }
+}
+
+let asyncHandleWrites = false
+let asyncHandles: AsyncMutable<unknown>[] = []
+
 // A real SharedValue is stable per hook instance; a fresh object would hide the identity bugs.
 mock.module('react-native-reanimated', () => ({
-  useSharedValue: <T,>(initial: T) => useState(() => ({ value: initial }))[0],
+  useSharedValue: <T,>(initial: T) =>
+    useState(() => {
+      if (asyncHandleWrites && initial === null) {
+        const mutable = new AsyncMutable<T>(initial)
+        asyncHandles.push(mutable as AsyncMutable<unknown>)
+        return mutable
+      }
+      return { value: initial }
+    })[0],
 }))
 mock.module('react-native-worklets', () => ({
   scheduleOnRN: <A extends unknown[]>(fn: (...a: A) => void, ...a: A) => {
     fn(...a)
+  },
+  createSynchronizable: <T,>(initial: T) => {
+    let stored = initial
+    return {
+      getBlocking: () => stored,
+      setBlocking: (v: T) => {
+        stored = v
+      },
+    }
   },
 }))
 
@@ -52,6 +92,8 @@ beforeEach(() => {
   released = 0
   disposed = 0
   importThrows = false
+  asyncHandleWrites = false
+  asyncHandles = []
   nativeMocks.hybridObject = () => ({
     fromNativeBuffer(pointer: bigint, format: string) {
       if (importThrows) {
@@ -283,4 +325,30 @@ test('getNativeBuffer throwing still disposes the frame', async () => {
   ).rejects.toThrow('no buffer')
   expect(released).toBe(0)
   expect(disposed).toBe(1)
+})
+
+// The device bug behind "black forever": on the camera runtime the shared-value
+// write is asynchronous, so a read straight after the mint still returns null.
+test('a delayed handle write still delivers the minted image, exactly once', async () => {
+  asyncHandleWrites = true
+  const probe = await mount()
+
+  // First frame: the write has not landed — the posted image must be the local one.
+  await probe.push()
+  expect(made.length).toBe(1)
+  expect(probe.current.image).toBe(made[0] as never)
+
+  // Second frame before landing: no second mint, and the frame is not leaked.
+  await probe.push()
+  expect(made.length).toBe(1)
+  expect(released).toBe(2)
+  expect(disposed).toBe(2)
+
+  // Once the write lands, later frames go through setNativeBuffer as usual.
+  for (const mutable of asyncHandles) {
+    mutable.land()
+  }
+  await probe.push()
+  expect(made.length).toBe(1)
+  expect(made[0]!.buffers.length).toBe(1)
 })

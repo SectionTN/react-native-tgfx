@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { UInt64 } from 'react-native-nitro-modules'
 import { requireReanimated, worklets } from '../reanimated/peer'
 import type { PixelFormat, TgfxImage } from '../specs/TgfxImage.nitro'
@@ -135,10 +135,10 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
   options?: CameraFrameOptions<F>
 ): CameraFrameSource<F> {
   const mod = requireReanimated('useCameraFrame', ['useSharedValue'])
-  const scheduleOnRN = worklets().scheduleOnRN
-  if (scheduleOnRN == null) {
+  const { scheduleOnRN, createSynchronizable } = worklets()
+  if (scheduleOnRN == null || createSynchronizable == null) {
     throw new Error(
-      '[tgfx] react-native-worklets does not export scheduleOnRN, which useCameraFrame needs.'
+      '[tgfx] react-native-worklets does not export scheduleOnRN/createSynchronizable, which useCameraFrame needs.'
     )
   }
   // Destructured, or an inline `{}` at the call site would re-register every render.
@@ -147,16 +147,35 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
   const [image, setImage] = useState<TgfxImage | null>(null)
   const [posture, setPosture] = useState<CameraFramePosture>(UPRIGHT)
   const handle = mod.useSharedValue!<TgfxImage | null>(null)
-  const posted = mod.useSharedValue!('')
+  // Synchronous, unlike the shared value: a guest-runtime write to `handle`
+  // lands asynchronously, so this flag is what proves the mint happened.
+  const minted = useMemo(() => createSynchronizable(false), [createSynchronizable])
+  // Written back from the React side: a cross-runtime post can be lost, and a
+  // fire-once post that never lands is a permanently black canvas — so the
+  // worklet keeps re-posting each frame until the matching ack arrives.
+  const imageAcked = mod.useSharedValue!(false)
+  const postureAcked = mod.useSharedValue!('')
 
-  const onImage = useCallback((h: TgfxImage) => {
-    setImage(h)
-  }, [])
+  const onImage = useCallback(
+    (h: TgfxImage) => {
+      imageAcked.value = true
+      setImage(h)
+    },
+    [imageAcked]
+  )
   const onPosture = useCallback(
     (rotation: number, mirror: boolean, width: number, height: number) => {
-      setPosture({ rotation, mirror, width, height })
+      postureAcked.value = `${rotation}:${mirror}:${width}x${height}`
+      setPosture((p) =>
+        p.rotation === rotation &&
+        p.mirror === mirror &&
+        p.width === width &&
+        p.height === height
+          ? p
+          : { rotation, mirror, width, height }
+      )
     },
-    []
+    [postureAcked]
   )
 
   const onFrame = useCallback(
@@ -169,11 +188,18 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
         // Read off the frame: `-full` imported as limited crushes the blacks.
         const format: PixelFormat =
           formatOf != null ? formatOf(frame) : defaultFormat(frame.pixelFormat)
-        if (handle.value == null) {
-          handle.value = imageFromNativeBuffer(buffer.pointer, format)
-          scheduleOnRN(onImage, handle.value)
-        } else {
-          handle.value.setNativeBuffer(buffer.pointer, format)
+        // The local `img`, never a `handle.value` read-back: the guest write is
+        // asynchronous, so a read here can still be null after the mint.
+        let img = handle.value
+        if (img != null) {
+          img.setNativeBuffer(buffer.pointer, format)
+        } else if (!minted.getBlocking()) {
+          img = imageFromNativeBuffer(buffer.pointer, format)
+          minted.setBlocking(true)
+          handle.value = img
+        }
+        if (img != null && !imageAcked.value) {
+          scheduleOnRN(onImage, img)
         }
 
         const rotation =
@@ -181,8 +207,7 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
             ? rotationOf(frame)
             : (ROTATION[frame.orientation] ?? 0)
         const key = `${rotation}:${frame.isMirrored}:${frame.width}x${frame.height}`
-        if (posted.value !== key) {
-          posted.value = key
+        if (postureAcked.value !== key) {
           scheduleOnRN(
             onPosture,
             rotation,
@@ -200,7 +225,9 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
     },
     [
       handle,
-      posted,
+      minted,
+      imageAcked,
+      postureAcked,
       onImage,
       onPosture,
       onEachFrame,

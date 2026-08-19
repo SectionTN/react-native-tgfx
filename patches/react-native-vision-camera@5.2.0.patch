@@ -1,0 +1,28 @@
+diff --git a/android/src/main/java/com/margelo/nitro/camera/hybrids/outputs/HybridFrameOutput.kt b/android/src/main/java/com/margelo/nitro/camera/hybrids/outputs/HybridFrameOutput.kt
+index cadecc1565cdc3a838ecf1ce75ca725771b7a83f..e781156d0c6f6ff17393839d8bf13068ed7b2abe 100644
+--- a/android/src/main/java/com/margelo/nitro/camera/hybrids/outputs/HybridFrameOutput.kt
++++ b/android/src/main/java/com/margelo/nitro/camera/hybrids/outputs/HybridFrameOutput.kt
+@@ -39,11 +39,14 @@ class HybridFrameOutput(
+     get() = imageAnalysis?.resolutionInfo?.resolution?.toSize()
+   override var mirrorMode: MirrorMode = MirrorMode.AUTO
+ 
++  @Volatile
+   private var imageAnalysis: ImageAnalysis? = null
+     set(value) {
+       field = value
+       updateAnalyzer()
+     }
++
++  @Volatile
+   private var onFrame: ((HybridFrameSpec) -> Boolean)? = null
+     set(value) {
+       field = value
+@@ -109,6 +112,8 @@ class HybridFrameOutput(
+   /**
+    * Sets or removes the ImageAnalyzer, depending on `onFrame`.
+    */
++  // Synchronized + volatile: imageAnalysis is set from the main thread, onFrame from the frame executor.
++  @Synchronized
+   private fun updateAnalyzer() {
+     val imageAnalysis = imageAnalysis ?: return
+     val onFrame = onFrame

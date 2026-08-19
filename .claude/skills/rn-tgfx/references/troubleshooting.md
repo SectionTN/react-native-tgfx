@@ -64,6 +64,21 @@ On the Android **Vulkan** backend, video frames are converted via a CPU plane
 copy and tgfx's own YUV shader on purpose — on at least Mali the driver ignores
 the color-range override on zero-copy external-format imports.
 
+## Camera runs but the canvas stays black
+
+The camera indicator is on, frames flow, nothing draws. Historic causes, all
+fixed in the library/app — listed so a regression is recognisable:
+
+- A guest-runtime shared-value write lands **asynchronously**; posting a
+  `handle.value` read-back right after the mint raced the landing and shipped
+  `null`. `useCameraFrame` now posts the local minted handle and guards the
+  mint with a synchronous `Synchronizable` flag.
+- Android's visibility gate could latch `hidden` on a not-yet-measured view;
+  it now treats an unmeasured view as visible and re-checks on wakes.
+- VisionCamera's `updateAnalyzer()` read two fields written from two threads
+  unsynchronized; the local patch makes it `@Synchronized` with `@Volatile`
+  fields (`patches/react-native-vision-camera@5.2.0.patch`).
+
 ## Camera stalls after a few frames
 
 A frame or its buffer was retained. One unreleased buffer stalls the producer's

@@ -33,17 +33,23 @@ internal class TgfxVisibilityGate(private val view: View, private val target: Tg
   private val visibleRect = Rect()
 
   fun attach() {
+    target.onHiddenWake = { view.post { update() } }
     view.viewTreeObserver.addOnPreDrawListener(this)
     update()
   }
 
   fun detach() {
+    target.onHiddenWake = null
     view.viewTreeObserver.removeOnPreDrawListener(this)
     target.setHidden(false)
   }
 
   private fun update() {
-    target.setHidden(!(view.isShown && view.getLocalVisibleRect(visibleRect)))
+    // An unmeasured view draws nothing anyway; gating it strands the canvas black until the next traversal.
+    target.setHidden(
+      view.width > 0 && view.height > 0 &&
+        !(view.isShown && view.getLocalVisibleRect(visibleRect))
+    )
   }
 
   override fun onPreDraw(): Boolean {
@@ -152,7 +158,12 @@ internal class TgfxRenderTarget {
   // animation still drew at full rate.
   @Volatile private var hidden = false
 
+  // A wake that lands while hidden posts one visibility re-check; only a traversal re-evaluates the gate otherwise.
+  @Volatile var onHiddenWake: (() -> Unit)? = null
+  @Volatile private var recheckPending = false
+
   fun setHidden(value: Boolean) {
+    recheckPending = false
     if (hidden == value) {
       return
     }
@@ -169,6 +180,10 @@ internal class TgfxRenderTarget {
   @JvmOverloads
   fun requestRender(force: Boolean = false) {
     if (hidden && !force) {
+      if (!recheckPending) {
+        recheckPending = true
+        onHiddenWake?.invoke()
+      }
       return
     }
     handler.removeCallbacks(drawRunnable)

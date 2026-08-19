@@ -26,6 +26,8 @@ export function Preview() {
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
     enablePhysicalBufferRotation: true,
+    // Headless: this output is the only one, so deferring it behind a preview starts it late.
+    allowDeferredStart: false,
     onFrame,
   })
 
@@ -48,7 +50,15 @@ app's face-blur screen uses VisionCamera's `useCameraPermission` before
 mounting it.
 
 The camera is a headless frame source driven by `useCamera` — no camera view is
-mounted; every visible pixel is drawn by tgfx.
+mounted; every visible pixel is drawn by tgfx. That is also why
+`allowDeferredStart: false` belongs in the options: VisionCamera's default
+defers non-preview outputs behind a preview that a headless screen never
+mounts, which starts the frame stream late.
+
+Options objects passed to `useFrameOutput` (and detector options, if you run
+one) must be stable — a module constant or memoised. VisionCamera re-registers
+the output whenever the options identity changes, and an inline object literal
+re-creates it on every render.
 
 [`CameraFrameProps`](/api/interfaces/CameraFrameProps) · [`CameraFrameOptions`](/api/interfaces/CameraFrameOptions)
 
