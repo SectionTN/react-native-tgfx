@@ -184,6 +184,11 @@ export interface TgfxImageFactory extends HybridObject<{
    * result as an image. No `<Canvas>` need be mounted: the surface belongs to no
    * view, so the pixels are read back to the CPU and re-uploaded wherever they
    * are drawn.
+   *
+   * `colorSpace` is `'display-p3'` or anything else for sRGB, and picks the
+   * offscreen surface's space exactly as the prop does for a view. It is
+   * carried on the result too, so the image is colour-managed wherever it is
+   * drawn next rather than taken for that destination's space.
    */
   fromScene(
     words: ArrayBuffer,
@@ -191,7 +196,8 @@ export interface TgfxImageFactory extends HybridObject<{
     width: number,
     height: number,
     pixelRatio: number,
-    opaque: boolean
+    opaque: boolean,
+    colorSpace: string
   ): Promise<TgfxImage>
 
   /**

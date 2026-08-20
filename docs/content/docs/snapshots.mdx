@@ -24,6 +24,13 @@ Android copies the temporary JNI buffer into a Nitro-owned `ArrayBuffer` once.
 
 [`SnapshotOptions`](/api/interfaces/SnapshotOptions) · [`SnapshotFormat`](/api/type-aliases/SnapshotFormat)
 
+### Colour
+
+An encoded readback carries the surface's colour profile, so a
+`colorSpace="display-p3"` canvas produces a P3-tagged PNG rather than P3 numbers
+labelled sRGB. `scale` goes through a second surface and now carries the space
+with it — before, a scaled readback lost the profile a scale-1 one kept.
+
 ## Offscreen
 
 [`renderToImage`](/api/functions/renderToImage) renders elements with no canvas
@@ -37,6 +44,22 @@ const image = await renderToImage(
   { width: 512, height: 512 }
 )
 ```
+
+`colorSpace` picks the offscreen surface's space, exactly as the prop does for
+a `<Canvas>`, and the result carries it:
+
+```tsx
+const wide = await renderToImage(<Chart data={data} />, {
+  width: 512,
+  height: 512,
+  colorSpace: 'display-p3',
+})
+```
+
+Match it to the canvas the image is headed for. The tag is what makes drawing it
+later a *conversion* rather than a reinterpretation — an untagged image is taken
+for whatever space it lands in, so a P3 render dropped on an sRGB canvas would
+keep its numbers and change its colours.
 
 [`useOffscreenImage`](/api/functions/useOffscreenImage) is the hook form, re-run
 on a dependency change:

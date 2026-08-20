@@ -39,6 +39,12 @@ class OffscreenContext {
  * Renders `words` at `width` x `height` logical points scaled by `pixelRatio`,
  * reporting the pixels allocated in `outBytes`.
  *
+ * `displayP3` picks the surface's colour space, the way `<Canvas colorSpace>`
+ * does for a view. The space is carried on both ends: an untagged surface makes
+ * tgfx skip conversion on draw, so a wide-gamut image would land with its own
+ * primaries reinterpreted, and untagged result pixels would then be taken for
+ * the destination's space by whatever draws them next.
+ *
  * The result is read back to CPU pixels rather than kept as a texture: the
  * offscreen context is not the one a view draws in, and a texture cannot cross
  * between them. Throws std::runtime_error if there is no usable GPU.
@@ -46,6 +52,6 @@ class OffscreenContext {
 std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
                                                   const std::vector<std::string>& strings,
                                                   int width, int height, float pixelRatio,
-                                                  bool opaque, size_t& outBytes);
+                                                  bool opaque, bool displayP3, size_t& outBytes);
 
 }  // namespace tgfxrn

@@ -57,6 +57,8 @@ interface RenderToImageOptions {
   height: number
   pixelRatio?: number    // default 1 — pass the screen scale for a display-resolution render
   opaque?: boolean       // default false: uncovered area stays transparent
+  colorSpace?: ColorSpace // default 'srgb' — 'display-p3' for a wide-gamut surface,
+                          // carried on the result so drawing it converts rather than reinterprets
 }
 ```
 

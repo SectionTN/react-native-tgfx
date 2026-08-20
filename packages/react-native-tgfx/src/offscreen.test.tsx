@@ -61,7 +61,8 @@ beforeEach(() => {
       width: number,
       height: number,
       pixelRatio: number,
-      opaque: boolean
+      opaque: boolean,
+      colorSpace: string
     ) => {
       calls.push({
         words: new Float64Array(words),
@@ -70,6 +71,7 @@ beforeEach(() => {
         height,
         pixelRatio,
         opaque,
+        colorSpace,
       })
       return Promise.resolve({ handle: 1 })
     },
@@ -85,6 +87,7 @@ test('renderToImage compiles the tree and hands over the options', async () => {
     height: 32,
     pixelRatio: 2,
     opaque: true,
+    colorSpace: 'display-p3',
   })
   expect(calls.length).toBe(1)
   const call = calls[0]!
@@ -92,16 +95,20 @@ test('renderToImage compiles the tree and hands over the options', async () => {
   expect(call.height).toBe(32)
   expect(call.pixelRatio).toBe(2)
   expect(call.opaque).toBe(true)
+  expect(call.colorSpace).toBe('display-p3')
   expect(call.words[3]).toBe(1) // one root node
 })
 
-test('renderToImage defaults pixelRatio and opaque', async () => {
+test('renderToImage defaults pixelRatio, opaque and the colour space', async () => {
   await renderToImage(<Rect x={0} y={0} width={1} height={1} />, {
     width: 8,
     height: 8,
   })
   expect(calls[0]!.pixelRatio).toBe(1)
   expect(calls[0]!.opaque).toBe(false)
+  // Not undefined: native reads anything but 'display-p3' as sRGB, but an
+  // explicit default keeps the surface's space out of the bridge's hands.
+  expect(calls[0]!.colorSpace).toBe('srgb')
 })
 
 // The delta form carries a count at index 0, which would shift every string index.

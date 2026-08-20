@@ -210,7 +210,8 @@ std::shared_ptr<Promise<void>> HybridTgfxImageFactory::savePdf(
 
 std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromScene(
     const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings,
-    double width, double height, double pixelRatio, bool opaque) {
+    double width, double height, double pixelRatio, bool opaque,
+    const std::string& colorSpace) {
   // Copied here, not on the worker: a JS-owned ArrayBuffer is only valid for this call.
   std::vector<double> program;
   if (words != nullptr && words->size() >= sizeof(double)) {
@@ -224,12 +225,14 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromScene(
       width <= 0 || height <= 0 || width > 65536 || height > 65536) {
     throw std::runtime_error("tgfx: renderToImage needs a finite width and height above zero");
   }
+  bool displayP3 = colorSpace == "display-p3";
   return ImagePromise::async([program = std::move(program), strings, width, height, pixelRatio,
-                              opaque]() {
+                              opaque, displayP3]() {
     size_t bytes = 0;
     auto image = tgfxrn::renderSceneOffscreen(program, strings, static_cast<int>(width),
                                               static_cast<int>(height),
-                                              static_cast<float>(pixelRatio), opaque, bytes);
+                                              static_cast<float>(pixelRatio), opaque, displayP3,
+                                              bytes);
     if (image == nullptr) {
       throw std::runtime_error("tgfx: renderToImage produced no image");
     }

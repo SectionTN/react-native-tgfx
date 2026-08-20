@@ -63,7 +63,7 @@ namespace margelo::nitro::tgfx {
       virtual std::shared_ptr<HybridTgfxImageSpec> fromNativeBuffer(uint64_t buffer, PixelFormat format) = 0;
       virtual std::shared_ptr<Promise<std::string>> toSvg(const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings, double width, double height, bool textAsPaths) = 0;
       virtual std::shared_ptr<Promise<void>> savePdf(const std::string& path, const std::vector<std::shared_ptr<ArrayBuffer>>& pages, const std::vector<std::string>& strings, const std::vector<double>& stringCounts, const std::vector<double>& sizes, const std::vector<std::string>& metadata) = 0;
-      virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings, double width, double height, double pixelRatio, bool opaque) = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings, double width, double height, double pixelRatio, bool opaque, const std::string& colorSpace) = 0;
       virtual void setCacheLimit(double bytes) = 0;
 
     protected:

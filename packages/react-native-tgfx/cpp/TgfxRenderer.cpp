@@ -472,8 +472,12 @@ void TgfxRenderer::startSnapshots(tgfx::Context* context) {
     } else {
       int width = static_cast<int>(std::lround(source.width() * request.scale));
       int height = static_cast<int>(std::lround(source.height() * request.scale));
+      // The readable surface's own space, as the unscaled path gets for free by
+      // reading straight from it: an untagged scratch drops a P3 canvas back to
+      // whatever the encoder assumes, so `scale` alone would change the colours.
       auto scratch = width > 0 && height > 0
-                         ? tgfx::Surface::Make(context, width, height)
+                         ? tgfx::Surface::Make(context, width, height, false, 1, false, 0,
+                                               readable->colorSpace())
                          : nullptr;
       auto image = scratch != nullptr ? readable->makeImageSnapshot() : nullptr;
       if (image == nullptr) {

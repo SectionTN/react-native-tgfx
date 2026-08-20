@@ -2,6 +2,7 @@ import React, { type ReactNode } from 'react'
 import { NitroModules } from 'react-native-nitro-modules'
 import { TgfxRoot } from './reconciler/Reconciler'
 import type { TgfxImage, TgfxImageFactory } from './specs/TgfxImage.nitro'
+import type { ColorSpace } from './types'
 
 let factory: TgfxImageFactory | null = null
 function images(): TgfxImageFactory {
@@ -21,6 +22,15 @@ export interface RenderToImageOptions {
   pixelRatio?: number
   /** Defaults to false, which leaves everything the scene did not cover transparent. */
   opaque?: boolean
+  /**
+   * The offscreen surface's colour space. Defaults to `'srgb'`.
+   *
+   * `'display-p3'` keeps wide-gamut image and gradient content instead of
+   * clamping it, exactly as the `<Canvas colorSpace>` prop does — and the
+   * result carries that space, so drawing it onto a P3 canvas converts rather
+   * than reinterprets. Match it to the canvas the image is headed for.
+   */
+  colorSpace?: ColorSpace
 }
 
 export interface RenderToSvgOptions {
@@ -165,6 +175,7 @@ export async function renderToImage(
     options.width,
     options.height,
     options.pixelRatio ?? 1,
-    options.opaque ?? false
+    options.opaque ?? false,
+    options.colorSpace ?? 'srgb'
   )
 }

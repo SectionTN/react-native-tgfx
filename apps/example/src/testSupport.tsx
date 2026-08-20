@@ -4,7 +4,12 @@ import React from 'react';
 import { View } from 'react-native';
 import { expect } from 'react-native-harness';
 import { screen, type ElementReference } from '@react-native-harness/ui';
-import { Canvas, type CanvasHandle, type Viewport } from 'react-native-tgfx';
+import {
+  Canvas,
+  type CanvasHandle,
+  type ColorSpace,
+  type Viewport,
+} from 'react-native-tgfx';
 
 export const CANVAS_ID = 'tgfx-harness-canvas';
 
@@ -15,12 +20,15 @@ export function Stage({
   children,
   canvasRef,
   viewport,
+  colorSpace,
 }: {
   children: React.ReactNode;
   /** Only the readback and hit-test suites need one. */
   canvasRef?: React.Ref<CanvasHandle>;
   /** Only the viewport suite needs one. */
   viewport?: Viewport;
+  /** Only the colour suite needs one. Read once, when the canvas mounts. */
+  colorSpace?: ColorSpace;
 }) {
   return (
     <View testID={CANVAS_ID} style={{ width: STAGE_SIZE, height: STAGE_SIZE }}>
@@ -30,6 +38,7 @@ export function Stage({
         composite="texture"
         opaque
         viewport={viewport}
+        colorSpace={colorSpace}
       >
         {children}
       </Canvas>
@@ -53,7 +62,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 // ponytail: before the first frame presents, two flat fills look as settled as a finished frame.
-const WARMUP_MS = 700;
+export const WARMUP_MS = 700;
 
 export async function stableScreenshot(
   element: ElementReference,

@@ -589,6 +589,12 @@ export interface Viewport {
   y?: number
 }
 
+/**
+ * A drawing surface's colour space. `'display-p3'` keeps wide-gamut content
+ * instead of clamping it; `'srgb'` is the default everywhere.
+ */
+export type ColorSpace = 'srgb' | 'display-p3'
+
 export interface CanvasProps {
   style?: object
   children?: ReactNode
@@ -621,7 +627,7 @@ export interface CanvasProps {
    * from the platform window, which is created with the view; changing this
    * prop later warns in dev and does nothing. Remount with a `key` to change it.
    */
-  colorSpace?: 'srgb' | 'display-p3'
+  colorSpace?: ColorSpace
   /**
    * Render without an alpha channel: the layer composites without blending and
    * the engine clears to opaque black. Anything behind the canvas stops showing

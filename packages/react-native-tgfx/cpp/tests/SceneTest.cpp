@@ -34,6 +34,7 @@
 #include "core/codecs/jpeg/JpegCodec.h"
 #include "tgfx/core/Orientation.h"
 #include "tgfx/core/Pixmap.h"
+#include "tgfx/core/ColorSpace.h"
 #include "tgfx/core/Surface.h"
 #include "tgfx/core/Typeface.h"
 #include "tgfx/gpu/Device.h"
@@ -3145,7 +3146,7 @@ void anOffscreenRenderProducesTheSamePixels() {
   auto program = w.finish();
 
   size_t bytes = 0;
-  auto image = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, false, bytes);
+  auto image = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, /*opaque=*/false, /*displayP3=*/false, bytes);
   CHECK(image != nullptr);
   CHECK(bytes == 64u * 64u * 4u);
   CHECK(image->width() == 64 && image->height() == 64);
@@ -3166,11 +3167,11 @@ void anOffscreenRenderProducesTheSamePixels() {
   CHECK(pixelAt(pixels, 48, 48)[2] == 0);
 
   // pixelRatio scales the surface without moving the geometry.
-  auto dense = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 2, false, bytes);
+  auto dense = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 2, /*opaque=*/false, /*displayP3=*/false, bytes);
   CHECK(dense != nullptr && dense->width() == 128 && dense->height() == 128);
 
   // An opaque render leaves nothing transparent, even where the scene drew nothing.
-  auto solid = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, true, bytes);
+  auto solid = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, /*opaque=*/true, /*displayP3=*/false, bytes);
   CHECK(solid != nullptr);
   auto* solidContext = device()->lockContext();
   auto solidSurface = tgfx::Surface::Make(solidContext, kWidth, kHeight);
@@ -3192,7 +3193,7 @@ void anOffscreenRenderProducesTheSamePixels() {
   stringy.pushPaint(0xff00ff00, false);
   size_t pathBytes = 0;
   auto drawn = tgfxrn::renderSceneOffscreen(stringy.finish(), {"M0 0 L48 0 L48 48 Z"}, 64, 64, 1,
-                                            false, pathBytes);
+                                            /*opaque=*/false, /*displayP3=*/false, pathBytes);
   CHECK(drawn != nullptr);
   auto* pathContext = device()->lockContext();
   auto pathSurface = tgfx::Surface::Make(pathContext, kWidth, kHeight);
@@ -3206,11 +3207,76 @@ void anOffscreenRenderProducesTheSamePixels() {
 
   bool threw = false;
   try {
-    tgfxrn::renderSceneOffscreen(program, {}, 0, 64, 1, false, bytes);
+    tgfxrn::renderSceneOffscreen(program, {}, 0, 64, 1, /*opaque=*/false, /*displayP3=*/false, bytes);
   } catch (const std::runtime_error&) {
     threw = true;
   }
   CHECK(threw);
+}
+
+/// An offscreen render is colour-managed on both ends. Untagged, tgfx skips the
+/// conversion entirely: the same sRGB red would land byte-identical on a P3
+/// surface, and the pixels would come back with nothing saying which space they
+/// are in for whatever draws them next.
+void anOffscreenRenderCarriesItsColorSpace() {
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect covering the whole surface
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(64);
+  w.pushAnim(64);
+  w.pushPaint(0xffff0000, false);  // opaque sRGB red, 0xAARRGGBB
+  auto program = w.finish();
+
+  size_t bytes = 0;
+  auto srgb = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, /*opaque=*/true, /*displayP3=*/false, bytes);
+  auto p3 = tgfxrn::renderSceneOffscreen(program, {}, 64, 64, 1, /*opaque=*/true, /*displayP3=*/true, bytes);
+  CHECK(srgb != nullptr && p3 != nullptr);
+  // Tagged at all: an untagged result is what the destination happens to assume.
+  CHECK(srgb->colorSpace() != nullptr && srgb->colorSpace()->isSRGB());
+  CHECK(p3->colorSpace() != nullptr && !p3->colorSpace()->isSRGB());
+
+  // The same red, encoded for a wider gamut, is a different triple.
+  auto readInto = [&](const std::shared_ptr<tgfx::Image>& image,
+                      const std::shared_ptr<tgfx::ColorSpace>& space) {
+    auto* context = device()->lockContext();
+    auto surface = tgfx::Surface::Make(context, kWidth, kHeight, false, 1, false, 0, space);
+    CHECK(surface != nullptr);
+    surface->getCanvas()->clear();
+    surface->getCanvas()->drawImage(image);
+    context->flushAndSubmit(true);
+    auto info = tgfx::ImageInfo::Make(kWidth, kHeight, tgfx::ColorType::RGBA_8888,
+                                      tgfx::AlphaType::Premultiplied, 0, space);
+    Pixels out(static_cast<size_t>(info.byteSize()));
+    surface->readPixels(info, out.data());
+    device()->unlock();
+    return out;
+  };
+
+  // Each read back in its own space, so neither draw converts: the encodings
+  // themselves have to differ, which is the surface having done the conversion
+  // on the way in. Untagged, both come back as the same raw sRGB red.
+  auto asSrgb = readInto(srgb, tgfx::ColorSpace::SRGB());
+  auto asP3 = readInto(p3, tgfx::ColorSpace::DisplayP3());
+  CHECK(pixelAt(asSrgb, 32, 32)[0] == 255 && pixelAt(asSrgb, 32, 32)[1] == 0);
+  // sRGB red gamma-encoded for P3's wider primaries is (234, 51, 35): less red,
+  // and some green with it. Interpreting it as P3 instead would clamp back to
+  // (255, 0, 0), so the figures are pinned rather than only bounded.
+  CHECK(std::abs(static_cast<int>(pixelAt(asP3, 32, 32)[0]) - 234) <= 2);
+  CHECK(std::abs(static_cast<int>(pixelAt(asP3, 32, 32)[1]) - 51) <= 2);
+  CHECK(std::abs(static_cast<int>(pixelAt(asP3, 32, 32)[2]) - 35) <= 2);
+
+  // And they are the same colour: drawn into one space, both land on the same pixel.
+  auto viaSrgb = readInto(srgb, tgfx::ColorSpace::DisplayP3());
+  auto viaP3 = readInto(p3, tgfx::ColorSpace::DisplayP3());
+  for (int channel = 0; channel < 3; channel++) {
+    int delta = static_cast<int>(pixelAt(viaSrgb, 32, 32)[channel]) -
+                static_cast<int>(pixelAt(viaP3, 32, 32)[channel]);
+    // Two tolerances' worth: these came through different conversions — a paint
+    // colour on one side, a texel on the other — into an 8-bit target.
+    CHECK(delta <= 2 && delta >= -2);
+  }
 }
 
 /// A derived image must outlive its parent's eviction, so it comes from the codec.
@@ -4296,6 +4362,7 @@ int main() {
   verticesDrawTheTrianglesTheyDescribe();
   verticesSampleTheirTextureCoordinates();
   anOffscreenRenderProducesTheSamePixels();
+  anOffscreenRenderCarriesItsColorSpace();
   aDerivedImageSurvivesTheParentsEviction();
   aLiveHandleRefusesToBeDerivedFrom();
   aRecordedGroupReplaysWhatItDrew();

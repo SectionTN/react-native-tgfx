@@ -32,7 +32,8 @@ class HybridTgfxImageFactory : public HybridTgfxImageFactorySpec {
                                          const std::vector<std::string>& metadata) override;
   std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(
       const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings,
-      double width, double height, double pixelRatio, bool opaque) override;
+      double width, double height, double pixelRatio, bool opaque,
+      const std::string& colorSpace) override;
 
   void setCacheLimit(double bytes) override;
   double getCachedBytes() override;

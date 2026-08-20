@@ -12,6 +12,7 @@
 #include "tgfx/core/ImageCodec.h"
 #include "tgfx/core/Paint.h"
 #include "tgfx/core/Rect.h"
+#include "tgfx/core/ColorSpace.h"
 #include "tgfx/core/Surface.h"
 #include "tgfx/core/SurfaceReadback.h"
 #include "tgfx/gpu/Device.h"
@@ -42,8 +43,12 @@ tgfx::Device* device() {
   return shared.get();
 }
 
-std::shared_ptr<tgfx::Surface> drawFrame(tgfx::Context* context) {
-  auto surface = tgfx::Surface::Make(context, kWidth, kHeight);
+std::shared_ptr<tgfx::Surface> drawFrame(tgfx::Context* context,
+                                        std::shared_ptr<tgfx::ColorSpace> space = nullptr) {
+  auto surface = space == nullptr
+                     ? tgfx::Surface::Make(context, kWidth, kHeight)
+                     : tgfx::Surface::Make(context, kWidth, kHeight, false, 1, false, 0,
+                                           std::move(space));
   auto* canvas = surface->getCanvas();
   canvas->clear();
   tgfx::Paint paint;
@@ -275,7 +280,10 @@ void cropAndScaleLandWhereTheyWereAsked() {
   int height = static_cast<int>(std::lround(source.height() * request.scale));
   CHECK(width == 72);
   CHECK(height == 72);
-  auto scratch = tgfx::Surface::Make(context, width, height);
+  // As TgfxRenderer::startSnapshots does: an untagged scratch drops the profile
+  // the unscaled path keeps, and this test is the only host-side shadow of it.
+  auto scratch = tgfx::Surface::Make(context, width, height, false, 1, false, 0,
+                                     surface->colorSpace());
   auto image = surface->makeImageSnapshot();
   CHECK(scratch != nullptr);
   CHECK(image != nullptr);
@@ -335,6 +343,64 @@ void cropAndScaleLandWhereTheyWereAsked() {
 
 }  // namespace
 
+/// The scaled path renders through a scratch surface of its own, so it is the one
+/// that can silently drop the colour space the unscaled path gets for free — and
+/// with it the ICC profile the encoder writes only when the pixmap has one.
+void aScaledReadbackKeepsTheSurfaceProfile() {
+  auto* context = device()->lockContext();
+  CHECK(context != nullptr);
+  if (context == nullptr) {
+    return;
+  }
+  auto surface = drawFrame(context, tgfx::ColorSpace::DisplayP3());
+  CHECK(surface != nullptr && surface->colorSpace() != nullptr);
+
+  auto scratch = tgfx::Surface::Make(context, kWidth, kHeight, false, 1, false, 0,
+                                     surface->colorSpace());
+  auto image = surface->makeImageSnapshot();
+  CHECK(scratch != nullptr && image != nullptr);
+  if (scratch == nullptr || image == nullptr) {
+    device()->unlock();
+    return;
+  }
+  scratch->getCanvas()->clear();
+  scratch->getCanvas()->drawImage(image);
+
+  tgfx::ImageInfo info;
+  auto pixels = readBack(context, scratch, &info);
+  device()->unlock();
+  CHECK(pixels != nullptr);
+  // The readback carries the scratch's space, which is what finishSnapshot tags with.
+  CHECK(info.colorSpace() != nullptr);
+  if (pixels == nullptr) {
+    return;
+  }
+
+  tgfxrn::SnapshotRequest request;
+  std::shared_ptr<tgfx::Data> png;
+  tgfxrn::finishSnapshot(pixels, info, request,
+                         [&](std::shared_ptr<tgfx::Data> data, int, int,
+                             const std::string& error) {
+                           CHECK(error.empty());
+                           png = std::move(data);
+                         });
+  CHECK(png != nullptr);
+  if (png == nullptr) {
+    return;
+  }
+  // libpng writes iCCP only when the pixmap has a colour space, so the chunk
+  // name in the encoded bytes is the assertion.
+  const auto* bytes = static_cast<const uint8_t*>(png->data());
+  bool tagged = false;
+  for (size_t i = 8; i + 4 <= png->size(); i++) {
+    if (bytes[i] == 'i' && bytes[i + 1] == 'C' && bytes[i + 2] == 'C' && bytes[i + 3] == 'P') {
+      tagged = true;
+      break;
+    }
+  }
+  CHECK(tagged);
+}
+
 int main() {
   std::printf("snapshotRoundTripsThroughPng\n");
   snapshotRoundTripsThroughPng();
@@ -346,6 +412,8 @@ int main() {
   fractionalRectsRoundInsteadOfTruncating();
   std::printf("cropAndScaleLandWhereTheyWereAsked\n");
   cropAndScaleLandWhereTheyWereAsked();
+  std::printf("aScaledReadbackKeepsTheSurfaceProfile\n");
+  aScaledReadbackKeepsTheSurfaceProfile();
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }

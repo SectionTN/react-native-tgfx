@@ -9,6 +9,7 @@
 #include "tgfx/core/Buffer.h"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
+#include "tgfx/core/ColorSpace.h"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageInfo.h"
@@ -84,7 +85,7 @@ OffscreenContext::~OffscreenContext() {
 std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
                                                   const std::vector<std::string>& strings,
                                                   int width, int height, float pixelRatio,
-                                                  bool opaque, size_t& outBytes) {
+                                                  bool opaque, bool displayP3, size_t& outBytes) {
   if (width <= 0 || height <= 0) {
     throw std::runtime_error("tgfx: renderToImage needs a width and height above zero");
   }
@@ -101,7 +102,9 @@ std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
   OffscreenContext locked;
   auto* context = locked.get();
 
-  auto surface = tgfx::Surface::Make(context, pixelWidth, pixelHeight);
+  auto space = displayP3 ? tgfx::ColorSpace::DisplayP3() : tgfx::ColorSpace::SRGB();
+  auto surface =
+      tgfx::Surface::Make(context, pixelWidth, pixelHeight, false, 1, false, 0, space);
   if (surface == nullptr) {
     throw std::runtime_error("tgfx: renderToImage could not allocate a GPU surface");
   }
@@ -114,8 +117,11 @@ std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
   renderer.render(canvas, {});
   context->flushAndSubmit(true);
 
+  // Tagged with the surface's space: these pixels outlive this context, and an
+  // untagged image is taken for whatever space it is later drawn into.
   auto info = tgfx::ImageInfo::Make(pixelWidth, pixelHeight, tgfx::ColorType::RGBA_8888,
-                                    opaque ? tgfx::AlphaType::Opaque : tgfx::AlphaType::Premultiplied);
+                                    opaque ? tgfx::AlphaType::Opaque : tgfx::AlphaType::Premultiplied,
+                                    0, space);
   tgfx::Buffer buffer(info.byteSize());
   if (buffer.isEmpty() || !surface->readPixels(info, buffer.data())) {
     throw std::runtime_error("tgfx: renderToImage could not read the rendered pixels back");

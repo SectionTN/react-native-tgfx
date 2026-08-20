@@ -163,6 +163,7 @@ export type {
   Color,
   ColorComponents,
   ColorMatrixProps,
+  ColorSpace,
   DropShadowProps,
   Fit,
   FontProps,
