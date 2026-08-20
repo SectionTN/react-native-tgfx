@@ -1,6 +1,9 @@
-import { beforeEach, expect, test } from 'bun:test'
+import { beforeEach, expect, mock, test } from 'bun:test'
 import React from 'react'
 import { nativeMocks } from './testing/nativeMocks'
+
+// createHandle reaches for runOnJS; nothing else here touches reanimated.
+mock.module('react-native-reanimated', () => ({}))
 
 let svgCalls: {
   words: Float64Array
@@ -41,7 +44,13 @@ beforeEach(() => {
       height: number,
       textAsPaths: boolean
     ) => {
-      svgCalls.push({ words: new Float64Array(words), strings, width, height, textAsPaths })
+      svgCalls.push({
+        words: new Float64Array(words),
+        strings,
+        width,
+        height,
+        textAsPaths,
+      })
       return Promise.resolve('<svg/>')
     },
     savePdf: (
@@ -52,7 +61,14 @@ beforeEach(() => {
       sizes: number[],
       metadata: string[]
     ) => {
-      pdfCalls.push({ path, pages: pages.length, strings, stringCounts, sizes, metadata })
+      pdfCalls.push({
+        path,
+        pages: pages.length,
+        strings,
+        stringCounts,
+        sizes,
+        metadata,
+      })
       return Promise.resolve()
     },
     fromScene: (
@@ -82,13 +98,16 @@ const { renderToImage, renderToPdf, renderToSvg } = await import('./offscreen')
 const { Rect, Path } = await import('./components/drawings')
 
 test('renderToImage compiles the tree and hands over the options', async () => {
-  await renderToImage(<Rect x={1} y={2} width={3} height={4} color="#ff0000" />, {
-    width: 64,
-    height: 32,
-    pixelRatio: 2,
-    opaque: true,
-    colorSpace: 'display-p3',
-  })
+  await renderToImage(
+    <Rect x={1} y={2} width={3} height={4} color="#ff0000" />,
+    {
+      width: 64,
+      height: 32,
+      pixelRatio: 2,
+      opaque: true,
+      colorSpace: 'display-p3',
+    }
+  )
   expect(calls.length).toBe(1)
   const call = calls[0]!
   expect(call.width).toBe(64)
@@ -135,9 +154,9 @@ test('renderToImage rejects rather than resolving with a blank image', async () 
   const Boom = (): React.ReactElement => {
     throw new Error('boom')
   }
-  await expect(renderToImage(<Boom />, { width: 8, height: 8 })).rejects.toThrow(
-    'compiled to nothing'
-  )
+  await expect(
+    renderToImage(<Boom />, { width: 8, height: 8 })
+  ).rejects.toThrow('compiled to nothing')
   expect(calls.length).toBe(0)
 })
 
@@ -160,7 +179,11 @@ test('renderToPdf compiles a program per page and keeps the string tables apart'
     '/tmp/out.pdf',
     [
       { width: 612, height: 792, element: <Path path="M0 0 L1 0 Z" /> },
-      { width: 595, height: 842, element: <Rect x={0} y={0} width={1} height={1} /> },
+      {
+        width: 595,
+        height: 842,
+        element: <Rect x={0} y={0} width={1} height={1} />,
+      },
     ],
     { title: 'Report', author: 'me' }
   )
@@ -177,7 +200,9 @@ test('renderToPdf compiles a program per page and keeps the string tables apart'
 })
 
 test('renderToPdf rejects an empty page list', async () => {
-  await expect(renderToPdf('/tmp/out.pdf', [])).rejects.toThrow('at least one page')
+  await expect(renderToPdf('/tmp/out.pdf', [])).rejects.toThrow(
+    'at least one page'
+  )
   expect(pdfCalls.length).toBe(0)
 })
 
@@ -210,20 +235,140 @@ test('renderToSvg names itself when the scene is empty', async () => {
   const Boom = (): React.ReactElement => {
     throw new Error('boom')
   }
-  await expect(
-    renderToSvg(<Boom />, { width: 8, height: 8 })
-  ).rejects.toThrow('renderToSvg')
+  await expect(renderToSvg(<Boom />, { width: 8, height: 8 })).rejects.toThrow(
+    'renderToSvg'
+  )
   expect(svgCalls.length).toBe(0)
 })
 
 test('renderToPdf takes a memoised page list without recompiling per call', async () => {
   const pages = [
-    { width: 100, height: 100, element: <Rect x={0} y={0} width={1} height={1} /> },
+    {
+      width: 100,
+      height: 100,
+      element: <Rect x={0} y={0} width={1} height={1} />,
+    },
   ]
   await renderToPdf('/tmp/a.pdf', pages)
   await renderToPdf('/tmp/b.pdf', pages)
-  expect(pdfCalls.map((call) => call.path)).toEqual(['/tmp/a.pdf', '/tmp/b.pdf'])
+  expect(pdfCalls.map((call) => call.path)).toEqual([
+    '/tmp/a.pdf',
+    '/tmp/b.pdf',
+  ])
   // Each export compiles its own program: the pages are elements, not buffers.
   expect(pdfCalls[0]!.pages).toBe(1)
   expect(pdfCalls[1]!.pages).toBe(1)
+})
+
+const { rect, circle, path: pathNode } = await import('./elements')
+const { Scene } = await import('./scene')
+const { createHandle } = await import('./imperative')
+
+test('a factory-node scene compiles byte-identically to the JSX input', async () => {
+  await renderToImage(
+    <Rect x={1} y={2} width={3} height={4} color="#ff0000" />,
+    {
+      width: 16,
+      height: 16,
+    }
+  )
+  await renderToImage(
+    [rect({ x: 1, y: 2, width: 3, height: 4, color: '#ff0000' })],
+    {
+      width: 16,
+      height: 16,
+    }
+  )
+  expect(calls.length).toBe(2)
+  const jsx = calls[0]!.words
+  const nodes = calls[1]!.words
+  expect(Array.from(nodes.subarray(0, nodes[1]))).toEqual(
+    Array.from(jsx.subarray(0, jsx[1]))
+  )
+  expect(calls[1]!.strings).toEqual(calls[0]!.strings)
+})
+
+test('a Scene export bakes live handle writes instead of reseeding them', async () => {
+  const box = createHandle()
+  const scene = Scene.from([
+    rect({ ref: box, x: 0, y: 0, width: 4, height: 4 }),
+  ])
+  scene.flush()
+  await renderToImage(scene, { width: 8, height: 8 })
+  // Read now: the scene reuses its writer, so the view aliases the next compile.
+  const before = calls[0]!.words[5]
+  box.set({ x: 6 })
+  await renderToImage(scene, { width: 8, height: 8 })
+  expect(calls.length).toBe(2)
+  // Header(3) rootCount kind, then x — the write must be in the literals.
+  expect(before).toBe(0)
+  expect(calls[1]!.words[5]).toBe(6)
+})
+
+test('an empty node list rejects like an empty tree', async () => {
+  await expect(renderToImage([], { width: 8, height: 8 })).rejects.toThrow(
+    'compiled to nothing'
+  )
+  expect(calls.length).toBe(0)
+})
+
+test('renderToPdf pages mix JSX and scene nodes', async () => {
+  await renderToPdf('/tmp/mixed.pdf', [
+    { width: 100, height: 100, element: <Path path="M0 0 L1 0 Z" /> },
+    { width: 200, height: 200, scene: [circle({ cx: 1, cy: 1, r: 1 })] },
+    {
+      width: 300,
+      height: 300,
+      scene: Scene.from([pathNode({ path: 'M0 0 L2 0 Z' })]),
+    },
+  ])
+  expect(pdfCalls.length).toBe(1)
+  expect(pdfCalls[0]!.pages).toBe(3)
+  expect(pdfCalls[0]!.strings).toEqual(['M0 0 L1 0 Z', 'M0 0 L2 0 Z'])
+  expect(pdfCalls[0]!.stringCounts).toEqual([1, 0, 1])
+})
+
+test('renderToPdf rejects a page with neither or both inputs', async () => {
+  await expect(
+    renderToPdf('/tmp/bad.pdf', [{ width: 10, height: 10 }])
+  ).rejects.toThrow('exactly one of element and scene')
+  await expect(
+    renderToPdf('/tmp/bad.pdf', [
+      {
+        width: 10,
+        height: 10,
+        element: <Rect x={0} y={0} width={1} height={1} />,
+        scene: [rect({ x: 0, y: 0, width: 1, height: 1 })],
+      },
+    ])
+  ).rejects.toThrow('exactly one of element and scene')
+})
+
+test('renderToSvg takes a Scene with no React anywhere', async () => {
+  const svg = await renderToSvg(
+    Scene.from([pathNode({ path: 'M0 0 L4 0 Z', color: '#00f' })]),
+    { width: 100, height: 50 }
+  )
+  expect(svg).toBe('<svg/>')
+  expect(svgCalls[0]!.strings).toEqual(['M0 0 L4 0 Z'])
+})
+
+test('an array of JSX elements still routes through the reconciler', async () => {
+  // Host components ARE the tgfx_* strings, so type alone cannot distinguish
+  // an element from a factory node — the children array does.
+  const items = [0, 1].map((i) => (
+    <Rect key={i} x={i} y={0} width={1} height={1} />
+  ))
+  await renderToImage(items, { width: 8, height: 8 })
+  expect(calls.length).toBe(1)
+  expect(calls[0]!.words[3]).toBe(2)
+})
+
+test('exporting a disposed scene rejects instead of reusing a stale program', async () => {
+  const scene = Scene.from([rect({ x: 0, y: 0, width: 1, height: 1 })])
+  scene.flush()
+  scene.dispose()
+  await expect(renderToImage(scene, { width: 8, height: 8 })).rejects.toThrow(
+    'disposed'
+  )
 })

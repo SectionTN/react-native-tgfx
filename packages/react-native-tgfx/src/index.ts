@@ -68,7 +68,8 @@ export {
   Turbulence,
 } from './components/Paint'
 
-export { createHandle, useNode } from './imperative'
+export { createHandle } from './imperative'
+export { useNode } from './hooks/useNode'
 export type { NodeHandle } from './imperative'
 
 export {

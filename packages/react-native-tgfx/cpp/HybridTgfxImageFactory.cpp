@@ -24,6 +24,19 @@
 
 namespace margelo::nitro::tgfx {
 
+/// The writer hands over its whole backing store, which doubles on growth and
+/// never shrinks; the program's real length is header word [1]. Copy only that.
+static size_t usedWords(const double* data, size_t capacity) {
+  if (capacity < 2) {
+    return capacity;
+  }
+  const double used = data[1];
+  if (std::isfinite(used) && used >= 2 && used <= static_cast<double>(capacity)) {
+    return static_cast<size_t>(used);
+  }
+  return capacity;
+}
+
 /// Exhaustive with no `default:`, so -Wswitch names the omission when nitrogen adds a value.
 tgfxrn::FrameFormat toFrameFormat(PixelFormat format) {
   switch (format) {
@@ -165,7 +178,7 @@ std::shared_ptr<Promise<std::string>> HybridTgfxImageFactory::toSvg(
   std::vector<double> program;
   if (words != nullptr && words->size() >= sizeof(double)) {
     const auto* data = reinterpret_cast<const double*>(words->data());
-    program.assign(data, data + words->size() / sizeof(double));
+    program.assign(data, data + usedWords(data, words->size() / sizeof(double)));
   }
   if (program.empty()) {
     throw std::runtime_error("tgfx: renderToSvg was given an empty draw program");
@@ -200,7 +213,7 @@ std::shared_ptr<Promise<void>> HybridTgfxImageFactory::savePdf(
     }
     if (buffer != nullptr && buffer->size() >= sizeof(double)) {
       const auto* data = reinterpret_cast<const double*>(buffer->data());
-      page.words.assign(data, data + buffer->size() / sizeof(double));
+      page.words.assign(data, data + usedWords(data, buffer->size() / sizeof(double)));
     }
     if (page.words.empty()) {
       throw std::runtime_error("tgfx: renderToPdf was given a page with no draw program");
@@ -238,7 +251,7 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromScene(
   std::vector<double> program;
   if (words != nullptr && words->size() >= sizeof(double)) {
     const auto* data = reinterpret_cast<const double*>(words->data());
-    program.assign(data, data + words->size() / sizeof(double));
+    program.assign(data, data + usedWords(data, words->size() / sizeof(double)));
   }
   if (program.empty()) {
     throw std::runtime_error("tgfx: renderToImage was given an empty draw program");

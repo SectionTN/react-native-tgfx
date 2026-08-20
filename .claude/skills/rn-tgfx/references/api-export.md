@@ -51,6 +51,17 @@ const image = await renderToImage(
 )                                              // Promise<TgfxImage>
 ```
 
+All three offscreen entry points also take `SceneNode[]` (element factories) or
+a `Scene` instead of JSX — those forms never construct a reconciler, and a
+`Scene`'s live handle writes are baked at their current values:
+
+```ts
+const still = await renderToImage([rect({ x: 0, y: 0, width: 40, height: 40 })], { width: 40, height: 40 })
+const doc = await renderToSvg(scene, { width: 512, height: 256 })
+await renderToPdf(path, [{ width: 595, height: 842, scene: pageNodes }], meta)
+// PdfPage: exactly one of `element` (JSX) or `scene` per page, mixed freely.
+```
+
 ```ts
 interface RenderToImageOptions {
   width: number          // logical points, like a <Canvas> of the same size

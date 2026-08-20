@@ -248,7 +248,8 @@ test('unmounting still tears the root down', async () => {
 
 // A single <Rect> starts at word 4: [kind, x, y, width, height, ...paint].
 const X = 5
-const { useNode } = require('../imperative') as typeof import('../imperative')
+const { useNode } =
+  require('../hooks/useNode') as typeof import('../hooks/useNode')
 
 type NodeHandleLike = ReturnType<typeof useNode>
 let box!: NodeHandleLike

@@ -40,6 +40,7 @@ export class Scene {
   private dirty = false
   private disposed = false
   private compiled = false
+  private last: { buffer: ArrayBuffer; strings: string[] } | null = null
   /// Bumped by flush/dispose so a stale queued microtask commits nothing.
   private generation = 0
   private mapperId: number | null = null
@@ -49,6 +50,7 @@ export class Scene {
   private readonly container = new TgfxContainer(
     (buffer, strings, values, stringValues) => {
       this.compiled = true
+      this.last = { buffer, strings }
       this.lastValues = values
       this.lastStringValues = stringValues
       for (const t of this.targets) {
@@ -157,6 +159,26 @@ export class Scene {
         this.syncMapper()
       }
     }
+  }
+
+  /**
+   * The current program, for the offscreen renderers. Recompiles without
+   * reseeding, so live handle writes are baked in as literals rather than
+   * reset to their construction-time props. Internal to the package.
+   */
+  compileForExport(what: string): { buffer: ArrayBuffer; strings: string[] } {
+    if (this.disposed) {
+      throw new Error(`[tgfx] ${what}: this scene is disposed`)
+    }
+    if (this.dirty) {
+      this.flush()
+    } else if (this.compiled) {
+      this.container.recompile()
+    }
+    if (this.last == null || this.container.root.length === 0) {
+      throw new Error(`[tgfx] ${what}: the scene compiled to nothing`)
+    }
+    return this.last
   }
 
   /** Detach every target and stop committing. Targets keep their last frame. */

@@ -33,8 +33,14 @@ with it — before, a scaled readback lost the profile a scale-1 one kept.
 
 ## Offscreen
 
-[`renderToImage`](/api/functions/renderToImage) renders elements with no canvas
-mounted ([`RenderToImageOptions`](/api/interfaces/RenderToImageOptions)).
+[`renderToImage`](/api/functions/renderToImage) renders a scene with no canvas
+mounted ([`RenderToImageOptions`](/api/interfaces/RenderToImageOptions)). It —
+like `renderToSvg` and `renderToPdf` — takes JSX, a `SceneNode[]` from the
+element factories, or a [`Scene`](/api/classes/Scene); the non-JSX forms never
+construct a reconciler:
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const image = await renderToImage(
@@ -44,6 +50,31 @@ const image = await renderToImage(
   { width: 512, height: 512 }
 )
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const image = await renderToImage(
+  [
+    rect({ x: 0, y: 0, width: 512, height: 512 }, [
+      linearGradient({ start: { x: 0, y: 0 }, end: { x: 512, y: 512 }, colors: ['#f0f', '#0ff'] }),
+    ]),
+  ],
+  { width: 512, height: 512 }
+)
+
+// Or a retained Scene — live handle writes are baked at their current values,
+// so mutate-and-export loops re-render without rebuilding the tree:
+counter.set({ text: `Day ${n}` })
+const still = await renderToImage(scene, { width: 400, height: 400 })
+```
+
+</Tab>
+</Tabs>
+
+`renderToPdf` pages carry either `element` (JSX) or `scene` (nodes or a
+`Scene`), mixed freely.
 
 `colorSpace` picks the offscreen surface's space, exactly as the prop does for
 a `<Canvas>`, and the result carries it:
