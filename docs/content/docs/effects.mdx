@@ -28,13 +28,18 @@ backdrops are drawing nodes; dash and corner effects are children of `Path`.
 
 [`ColorMatrix`](/api/variables/ColorMatrix) (4×5, row-major) ·
 [`BlendColor`](/api/variables/BlendColor) ·
-[`Luma`](/api/variables/Luma)
+[`Luma`](/api/variables/Luma) ·
+[`AlphaThreshold`](/api/variables/AlphaThreshold)
 
 ```tsx
 <Path path="M20 80 L80 20 L140 80 L80 140 Z" color="#ffffff">
   <BlendColor color="#e0533d" mode="src" />
 </Path>
 ```
+
+`<AlphaThreshold>` cuts translucency to a hard edge — alpha below `threshold`
+becomes fully transparent, at or above it fully opaque, colours untouched. It is
+tgfx's own, with no Skia equivalent, and `threshold` is animatable.
 
 ## Blur and shadow
 
@@ -51,6 +56,34 @@ backdrops are drawing nodes; dash and corner effects are children of `Path`.
 ```
 
 [`BlurProps`](/api/interfaces/BlurProps) · [`DropShadowProps`](/api/interfaces/DropShadowProps)
+
+## Filter order
+
+Filters compose in declaration order, and that holds across the two kinds. The
+scope is one node's own children: a `<Paint>` child and an inherited group paint
+are merged rather than chained, so a colour filter arriving from either of those
+stays on the paint and runs first whatever else the node declares.
+
+```tsx
+<Luma /><Blur blur={8} />   // luminance, then blur the result
+<Blur blur={8} /><Luma />   // blur, then take the luminance of that
+```
+
+A colour filter normally runs on the paint, before anything is rasterised, so on
+its own it can never follow a blur. Declared after one it joins the image chain
+instead, which is what makes the second line above mean what it reads like.
+Declared first it stays on the paint, which is cheaper: a paint colour filter
+costs no offscreen.
+
+The composition this exists for is blurring an alpha and then cutting it back to
+a solid shape — a sticker outline, a metaball:
+
+```tsx
+<Circle cx={100} cy={100} r={40} color="#6aa9ff">
+  <Blur blur={12} />
+  <AlphaThreshold threshold={0.6} />
+</Circle>
+```
 
 ## Gradients and noise
 

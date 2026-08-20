@@ -7,6 +7,7 @@ import type {
   ColorShaderProps,
   CornerPathEffectProps,
   DashPathEffectProps,
+  AlphaThresholdProps,
   LumaProps,
   ColorMatrixProps,
   DropShadowProps,
@@ -89,6 +90,10 @@ export const ColorShader = NodeType.ColorShader as unknown as FC<ColorShaderProp
 
 /** Luminance as alpha. A colour filter, so it costs no offscreen. */
 export const Luma = NodeType.Luma as unknown as FC<LumaProps>
+
+/** Translucency to a hard edge. A colour filter, so it costs no offscreen. */
+export const AlphaThreshold =
+  NodeType.AlphaThreshold as unknown as FC<AlphaThresholdProps>
 
 /** Dashes its `<Path>`. Reshapes the geometry, so it needs no offscreen. */
 export const DashPathEffect =

@@ -154,7 +154,6 @@ test('a luma filter is one word and needs no block', () => {
   const luma = filtered(node(NodeType.Luma, {}))
   expect(luma.used[10]).toBe(2 | 4) // antiAlias + the filter block
   expect(Array.from(luma.used.subarray(15, 18))).toEqual([3, 2, -1])
-
 })
 
 test('a drop shadow packs shadowOnly and inner into one flags word', () => {
@@ -162,7 +161,9 @@ test('a drop shadow packs shadowOnly and inner into one flags word', () => {
     compile([
       {
         ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
-        children: [node(NodeType.DropShadow, { dx: 1, dy: 2, blur: 3, ...props })],
+        children: [
+          node(NodeType.DropShadow, { dx: 1, dy: 2, blur: 3, ...props }),
+        ],
       },
     ])
   const at = (r: ReturnType<typeof shadow>) => r.used[r.used.length - 4]
@@ -203,7 +204,9 @@ test('a mask is a matte: it takes neither the inherited opacity nor the paint', 
         children: [
           {
             ...node(NodeType.MaskSource, {}),
-            children: [node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })],
+            children: [
+              node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+            ],
           },
           node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
         ],
@@ -259,12 +262,20 @@ test('a group clip writes its kind and geometry, and a path clip interns', () =>
     node(NodeType.Group, { clip: { x: 1, y: 2, width: 3, height: 4 } }, []),
   ])
   // kind | opCount | flags | clipKind x y w h | childCount
-  expect(Array.from(rect.used.subarray(4, 12))).toEqual([13, 0, 1, 1, 1, 2, 3, 4])
+  expect(Array.from(rect.used.subarray(4, 12))).toEqual([
+    13, 0, 1, 1, 1, 2, 3, 4,
+  ])
 
   const rounded = compile([
-    node(NodeType.Group, { clip: { x: 1, y: 2, width: 3, height: 4, r: 5 } }, []),
+    node(
+      NodeType.Group,
+      { clip: { x: 1, y: 2, width: 3, height: 4, r: 5 } },
+      []
+    ),
   ])
-  expect(Array.from(rounded.used.subarray(6, 14))).toEqual([1, 2, 1, 2, 3, 4, 5, 5])
+  expect(Array.from(rounded.used.subarray(6, 14))).toEqual([
+    1, 2, 1, 2, 3, 4, 5, 5,
+  ])
 
   const path = compile([
     node(NodeType.Group, { clip: 'M0 0 L1 1', invertClip: true }, []),
@@ -1093,14 +1104,61 @@ test('two filters of the same class on one paint compose in order', () => {
     3, -1, 2, 0, 2, 2, 3, 0, 7, 7,
   ])
 
-  // Different classes still sit side by side rather than composing.
-  const mixed = compile([
+  // A colour filter declared first stays on the paint, which costs no offscreen:
+  // blend | luma | blur | 2 | 2 | tile.
+  const paintFirst = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Luma, {}),
+      node(NodeType.Blur, { blur: 2 }),
+    ]),
+  ])
+  expect(Array.from(paintFirst.used.subarray(15, 21))).toEqual([
+    3, 2, 0, 2, 2, 3,
+  ])
+
+  // Declared after one, it joins the image chain instead — the only way it can
+  // run *after* the blur, which is what the declaration order says.
+  // blend | none | compose | blur | 2 | 2 | tile | colorFilter | luma
+  const afterBlur = compile([
     node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
       node(NodeType.Blur, { blur: 2 }),
       node(NodeType.Luma, {}),
     ]),
   ])
-  expect(Array.from(mixed.used.subarray(15, 21))).toEqual([3, 2, 0, 2, 2, 3])
+  expect(Array.from(afterBlur.used.subarray(15, 24))).toEqual([
+    3, -1, 2, 0, 2, 2, 3, 3, 2,
+  ])
+})
+
+test('alphaThreshold writes its own kind and defaults to a half', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.AlphaThreshold, {}),
+    ]),
+  ])
+  // blend | colourKind 3 | threshold | imageKind none
+  expect(Array.from(used.subarray(15, 19))).toEqual([3, 3, 0.5, -1])
+
+  const named = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.AlphaThreshold, { threshold: 0.8 }),
+    ]),
+  ])
+  expect(Array.from(named.used.subarray(15, 19))).toEqual([3, 3, 0.8, -1])
+})
+
+// The composition this exists for: blur an alpha, then cut it to a hard edge.
+test('a blur followed by a threshold is one image chain', () => {
+  const { used } = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Blur, { blur: 4 }),
+      node(NodeType.AlphaThreshold, { threshold: 0.6 }),
+    ]),
+  ])
+  // blend | none | compose | blur | 4 | 4 | tile | colorFilter | 3 | 0.6
+  expect(Array.from(used.subarray(15, 25))).toEqual([
+    3, -1, 2, 0, 4, 4, 3, 3, 3, 0.6,
+  ])
 })
 
 test('a filter on the node itself overrides the one it inherits', () => {
@@ -1360,9 +1418,11 @@ test('<Group picture> still asks to record when a child animates', () => {
 
 test('<Group picture> keeps the clip and layer bits alongside it', () => {
   const { used } = compile([
-    node(NodeType.Group, { picture: true, layer: true, clip: { x: 0, y: 0, width: 4, height: 4 } }, [
-      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
-    ]),
+    node(
+      NodeType.Group,
+      { picture: true, layer: true, clip: { x: 0, y: 0, width: 4, height: 4 } },
+      [node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })]
+    ),
   ])
   expect(used[6]).toBe(1 | 4 | 8)
 })
@@ -1395,7 +1455,13 @@ test('a handle in a mask source cannot collide with one in its content', () => {
         node(NodeType.MaskSource, {}, [
           node(NodeType.Circle, { cx: 0, cy: 0, r: 1, ref: inSource }),
         ]),
-        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1, ref: inContent }),
+        node(NodeType.Rect, {
+          x: 0,
+          y: 0,
+          width: 1,
+          height: 1,
+          ref: inContent,
+        }),
       ]),
     ],
     writer
@@ -1414,7 +1480,9 @@ const sharedString = (value: string) => ({
 })
 
 test('visible rides the kind word: absent costs nothing, present adds one anim word', () => {
-  const plain = compile([node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 })])
+  const plain = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+  ])
   expect(plain.used[4]).toBe(Kind.Rect)
 
   const hidden = compile([
@@ -1512,7 +1580,12 @@ test('a live shadow colour writes the channel block behind flag bit 4', () => {
     {
       ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
       children: [
-        node(NodeType.DropShadow, { dx: 1, dy: 2, blur: 3, color: [0, g, 0, 1] }),
+        node(NodeType.DropShadow, {
+          dx: 1,
+          dy: 2,
+          blur: 3,
+          color: [0, g, 0, 1],
+        }),
       ],
     },
   ])
@@ -1520,24 +1593,26 @@ test('a live shadow colour writes the channel block behind flag bit 4', () => {
   // flags word gains bit 4 and four channel words follow it.
   let shadowAt = -1
   for (let i = 0; i < used.length - 3; i++) {
-    if (used[i] === 1 && used[i + 1] === 2 && used[i + 2] === 3 && used[i + 3] === 3) {
+    if (
+      used[i] === 1 &&
+      used[i + 1] === 2 &&
+      used[i + 2] === 3 &&
+      used[i + 3] === 3
+    ) {
       shadowAt = i
       break
     }
   }
   expect(shadowAt).toBeGreaterThan(0)
   expect(used[shadowAt + 5]).toBe(4)
-  expect(Array.from(used.subarray(shadowAt + 6, shadowAt + 10))).toEqual([0, 0.5, 0, 1])
+  expect(Array.from(used.subarray(shadowAt + 6, shadowAt + 10))).toEqual([
+    0, 0.5, 0, 1,
+  ])
 })
 
 test('a colour-matrix entry takes a value slot', () => {
   const gain = sharedValue(1)
-  const matrix = [
-    gain, 0, 0, 0, 0,
-    0, 1, 0, 0, 0,
-    0, 0, 1, 0, 0,
-    0, 0, 0, 1, 0,
-  ]
+  const matrix = [gain, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
   const { values } = compile([
     {
       ...node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
@@ -1683,10 +1758,7 @@ test('a handle write makes text live from the first write', () => {
   )
   expect(first.stringValues.length).toBe(1)
   expect(first.strings).toContain('42')
-  handleInternals.bind(
-    { pushValues: () => {}, recompile: () => {} },
-    writer
-  )
+  handleInternals.bind({ pushValues: () => {}, recompile: () => {} }, writer)
 })
 
 test('a handle write makes an enum live from the first write', () => {
@@ -1853,4 +1925,32 @@ test('colors written to a non-gradient handle fall through to a re-encode', () =
   // Not gradient stops: the write must go the generic override + re-encode way.
   ref.set({ colors: ['#111111', '#222222', '#333333'] })
   expect(recompiled).toBe(1)
+})
+
+// The scope of the ordering rule, pinned so it cannot drift silently: a <Paint>
+// child and an inherited group paint are merged, not chained.
+test('a colour filter from a <Paint> or a group stays on the paint', () => {
+  const viaPaint = compile([
+    node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+      node(NodeType.Blur, { blur: 2 }),
+      node(NodeType.Paint, {}, [node(NodeType.Luma, {})]),
+    ]),
+  ])
+  // Same words as <Luma/><Blur/>: the luma is on the paint and runs first.
+  expect(Array.from(viaPaint.used.subarray(15, 21))).toEqual([3, 2, 0, 2, 2, 3])
+
+  const inherited = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.Paint, {}, [node(NodeType.Blur, { blur: 2 })]),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }, [
+        node(NodeType.Luma, {}),
+      ]),
+    ]),
+  ])
+  // group(kind, opCount, childCount) then the rect: kind x y w h + 6 paint
+  // words, so the child's filter block starts at 18.
+  expect(inherited.used[7]).toBe(Kind.Rect)
+  expect(Array.from(inherited.used.subarray(18, 24))).toEqual([
+    3, 2, 0, 2, 2, 3,
+  ])
 })

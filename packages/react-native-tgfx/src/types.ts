@@ -821,6 +821,21 @@ export interface ColorShaderProps {
 /** Replaces every colour with its luminance, carried into the alpha channel. */
 export type LumaProps = Record<string, never>
 
+/**
+ * Cuts translucency to a hard edge: alpha below `threshold` becomes fully
+ * transparent, alpha at or above it fully opaque. Colours are untouched.
+ *
+ * tgfx's own, with no Skia equivalent. Useful for turning a blurred alpha into
+ * a solid shape — a sticker outline, a metaball — by blurring first and
+ * thresholding after, which the ordering rule below makes expressible.
+ */
+export interface AlphaThresholdProps {
+  /** 0–1. Defaults to 0.5. Animatable. */
+  threshold?: Animated<number>
+  /** A handle from `useNode()`, for patching this filter without a render. */
+  ref?: NodeHandle
+}
+
 export interface NoiseProps {
   freqX?: number
   freqY?: number

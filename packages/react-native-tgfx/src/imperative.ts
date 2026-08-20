@@ -42,6 +42,7 @@ const SLOT_PROPS = [
   'blurY',
   'dx',
   'dy',
+  'threshold',
   // Gradient angles, for a handle on <SweepGradient>.
   'startAngle',
   'endAngle',

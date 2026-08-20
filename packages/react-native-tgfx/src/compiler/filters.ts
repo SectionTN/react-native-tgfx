@@ -83,8 +83,9 @@ type AnimNumber = number | MaybeSharedValue<number>
 
 /** A colour transform applied per pixel. Parameters may be value slots. */
 export interface ColorFilterInput {
-  kind: 'matrix' | 'blend' | 'luma' | 'compose'
+  kind: 'matrix' | 'blend' | 'luma' | 'alphaThreshold' | 'compose'
   matrix?: AnimNumber[]
+  threshold?: AnimNumber
   color?: Color
   mode?: BlendMode
   /** `'compose'` only: `inner` runs first, then `outer` over its result. */
@@ -97,10 +98,12 @@ export interface ColorFilterInput {
  * — tgfx draws through an offscreen layer — so it costs a render target.
  */
 export interface ImageFilterInput {
-  kind: 'blur' | 'dropShadow' | 'compose'
+  kind: 'blur' | 'dropShadow' | 'compose' | 'colorFilter'
   /** `'compose'` only. Named apart from the shadow's `inner` flag below. */
   first?: ImageFilterInput
   then?: ImageFilterInput
+  /** `'colorFilter'` only: a colour filter that runs *after* what precedes it. */
+  colorFilter?: ColorFilterInput
   inner?: boolean
   blur?: AnimNumber
   blurX?: AnimNumber
@@ -160,6 +163,9 @@ function writeColorFilter(
     writeColorFilter(w, colorFilter.outer)
   } else if (colorFilter.kind === 'luma') {
     w.push(2)
+  } else if (colorFilter.kind === 'alphaThreshold') {
+    w.push(3)
+    w.pushAnim(colorFilter.threshold, 0.5)
   } else if (colorFilter.kind === 'blend') {
     // Kind 5 is kind 1 with the colour as four live channels after the word.
     const channels =
@@ -201,6 +207,11 @@ function writeImageFilter(
     w.push(2)
     writeImageFilter(w, imageFilter.first)
     writeImageFilter(w, imageFilter.then)
+    return
+  }
+  if (imageFilter.kind === 'colorFilter') {
+    w.push(3)
+    writeColorFilter(w, imageFilter.colorFilter)
     return
   }
   const blurX = imageFilter.blurX ?? imageFilter.blur

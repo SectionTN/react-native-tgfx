@@ -1,11 +1,7 @@
 import { isNodeHandle, nodeInternals, type NodeHandle } from '../imperative'
 import { NodeType, type Node } from '../reconciler/types'
 import { resolveColor, type Color } from './colors'
-import type {
-  BlendMode,
-  ColorFilterInput,
-  ImageFilterInput,
-} from './filters'
+import type { BlendMode, ColorFilterInput, ImageFilterInput } from './filters'
 import {
   fitCode,
   imageHandle,
@@ -34,7 +30,12 @@ import {
   type MaybeSharedValue,
 } from './values'
 import { Kind, type SceneWriter } from './writer'
-import type { AtlasSprite, ClipRect, UniformValue, Vector as Vec } from '../types'
+import type {
+  AtlasSprite,
+  ClipRect,
+  UniformValue,
+  Vector as Vec,
+} from '../types'
 
 interface GlyphInput {
   id: number
@@ -95,14 +96,27 @@ const KIND_VISIBLE = 64
  * hidden node is skipped at draw *and* hit-test, which is what makes a
  * mounted-but-idle pool node free.
  */
-function pushKind(w: SceneWriter, kind: number, p: Record<string, unknown>): void {
+function pushKind(
+  w: SceneWriter,
+  kind: number,
+  p: Record<string, unknown>
+): void {
   const visible = p.visible
   if (visible === undefined) {
     w.push(kind)
     return
   }
   w.push(kind | KIND_VISIBLE)
-  w.pushAnim(isSharedValue(visible) ? visible : visible === false ? 0 : visible === true ? 1 : visible, 1)
+  w.pushAnim(
+    isSharedValue(visible)
+      ? visible
+      : visible === false
+        ? 0
+        : visible === true
+          ? 1
+          : visible,
+    1
+  )
 }
 
 const KIND_OF: Record<string, number | undefined> = {
@@ -303,7 +317,8 @@ function extractGradient(
   if (node.type === NodeType.SweepGradient) {
     return {
       kind: 'sweep',
-      center: animVec(p.c) ?? animVec(p.center) ?? animVec({ x: p.cx, y: p.cy }),
+      center:
+        animVec(p.c) ?? animVec(p.center) ?? animVec({ x: p.cx, y: p.cy }),
       startAngle: p.start as GradientInput['startAngle'],
       endAngle: p.end as GradientInput['endAngle'],
       colors: (p.colors as Color[]) ?? [],
@@ -404,6 +419,13 @@ function extractFilter(
       }
     case NodeType.Luma:
       return { colorFilter: { kind: 'luma' } }
+    case NodeType.AlphaThreshold:
+      return {
+        colorFilter: {
+          kind: 'alphaThreshold',
+          threshold: p.threshold as ColorFilterInput['threshold'],
+        },
+      }
     case NodeType.Blur:
       return {
         imageFilter: {
@@ -441,26 +463,67 @@ function paintFromChild(
   return gradient != null ? { gradient } : extractFilter(w, child)
 }
 
-/// Two filters of a class compose in declaration order: the earlier one runs first.
+/**
+ * Filters compose in declaration order: the earlier one runs first.
+ *
+ * That holds *across* the two classes too, which is the only way the order is
+ * expressible at all. A colour filter is normally applied to the paint, before
+ * the draw — so it can never run after an image filter, which works on the
+ * rasterised result. When one is declared after an image filter, it joins the
+ * image chain instead (tgfx's `ImageFilter::ColorFilter`), and then it does.
+ *
+ * ```tsx
+ * <Luma /><Blur blur={8} />   // luminance, then blur it
+ * <Blur blur={8} /><Luma />   // blur, then take the luminance of the result
+ * ```
+ *
+ * A colour filter declared before any image filter stays on the paint, which is
+ * cheaper: it costs no offscreen.
+ *
+ * The scope is one node's own children, in the order they are written. A
+ * `<Paint>` child and an inherited group paint are merged, not chained, so a
+ * colour filter arriving from either of those stays on the paint and runs
+ * first whatever else the node declares. Nesting is what orders filters; which
+ * side of a `<Paint>` they sit on is not.
+ */
 function addPaintSource(
   paint: Partial<PaintInput>,
   contribution: Partial<PaintInput>
 ): void {
-  const color = contribution.colorFilter
-  if (color != null && paint.colorFilter != null) {
-    contribution = {
-      ...contribution,
-      colorFilter: { kind: 'compose', inner: paint.colorFilter, outer: color },
+  const next: Partial<PaintInput> = { ...contribution }
+  // The chain built so far, which both branches below append to exactly once.
+  let chain = paint.imageFilter
+
+  const color = next.colorFilter
+  if (color != null) {
+    if (chain != null) {
+      // Ordering, not preference: left on the paint it would run *before* the
+      // image filter declared ahead of it, which is not what was written.
+      chain = {
+        kind: 'compose',
+        first: chain,
+        then: { kind: 'colorFilter', colorFilter: color },
+      }
+      delete next.colorFilter
+    } else if (paint.colorFilter != null) {
+      next.colorFilter = {
+        kind: 'compose',
+        inner: paint.colorFilter,
+        outer: color,
+      }
     }
   }
-  const image = contribution.imageFilter
-  if (image != null && paint.imageFilter != null) {
-    contribution = {
-      ...contribution,
-      imageFilter: { kind: 'compose', first: paint.imageFilter, then: image },
-    }
+
+  if (next.imageFilter != null) {
+    chain =
+      chain != null
+        ? { kind: 'compose', first: chain, then: next.imageFilter }
+        : next.imageFilter
   }
-  Object.assign(paint, contribution)
+  if (chain != null) {
+    next.imageFilter = chain
+  }
+  Object.assign(paint, next)
 }
 
 function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
@@ -659,7 +722,11 @@ function writePathEffects(
   }
   if (dash != null) {
     const intervals = (dash.props.intervals as number[] | undefined) ?? []
-    if (typeof __DEV__ !== 'undefined' && __DEV__ && intervals.length % 2 !== 0) {
+    if (
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      intervals.length % 2 !== 0
+    ) {
       console.warn(
         `[tgfx] <DashPathEffect intervals> needs an even count of at least two, got ${intervals.length}. The dash is skipped and the path draws solid.`
       )

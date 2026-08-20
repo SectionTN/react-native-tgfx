@@ -33,7 +33,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 28;
+inline constexpr double kSceneVersion = 29;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -124,15 +124,20 @@ struct GradientShaderCmd {
 
 /// A colour filter whose parameters may carry value slots; static ones never get here.
 struct ColorFilterCmd {
-  /// 0 matrix, 1 blend, 2 luma, 4 compose (5 on the wire folds into 1 + animColor).
+  /// 0 matrix, 1 blend, 2 luma, 3 alphaThreshold, 4 compose
+  /// (5 on the wire folds into 1 + animColor).
   int kind = 0;
   std::array<AnimF, 20> matrix{};
+  AnimF threshold{};
   uint32_t color = 0;
   std::array<AnimF, 4> rgba{};
   bool animColor = false;
   AnimF mode{3, -1};
   std::shared_ptr<ColorFilterCmd> inner;
   std::shared_ptr<ColorFilterCmd> outer;
+  /// A subtree with no slot of its own is built once, even inside a chain that
+  /// has one somewhere else. Filled on the first build.
+  mutable std::shared_ptr<tgfx::ColorFilter> cached;
 
   bool animated() const;
   std::shared_ptr<tgfx::ColorFilter> build(std::span<const double> values) const;
@@ -140,7 +145,7 @@ struct ColorFilterCmd {
 
 /// An image filter (blur / drop shadow) whose parameters may carry value slots.
 struct ImageFilterCmd {
-  /// 0 blur, 1 dropShadow, 2 compose.
+  /// 0 blur, 1 dropShadow, 2 compose, 3 colorFilter.
   int kind = 0;
   AnimF blurX{};
   AnimF blurY{};
@@ -154,6 +159,11 @@ struct ImageFilterCmd {
   int flags = 0;
   std::shared_ptr<ImageFilterCmd> first;
   std::shared_ptr<ImageFilterCmd> then;
+  /// Kind 3: a colour filter placed in the image chain, so it runs *after*
+  /// whatever precedes it rather than on the paint before the draw.
+  std::shared_ptr<ColorFilterCmd> colorFilter;
+  /// As on ColorFilterCmd: a static subtree of an animated chain is built once.
+  mutable std::shared_ptr<tgfx::ImageFilter> cached;
 
   bool animated() const;
   std::shared_ptr<tgfx::ImageFilter> build(std::span<const double> values) const;

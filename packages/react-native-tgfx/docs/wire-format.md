@@ -152,3 +152,11 @@ string array pushed with `setStringValues`.
   from value slots instead of re-encoding; the corner radius stays a literal
   because it is a clip. An older reader would take the splay word for the next
   node's kind, and would walk the patch cursor past the new entries.
+- **29** — two filter kinds fill the gaps left in 10's block. Colour filter kind
+  **3** is `alphaThreshold`, followed by one anim word for the threshold. Image
+  filter kind **3** is `colorFilter`, followed by a whole colour filter — that is
+  how a colour filter runs *after* an image filter instead of on the paint
+  before the draw, which is what a `<Luma>` declared after a `<Blur>` now
+  compiles to. The version word is the only protection here: a v28 reader drops
+  colour kind 3 as unknown and then eats the threshold word as the image-filter
+  kind, and on image kind 3 it desynchronises on the nested colour filter.

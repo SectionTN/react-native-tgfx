@@ -35,6 +35,7 @@ export const NodeType = {
   Blend: 'tgfx_blend',
   ColorShader: 'tgfx_colorshader',
   Luma: 'tgfx_luma',
+  AlphaThreshold: 'tgfx_alphathreshold',
   DashPathEffect: 'tgfx_dash',
   CornerPathEffect: 'tgfx_corner',
   Fill: 'tgfx_fill',

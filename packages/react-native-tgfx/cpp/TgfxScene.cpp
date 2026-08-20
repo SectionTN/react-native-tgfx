@@ -878,7 +878,7 @@ size_t filterBuildCount() {
 }
 
 bool ColorFilterCmd::animated() const {
-  if (animColor || mode.slot >= 0) {
+  if (animColor || mode.slot >= 0 || threshold.slot >= 0) {
     return true;
   }
   for (const auto& word : matrix) {
@@ -892,6 +892,9 @@ bool ColorFilterCmd::animated() const {
 
 std::shared_ptr<tgfx::ColorFilter> ColorFilterCmd::build(
     std::span<const double> v) const {
+  if (cached != nullptr) {
+    return cached;
+  }
   std::shared_ptr<tgfx::ColorFilter> filter;
   if (kind == 0) {
     std::array<float, 20> resolved{};
@@ -907,6 +910,8 @@ std::shared_ptr<tgfx::ColorFilter> ColorFilterCmd::build(
     filter = tgfx::ColorFilter::Blend(c, blendModeOf(mode.resolveInt(v)));
   } else if (kind == 2) {
     filter = tgfx::ColorFilter::Luma();
+  } else if (kind == 3) {
+    filter = tgfx::ColorFilter::AlphaThreshold(threshold.resolve(v));
   } else if (kind == 4) {
     auto a = inner != nullptr ? inner->build(v) : nullptr;
     auto b = outer != nullptr ? outer->build(v) : nullptr;
@@ -918,17 +923,26 @@ std::shared_ptr<tgfx::ColorFilter> ColorFilterCmd::build(
     return nullptr;
   }
   gFilterBuilds++;
+  // Only what can change is rebuilt: a static leaf under an animated compose is
+  // built on the first frame and read back on every one after.
+  if (!animated()) {
+    cached = filter;
+  }
   return filter;
 }
 
 bool ImageFilterCmd::animated() const {
   return animColor || blurX.slot >= 0 || blurY.slot >= 0 || dx.slot >= 0 ||
          dy.slot >= 0 || (first != nullptr && first->animated()) ||
-         (then != nullptr && then->animated());
+         (then != nullptr && then->animated()) ||
+         (colorFilter != nullptr && colorFilter->animated());
 }
 
 std::shared_ptr<tgfx::ImageFilter> ImageFilterCmd::build(
     std::span<const double> v) const {
+  if (cached != nullptr) {
+    return cached;
+  }
   std::shared_ptr<tgfx::ImageFilter> filter;
   if (kind == 0) {
     filter = tgfx::ImageFilter::Blur(blurX.resolve(v), blurY.resolve(v), tile);
@@ -954,10 +968,19 @@ std::shared_ptr<tgfx::ImageFilter> ImageFilterCmd::build(
       return a != nullptr ? a : b;
     }
     filter = tgfx::ImageFilter::Compose(std::move(a), std::move(b));
+  } else if (kind == 3) {
+    auto inner = colorFilter != nullptr ? colorFilter->build(v) : nullptr;
+    if (inner == nullptr) {
+      return nullptr;
+    }
+    filter = tgfx::ImageFilter::ColorFilter(std::move(inner));
   } else {
     return nullptr;
   }
   gFilterBuilds++;
+  if (!animated()) {
+    cached = filter;
+  }
   return filter;
 }
 
@@ -986,6 +1009,9 @@ std::shared_ptr<ColorFilterCmd> SceneRenderer::readColorFilterCmd(SceneReader& r
     cmd->mode = r.nextAnim();
   } else if (kind == 2) {
     cmd->kind = 2;
+  } else if (kind == 3) {
+    cmd->kind = 3;
+    cmd->threshold = r.nextAnim();
   } else if (kind == 4) {
     cmd->kind = 4;
     // Read both sides whatever happens, or a null child would strand the cursor.
@@ -1034,6 +1060,12 @@ std::shared_ptr<ImageFilterCmd> SceneRenderer::readImageFilterCmd(SceneReader& r
     cmd->then = readImageFilterCmd(r, depth + 1);
     if (cmd->first == nullptr || cmd->then == nullptr) {
       return cmd->first != nullptr ? cmd->first : cmd->then;
+    }
+  } else if (kind == 3) {
+    cmd->kind = 3;
+    cmd->colorFilter = readColorFilterCmd(r, depth + 1);
+    if (cmd->colorFilter == nullptr) {
+      return nullptr;
     }
   } else {
     return nullptr;

@@ -9,6 +9,7 @@ import {
   withTiming,
 } from 'react-native-reanimated';
 import {
+  AlphaThreshold,
   BackdropBlur,
   Blend,
   BlendColor,
@@ -56,10 +57,26 @@ const SATURATE = (() => {
   const s = 1.8;
   const [r, g, b] = [0.213, 0.715, 0.072];
   return [
-    r + s * (1 - r), g - s * g, b - s * b, 0, 0,
-    r - s * r, g + s * (1 - g), b - s * b, 0, 0,
-    r - s * r, g - s * g, b + s * (1 - b), 0, 0,
-    0, 0, 0, 1, 0,
+    r + s * (1 - r),
+    g - s * g,
+    b - s * b,
+    0,
+    0,
+    r - s * r,
+    g + s * (1 - g),
+    b - s * b,
+    0,
+    0,
+    r - s * r,
+    g - s * g,
+    b + s * (1 - b),
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
   ];
 })();
 
@@ -72,7 +89,13 @@ export function BlendModes() {
         <Fill color="#ffffff" />
         {/* Six pairs inside 288pt, so the row still fits the narrowest phone. */}
         {MODES.map((mode, i) => (
-          <Circle key={`under-${mode}`} cx={20 + i * 44} cy={42} r={16} color="#f2a33c" />
+          <Circle
+            key={`under-${mode}`}
+            cx={20 + i * 44}
+            cy={42}
+            r={16}
+            color="#f2a33c"
+          />
         ))}
         {MODES.map((mode, i) => (
           <Circle
@@ -156,11 +179,25 @@ export function ImageFilters() {
         </Circle>
         <Circle cx={60} cy={64} r={26} color="#dceaff" />
         {/* Directional smear. */}
-        <RoundedRect x={116} y={44} width={64} height={40} r={10} color="#f2c088">
+        <RoundedRect
+          x={116}
+          y={44}
+          width={64}
+          height={40}
+          r={10}
+          color="#f2c088"
+        >
           <Blur blurX={14} blurY={0} />
         </RoundedRect>
         {/* Card with a shadow under it. */}
-        <RoundedRect x={210} y={38} width={100} height={52} r={14} color="#f5f7fa">
+        <RoundedRect
+          x={210}
+          y={38}
+          width={100}
+          height={52}
+          r={14}
+          color="#f5f7fa"
+        >
           <DropShadow dx={0} dy={7} blur={7} color="rgba(0,0,0,0.7)" />
         </RoundedRect>
         {/* Shadow only: the caster is dropped. */}
@@ -223,9 +260,7 @@ function Masks() {
       <RNText style={styles.label}>{'<Mask> — alpha · luminance'}</RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
         <Fill color="#ffffff" />
-        <Mask
-          mask={<Circle cx={60} cy={60} r={42} color="#000" />}
-        >
+        <Mask mask={<Circle cx={60} cy={60} r={42} color="#000" />}>
           <Rect x={10} y={10} width={100} height={100} color="#4f8ef7" />
         </Mask>
         <Mask
@@ -296,19 +331,40 @@ function LateFilters() {
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
-        {'<DropShadow> under · inner · <Luma>'}
+        {'<DropShadow> under · inner · <Luma> · <Blur> then <AlphaThreshold>'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 120 }]}>
         <Fill color="#ffffff" />
         <RoundedRect x={8} y={20} width={90} height={80} r={14} color="#f5f7fa">
           <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" />
         </RoundedRect>
-        <RoundedRect x={112} y={20} width={90} height={80} r={14} color="#f5f7fa">
+        <RoundedRect
+          x={112}
+          y={20}
+          width={90}
+          height={80}
+          r={14}
+          color="#f5f7fa"
+        >
           <DropShadow dx={0} dy={5} blur={7} color="rgba(0,0,0,0.55)" inner />
         </RoundedRect>
-        <RoundedRect x={214} y={20} width={80} height={80} r={12} color="#1c1c1e" />
+        <RoundedRect
+          x={214}
+          y={20}
+          width={80}
+          height={80}
+          r={12}
+          color="#1c1c1e"
+        />
         <Circle cx={254} cy={60} r={34} color="#f2a33c" />
-        <RoundedRect x={300} y={20} width={80} height={80} r={12} color="#1c1c1e" />
+        <RoundedRect
+          x={300}
+          y={20}
+          width={80}
+          height={80}
+          r={12}
+          color="#1c1c1e"
+        />
         <Circle cx={340} cy={60} r={34} color="#f2a33c">
           <Luma />
         </Circle>
@@ -316,6 +372,30 @@ function LateFilters() {
       <RNText style={styles.caption}>
         The same card with the shadow under it, then inside it; then the same
         amber disc plain and through luma, both on a dark backdrop.
+      </RNText>
+      <Canvas style={[styles.canvas, { height: 110 }]}>
+        <Fill color="#ffffff" />
+        {/* Two overlapping discs, blurred so their falloffs merge, then cut
+            back to a hard edge — the metaball the threshold exists for. */}
+        <Circle cx={70} cy={55} r={30} color="#4f8ef7">
+          <Blur blur={10} />
+        </Circle>
+        <Circle cx={120} cy={55} r={30} color="#4f8ef7">
+          <Blur blur={10} />
+        </Circle>
+        <Circle cx={240} cy={55} r={30} color="#4f8ef7">
+          <Blur blur={10} />
+          <AlphaThreshold threshold={0.6} />
+        </Circle>
+        <Circle cx={290} cy={55} r={30} color="#4f8ef7">
+          <Blur blur={10} />
+          <AlphaThreshold threshold={0.6} />
+        </Circle>
+      </Canvas>
+      <RNText style={styles.caption}>
+        Blurred on the left; on the right the same blur with the threshold after
+        it, which is only expressible because a colour filter declared after an
+        image filter joins the image chain.
       </RNText>
     </View>
   );
@@ -344,8 +424,22 @@ function Backdrops() {
         <Fill color="#ffffff" />
         {img != null && (
           <>
-            <Image image={img} x={0} y={0} width={360} height={120} fit="cover" />
-            <BackdropBlur x={12} y={24} width={150} height={72} r={18} blur={14} />
+            <Image
+              image={img}
+              x={0}
+              y={0}
+              width={360}
+              height={120}
+              fit="cover"
+            />
+            <BackdropBlur
+              x={12}
+              y={24}
+              width={150}
+              height={72}
+              r={18}
+              blur={14}
+            />
             <Glass
               x={198}
               y={24}

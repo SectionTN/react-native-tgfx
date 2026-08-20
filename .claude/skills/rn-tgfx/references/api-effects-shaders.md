@@ -35,11 +35,26 @@ all. A name outside the union silently falls back to `srcOver`.
 - `<BlendColor color mode? ref?>` — blends `color` (src) with the drawing (dst);
   `mode` defaults to `'srcOver'`.
 - `<Luma />` — replaces every color with its luminance, carried into alpha.
+- `<AlphaThreshold threshold? ref?>` — alpha below `threshold` (default 0.5)
+  becomes fully transparent, at or above it fully opaque; colors untouched.
+  tgfx's own, no Skia equivalent. `threshold` is animatable.
 
 ```tsx
 <Path path="M20 80 L80 20 L140 80 L80 140 Z" color="#ffffff">
   <BlendColor color="#e0533d" mode="src" />
 </Path>
+```
+
+**Order matters, across both kinds.** Filters compose in declaration order. A
+color filter normally runs on the paint, before rasterisation, so on its own it
+cannot follow a blur — declared *after* an image filter it joins the image chain
+instead (`ImageFilter::ColorFilter`), and then it does. Declared first it stays
+on the paint, which costs no offscreen.
+
+```tsx
+<Luma /><Blur blur={8} />   // luminance, then blur it
+<Blur blur={8} /><Luma />   // blur, then the luminance of that
+<Blur blur={12} /><AlphaThreshold threshold={0.6} />  // soft edge back to solid
 ```
 
 ## Blur and shadow

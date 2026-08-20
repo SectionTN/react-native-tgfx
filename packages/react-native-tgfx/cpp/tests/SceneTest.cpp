@@ -393,6 +393,10 @@ bool opaqueAt(const Pixels& pixels, int x, int y) {
   return pixels[(static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4 + 3] > 0;
 }
 
+uint8_t alphaAt(const Pixels& pixels, int x, int y) {
+  return pixels[(static_cast<size_t>(y) * kWidth + static_cast<size_t>(x)) * 4 + 3];
+}
+
 std::vector<double> oneRect() {
   Writer w;
   w.push(1);
@@ -1162,6 +1166,92 @@ void theLateFilterKindsAllDraw() {
 
   // Shadow-only composes with inner rather than replacing it.
   CHECK(shape({-1}, {1, 4, 4, 3, 3, 0xff000000, 3}) != innerLit);
+}
+
+/// The last two filter kinds tgfx offers and #179 asked for: an alpha threshold,
+/// and a colour filter placed in the *image* chain so it runs after what
+/// precedes it rather than on the paint before the draw.
+void aThresholdCutsAlphaAndAColorFilterCanFollowAnImageFilter() {
+  auto shape = [](const std::vector<double>& colorFilter,
+                  const std::vector<double>& imageFilter, uint32_t fill) {
+    Writer w;
+    w.push(1);
+    w.push(1);  // Rect
+    w.pushAnim(12);
+    w.pushAnim(12);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushFilteredPaint(fill, {3, colorFilter, imageFilter});
+    return render(w.finish(), {}, {});
+  };
+
+  // A half-transparent fill: below the threshold it disappears, above it goes solid.
+  const uint32_t half = 0x80336699;
+  auto plain = shape({-1}, {-1}, half);
+  auto cut = shape({3, 0.9}, {-1}, half);      // 0.5 alpha < 0.9 => transparent
+  auto kept = shape({3, 0.25}, {-1}, half);    // 0.5 alpha >= 0.25 => opaque
+  CHECK(!opaqueAt(cut, 32, 32));
+  CHECK(kept != plain);
+  // The colour, not just "something is there". This filter shipped once before
+  // and was reverted in 0f0b627 because tgfx's shader never re-premultiplied,
+  // which comes back as {0x1a,0x33,0x4d} — every alpha-only check passes on it.
+  CHECK(alphaAt(kept, 32, 32) == 255);
+  CHECK(pixelAt(kept, 32, 32) == (std::array<uint8_t, 3>{0x33, 0x66, 0x99}));
+
+  // The threshold is an anim word, so a slot drives it without a re-encode.
+  // Written out rather than through pushFilteredPaint, which has no slot for it.
+  Writer live;
+  live.push(1);
+  live.push(1);  // Rect
+  live.pushAnim(12);
+  live.pushAnim(12);
+  live.pushAnim(40);
+  live.pushAnim(40);
+  live.push(half);
+  live.push(2 | 4);  // antiAlias, and a filter block follows
+  live.pushAnim(1);
+  live.push(0);
+  live.push(0);
+  live.pushAnim(1);
+  live.push(3);         // blend srcOver
+  live.push(3);         // colour filter kind: alphaThreshold
+  live.pushAnim(0.9, 0);  // threshold, slot 0
+  live.push(-1);        // no image filter
+  live.push(-1);        // no shader
+  auto program = live.finish();
+  CHECK(!opaqueAt(render(program, {}, {0.9}), 32, 32));
+  CHECK(opaqueAt(render(program, {}, {0.25}), 32, 32));
+
+  // The same program drawn twice from one setScene, which is what a handle
+  // write does: the value moves, the scene does not.
+  tgfxrn::SceneRenderer patched;
+  patched.setScene(program, {});
+  CHECK(opaqueAt(drawFrame(patched, {0.25}), 32, 32));
+  CHECK(!opaqueAt(drawFrame(patched, {0.9}), 32, 32));
+
+  // Ordering. The filter has to be non-linear for the order to be visible at
+  // all — Luma is a weighted sum of channels and a blur is a weighted sum of
+  // pixels, so those two commute. A threshold does not.
+  const uint32_t solid = 0xff3366cc;
+  // On the paint: the rect's edge is already hard, so the threshold changes
+  // nothing and the blur then softens it.
+  auto thresholdThenBlur = shape({3, 0.6}, {0, 6, 6, 3}, solid);
+  // In the image chain: the blur softens, then the threshold cuts the falloff
+  // back to a hard edge.
+  auto blurThenThreshold = shape({-1}, {2, 0, 6, 6, 3, 3, 3, 0.6}, solid);
+  CHECK(anyPixelSet(thresholdThenBlur));
+  CHECK(anyPixelSet(blurThenThreshold));
+  CHECK(thresholdThenBlur != blurThenThreshold);
+
+  // Which one ran first, stated both ways. An opaque rect's alpha already
+  // clears 0.6, so a threshold on the paint is a no-op and the blur alone has
+  // to reproduce it exactly; in the image chain the threshold cuts the blur's
+  // falloff back, so it cannot.
+  auto blurred = shape({-1}, {0, 6, 6, 3}, solid);
+  CHECK(thresholdThenBlur == blurred);
+  CHECK(blurThenThreshold != blurred);
+  // And the colour survives the image chain, the same regression as above.
+  CHECK(pixelAt(blurThenThreshold, 32, 32) == (std::array<uint8_t, 3>{0x33, 0x66, 0xcc}));
 }
 
 /// <Blend> folds shader children; <ColorShader> is the leaf that makes it testable.
@@ -2154,6 +2244,49 @@ void filtersAreBuiltOnceAndNeverOnTheDrawPath() {
   CHECK(tgfxrn::filterBuildCount() == afterCompile);
 }
 
+
+/// Composition made a chain rebuildable as a unit; only the parts with a slot
+/// should actually be rebuilt. Counted, not reasoned about.
+void onlyTheAnimatedPartOfAFilterChainIsRebuilt() {
+  // <Blur blur={slot}/><Luma/>: an animated blur composed with a static colour
+  // filter, so the chain is compose(blur, colorFilter(luma)) — four nodes, two
+  // of which can never change.
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(12);
+  w.pushAnim(12);
+  w.pushAnim(40);
+  w.pushAnim(40);
+  w.push(0xff3366cc);
+  w.push(2 | 4);  // antiAlias, and a filter block follows
+  w.pushAnim(1);  // stroke width
+  w.push(0);
+  w.push(0);
+  w.pushAnim(1);  // alpha
+  w.push(3);      // blend srcOver
+  w.push(-1);     // no colour filter on the paint
+  w.push(2);      // image kind: compose
+  w.push(0);      // blur
+  w.pushAnim(4, 0);
+  w.pushAnim(4, 0);
+  w.push(3);      // decal
+  w.push(3);      // colorFilter in the image chain
+  w.push(2);      // luma
+  w.push(-1);     // no shader
+  auto words = w.finish();
+
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(words, {});
+  // The first frame builds all four; the luma and its wrapper are static, so
+  // every frame after that rebuilds only the blur and the compose over it.
+  CHECK(anyPixelSet(drawFrame(renderer, {4})));
+  size_t afterFirst = tgfxrn::filterBuildCount();
+  for (int frame = 1; frame < 5; frame++) {
+    CHECK(anyPixelSet(drawFrame(renderer, {4.0 + frame})));
+  }
+  CHECK(tgfxrn::filterBuildCount() == afterFirst + 4 * 2);
+}
 
 int rightmostInk(const Pixels& pixels) {
   int rightmost = -1;
@@ -4624,6 +4757,7 @@ int main() {
   aLayerCompositesTheSubtreeOnce();
   pathEffectsReshapeTheGeometry();
   theLateFilterKindsAllDraw();
+  aThresholdCutsAlphaAndAColorFilterCanFollowAnImageFilter();
   blendFoldsItsShaderChildren();
   filtersOfOneClassCompose();
   blendKeepsItsDynamicChildrenLive();
@@ -4686,6 +4820,7 @@ int main() {
   aBlurSpreadsPastTheGeometry();
   aDropShadowPaintsUnderItsContent();
   filtersAreBuiltOnceAndNeverOnTheDrawPath();
+  onlyTheAnimatedPartOfAFilterChainIsRebuilt();
   aFontIsFoundOnAnImageWithNoneOfTheOldHardcodedPaths();
   theDefaultFamilyCanActuallyDrawText();
   aCachedFaceStillHasToBeAbleToDrawText();

@@ -106,7 +106,7 @@ const pan = Gesture.Pan().onUpdate((e) => {
 - **Gradients**: geometry (`start`, `end`, `center`), `positions`, `colors`
   (max 16 stops)
 - **Filters**: `blur`, `blurX`, `blurY`, `dx`, `dy` on `<Blur>` / `<DropShadow>`;
-  `matrix` on `<ColorMatrix>`
+  `threshold` on `<AlphaThreshold>`; `matrix` on `<ColorMatrix>`
 - **Strings**: `text` and `path` — re-shaped / re-parsed on the render thread
 
 ```tsx
