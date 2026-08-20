@@ -1,4 +1,4 @@
-// <Image>, <Atlas>, <Vertices>, <ImageShader>, the decoders, and the native handle ops.
+// <TgfxImage>, <Atlas>, <Vertices>, <ImageShader>, the decoders, and the native handle ops.
 import React from 'react';
 import {
   afterAll,
@@ -13,7 +13,7 @@ import {
   Circle,
   Fill,
   Group,
-  Image,
+  TgfxImage,
   ImageShader,
   RoundedRect,
   Vertices,
@@ -169,7 +169,7 @@ describe('tgfx image rendering', () => {
       'image-fit-modes',
       <>
         {FITS.map((fit, i) => (
-          <Image
+          <TgfxImage
             key={fit}
             x={(i % 3) * 66 + 2}
             y={Math.floor(i / 3) * 66 + 2}
@@ -189,7 +189,7 @@ describe('tgfx image rendering', () => {
       'image-sampling-modes',
       <>
         {modes.map((sampling, i) => (
-          <Image
+          <TgfxImage
             key={sampling}
             x={10}
             y={10 + i * 62}
@@ -209,7 +209,7 @@ describe('tgfx image rendering', () => {
       'image-sprite-rect',
       <>
         {[0, 1, 2, 3].map(i => (
-          <Image
+          <TgfxImage
             key={i}
             x={8 + (i % 2) * 96}
             y={8 + Math.floor(i / 2) * 96}
@@ -328,7 +328,7 @@ describe('tgfx image rendering', () => {
       'image-codec-formats',
       <>
         {(['sample', 'jpeg', 'webp'] as const).map((key, i) => (
-          <Image
+          <TgfxImage
             key={key}
             x={8}
             y={8 + i * 64}
@@ -346,8 +346,8 @@ describe('tgfx image rendering', () => {
     await drawnSnapshot(
       'image-svg-source',
       <>
-        <Image x={8} y={8} width={160} height={160} image={decoded.logo} />
-        <Image x={170} y={8} width={24} height={24} image={decoded.logo} />
+        <TgfxImage x={8} y={8} width={160} height={160} image={decoded.logo} />
+        <TgfxImage x={170} y={8} width={24} height={24} image={decoded.logo} />
       </>,
     );
   });
@@ -356,7 +356,7 @@ describe('tgfx image rendering', () => {
     await drawnSnapshot(
       'image-exif-orientation',
       <>
-        <Image
+        <TgfxImage
           x={8}
           y={8}
           width={184}
@@ -372,10 +372,10 @@ describe('tgfx image rendering', () => {
     await drawnSnapshot(
       'image-handle-ops',
       <>
-        <Image image={derived.thumb} x={8} y={8} width={88} height={88} />
-        <Image image={derived.crop} x={104} y={8} width={88} height={88} />
-        <Image image={derived.turned} x={8} y={104} width={88} height={88} />
-        <Image image={derived.soft} x={104} y={104} width={88} height={88} />
+        <TgfxImage image={derived.thumb} x={8} y={8} width={88} height={88} />
+        <TgfxImage image={derived.crop} x={104} y={8} width={88} height={88} />
+        <TgfxImage image={derived.turned} x={8} y={104} width={88} height={88} />
+        <TgfxImage image={derived.soft} x={104} y={104} width={88} height={88} />
       </>,
     );
   });
@@ -384,9 +384,9 @@ describe('tgfx image rendering', () => {
     await drawnSnapshot(
       'image-offscreen-render',
       <>
-        <Image image={offscreen} x={8} y={20} width={184} height={80} />
+        <TgfxImage image={offscreen} x={8} y={20} width={184} height={80} />
         {/* The same handle again: a one-shot would come back blank. */}
-        <Image image={offscreen} x={8} y={110} width={92} height={58} />
+        <TgfxImage image={offscreen} x={8} y={110} width={92} height={58} />
       </>,
     );
   });

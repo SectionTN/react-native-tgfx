@@ -47,7 +47,7 @@ reads: one that draws no image is neither woken nor redrawn when an image
 changes, and the same holds for text and fonts.
 
 Nothing to configure, but it is worth knowing what it keys on. The scene is
-treated as reading the image registry when it holds an `<Image>`,
+treated as reading the image registry when it holds an `<TgfxImage>`,
 `<CameraFrame>` or `<Atlas>`, an image handle, an `<ImageShader>`, or a runtime
 shader or `<Blend>` whose child shaders sample an image; and as reading fonts
 when it holds any text. A canvas built entirely from shapes, gradients and

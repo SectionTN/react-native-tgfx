@@ -23,9 +23,9 @@ all. A name outside the union silently falls back to `srcOver`.
 ## Color filters
 
 ```tsx
-<Image image={photo} x={0} y={0} width={200} height={200} fit="cover">
+<TgfxImage image={photo} x={0} y={0} width={200} height={200} fit="cover">
   <ColorMatrix matrix={GREYSCALE} />
-</Image>
+</TgfxImage>
 ```
 
 - `<ColorMatrix matrix={Animated<number>[]} ref?>` — 4×5 row-major, applied as
@@ -131,7 +131,7 @@ They read the pixels **already drawn beneath them**, so the node must come after
 the content it frosts, and the region is its own rect.
 
 ```tsx
-<Image image={photo} x={0} y={0} width={300} height={200} />
+<TgfxImage image={photo} x={0} y={0} width={300} height={200} />
 <BackdropBlur x={20} y={40} width={260} height={120} r={24} blur={16} />
 <Glass x={20} y={40} width={260} height={120} r={24} refraction={40} depth={20} frost={30} dispersion={0} />
 ```

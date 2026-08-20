@@ -18,7 +18,7 @@ import {
   Fill,
   Glass,
   Glyphs,
-  Image,
+  TgfxImage,
   ImageSVG,
   Line,
   Oval,
@@ -120,7 +120,7 @@ test('group, fill, image and imageSvg match', () => {
         <Rect x={0} y={0} width={2} height={2} />
       </Group>
       <Fill color="#123456" />
-      <Image {...(image as object)} />
+      <TgfxImage {...(image as object)} />
       <ImageSVG {...(image as object)} />
     </>,
     [
@@ -301,16 +301,16 @@ test('filters, effects and film grain match', () => {
   ]
   expectParity(
     <>
-      <Image image={img as never} x={0} y={0} width={8} height={8}>
+      <TgfxImage image={img as never} x={0} y={0} width={8} height={8}>
         <Blur blur={4} />
         <Luma />
         <DropShadow {...(shadow as object)} />
-      </Image>
-      <Image image={img as never} x={0} y={0} width={8} height={8}>
+      </TgfxImage>
+      <TgfxImage image={img as never} x={0} y={0} width={8} height={8}>
         <ColorMatrix matrix={matrix} />
         <AlphaThreshold threshold={0.5} />
         <BlendColor color="#00f4" mode="overlay" />
-      </Image>
+      </TgfxImage>
       <Path path="M0 0L10 0L5 8Z" color="#e33">
         <DashPathEffect intervals={[8, 4]} />
       </Path>

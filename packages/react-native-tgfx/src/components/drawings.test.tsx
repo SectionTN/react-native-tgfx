@@ -5,12 +5,7 @@ mock.module('react-native-reanimated', () => ({}))
 import { NodeType, type Node } from '../reconciler/types'
 import { compileScene } from '../compiler/compile'
 import { SceneWriter } from '../compiler/writer'
-import {
-  BackdropBlur,
-  Glass,
-  Image,
-  ImageSVG,
-} from './drawings'
+import { BackdropBlur, Glass, TgfxImage, ImageSVG } from './drawings'
 
 const panel = { x: 0, y: 0, width: 10, height: 10 }
 
@@ -27,14 +22,25 @@ const refractionOf = (words: Float64Array) => words[3 + 1 + 1 + 4 + 1 + 1]
 /// One wire kind carries both panels and a zero refraction is what makes it a plain blur, so
 /// <Glass> has to supply the default its props document rather than silently drawing a blur.
 test('Glass defaults refraction to 40, BackdropBlur leaves it a plain blur', () => {
-  expect(refractionOf(compile(NodeType.Glass, { ...panel, frost: 30 }))).toBe(40)
-  expect(refractionOf(compile(NodeType.Glass, { ...panel, refraction: 10 }))).toBe(10)
-  expect(refractionOf(compile(NodeType.Backdrop, { ...panel, blur: 8 }))).toBe(0)
+  expect(refractionOf(compile(NodeType.Glass, { ...panel, frost: 30 }))).toBe(
+    40
+  )
+  expect(
+    refractionOf(compile(NodeType.Glass, { ...panel, refraction: 10 }))
+  ).toBe(10)
+  expect(refractionOf(compile(NodeType.Backdrop, { ...panel, blur: 8 }))).toBe(
+    0
+  )
 })
 
 // splay, light angle, light intensity: the three anim words after dispersion.
 const lightOf = (words: Float64Array) =>
-  Array.from(words.subarray(3 + 1 + 1 + 4 + 1 + 1 + 3 + 1, 3 + 1 + 1 + 4 + 1 + 1 + 3 + 1 + 3))
+  Array.from(
+    words.subarray(
+      3 + 1 + 1 + 4 + 1 + 1 + 3 + 1,
+      3 + 1 + 1 + 4 + 1 + 1 + 3 + 1 + 3
+    )
+  )
 
 /// These carry tgfx's own defaults rather than zeros, so a <Glass> that names none of them
 /// draws exactly as it did before they were writable — and a named one has to reach the wire.
@@ -61,9 +67,9 @@ test('Glass writes its light words, defaulted to what the reader used to hardcod
 // The whole reason ImageSVG is an alias and not a wrapper: a component would
 // drop every scene using it off directNodes' fast path, and no pixel test can
 // see that — both would draw the same frame.
-test('ImageSVG is the Image host node, not a wrapper component', () => {
+test('ImageSVG is the TgfxImage host node, not a wrapper component', () => {
   expect(typeof ImageSVG).toBe('string')
-  expect(ImageSVG).toBe(Image)
+  expect(ImageSVG).toBe(TgfxImage)
 })
 
 test('both panels stay host node types', () => {

@@ -93,6 +93,7 @@ const ready = useFonts({
 | `useFontsState` | same input → `FontsState` `{ ready, error }` — use when a failed load must be visible; `useFonts` stays `false` forever on failure |
 | `loadFont` | imperative single-family registration |
 | `loadFonts` | imperative multi-family registration |
+| `<Image source={require() / https / file / svg / base64} ...ImageProps>` | THE image component: loads + draws when ready; function component, so its canvas leaves the direct-node fast path. `<TgfxImage image={handle}>` is the power form (plain host tag, direct path) — pair with `useImage`/`loadImage` |
 | `<Canvas fonts={{Family: [source, ...]}}>` | registers + withholds children until ready (no fallback flash); failed load warns and renders anyway |
 | `registeredFontFamilies` | `() => string[]` |
 | `measureText` | `(text: string, style?: TextStyle) => TextMeasurement` |
@@ -213,7 +214,7 @@ const at = pathPointAtLength(route, pathLength(route) * progress)
 const photo = useImage(require('./cat.png'))          // TgfxImage | null
 
 photo != null && (
-  <Image image={photo} x={0} y={0} width={300} height={200} fit="cover" />
+  <TgfxImage image={photo} x={0} y={0} width={300} height={200} fit="cover" />
 )
 ```
 
@@ -228,7 +229,7 @@ photo != null && (
 SVG sources decode to a resolution-independent picture that replays at whatever
 size it is drawn — `width` on one is nominal, not a resolution cap. A document
 loads from a file, a `require()`'d asset, or **markup**, and draws through
-`<ImageSVG>` — Skia's name for what is the same node as `<Image>`, so a
+`<ImageSVG>` — Skia's name for what is the same node as `<TgfxImage>`, so a
 migrating `<ImageSVG svg={…}>` becomes `<ImageSVG image={…}>`:
 
 ```tsx
@@ -253,7 +254,7 @@ resource** — give them distinct names.
 | `rect` | `SrcRect` source sub-rect in image pixels — animatable, for sprite-sheet stepping |
 
 ```tsx
-<Image x={0} y={0} width={60} height={60} image={sheet}
+<TgfxImage x={0} y={0} width={60} height={60} image={sheet}
        rect={{ x: 32, y: 0, width: 32, height: 32 }} sampling="nearest" />
 
 sprite.set({ rect: { x: frame * 32, y: 0, width: 32, height: 32 } })
@@ -317,7 +318,7 @@ const video = useVideo(require('./clip.mp4'), {
   volume: 0.5,     // 0..1, defaults to 0 — a canvas video is usually decoration
 })
 
-<Image image={video.currentFrame} x={0} y={0} width={300} height={200} />
+<TgfxImage image={video.currentFrame} x={0} y={0} width={300} height={200} />
 ```
 
 Requires Reanimated + Worklets — frames are pulled from a UI-thread frame
@@ -341,7 +342,7 @@ is where the sprite's **centre** lands.
 
 Sprites are placed **axis-aligned** — tgfx's `drawAtlas` maps each sprite's
 bounding box, so a rotation would stretch it. Rotate a `<Group>` around the
-whole batch, or use `<Image>` per sprite.
+whole batch, or use `<TgfxImage>` per sprite.
 
 For large counts use `buffer` + `count` from `useSpriteBuffer` — see
 [api-animation-imperative.md](api-animation-imperative.md).

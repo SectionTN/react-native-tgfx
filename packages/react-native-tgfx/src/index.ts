@@ -3,6 +3,15 @@
 export { Canvas } from './components/Canvas'
 export { Group } from './components/Group'
 export { Mask } from './components/Mask'
+export { Image } from './components/Image'
+import { TgfxImage as TgfxImageComponent } from './components/drawings'
+import type { TgfxImage as TgfxImageHandle } from './types'
+/** The host-tag image component; in type positions, the native image handle. */
+const TgfxImage = TgfxImageComponent
+// eslint-disable-next-line no-redeclare -- deliberate value+type merge
+type TgfxImage = TgfxImageHandle
+export { TgfxImage }
+export type { ImageSourceProps } from './components/Image'
 export {
   useCanvasPress,
   dispatchPress,
@@ -31,7 +40,6 @@ export {
   Circle,
   Glyphs,
   Fill,
-  Image,
   ImageSVG,
   Atlas,
   Vertices,
@@ -268,7 +276,6 @@ export type {
   SnapshotOptions,
   TextPathProps,
   TextProps,
-  TgfxImage,
   TileMode,
   Transform,
   TransformAngle,

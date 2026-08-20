@@ -46,7 +46,7 @@ export interface VideoOptions {
 export interface Video {
   /**
    * The video's frame, `null` until the first one is decoded. Feed it to
-   * `<Image>`, or to `<CameraFrame>` when {@link rotation} is not 0.
+   * `<TgfxImage>`, or to `<CameraFrame>` when {@link rotation} is not 0.
    *
    * One object for the life of the video: later frames replace what it points
    * at natively, so this identity is stable and nothing re-commits per frame.
@@ -237,7 +237,7 @@ export async function createVideoPlayer(
  * ```tsx
  * const { currentFrame, size } = useVideo(require('./clip.mp4'), { looping: true })
  * // ...
- * <Image image={currentFrame} x={0} y={0} width={size.width} height={size.height} />
+ * <TgfxImage image={currentFrame} x={0} y={0} width={size.width} height={size.height} />
  * ```
  *
  * Decoding is the platform's — AVPlayer on iOS, MediaPlayer on Android — so

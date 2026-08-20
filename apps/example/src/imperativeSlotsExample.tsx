@@ -9,7 +9,7 @@ import {
   createHandle,
   LinearGradient,
   DropShadow,
-  Image,
+  TgfxImage,
   Path,
   Rect,
   RoundedRect,
@@ -122,7 +122,7 @@ function SwapAndEnums() {
   return (
     <View>
       <Canvas style={{ width: W, height: 90 }}>
-        <Image
+        <TgfxImage
           ref={pic}
           x={12}
           y={8}

@@ -118,7 +118,7 @@ In order of impact:
 1. Per-frame state going through React instead of slots.
 2. Wrapper function components as `<Canvas>` children (the reconciler falls back).
 3. `<Group layer>` where no group opacity or filter is needed.
-4. Many `<Image>`/`<Circle>` nodes where `<Atlas buffer>` / `<Vertices buffer>`
+4. Many `<TgfxImage>`/`<Circle>` nodes where `<Atlas buffer>` / `<Vertices buffer>`
    would do.
 5. Mounting/unmounting nodes instead of pooling handles and toggling `visible`.
 6. Shader source strings rebuilt per render, defeating the transpile cache.

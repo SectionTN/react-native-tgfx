@@ -4,7 +4,7 @@ import { describe, render, test } from 'react-native-harness';
 import {
   Circle,
   Group,
-  Image,
+  TgfxImage,
   Paint,
   Path,
   Rect,
@@ -22,7 +22,7 @@ function RedImage(props: {
   height: number;
 }) {
   const image = useImage(RED_PNG);
-  return image == null ? null : <Image {...props} image={image} fit="fill" />;
+  return image == null ? null : <TgfxImage {...props} image={image} fit="fill" />;
 }
 
 describe('tgfx rendering', () => {

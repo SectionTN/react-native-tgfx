@@ -194,7 +194,7 @@ function backgroundOf(style: unknown): string | undefined {
 
 /**
  * The declarative tgfx canvas. Children (`<Rect>`, `<Circle>`, `<Path>`,
- * `<Image>`, `<Text>`, `<Group>`, ...) are reconciled into an immutable node
+ * `<TgfxImage>`, `<Text>`, `<Group>`, ...) are reconciled into an immutable node
  * tree, compiled to a binary draw program (with live slots for any Reanimated
  * SharedValue props), and handed to the native GPU view. When the scene has
  * animated values, the animation driver pushes them on the UI thread.

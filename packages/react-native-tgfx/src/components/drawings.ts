@@ -53,8 +53,13 @@ export const Span = NodeType.Span as unknown as FC<SpanProps>
  */
 export const Glyphs = NodeType.Glyphs as unknown as FC<GlyphsProps>
 
-/** Bitmap image drawn into the destination rect with the given `fit`. */
-export const Image = NodeType.Image as unknown as FC<ImageProps>
+/**
+ * Bitmap image drawn into the destination rect with the given `fit`, from an
+ * already-loaded handle — the power form. `<Image>` takes a `source` and loads
+ * it for you; this host tag takes the `image` you loaded (`useImage`,
+ * `loadImage`) and stays on the direct-node fast path.
+ */
+export const TgfxImage = NodeType.Image as unknown as FC<ImageProps>
 
 /**
  * An SVG document drawn into the destination rect — Skia's `<ImageSVG>` by
@@ -64,13 +69,13 @@ export const Image = NodeType.Image as unknown as FC<ImageProps>
  * image handle at load, carrying a parsed picture that replays at draw
  * resolution, so this is the same host node and needs no wire-format kind of
  * its own. Being an alias also keeps it on the direct-node fast path, which a
- * component that merely re-exported `<Image>` would not.
+ * component that merely re-exported `<TgfxImage>` would not.
  */
 export const ImageSVG = NodeType.Image as unknown as FC<ImageSVGProps>
 
 /**
  * Many sprites from one image in a single node — the fast path for particle
- * systems and tile maps, where N `<Image>` nodes would be N nodes to compile,
+ * systems and tile maps, where N `<TgfxImage>` nodes would be N nodes to compile,
  * paint and read. The GPU batches either form the same way.
  */
 export const Atlas = NodeType.Atlas as unknown as FC<AtlasProps>

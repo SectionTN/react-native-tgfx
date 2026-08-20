@@ -23,7 +23,7 @@ import {
   FilmGrain,
   Glass,
   Group,
-  Image,
+  TgfxImage,
   Paint,
   Luma,
   Mask,
@@ -128,16 +128,16 @@ export function ColorMatrices() {
         <Fill color="#ffffff" />
         {img != null && (
           <>
-            <Image image={img} x={4} {...box} fit="cover" />
-            <Image image={img} x={92} {...box} fit="cover">
+            <TgfxImage image={img} x={4} {...box} fit="cover" />
+            <TgfxImage image={img} x={92} {...box} fit="cover">
               <ColorMatrix matrix={GREYSCALE} />
-            </Image>
-            <Image image={img} x={180} {...box} fit="cover">
+            </TgfxImage>
+            <TgfxImage image={img} x={180} {...box} fit="cover">
               <ColorMatrix matrix={CHANNEL_SWAP} />
-            </Image>
-            <Image image={img} x={268} {...box} fit="cover">
+            </TgfxImage>
+            <TgfxImage image={img} x={268} {...box} fit="cover">
               <ColorMatrix matrix={SATURATE} />
-            </Image>
+            </TgfxImage>
           </>
         )}
       </Canvas>
@@ -425,7 +425,7 @@ function Grain() {
         {img != null && (
           <>
             <Group>
-              <Image
+              <TgfxImage
                 image={img}
                 x={4}
                 y={12}
@@ -441,7 +441,7 @@ function Grain() {
               />
             </Group>
             <Group>
-              <Image
+              <TgfxImage
                 image={img}
                 x={124}
                 y={12}
@@ -458,7 +458,7 @@ function Grain() {
               />
             </Group>
             <Group>
-              <Image
+              <TgfxImage
                 image={img}
                 x={244}
                 y={12}
@@ -503,7 +503,7 @@ function Backdrops() {
         <Fill color="#ffffff" />
         {img != null && (
           <>
-            <Image
+            <TgfxImage
               image={img}
               x={0}
               y={0}

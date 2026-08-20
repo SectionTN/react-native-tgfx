@@ -1030,3 +1030,63 @@ test('a remount with already-settled fonts is ready synchronously', async () => 
     nativeMocks.hybridObject = previous
   }
 })
+
+test('Image loads its source and draws once the decode lands', async () => {
+  const previous = nativeMocks.hybridObject
+  let resolveDecode!: (image: unknown) => void
+  const decoding = new Promise((r) => {
+    resolveDecode = r
+  })
+  nativeMocks.hybridObject = () => ({
+    fromFile: () => decoding,
+  })
+  try {
+    const { Image } = require('./Image') as typeof import('./Image')
+    await render(
+      <Canvas>
+        <Image source="file:///cat.png" x={0} y={0} width={10} height={10} />
+      </Canvas>
+    )
+    // The node mounts at once with handle 0 — draws nothing, keeps refs bound.
+    let words = scenes[scenes.length - 1]!
+    expect(words[3]).toBe(1)
+    expect(words[9]).toBe(0)
+
+    await act(async () => {
+      resolveDecode({ handle: 42, width: 10, height: 10, dispose: () => {} })
+      await decoding
+    })
+    words = scenes[scenes.length - 1]!
+    expect(words[3]).toBe(1)
+    expect(words[9]).toBe(42) // kind x y w h, then the loaded handle
+  } finally {
+    nativeMocks.hybridObject = previous
+  }
+})
+
+test('Image with a failing source warns and stays empty', async () => {
+  const previous = nativeMocks.hybridObject
+  nativeMocks.hybridObject = () => ({
+    fromFile: () => Promise.reject(new Error('404')),
+  })
+  try {
+    const { Image } = require('./Image') as typeof import('./Image')
+    await render(
+      <Canvas>
+        <Image
+          source="file:///missing.png"
+          x={0}
+          y={0}
+          width={10}
+          height={10}
+        />
+      </Canvas>
+    )
+    // The node stays mounted with handle 0: present, drawing nothing.
+    const words = scenes[scenes.length - 1]!
+    expect(words[3]).toBe(1)
+    expect(words[9]).toBe(0)
+  } finally {
+    nativeMocks.hybridObject = previous
+  }
+})

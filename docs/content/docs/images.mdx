@@ -7,13 +7,34 @@ icon: Image
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
 
+[`Image`](/api/functions/Image) takes the source directly — a `require()`'d
+asset, a web URL, a file path, SVG markup, or base64 — and handles decoding,
+registration and readiness itself:
+
 ```tsx
-import { Canvas, Image, useImage } from 'react-native-tgfx'
+import { Canvas, Image } from 'react-native-tgfx'
+
+<Canvas style={{ width: 300, height: 400 }}>
+  <Image source={require('./cat.png')} x={0} y={0} width={300} height={200} fit="cover" />
+  <Image source="https://picsum.photos/300/200" x={0} y={200} width={300} height={200} />
+</Canvas>
+```
+
+It draws nothing until the decode lands (a web URL is fetched as bytes and
+decoded natively — nothing is base64'd in JS), and a failed load warns and
+stays empty. One trade, stated plainly: it is a function component, so a
+canvas containing one reconciles through React instead of the direct-node
+fast path. Irrelevant for typical scenes; for hundreds of animated nodes,
+[`TgfxImage`](/api/variables/TgfxImage) is the power form — a plain host tag
+taking an already-loaded handle:
+
+```tsx
+import { Canvas, TgfxImage, useImage } from 'react-native-tgfx'
 
 const photo = useImage(require('./cat.png'))
 
 photo != null && (
-  <Image image={photo} x={0} y={0} width={300} height={200} fit="cover" />
+  <TgfxImage image={photo} x={0} y={0} width={300} height={200} fit="cover" />
 )
 ```
 
@@ -82,7 +103,7 @@ scene.add(imageSvg({ image: dot, x: 104, y: 0, width: 96, height: 96 }))
 Markup is recognised by its opening `<`, so a document built in JS needs no
 `data:` URI and no base64 — it crosses as UTF-8 bytes and is parsed natively.
 
-`<ImageSVG>` is `<Image>` under a Skia-compatible name, not a second node kind.
+`<ImageSVG>` is `<TgfxImage>` under a Skia-compatible name, not a second node kind.
 The document is parsed once, at load, into a picture the renderer *replays* at
 draw resolution, so it is already an image handle by the time a scene sees it —
 which is why `width`/`height` are a destination rather than a raster size, and
@@ -123,7 +144,7 @@ correction: nothing has to re-tag the image for it to hold.
 <Tab value="Declarative">
 
 ```tsx
-<Image
+<TgfxImage
   x={0} y={0} width={60} height={60}
   image={sheet}
   rect={{ x: 32, y: 0, width: 32, height: 32 }}
@@ -244,7 +265,7 @@ decoded-pixel cache and the tgfx GPU resource cache.
 ## Video
 
 [`useVideo`](/api/functions/useVideo) gives a [`Video`](/api/interfaces/Video)
-whose `currentFrame` can be passed straight to `<Image>`. It requires
+whose `currentFrame` can be passed straight to `<TgfxImage>`. It requires
 Reanimated and Worklets because frames are pulled from a UI-thread frame
 callback.
 [`loadVideo`](/api/functions/loadVideo) is the promise form outside React — it

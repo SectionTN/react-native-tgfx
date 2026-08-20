@@ -49,7 +49,7 @@ A `NodeHandle.set` already redraws on its own.
 | `<Line>` | `x1`, `y1`, `x2`, `y2` |
 | `<Path>` | `path` (SVG data), `start`, `end`, `fillType` |
 | `<Fill>` | fills the current clip; the usual host for a full-surface `<Shader>` |
-| `<Image>` | see [api-content.md](api-content.md) |
+| `<TgfxImage>` | see [api-content.md](api-content.md) |
 | `<ImageSVG>` | the same node under Skia's name, for a handle loaded from an SVG document |
 | `<Atlas>`, `<Vertices>` | batched sprites / meshes, see [api-content.md](api-content.md) |
 | `<Glyphs>`, `<Text>`, `<TextPath>`, `<Span>` | see [api-content.md](api-content.md) |
@@ -194,7 +194,7 @@ animated value, a video or camera frame, an image still decoding.
     </Rect>
   }
 >
-  <Image image={photo} x={0} y={0} width={256} height={256} />
+  <TgfxImage image={photo} x={0} y={0} width={256} height={256} />
 </Mask>
 ```
 

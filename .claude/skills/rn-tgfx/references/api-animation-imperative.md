@@ -282,7 +282,7 @@ const drag = Gesture.Pan().onUpdate((e) => {
 
 Decoded images and typefaces live in process-wide registries, but a canvas only
 reacts to the registry its own compiled scene reads. A scene counts as reading
-images when it holds `<Image>`, `<CameraFrame>` or `<Atlas>`, an image handle,
+images when it holds `<TgfxImage>`, `<CameraFrame>` or `<Atlas>`, an image handle,
 an `<ImageShader>`, or a runtime shader / `<Blend>` whose child shaders sample an
 image; and as reading fonts when it holds any text. A canvas of shapes,
 gradients and image-free shaders is idle while a video plays beside it.

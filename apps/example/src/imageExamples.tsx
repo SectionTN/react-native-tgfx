@@ -1,4 +1,4 @@
-// Everything <Image> and <ImageShader> can do. Every source is a require()d asset, decoded natively.
+// Everything <TgfxImage> and <ImageShader> can do. Every source is a require()d asset, decoded natively.
 import { useEffect, useMemo, useState } from 'react';
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
@@ -8,7 +8,7 @@ import {
   Fill,
   Group,
   Atlas,
-  Image,
+  TgfxImage,
   ImageShader,
   Vertices,
   renderToImage,
@@ -49,7 +49,7 @@ export function FitModes() {
   const img = useImage(sample);
   return (
     <View style={styles.section}>
-      <RNText style={styles.label}>{'<Image fit> — the full Skia set'}</RNText>
+      <RNText style={styles.label}>{'<TgfxImage fit> — the full Skia set'}</RNText>
       <Canvas style={[styles.canvas, { height: 160 }]}>
         <Fill color="#f2f2f7" />
         {img != null &&
@@ -57,7 +57,7 @@ export function FitModes() {
             const x = (i % 4) * (CELL + GAP);
             const y = Math.floor(i / 4) * 76;
             return (
-              <Image
+              <TgfxImage
                 key={fit}
                 x={x}
                 y={y}
@@ -90,13 +90,13 @@ export function SamplingModes() {
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
-        {'<Image sampling> — 128px source into a 36px box'}
+        {'<TgfxImage sampling> — 128px source into a 36px box'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 76 }]}>
         <Fill color="#f2f2f7" />
         {img != null &&
           modes.map((sampling, i) => (
-            <Image
+            <TgfxImage
               key={sampling}
               x={i * 120}
               y={4}
@@ -128,13 +128,13 @@ export function SpriteSheet() {
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
-        {'<Image rect> — one 128x32 sheet, four sprites'}
+        {'<TgfxImage rect> — one 128x32 sheet, four sprites'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 72 }]}>
         <Fill color="#f2f2f7" />
         {sheet != null &&
           [0, 1, 2, 3].map(i => (
-            <Image
+            <TgfxImage
               key={i}
               x={i * 68}
               y={4}
@@ -286,12 +286,12 @@ export function OffscreenRender() {
         <Fill color="#f2f2f7" />
         {made != null && (
           <>
-            <Image image={made} x={8} y={10} width={160} height={100} />
+            <TgfxImage image={made} x={8} y={10} width={160} height={100} />
             {/* The same handle again, so it is a real image and not a one-shot. */}
-            <Image image={made} x={184} y={10} width={80} height={50} />
-            <Image image={made} x={184} y={64} width={80} height={50}>
+            <TgfxImage image={made} x={184} y={10} width={80} height={50} />
+            <TgfxImage image={made} x={184} y={64} width={80} height={50}>
               <ColorMatrix matrix={GREY} />
-            </Image>
+            </TgfxImage>
           </>
         )}
       </Canvas>
@@ -341,11 +341,11 @@ export function DerivedHandles() {
         <Fill color="#f2f2f7" />
         {derived != null && (
           <>
-            <Image image={derived.thumb} x={8} y={10} width={80} height={80} />
-            <Image image={derived.crop} x={96} y={10} width={80} height={80} />
-            <Image image={derived.turned} x={184} y={10} width={80} height={80} />
+            <TgfxImage image={derived.thumb} x={8} y={10} width={80} height={80} />
+            <TgfxImage image={derived.crop} x={96} y={10} width={80} height={80} />
+            <TgfxImage image={derived.turned} x={184} y={10} width={80} height={80} />
             {/* Inset by the blur margin: the filtered result is larger than the source. */}
-            <Image image={derived.soft} x={264} y={2} width={96} height={96} />
+            <TgfxImage image={derived.soft} x={264} y={2} width={96} height={96} />
           </>
         )}
       </Canvas>
@@ -430,14 +430,14 @@ export function CodecFormats() {
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
-        {'<Image> — png · jpeg · webp all decode'}
+        {'<TgfxImage> — png · jpeg · webp all decode'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 96 }]}>
         <Fill color="#f2f2f7" />
         {[png, jpg, wbp].map(
           (img, i) =>
             img != null && (
-              <Image
+              <TgfxImage
                 key={i}
                 x={i * (CELL + GAP)}
                 y={0}
@@ -474,12 +474,12 @@ export function ExifOrientation() {
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
-        {'<Image> — EXIF orientation (stored landscape, drawn portrait)'}
+        {'<TgfxImage> — EXIF orientation (stored landscape, drawn portrait)'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 130 }]}>
         <Fill color="#f2f2f7" />
         {photo != null && (
-          <Image
+          <TgfxImage
             x={0}
             y={0}
             width={CELL}
@@ -517,14 +517,14 @@ export function SvgSources() {
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
-        {'<Image> — one SVG handle, drawn 1x and 5x'}
+        {'<TgfxImage> — one SVG handle, drawn 1x and 5x'}
       </RNText>
       <Canvas style={[styles.canvas, { height: 148 }]}>
         <Fill color="#f2f2f7" />
         {svg != null && (
           <>
-            <Image x={0} y={0} width={120} height={120} image={svg} />
-            <Image x={132} y={48} width={24} height={24} image={svg} />
+            <TgfxImage x={0} y={0} width={120} height={120} image={svg} />
+            <TgfxImage x={132} y={48} width={24} height={24} image={svg} />
             <Text
               x={168}
               y={62}

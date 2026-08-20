@@ -208,7 +208,7 @@ export interface AtlasSprite {
 /**
  * Sprites are placed axis-aligned: tgfx's `drawAtlas` maps each sprite's
  * bounding box, so a rotation would stretch the sprite rather than turn it.
- * Rotate a `<Group>` around the whole batch, or use `<Image>` per sprite.
+ * Rotate a `<Group>` around the whole batch, or use `<TgfxImage>` per sprite.
  */
 export interface AtlasProps extends PaintProps {
   /** The sprite sheet. `null` draws nothing. */

@@ -95,7 +95,7 @@ export const circle = element<CircleProps>(NodeType.Circle)
 export const line = element<LineProps>(NodeType.Line)
 /** Imperative `<Path>`. */
 export const path = element<PathProps>(NodeType.Path)
-/** Imperative `<Image>`. */
+/** Imperative `<TgfxImage>`. */
 export const image = element<ImageProps>(NodeType.Image)
 /**
  * Imperative `<ImageSVG>`. The same host node as {@link image} — an SVG source

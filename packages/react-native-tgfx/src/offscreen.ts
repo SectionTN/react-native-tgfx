@@ -189,7 +189,7 @@ export async function renderToPdf(
  * components, `.map()` and context all work), a `SceneNode[]` from the element
  * factories, or a `Scene` — the non-JSX forms skip the reconciler entirely.
  * The program is rendered on an offscreen GPU surface and registered as an
- * image handle, ready for `<Image>`, `<ImageShader>`, or `save()`.
+ * image handle, ready for `<TgfxImage>`, `<ImageShader>`, or `save()`.
  *
  * Animated props are read once, at their committed value: there is no view to
  * drive them and the result is a still frame. A `Scene`'s live handle writes

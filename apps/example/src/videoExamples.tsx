@@ -1,7 +1,7 @@
 // useVideo: platform decoding into a native handle, drawn like any other image.
 import { useState } from 'react';
 import { Button, Text as RNText, StyleSheet, View } from 'react-native';
-import { Canvas, Fill, Image, Text, useVideo } from 'react-native-tgfx';
+import { Canvas, Fill, TgfxImage, Text, useVideo } from 'react-native-tgfx';
 
 const clip = require('./assets/sample-video.mp4');
 
@@ -18,7 +18,7 @@ export function VideoSection() {
       <Canvas style={styles.canvas}>
         <Fill color="#101014" />
         {currentFrame != null && (
-          <Image
+          <TgfxImage
             x={0}
             y={0}
             width={320}

@@ -1,6 +1,6 @@
 // <Group> clip, invertClip and layer: the three things that needed a saveLayer to be right.
 import { Text as RNText, StyleSheet, View } from 'react-native';
-import { Canvas, Circle, Group, Image, Line, Path, Rect, Text, useImage } from 'react-native-tgfx';
+import { Canvas, Circle, Group, TgfxImage, Line, Path, Rect, Text, useImage } from 'react-native-tgfx';
 
 const SPOTLIGHT = 'M60 8 C90 8 108 32 108 56 C108 80 90 104 60 104 C30 104 12 80 12 56 C12 32 30 8 60 8 Z';
 
@@ -47,13 +47,13 @@ export function GroupSection() {
         {img != null && (
           <>
             <Group clip={{ x: 4, y: 4, width: 100, height: 110 }}>
-              <Image x={4} y={4} width={100} height={110} image={img} fit="cover" />
+              <TgfxImage x={4} y={4} width={100} height={110} image={img} fit="cover" />
             </Group>
             <Group clip={{ x: 118, y: 4, width: 100, height: 110, r: 24 }}>
-              <Image x={118} y={4} width={100} height={110} image={img} fit="cover" />
+              <TgfxImage x={118} y={4} width={100} height={110} image={img} fit="cover" />
             </Group>
             <Group clip={SPOTLIGHT} transform={[{ translateX: 232 }]}>
-              <Image x={0} y={0} width={116} height={116} image={img} fit="cover" />
+              <TgfxImage x={0} y={0} width={116} height={116} image={img} fit="cover" />
             </Group>
           </>
         )}
@@ -63,10 +63,10 @@ export function GroupSection() {
         {img != null && (
           <>
             <Group clip={{ x: 20, y: 20, width: 70, height: 70, r: 18 }} invertClip>
-              <Image x={4} y={4} width={110} height={110} image={img} fit="cover" />
+              <TgfxImage x={4} y={4} width={110} height={110} image={img} fit="cover" />
             </Group>
             <Group clip={SPOTLIGHT} invertClip transform={[{ translateX: 130 }]}>
-              <Image x={0} y={0} width={116} height={116} image={img} fit="cover" />
+              <TgfxImage x={0} y={0} width={116} height={116} image={img} fit="cover" />
             </Group>
           </>
         )}

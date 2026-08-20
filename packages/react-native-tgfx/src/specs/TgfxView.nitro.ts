@@ -8,7 +8,7 @@ import type {
  * Props for the native tgfx canvas view.
  *
  * The declarative React tree (`<Canvas>` + `<Rect>` / `<Circle>` / `<Path>` /
- * `<Image>` / `<Text>` ...) is reconciled and compiled into a binary "draw
+ * `<TgfxImage>` / `<Text>` ...) is reconciled and compiled into a binary "draw
  * program" that is handed to the native side through
  * {@link TgfxViewMethods.setScene}. The shared C++ engine reads it once per
  * structural change and replays it through tgfx on the platform's display-link

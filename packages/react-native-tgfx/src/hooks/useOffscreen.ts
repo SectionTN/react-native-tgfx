@@ -20,7 +20,7 @@ import type { Orientation, ImageSampling } from '../specs/TgfxImage.nitro'
  *
  * ```tsx
  * const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 })
- * return <Canvas>{badge && <Image image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
+ * return <Canvas>{badge && <TgfxImage image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
  * ```
  *
  * An inline `element` is a new object every render, so pass `deps` — the values

@@ -38,9 +38,9 @@ scene.add(circle({ cx: 120, cy: 70, r: 45, color: '#6aa9ff', blendMode: 'multipl
 <Tab value="Declarative">
 
 ```tsx
-<Image image={photo} x={0} y={0} width={200} height={200} fit="cover">
+<TgfxImage image={photo} x={0} y={0} width={200} height={200} fit="cover">
   <ColorMatrix matrix={GREYSCALE} />
-</Image>
+</TgfxImage>
 ```
 
 </Tab>
@@ -274,7 +274,7 @@ box.
 
 ```tsx
 <Group>
-  <Image image={photo} x={0} y={0} width={300} height={200} />
+  <TgfxImage image={photo} x={0} y={0} width={300} height={200} />
   <FilmGrain size={2} density={0.4} color="rgba(255,255,255,0.35)" />
 </Group>
 ```
@@ -356,7 +356,7 @@ measure the grain against.
     </Rect>
   }
 >
-  <Image image={photo} x={0} y={0} width={256} height={256} />
+  <TgfxImage image={photo} x={0} y={0} width={256} height={256} />
 </Mask>
 ```
 
@@ -389,7 +389,7 @@ read the pixels already drawn beneath them.
 <Tab value="Declarative">
 
 ```tsx
-<Image image={photo} x={0} y={0} width={300} height={200} />
+<TgfxImage image={photo} x={0} y={0} width={300} height={200} />
 <BackdropBlur x={20} y={40} width={260} height={120} r={24} blur={16} />
 <Glass x={20} y={40} width={260} height={120} r={24} refraction={40} frost={30} />
 ```
