@@ -4,6 +4,7 @@ import type { BlendMode } from './compiler/filters'
 import type { Fit, Sampling, SrcRect, TileMode } from './compiler/image'
 import type { Transform, Vector } from './compiler/transform'
 import type { SharedValueLike } from './compiler/values'
+import type { FontSource } from './hooks/useFonts'
 import type { NodeHandle } from './imperative'
 
 export type { Color, ColorComponents } from './compiler/colors'
@@ -638,6 +639,17 @@ export type ColorSpace = 'srgb' | 'display-p3'
 export interface CanvasProps {
   style?: object
   children?: ReactNode
+  /**
+   * Fonts this canvas needs, `useFonts`' argument shape:
+   * `{ Family: [require('./Family-Regular.ttf'), ...] }`.
+   *
+   * The canvas registers them and withholds its children until every face is
+   * in, so text never flashes in the platform fallback — no hook, no gating in
+   * user code. Registration is process-wide and permanent, exactly as
+   * `loadFonts` does it; a failed load warns and renders anyway, since
+   * fallback text beats a canvas that stays blank forever.
+   */
+  fonts?: Record<string, FontSource[]>
   /** Imperative pixel readback: see {@link CanvasHandle}. */
   ref?: Ref<CanvasHandle>
   /**

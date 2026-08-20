@@ -60,16 +60,10 @@ test('bounds are loose unless tight is asked for', () => {
 })
 
 test('the hybrid object is created once and reused', () => {
-  let created = 0
-  nativeMocks.hybridObject = () => {
-    created++
-    return native
-  }
   // Whatever ran before, no further call may reach createHybridObject again.
   pathLength('a')
-  const after = created
+  const after = nativeMocks.hybridCreations
   pathLength('b')
   pathBounds('c')
-  expect(created).toBe(after)
-  expect(created).toBeLessThanOrEqual(1)
+  expect(nativeMocks.hybridCreations).toBe(after)
 })

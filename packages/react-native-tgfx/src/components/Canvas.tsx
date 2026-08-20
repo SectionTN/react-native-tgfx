@@ -29,9 +29,48 @@ import type {
   SnapshotOptions,
   Viewport,
 } from '../types'
+import { loadFonts, type FontSource } from '../hooks/useFonts'
 import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
 let warnedNoDriver = false
+
+/**
+ * The `fonts` prop's gate: children are withheld until every face registers,
+ * so text never flashes in the platform fallback. No prop — ready at once,
+ * costing canvases without fonts nothing. A failed load warns and lets the
+ * children through: fallback text beats a canvas that stays blank forever.
+ */
+/// Keys whose faces already registered: a remount with a known key is ready
+/// synchronously — no withheld frame, no repeated font-file reads.
+const settledFontKeys = new Set<string>()
+
+function useFontsReady(families?: Record<string, FontSource[]>): boolean {
+  const key = families == null ? '' : JSON.stringify(families)
+  const [readyKey, setReadyKey] = useState('')
+  useEffect(() => {
+    if (families == null || settledFontKeys.has(key)) {
+      return
+    }
+    let active = true
+    loadFonts(families)
+      .catch((e: unknown) => {
+        console.warn('[tgfx] <Canvas fonts> failed to load:', e)
+      })
+      .then(() => {
+        // Settled either way: registration is permanent, and a failed load
+        // renders with the fallback rather than retrying per remount.
+        settledFontKeys.add(key)
+        if (active) {
+          setReadyKey(key)
+        }
+      })
+    return () => {
+      active = false
+    }
+    // The serialized key stands in for the object, exactly as useFontsState does.
+  }, [key])
+  return key === '' || readyKey === key || settledFontKeys.has(key)
+}
 
 function nativeOptions(options: SnapshotOptions = {}): NativeSnapshotOptions {
   const rect = options.rect
@@ -167,8 +206,13 @@ export function Canvas({
   opaque = false,
   colorSpace = 'srgb',
   viewport,
+  fonts,
   ref,
 }: CanvasProps): React.ReactElement {
+  // Before anything reads `children`: the gate swaps them for null until the
+  // requested faces are in, and everything downstream just sees no scene yet.
+  const fontsReady = useFontsReady(fonts)
+  const shown = fontsReady ? children : null
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
   const [stringValues, setStringValues] = useState<MaybeSharedValue<string>[]>(
     []
@@ -350,14 +394,14 @@ export function Canvas({
   const scened = useMemo(
     () =>
       background === undefined ? (
-        children
+        shown
       ) : (
         <>
           <Fill color={background as Color} />
-          {children}
+          {shown}
         </>
       ),
-    [children, background]
+    [shown, background]
   )
 
   useEffect(() => {
@@ -367,7 +411,7 @@ export function Canvas({
     }
     // Prepended to the built nodes, not to the elements: a wrapping fragment would
     // push every scene down `directNodes`' splice path.
-    const direct = directNodes(children)
+    const direct = directNodes(shown)
     if (direct !== null) {
       if (background !== undefined) {
         direct.unshift(createNode(NodeType.Fill, { color: background }))
@@ -376,7 +420,7 @@ export function Canvas({
       return
     }
     root.render(<>{scened}</>)
-  }, [children, background, scened])
+  }, [shown, background, scened])
 
   useEffect(() => {
     return () => {

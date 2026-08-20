@@ -93,6 +93,7 @@ const ready = useFonts({
 | `useFontsState` | same input → `FontsState` `{ ready, error }` — use when a failed load must be visible; `useFonts` stays `false` forever on failure |
 | `loadFont` | imperative single-family registration |
 | `loadFonts` | imperative multi-family registration |
+| `<Canvas fonts={{Family: [source, ...]}}>` | registers + withholds children until ready (no fallback flash); failed load warns and renders anyway |
 | `registeredFontFamilies` | `() => string[]` |
 | `measureText` | `(text: string, style?: TextStyle) => TextMeasurement` |
 | `textToPath` | `(text: string, style?: TextStyle) => string` (SVG path data) |

@@ -942,3 +942,91 @@ test('setViewport merges with the fields it omits', async () => {
   })
   expect(viewports).toEqual([])
 })
+
+test('the fonts prop withholds children until the faces register', async () => {
+  const previous = nativeMocks.hybridObject
+  let resolveLoad!: (family: string) => void
+  const loading = new Promise<string>((r) => {
+    resolveLoad = r
+  })
+  nativeMocks.hybridObject = () => ({
+    registerFromFile: () => loading,
+  })
+  try {
+    await render(
+      <Canvas fonts={{ Playfair: ['file:///Playfair-Regular.ttf'] }}>
+        <Rect x={0} y={0} width={10} height={10} color="red" />
+      </Canvas>
+    )
+    // Gated: the committed program has no root nodes yet.
+    expect(scenes[scenes.length - 1]![3]).toBe(0)
+
+    await act(async () => {
+      resolveLoad('Playfair')
+      await loading
+    })
+    expect(scenes[scenes.length - 1]![3]).toBe(1)
+  } finally {
+    nativeMocks.hybridObject = previous
+  }
+})
+
+test('a failed fonts load warns and renders the children anyway', async () => {
+  const previous = nativeMocks.hybridObject
+  nativeMocks.hybridObject = () => ({
+    registerFromFile: () => Promise.reject(new Error('no such font')),
+  })
+  try {
+    await render(
+      <Canvas fonts={{ Broken: ['file:///missing.ttf'] }}>
+        <Rect x={0} y={0} width={10} height={10} color="red" />
+      </Canvas>
+    )
+    // Fallback text beats a canvas that stays blank forever.
+    expect(scenes[scenes.length - 1]![3]).toBe(1)
+  } finally {
+    nativeMocks.hybridObject = previous
+  }
+})
+
+test('a canvas without the fonts prop commits its children on the first frame', async () => {
+  await render(
+    <Canvas>
+      <Rect x={0} y={0} width={10} height={10} color="red" />
+    </Canvas>
+  )
+  // Every committed program carried the child: no empty gating frame.
+  expect(scenes.length).toBeGreaterThan(0)
+  for (const words of scenes) {
+    expect(words[3]).toBe(1)
+  }
+})
+
+test('a remount with already-settled fonts is ready synchronously', async () => {
+  const previous = nativeMocks.hybridObject
+  nativeMocks.hybridObject = () => ({
+    registerFromFile: () => Promise.resolve('Settled'),
+  })
+  try {
+    const fonts = { Settled: ['file:///Settled-Regular.ttf'] }
+    await render(
+      <Canvas fonts={fonts}>
+        <Rect x={0} y={0} width={10} height={10} color="red" />
+      </Canvas>
+    )
+    expect(scenes[scenes.length - 1]![3]).toBe(1)
+
+    // Second canvas, same key: every commit carries the child — no gate frame.
+    scenes = []
+    await render(
+      <Canvas fonts={fonts}>
+        <Rect x={0} y={0} width={10} height={10} color="red" />
+      </Canvas>
+    )
+    for (const words of scenes) {
+      expect(words[3]).toBe(1)
+    }
+  } finally {
+    nativeMocks.hybridObject = previous
+  }
+})

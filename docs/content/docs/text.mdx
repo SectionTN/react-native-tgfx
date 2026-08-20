@@ -8,21 +8,23 @@ icon: Type
 <Tab value="Declarative">
 
 ```tsx
-import { Canvas, Text } from 'react-native-tgfx'
+import { Canvas, Text } from "react-native-tgfx";
 
 <Canvas style={{ width: 300, height: 140 }}>
   <Text text="Hello" x={20} y={60} fontSize={28} color="#f5f7fa" />
-</Canvas>
+</Canvas>;
 ```
 
 </Tab>
 <Tab value="Imperative">
 
 ```ts
-import { Scene, text } from 'react-native-tgfx'
+import { Scene, text } from "react-native-tgfx";
 
-const scene = Scene.create()
-scene.add(text({ text: 'Hello', x: 20, y: 60, fontSize: 28, color: '#f5f7fa' }))
+const scene = Scene.create();
+scene.add(
+  text({ text: "Hello", x: 20, y: 60, fontSize: 28, color: "#f5f7fa" }),
+);
 ```
 
 </Tab>
@@ -53,11 +55,11 @@ scene.add(text({ text: 'Hello', x: 20, y: 60, fontSize: 28, color: '#f5f7fa' }))
 ```ts
 scene.add(
   text({ x: 0, y: 40, width: 220, fontSize: 18 }, [
-    span({ text: 'Total ' }),
-    span({ text: '4 500', fontWeight: 700, color: '#d98a4a' }),
-    span({ text: ' credits' }),
-  ])
-)
+    span({ text: "Total " }),
+    span({ text: "4 500", fontWeight: 700, color: "#d98a4a" }),
+    span({ text: " credits" }),
+  ]),
+);
 ```
 
 </Tab>
@@ -65,9 +67,32 @@ scene.add(
 
 ## Fonts
 
-[`useFonts`](/api/functions/useFonts) registers font files and returns readiness.
+The `fonts` prop on [`Canvas`](/api/interfaces/CanvasProps) handles the whole
+thing — registration, waiting, and gating — so text never flashes in the
+platform fallback and nothing needs a hook:
+
+```tsx
+<Canvas
+  fonts={{
+    "PT Serif": [
+      require("./PT_Serif-Web-Regular.ttf"),
+      require("./PT_Serif-Web-Bold.ttf"),
+    ],
+  }}
+>
+  <Text fontFamily="PT Serif" x={16} y={40} text="ready when you see me" />
+</Canvas>
+```
+
+The canvas withholds its children until every face is in; a failed load warns
+and renders anyway, since fallback text beats a canvas that stays blank
+forever. Registration is process-wide and permanent, so a second canvas naming
+the same families mounts instantly.
+
+The lower-level pieces remain for readiness in your own UI, or loading outside
+React: [`useFonts`](/api/functions/useFonts) registers and returns readiness,
 [`loadFont`](/api/functions/loadFont) and [`loadFonts`](/api/functions/loadFonts)
-are the imperative registration forms;
+are the callable forms, and
 [`registeredFontFamilies`](/api/functions/registeredFontFamilies) queries the
 registered family names.
 
@@ -76,11 +101,11 @@ registered family names.
 
 ```tsx
 const ready = useFonts({
-  'PT Serif': [
-    require('./PT_Serif-Web-Regular.ttf'),
-    require('./PT_Serif-Web-Bold.ttf'),
+  "PT Serif": [
+    require("./PT_Serif-Web-Regular.ttf"),
+    require("./PT_Serif-Web-Bold.ttf"),
   ],
-})
+});
 ```
 
 </Tab>
@@ -88,11 +113,11 @@ const ready = useFonts({
 
 ```ts
 await loadFonts({
-  'PT Serif': [
-    require('./PT_Serif-Web-Regular.ttf'),
-    require('./PT_Serif-Web-Bold.ttf'),
+  "PT Serif": [
+    require("./PT_Serif-Web-Regular.ttf"),
+    require("./PT_Serif-Web-Bold.ttf"),
   ],
-})
+});
 ```
 
 </Tab>
@@ -107,7 +132,9 @@ when that failure needs to be visible rather than just gating the text off:
 <Tab value="Declarative">
 
 ```tsx
-const { ready, error } = useFontsState({ 'PT Serif': [require('./PT_Serif-Web-Regular.ttf')] })
+const { ready, error } = useFontsState({
+  "PT Serif": [require("./PT_Serif-Web-Regular.ttf")],
+});
 ```
 
 </Tab>
@@ -115,7 +142,7 @@ const { ready, error } = useFontsState({ 'PT Serif': [require('./PT_Serif-Web-Re
 
 ```ts
 try {
-  await loadFonts({ 'PT Serif': [require('./PT_Serif-Web-Regular.ttf')] })
+  await loadFonts({ "PT Serif": [require("./PT_Serif-Web-Regular.ttf")] });
 } catch (error) {
   // a failed load rejects here
 }
@@ -129,8 +156,8 @@ try {
 [`measureText`](/api/functions/measureText) returns [`TextMeasurement`](/api/interfaces/TextMeasurement) with per-line [`LineMeasurement`](/api/interfaces/LineMeasurement).
 
 ```tsx
-const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
-const { lines } = measureText(label, { fontSize: 18, width: 200 })
+const box = measureText("measured", { fontSize: 22, fontFamily: "PT Serif" });
+const { lines } = measureText(label, { fontSize: 18, width: 200 });
 ```
 
 ## Bidi and complex scripts
@@ -152,8 +179,24 @@ reads right to left inside a left-to-right paragraph.
 <Tab value="Imperative">
 
 ```ts
-scene.add(text({ x: 0, y: 40, text: 'مرحبا بالعالم', fontSize: 24, fontFamily: 'Noto Naskh Arabic' }))
-scene.add(text({ x: 0, y: 80, text: 'ab مرحبا cd', fontSize: 24, fontFamily: 'Noto Naskh Arabic' }))
+scene.add(
+  text({
+    x: 0,
+    y: 40,
+    text: "مرحبا بالعالم",
+    fontSize: 24,
+    fontFamily: "Noto Naskh Arabic",
+  }),
+);
+scene.add(
+  text({
+    x: 0,
+    y: 80,
+    text: "ab مرحبا cd",
+    fontSize: 24,
+    fontFamily: "Noto Naskh Arabic",
+  }),
+);
 ```
 
 </Tab>
@@ -169,7 +212,9 @@ right-to-left paragraph that should sit against the right edge needs
 by design, so register one for anything outside the primary family:
 
 ```tsx
-await loadFonts({ 'Noto Naskh Arabic': [require('./NotoNaskhArabic-Regular.ttf')] })
+await loadFonts({
+  "Noto Naskh Arabic": [require("./NotoNaskhArabic-Regular.ttf")],
+});
 ```
 
 Without it the glyphs are `.notdef` — laid out in the right order, drawn as
@@ -199,13 +244,13 @@ Both take the coordinates `measureText` reports, with the first baseline at
 `y = 0`, so subtract the `x`/`y` you gave `<Text>` from the touch point first.
 
 ```tsx
-const style = { fontSize: 17, fontFamily: 'PT Serif', width: 320 }
+const style = { fontSize: 17, fontFamily: "PT Serif", width: 320 };
 
-const at = glyphPositionAtCoordinate(text, style, touch.x - x, touch.y - y)
+const at = glyphPositionAtCoordinate(text, style, touch.x - x, touch.y - y);
 // at.index is a UTF-8 byte offset; at.leading says which half of the glyph it
 // landed on, and at.line which line it resolved to after clamping.
 
-const boxes = rectsForRange(text, style, selection.start, selection.end)
+const boxes = rectsForRange(text, style, selection.start, selection.end);
 // One box per line the range crosses; a one-glyph range is that glyph's bounds.
 ```
 
@@ -219,10 +264,11 @@ ellipsis a truncated line ends with all draw nothing, so a caret drawn from the
 glyph at `index` needs the one before it as a fallback:
 
 ```tsx
-const at = rectsForRange(text, style, caret, caret + 1)[0]
-const before = at == null ? rectsForRange(text, style, caret - 1, caret)[0] : undefined
-const x = at ? at.x : before ? before.x + before.width : 0
-const rule = at ?? before
+const at = rectsForRange(text, style, caret, caret + 1)[0];
+const before =
+  at == null ? rectsForRange(text, style, caret - 1, caret)[0] : undefined;
+const x = at ? at.x : before ? before.x + before.width : 0;
+const rule = at ?? before;
 ```
 
 Each call lays the paragraph out, the same as
@@ -238,9 +284,18 @@ is exclusive, where `LineMeasurement.endIndex` names its last glyph.
 <Tab value="Declarative">
 
 ```tsx
-{boxes.map((box, i) => (
-  <Rect key={i} x={box.x} y={box.y} width={box.width} height={box.height} color="#cfe4ff" />
-))}
+{
+  boxes.map((box, i) => (
+    <Rect
+      key={i}
+      x={box.x}
+      y={box.y}
+      width={box.width}
+      height={box.height}
+      color="#cfe4ff"
+    />
+  ));
+}
 ```
 
 </Tab>
@@ -248,7 +303,15 @@ is exclusive, where `LineMeasurement.endIndex` names its last glyph.
 
 ```ts
 for (const box of boxes) {
-  scene.add(rect({ x: box.x, y: box.y, width: box.width, height: box.height, color: '#cfe4ff' }))
+  scene.add(
+    rect({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+      color: "#cfe4ff",
+    }),
+  );
 }
 ```
 
@@ -275,13 +338,16 @@ const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
 <Tab value="Imperative">
 
 ```ts
-const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
+const outline = textToPath("outlined", {
+  fontSize: 44,
+  fontFamily: "PT Serif",
+});
 
 scene.add(
   group({ transform: [{ translateX: 8 }, { translateY: 60 }] }, [
-    path({ path: outline, color: '#d98a4a', style: 'stroke', strokeWidth: 2 }),
-  ])
-)
+    path({ path: outline, color: "#d98a4a", style: "stroke", strokeWidth: 2 }),
+  ]),
+);
 ```
 
 </Tab>
@@ -313,8 +379,8 @@ const ids = glyphIds('wave', style)
 <Tab value="Imperative">
 
 ```ts
-const style = { fontSize: 32, fontFamily: 'PT Serif' }
-const ids = glyphIds('wave', style)
+const style = { fontSize: 32, fontFamily: "PT Serif" };
+const ids = glyphIds("wave", style);
 
 scene.add(
   glyphs({
@@ -322,8 +388,8 @@ scene.add(
     y: 60,
     ...style,
     glyphs: ids.map((id, i) => ({ id, x: i * 22, y: Math.sin(i) * 8 })),
-  })
-)
+  }),
+);
 ```
 
 </Tab>
