@@ -13,12 +13,29 @@ backdrops are drawing nodes; dash and corner effects are children of `Path`.
 
 `blendMode` on any drawing or [`Paint`](/api/variables/Paint) ([`BlendMode`](/api/type-aliases/BlendMode)).
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Circle cx={80} cy={70} r={45} color="#f2c088" />
 <Circle cx={120} cy={70} r={45} color="#6aa9ff" blendMode="multiply" />
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(circle({ cx: 80, cy: 70, r: 45, color: '#f2c088' }))
+scene.add(circle({ cx: 120, cy: 70, r: 45, color: '#6aa9ff', blendMode: 'multiply' }))
+```
+
+</Tab>
+</Tabs>
+
 ## Colour filters
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Image image={photo} x={0} y={0} width={200} height={200} fit="cover">
@@ -26,10 +43,27 @@ backdrops are drawing nodes; dash and corner effects are children of `Path`.
 </Image>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  image({ image: photo, x: 0, y: 0, width: 200, height: 200, fit: 'cover' }, [
+    colorMatrix({ matrix: GREYSCALE }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 [`ColorMatrix`](/api/variables/ColorMatrix) (4×5, row-major) ·
 [`BlendColor`](/api/variables/BlendColor) ·
 [`Luma`](/api/variables/Luma) ·
 [`AlphaThreshold`](/api/variables/AlphaThreshold)
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Path path="M20 80 L80 20 L140 80 L80 140 Z" color="#ffffff">
@@ -37,11 +71,28 @@ backdrops are drawing nodes; dash and corner effects are children of `Path`.
 </Path>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  path({ path: 'M20 80 L80 20 L140 80 L80 140 Z', color: '#ffffff' }, [
+    blendColor({ color: '#e0533d', mode: 'src' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 `<AlphaThreshold>` cuts translucency to a hard edge — alpha below `threshold`
 becomes fully transparent, at or above it fully opaque, colours untouched. It is
 tgfx's own, with no Skia equivalent, and `threshold` is animatable.
 
 ## Blur and shadow
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Circle cx={100} cy={100} r={40} color="#6aa9ff">
@@ -55,6 +106,28 @@ tgfx's own, with no Skia equivalent, and `threshold` is animatable.
 </RoundedRect>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  circle({ cx: 100, cy: 100, r: 40, color: '#6aa9ff' }, [
+    blur({ blur: 12 }),
+  ])
+)
+```
+
+```ts
+scene.add(
+  rrect({ x: 30, y: 25, width: 160, height: 100, r: 16, color: '#f5f7fa' }, [
+    dropShadow({ dx: 0, dy: 6, blur: 8, color: 'rgba(0,0,0,0.45)' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 [`BlurProps`](/api/interfaces/BlurProps) · [`DropShadowProps`](/api/interfaces/DropShadowProps)
 
 ## Filter order
@@ -64,10 +137,24 @@ scope is one node's own children: a `<Paint>` child and an inherited group paint
 are merged rather than chained, so a colour filter arriving from either of those
 stays on the paint and runs first whatever else the node declares.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Luma /><Blur blur={8} />   // luminance, then blur the result
 <Blur blur={8} /><Luma />   // blur, then take the luminance of that
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+[luma(), blur({ blur: 8 })]   // luminance, then blur the result
+[blur({ blur: 8 }), luma()]   // blur, then take the luminance of that
+```
+
+</Tab>
+</Tabs>
 
 A colour filter normally runs on the paint, before anything is rasterised, so on
 its own it can never follow a blur. Declared after one it joins the image chain
@@ -78,12 +165,30 @@ costs no offscreen.
 The composition this exists for is blurring an alpha and then cutting it back to
 a solid shape — a sticker outline, a metaball:
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Circle cx={100} cy={100} r={40} color="#6aa9ff">
   <Blur blur={12} />
   <AlphaThreshold threshold={0.6} />
 </Circle>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  circle({ cx: 100, cy: 100, r: 40, color: '#6aa9ff' }, [
+    blur({ blur: 12 }),
+    alphaThreshold({ threshold: 0.6 }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
 
 ## Gradients and noise
 
@@ -95,6 +200,9 @@ a solid shape — a sticker outline, a metaball:
 [`FractalNoise`](/api/variables/FractalNoise) ·
 [`Turbulence`](/api/variables/Turbulence)
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Rect x={0} y={0} width={300} height={140}>
   <LinearGradient
@@ -105,7 +213,28 @@ a solid shape — a sticker outline, a metaball:
 </Rect>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  rect({ x: 0, y: 0, width: 300, height: 140 }, [
+    linearGradient({
+      start: { x: 0, y: 0 },
+      end: { x: 300, y: 0 },
+      colors: ['#d98a4a', '#6aa9ff'],
+    }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 [`Blend`](/api/variables/Blend) folds its shader children from left to right:
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Rect x={0} y={0} width={256} height={256}>
@@ -116,12 +245,32 @@ a solid shape — a sticker outline, a metaball:
 </Rect>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  rect({ x: 0, y: 0, width: 256, height: 256 }, [
+    blend({ mode: 'multiply' }, [
+      radialGradient({ center: { x: 128, y: 128 }, r: 128, colors: ['blue', 'yellow'] }),
+      turbulence({ freqX: 0.05, freqY: 0.05, octaves: 4 }),
+    ]),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Film grain
 
 [`FilmGrain`](/api/variables/FilmGrain) is a child of a
 [`Group`](/api/variables/Group), not a paint: it dusts tgfx's `NoiseStyle` over
 what the group actually drew, clipped to that alpha rather than to a bounding
 box.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Group>
@@ -130,15 +279,44 @@ box.
 </Group>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  group({}, [
+    image({ image: photo, x: 0, y: 0, width: 300, height: 200 }),
+    filmGrain({ size: 2, density: 0.4, color: 'rgba(255,255,255,0.35)' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 `color` alone gives single-colour grain, its alpha the grain's opacity. Adding
 `secondColor` splits the grain into two complementary halves, one per colour —
 the classic light-and-dark stock look. Naming neither keeps the noise's own RGB
 and takes its strength from `opacity`.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <FilmGrain size={3} density={0.5} color="white" secondColor="black" />
 <FilmGrain size={1.5} density={0.6} opacity={0.25} />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+filmGrain({ size: 3, density: 0.5, color: 'white', secondColor: 'black' })
+filmGrain({ size: 1.5, density: 0.6, opacity: 0.25 })
+```
+
+</Tab>
+</Tabs>
 
 `size`, `density`, `seed` and the colour channels are value slots, so grain
 animates without a commit — a per-frame `seed` is what makes it crawl like film
@@ -166,6 +344,9 @@ measure the grain against.
 
 [`MaskProps`](/api/interfaces/MaskProps) — `mode` is `'alpha'` or `'luminance'`.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Mask
   mode="luminance"
@@ -179,16 +360,51 @@ measure the grain against.
 </Mask>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  mask(
+    {
+      mode: 'luminance',
+      mask: rect({ x: 0, y: 0, width: 256, height: 256 }, [
+        radialGradient({ center: { x: 128, y: 128 }, r: 128, colors: ['white', 'black'] }),
+      ]),
+    },
+    [image({ image: photo, x: 0, y: 0, width: 256, height: 256 })]
+  )
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Backdrop
 
 [`BackdropBlur`](/api/variables/BackdropBlur) and [`Glass`](/api/variables/Glass)
 read the pixels already drawn beneath them.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Image image={photo} x={0} y={0} width={300} height={200} />
 <BackdropBlur x={20} y={40} width={260} height={120} r={24} blur={16} />
 <Glass x={20} y={40} width={260} height={120} r={24} refraction={40} frost={30} />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(image({ image: photo, x: 0, y: 0, width: 300, height: 200 }))
+scene.add(backdropBlur({ x: 20, y: 40, width: 260, height: 120, r: 24, blur: 16 }))
+scene.add(glass({ x: 20, y: 40, width: 260, height: 120, r: 24, refraction: 40, frost: 30 }))
+```
+
+</Tab>
+</Tabs>
 
 The panel is sampled, not painted, so of the inherited paint only `opacity`,
 `visible` and `ref` apply, plus the alpha of `color`. It has no hit bounds, so
@@ -201,6 +417,9 @@ frosts, and note that a `<Group picture>` holding one is never recorded.
 `lightAngle` and `lightIntensity` light it. Together they are the whole of
 tgfx's `GlassStyle`.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Glass
   x={20} y={40} width={260} height={120} r={24}
@@ -210,6 +429,24 @@ tgfx's `GlassStyle`.
   lightIntensity={50}  // 0 removes the highlight and leaves refraction and frost
 />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  glass({
+    x: 20, y: 40, width: 260, height: 120, r: 24,
+    refraction: 40, depth: 20, frost: 30,
+    splay: 0,            // 0 follows the edge curvature, 100 aims at the centre
+    lightAngle: 45,      // degrees; 0 is straight above, positive turns clockwise
+    lightIntensity: 50,  // 0 removes the highlight and leaves refraction and frost
+  })
+)
+```
+
+</Tab>
+</Tabs>
 
 The defaults are the values the renderer used to hardcode, so a `<Glass>` that
 names none of them looks exactly as it did. `lightIntensity` defaults to 50

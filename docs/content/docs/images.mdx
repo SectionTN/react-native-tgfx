@@ -4,6 +4,9 @@ description: Loading, drawing, sampling and deriving images.
 icon: Image
 ---
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 import { Canvas, Image, useImage } from 'react-native-tgfx'
 
@@ -13,6 +16,20 @@ photo != null && (
   <Image image={photo} x={0} y={0} width={300} height={200} fit="cover" />
 )
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { image, loadImage } from 'react-native-tgfx'
+
+const photo = await loadImage(require('./cat.png'))
+
+scene.add(image({ image: photo, x: 0, y: 0, width: 300, height: 200, fit: 'cover' }))
+```
+
+</Tab>
+</Tabs>
 
 [`useImage`](/api/functions/useImage) returns [`TgfxImage`](/api/interfaces/TgfxImage) or `null`.
 [`useImageState`](/api/functions/useImageState) returns [`ImageState`](/api/interfaces/ImageState) with `loading` and `error`.
@@ -33,6 +50,9 @@ A whole SVG document — multiple shapes, fills, strokes, gradients, groups,
 `viewBox` scaling — loads through the same sources as any other image, and
 draws through [`ImageSVG`](/api/variables/ImageSVG):
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 import { Canvas, ImageSVG, useImage } from 'react-native-tgfx'
 
@@ -42,6 +62,22 @@ const dot = useImage('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fi
 <ImageSVG image={icon} x={0} y={0} width={96} height={96} />
 <ImageSVG image={dot} x={104} y={0} width={96} height={96} />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { imageSvg, loadImage } from 'react-native-tgfx'
+
+const icon = await loadImage(require('./logo.svg'))
+const dot = await loadImage('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0a84ff"/></svg>')
+
+scene.add(imageSvg({ image: icon, x: 0, y: 0, width: 96, height: 96 }))
+scene.add(imageSvg({ image: dot, x: 104, y: 0, width: 96, height: 96 }))
+```
+
+</Tab>
+</Tabs>
 
 Markup is recognised by its opening `<`, so a document built in JS needs no
 `data:` URI and no base64 — it crosses as UTF-8 bytes and is parsed natively.
@@ -83,6 +119,9 @@ correction: nothing has to re-tag the image for it to hold.
 
 ## Sub-rects
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Image
   x={0} y={0} width={60} height={60}
@@ -92,15 +131,49 @@ correction: nothing has to re-tag the image for it to hold.
 />
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  image({
+    x: 0, y: 0, width: 60, height: 60,
+    image: sheet,
+    rect: { x: 32, y: 0, width: 32, height: 32 },
+    sampling: 'nearest',
+  })
+)
+```
+
+</Tab>
+</Tabs>
+
 ## As a shader
 
 [`ImageShader`](/api/variables/ImageShader) paints any shape with an image.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Circle cx={60} cy={60} r={50}>
   <ImageShader image={photo} rect={{ x: 10, y: 10, width: 100, height: 100 }} fit="cover" />
 </Circle>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  circle({ cx: 60, cy: 60, r: 50 }, [
+    imageShader({ image: photo, rect: { x: 10, y: 10, width: 100, height: 100 }, fit: 'cover' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
 
 ## Derived images
 
@@ -180,6 +253,9 @@ resolves the raw native player, not a `Video`, so the caller drives
 
 Its second argument is a [`VideoOptions`](/api/interfaces/VideoOptions):
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 useVideo(require('./clip.mp4'), {
   seek: 1500,     // jump to 1.5s; seeks again whenever this changes
@@ -188,3 +264,23 @@ useVideo(require('./clip.mp4'), {
   volume: 0.5,    // 0 to 1, defaults to 0 — a canvas video is usually decoration
 })
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const player = await createVideoPlayer(require('./clip.mp4'), {
+  seek: 1500,     // jump to 1.5s; seeks again whenever this changes
+  paused: false,  // plays as soon as it's open (the default)
+  looping: true,
+  volume: 0.5,    // 0 to 1, defaults to 0 — a canvas video is usually decoration
+})
+
+// currentFrame is a one-time snapshot at add time — build the node per frame:
+player.onFrame((frame) =>
+  scene.add(image({ image: frame, x: 0, y: 0, width: 1280, height: 720 }))
+)
+```
+
+</Tab>
+</Tabs>

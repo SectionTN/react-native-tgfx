@@ -4,6 +4,9 @@ description: Text, spans, glyphs, fonts and measurement.
 icon: Type
 ---
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 import { Canvas, Text } from 'react-native-tgfx'
 
@@ -11,6 +14,19 @@ import { Canvas, Text } from 'react-native-tgfx'
   <Text text="Hello" x={20} y={60} fontSize={28} color="#f5f7fa" />
 </Canvas>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { Scene, text } from 'react-native-tgfx'
+
+const scene = Scene.create()
+scene.add(text({ text: 'Hello', x: 20, y: 60, fontSize: 28, color: '#f5f7fa' }))
+```
+
+</Tab>
+</Tabs>
 
 [`TextProps`](/api/interfaces/TextProps) · [`TextStyle`](/api/type-aliases/TextStyle) · [`FontWeight`](/api/type-aliases/FontWeight)
 
@@ -20,6 +36,9 @@ import { Canvas, Text } from 'react-native-tgfx'
 
 [`Span`](/api/variables/Span) ([`SpanProps`](/api/interfaces/SpanProps)) styles a run inside one paragraph.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Text x={0} y={40} width={220} fontSize={18}>
   <Span text="Total " />
@@ -28,6 +47,22 @@ import { Canvas, Text } from 'react-native-tgfx'
 </Text>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  text({ x: 0, y: 40, width: 220, fontSize: 18 }, [
+    span({ text: 'Total ' }),
+    span({ text: '4 500', fontWeight: 700, color: '#d98a4a' }),
+    span({ text: ' credits' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Fonts
 
 [`useFonts`](/api/functions/useFonts) registers font files and returns readiness.
@@ -35,6 +70,9 @@ import { Canvas, Text } from 'react-native-tgfx'
 are the imperative registration forms;
 [`registeredFontFamilies`](/api/functions/registeredFontFamilies) queries the
 registered family names.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const ready = useFonts({
@@ -45,14 +83,46 @@ const ready = useFonts({
 })
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+await loadFonts({
+  'PT Serif': [
+    require('./PT_Serif-Web-Regular.ttf'),
+    require('./PT_Serif-Web-Bold.ttf'),
+  ],
+})
+```
+
+</Tab>
+</Tabs>
+
 Each entry is a [`FontSource`](/api/type-aliases/FontSource) — a `require()`'d
 asset, a URI, or raw base64 bytes. `useFonts` stays `false` forever on a
 failed load; reach for [`useFontsState`](/api/functions/useFontsState) instead
 when that failure needs to be visible rather than just gating the text off:
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 const { ready, error } = useFontsState({ 'PT Serif': [require('./PT_Serif-Web-Regular.ttf')] })
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+try {
+  await loadFonts({ 'PT Serif': [require('./PT_Serif-Web-Regular.ttf')] })
+} catch (error) {
+  // a failed load rejects here
+}
+```
+
+</Tab>
+</Tabs>
 
 ## Measurement
 
@@ -70,10 +140,24 @@ algorithm, so Arabic joins into its initial, medial and final forms, Indic
 scripts reorder, ligatures and mark positioning apply, and a right-to-left run
 reads right to left inside a left-to-right paragraph.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Text x={0} y={40} text="مرحبا بالعالم" fontSize={24} fontFamily="Noto Naskh Arabic" />
 <Text x={0} y={80} text="ab مرحبا cd" fontSize={24} fontFamily="Noto Naskh Arabic" />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(text({ x: 0, y: 40, text: 'مرحبا بالعالم', fontSize: 24, fontFamily: 'Noto Naskh Arabic' }))
+scene.add(text({ x: 0, y: 80, text: 'ab مرحبا cd', fontSize: 24, fontFamily: 'Noto Naskh Arabic' }))
+```
+
+</Tab>
+</Tabs>
 
 The paragraph's base direction comes from its first strong character, so a
 string that starts in Arabic lays out right-to-left and one that starts in Latin
@@ -150,16 +234,34 @@ Offsets are UTF-8 byte offsets throughout, matching `startIndex` on
 same as JS string indices, and for anything else they are not. `TextBox.endIndex`
 is exclusive, where `LineMeasurement.endIndex` names its last glyph.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 {boxes.map((box, i) => (
   <Rect key={i} x={box.x} y={box.y} width={box.width} height={box.height} color="#cfe4ff" />
 ))}
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+for (const box of boxes) {
+  scene.add(rect({ x: box.x, y: box.y, width: box.width, height: box.height, color: '#cfe4ff' }))
+}
+```
+
+</Tab>
+</Tabs>
+
 ## Text as a path
 
 [`textToPath`](/api/functions/textToPath) returns SVG path data, so text can be
 stroked, clipped or path-operated like any other shape.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
@@ -169,12 +271,31 @@ const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
 </Group>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
+
+scene.add(
+  group({ transform: [{ translateX: 8 }, { translateY: 60 }] }, [
+    path({ path: outline, color: '#d98a4a', style: 'stroke', strokeWidth: 2 }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 [`TextPath`](/api/variables/TextPath) lays text along a path instead.
 
 ## Glyphs
 
 [`glyphIds`](/api/functions/glyphIds) plus [`Glyphs`](/api/variables/Glyphs) place
 each glyph yourself ([`PlacedGlyph`](/api/interfaces/PlacedGlyph)).
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const style = { fontSize: 32, fontFamily: 'PT Serif' }
@@ -187,3 +308,23 @@ const ids = glyphIds('wave', style)
   glyphs={ids.map((id, i) => ({ id, x: i * 22, y: Math.sin(i) * 8 }))}
 />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const style = { fontSize: 32, fontFamily: 'PT Serif' }
+const ids = glyphIds('wave', style)
+
+scene.add(
+  glyphs({
+    x: 20,
+    y: 60,
+    ...style,
+    glyphs: ids.map((id, i) => ({ id, x: i * 22, y: Math.sin(i) * 8 })),
+  })
+)
+```
+
+</Tab>
+</Tabs>

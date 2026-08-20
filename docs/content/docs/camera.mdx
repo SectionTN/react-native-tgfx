@@ -15,6 +15,9 @@ a [`TgfxImage`](/api/interfaces/TgfxImage) plus a
 structurally ([`FrameLike`](/api/interfaces/FrameLike)), so the core package does
 not depend on VisionCamera.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx title="Preview.tsx"
 import { useCamera, useFrameOutput } from 'react-native-vision-camera'
 import { Canvas, CameraFrame, useCameraFrame } from 'react-native-tgfx'
@@ -44,6 +47,37 @@ export function Preview() {
   )
 }
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { Scene, cameraFrame, createCameraFrameSink, createHandle } from 'react-native-tgfx'
+
+const scene = Scene.create()
+const node = createHandle()
+
+const sink = createCameraFrameSink({
+  // sink.image is null until the first frame mints the handle — build the node here.
+  onImage: (image) => scene.add(cameraFrame({ ref: node, image, ...sink.posture })),
+  onPosture: (posture) => node.set(posture),
+})
+
+// VisionCamera side, unchanged apart from the pump: onFrame: sink.push
+const frameOutput = useFrameOutput({
+  pixelFormat: 'yuv',
+  dropFramesWhileBusy: true,
+  enablePhysicalBufferRotation: true,
+  allowDeferredStart: false,
+  onFrame: sink.push,
+})
+
+scene.attach(viewRef)
+// sink.dispose() when the stream ends — nothing else frees the minted handle.
+```
+
+</Tab>
+</Tabs>
 
 The snippet assumes camera permission has already been granted; the example
 app's face-blur screen uses VisionCamera's `useCameraPermission` before
@@ -138,6 +172,9 @@ the frame should zoom with them.
 
 ## Shading a frame
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <CameraFrame image={image} {...posture}>
   <Fill>
@@ -148,6 +185,20 @@ the frame should zoom with them.
 </CameraFrame>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+cameraFrame({ image, ...sink.posture }, [
+  fill({}, [
+    shader({ source: NEON }, [imageShader({ image })]),
+  ]),
+])
+```
+
+</Tab>
+</Tabs>
+
 <Callout type="warn">
 Leave tile modes at `'clamp'`. A YUV frame sampled with any other one comes back
 transparent.
@@ -157,6 +208,9 @@ transparent.
 
 The scene compiles once, so allocate a fixed number of slots. An unused slot has
 zero size and draws nothing.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const SLOTS = [0, 1, 2, 3]
@@ -191,3 +245,40 @@ return { ...useCameraFrame(detect), ovals }
   ))}
 </CameraFrame>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const SLOTS = [0, 1, 2, 3]
+const ovals = SLOTS.map(() => createHandle())
+
+const detect = (frame: Frame) => {
+  'worklet'
+  const faces = detector.detectFaces(frame)
+  for (const i of SLOTS) {
+    const b = faces[i]?.bounds
+    ovals[i]!.set({
+      x: b?.x ?? 0,
+      y: b?.y ?? 0,
+      width: b?.width ?? 0,
+      height: b?.height ?? 0,
+    })
+  }
+}
+
+const sink = createCameraFrameSink({
+  onEachFrame: detect,
+  onImage: (image) =>
+    scene.add(
+      cameraFrame({ image, ...sink.posture }, SLOTS.map((i) =>
+        oval({ ref: ovals[i], x: 0, y: 0, width: 0, height: 0 }, [
+          paint({}, [imageShader({ image }), blur({ blur: 25 })]),
+        ])
+      ))
+    ),
+})
+```
+
+</Tab>
+</Tabs>

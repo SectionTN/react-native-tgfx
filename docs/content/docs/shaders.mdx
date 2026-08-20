@@ -9,6 +9,9 @@ transpiles it while the scene is compiled, and creates the runtime shader
 natively ([`ShaderProps`](/api/interfaces/ShaderProps)). `main` receives the
 position in local space and returns a premultiplied `half4`.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 import { Canvas, Fill, Shader } from 'react-native-tgfx'
 
@@ -27,6 +30,31 @@ half4 main(float2 pos) {
 </Canvas>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { Scene, fill, shader } from 'react-native-tgfx'
+
+const source = `
+uniform float2 uSize;
+half4 main(float2 pos) {
+  float2 uv = pos / uSize;
+  return half4(uv.x, uv.y, 0.6, 1.0);
+}
+`
+
+const scene = Scene.create()
+scene.add(
+  fill({}, [
+    shader({ source, uniforms: { uSize: [300, 140] } }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 <Callout>
 Declarations must come before `main()`, or compilation fails with
 `[tgfx] shader: declarations must come before main(), found after it`.
@@ -38,6 +66,9 @@ Uniform values accept a `SharedValue`, so they update on the UI thread.
 [`useClock`](/api/functions/useClock) is a shared value of seconds since its
 first frame callback.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 const t = useClock()
 
@@ -46,10 +77,29 @@ const t = useClock()
 </Fill>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const clock = createClock()
+
+scene.add(
+  fill({}, [
+    shader({ source, uniforms: { uTime: clock.value, uSize: [width, height] } }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Shader inputs
 
 Each `uniform shader` declaration takes one shader child, in order. `eval` and
 `sample` both work.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const source = `
@@ -69,13 +119,52 @@ half4 main(float2 pos) {
 </Shader>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const source = `
+uniform shader img;
+uniform float uShift;
+
+half4 main(float2 pos) {
+  half4 base = img.eval(pos);
+  half4 red = img.eval(pos + float2(uShift, 0.0));
+  half4 blue = sample(img, pos - float2(uShift, 0.0));
+  return half4(red.r, base.g, blue.b, base.a);
+}
+`
+
+shader({ source, uniforms: { uShift: 4 } }, [
+  imageShader({ image, fit: 'cover', rect: { x: 0, y: 0, width: 300, height: 200 } }),
+])
+```
+
+</Tab>
+</Tabs>
+
 Any shader works as an input, not just images:
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Shader source={banded}>
   <LinearGradient start={{ x: 0, y: 0 }} end={{ x: 300, y: 0 }} colors={['#2b6cff', '#ff3b6b']} />
 </Shader>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+shader({ source: banded }, [
+  linearGradient({ start: { x: 0, y: 0 }, end: { x: 300, y: 0 }, colors: ['#2b6cff', '#ff3b6b'] }),
+])
+```
+
+</Tab>
+</Tabs>
 
 A count mismatch throws while the scene is compiled on commit:
 

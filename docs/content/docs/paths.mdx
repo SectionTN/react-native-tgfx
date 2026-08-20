@@ -7,6 +7,9 @@ icon: Spline
 Paths are SVG path strings. Every helper accepts one; helpers that create or
 modify geometry return another SVG path string.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 import { Path, pathOp } from 'react-native-tgfx'
 
@@ -15,6 +18,21 @@ const hole = 'M40 40 L80 40 L80 80 L40 80 Z'
 
 <Path path={pathOp(plate, hole, 'difference')} color="#4F8EF7" />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { path, pathOp } from 'react-native-tgfx'
+
+const plate = 'M0 0 L120 0 L120 120 L0 120 Z'
+const hole = 'M40 40 L80 40 L80 80 L40 80 Z'
+
+scene.add(path({ path: pathOp(plate, hole, 'difference'), color: '#4F8EF7' }))
+```
+
+</Tab>
+</Tabs>
 
 | Function | Returns |
 | --- | --- |
@@ -28,6 +46,9 @@ const hole = 'M40 40 L80 40 L80 80 L40 80 Z'
 
 ## Along a path
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 const route = 'M8 170 q90 -70 170 0 t160 -6'
 const at = pathPointAtLength(route, pathLength(route) * progress)
@@ -37,6 +58,23 @@ const at = pathPointAtLength(route, pathLength(route) * progress)
 </Group>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const route = 'M8 170 q90 -70 170 0 t160 -6'
+const at = pathPointAtLength(route, pathLength(route) * progress)
+
+scene.add(
+  group({ transform: [{ translateX: at.x }, { translateY: at.y }, { rotate: at.angle }] }, [
+    path({ path: arrow, color: '#FF3B30' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Trim and dash
 
 `start` and `end` on [`PathProps`](/api/interfaces/PathProps) trim the path to
@@ -44,8 +82,25 @@ normalised fractions of its length.
 [`DashPathEffect`](/api/variables/DashPathEffect) and
 [`CornerPathEffect`](/api/variables/CornerPathEffect) are path-effect children.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Path path={route} style="stroke" strokeWidth={4} end={progress}>
   <DashPathEffect intervals={[10, 5]} phase={march} />
 </Path>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  path({ path: route, style: 'stroke', strokeWidth: 4, end: progress }, [
+    dashPathEffect({ intervals: [10, 5], phase: march }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>

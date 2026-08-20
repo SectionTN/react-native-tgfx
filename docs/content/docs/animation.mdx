@@ -10,6 +10,9 @@ Numeric, boolean and string props typed
 each one a slot that the renderer patches on the UI thread — no re-render and
 no JavaScript work per frame. Colour is the exception described below.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 import { useEffect } from 'react'
 import { useSharedValue, withRepeat, withTiming } from 'react-native-reanimated'
@@ -30,6 +33,24 @@ function Pulse() {
 }
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { makeMutable, withRepeat, withTiming } from 'react-native-reanimated'
+import { Scene, circle } from 'react-native-tgfx'
+
+const r = makeMutable(20)
+r.value = withRepeat(withTiming(60, { duration: 900 }), -1, true)
+
+const scene = Scene.create()
+scene.add(circle({ cx: 100, cy: 100, r, color: '#d98a4a' }))
+scene.attach(viewRef) // an attached Scene drives the slot from the UI thread itself
+```
+
+</Tab>
+</Tabs>
+
 ## Animated colour
 
 A shared value in a [`ColorComponents`](/api/type-aliases/ColorComponents) tuple
@@ -37,16 +58,44 @@ animates a channel. A `SharedValue` holding a colour string or packed number
 does not animate, since conversion into channels happens during scene
 compilation on the JS thread.
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Rect x={0} y={0} width={40} height={40} color={[red, 0.2, 0.4, 1]} />
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(rect({ x: 0, y: 0, width: 40, height: 40, color: [red, 0.2, 0.4, 1] }))
+```
+
+</Tab>
+</Tabs>
+
 ## Clock
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 const t = useClock()
 <Shader source={source} uniforms={{ uTime: t, uSize: [300, 300] }} />
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const t = createClock() // seconds on the UI thread
+scene.add(shader({ source, uniforms: { uTime: t.value, uSize: [300, 300] } }))
+t.stop() // when done — the loop otherwise runs for the process's life
+```
+
+</Tab>
+</Tabs>
 
 ## One opacity per chain
 
@@ -127,6 +176,10 @@ const pinch = Gesture.Pinch().onChange(e => {
 Without Reanimated, drive `CanvasHandle.setViewport()` from a JS-thread
 gesture callback (`Gesture.Pan().runOnJS(true)`) instead — the same one
 native write per tick, with a JS hop on the path.
+
+Headless, the same triple goes to
+[`surface.setViewport([zoom, x, y])`](/docs/snapshots#retained-surface) on an
+offscreen surface — the gesture worklets above are unchanged.
 
 `hitTest` inverts the viewport along with each group's transform, so a tap
 reports the node actually under the finger at any zoom, and `snapshot()` reads

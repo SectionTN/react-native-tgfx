@@ -6,6 +6,9 @@ icon: Download
 
 ## Snapshot a live canvas
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 const canvas = useRef<CanvasHandle>(null)
 
@@ -15,6 +18,23 @@ async function exportCanvas() {
   await canvas.current.save('/absolute/path/out.png')
 }
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+// No view: a retained surface renders the same scene and reads it back.
+const surface = createOffscreenSurface({ width: 1024, height: 1024 })
+scene.attach(surface)
+
+async function exportScene() {
+  await surface.save('/absolute/path/out.png')
+  // or: const img = await surface.toImage(); await img.save(path)
+}
+```
+
+</Tab>
+</Tabs>
 
 [`snapshot`](/api/interfaces/CanvasHandle) returns a [`Snapshot`](/api/interfaces/Snapshot):
 PNG/JPEG/WebP bytes, or straight-alpha RGBA8888 rows for `format: 'raw'`, in an
@@ -129,6 +149,9 @@ const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 }, 
 
 ## PDF
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 await renderToPdf(
   `${RNFS.DocumentDirectoryPath}/report.pdf`,
@@ -140,13 +163,43 @@ await renderToPdf(
 )
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+await renderToPdf(
+  `${RNFS.DocumentDirectoryPath}/report.pdf`,
+  [
+    { width: 612, height: 792, scene: coverScene },  // a Scene
+    { width: 612, height: 792, scene: chartNodes },  // or SceneNode[] from the factories
+  ],
+  { title: 'Quarterly report', author: 'Acme' }
+)
+```
+
+</Tab>
+</Tabs>
+
 [`PdfPage`](/api/interfaces/PdfPage) · [`PdfMetadata`](/api/interfaces/PdfMetadata) ·
 [`useOffscreenPdf`](/api/functions/useOffscreenPdf) → [`PdfExportState`](/api/interfaces/PdfExportState)
 
 ## SVG
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 const svg = await renderToSvg(<Chart data={data} />, { width: 400, height: 300 })
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+const svg = await renderToSvg(scene, { width: 400, height: 300 }) // a Scene or SceneNode[]
+```
+
+</Tab>
+</Tabs>
 
 [`RenderToSvgOptions`](/api/interfaces/RenderToSvgOptions) · [`useOffscreenSvg`](/api/functions/useOffscreenSvg)

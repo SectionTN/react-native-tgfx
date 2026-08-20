@@ -56,24 +56,58 @@ the same props plus an optional children array — see
 
 Props inline, or a [`Paint`](/api/variables/Paint) child ([`PaintProps`](/api/interfaces/PaintProps)):
 
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
 ```tsx
 <Circle cx={70} cy={70} r={40}>
   <Paint color="#f2c088" style="stroke" strokeWidth={3} />
 </Circle>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  circle({ cx: 70, cy: 70, r: 40 }, [
+    paint({ color: '#f2c088', style: 'stroke', strokeWidth: 3 }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 [`Color`](/api/type-aliases/Color) accepts named colours, hex, `rgb()`/`rgba()`,
 `hsl()`/`hsla()`, packed `0xAARRGGBB`, `[r, g, b, a]` in 0..1, and the
 `color(srgb ...)` and `color(display-p3 ...)` forms:
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Rect color="color(display-p3 1 0.2 0.1)" />
 <Rect color="color(srgb 1 0 0 / 0.5)" />
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+rect({ x: 0, y: 0, width: 40, height: 40, color: 'color(display-p3 1 0.2 0.1)' })
+rect({ x: 0, y: 0, width: 40, height: 40, color: 'color(srgb 1 0 0 / 0.5)' })
+```
+
+</Tab>
+</Tabs>
+
 ## Group
 
 [`GroupProps`](/api/interfaces/GroupProps). Paint and [`Transform`](/api/type-aliases/Transform) inherit down.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Group transform={[{ translate: [40, 0] }, { rotate: '12deg' }, { scale: 1.5 }]}>
@@ -87,12 +121,37 @@ Props inline, or a [`Paint`](/api/variables/Paint) child ([`PaintProps`](/api/in
 </Group>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  group({ transform: [{ translate: [40, 0] }, { rotate: '12deg' }, { scale: 1.5 }] }, [
+    rect({ x: 0, y: 0, width: 40, height: 40 }),
+  ])
+)
+```
+
+```ts
+scene.add(
+  group({ clip: { x: 0, y: 0, width: 100, height: 100, r: 12 } }, [
+    image({ x: 0, y: 0, width: 100, height: 100, image: photo }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 `clip` takes a [`ClipRect`](/api/interfaces/ClipRect) or SVG path data;
 `invertClip` keeps what falls *outside* it instead of inside. `origin` shifts
 the pivot `transform` rotates and scales around, away from `(0, 0)`.
 
 `layer` composites children into one offscreen layer first, so a group opacity
 applies to the union rather than to each child:
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Group layer opacity={0.5}>
@@ -101,7 +160,25 @@ applies to the union rather than to each child:
 </Group>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  group({ layer: true, opacity: 0.5 }, [
+    circle({ cx: 40, cy: 40, r: 30, color: '#4F8EF7' }),
+    circle({ cx: 70, cy: 40, r: 30, color: '#4F8EF7' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 `picture` records children once and replays them — for static subtrees.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Group picture>
@@ -109,7 +186,24 @@ applies to the union rather than to each child:
 </Group>
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  group({ picture: true }, [
+    path({ path: gridPath, color: '#e5e5ea', style: 'stroke' }),
+  ])
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Atlas and meshes
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 <Atlas
@@ -136,6 +230,41 @@ applies to the union rather than to each child:
 />
 ```
 
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  atlas({
+    image: sheet,
+    sprites: particles.map((p) => ({
+      rect: { x: 0, y: 0, width: 16, height: 16 },
+      x: p.x,
+      y: p.y,
+      scale: p.size,
+    })),
+  })
+)
+```
+
+```ts
+scene.add(
+  vertices({
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 0, y: 200 },
+      { x: 200, y: 200 },
+    ],
+    colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00'],
+    indices: [0, 1, 2, 1, 2, 3],
+  })
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Viewport
 
 `<Canvas viewport={{ zoom, x, y }}>` is a zoom/pan the renderer applies above the
@@ -143,7 +272,8 @@ whole scene, so moving it never re-encodes the draw program.
 [`CanvasHandle.setViewport`](/api/interfaces/CanvasHandle) is the imperative form
 and the one a gesture should use — see
 [Zoom and pan](/docs/animation#zoom-and-pan). `hitTest` inverts it, so the two
-stay in agreement at any zoom.
+stay in agreement at any zoom. Headless, the same `[zoom, x, y]` triple goes to
+[`surface.setViewport`](/docs/snapshots#retained-surface).
 
 ## Hit testing
 
@@ -182,3 +312,12 @@ Third argument is a [`CanvasPressOptions`](/api/interfaces/CanvasPressOptions):
 `precise` tests the filled region rather than the bounding box, and `onPress`
 gets a [`CanvasPress`](/api/interfaces/CanvasPress) for every press, whatever
 it landed on — including nothing.
+
+Headless, the same topmost-wins dispatch runs against an offscreen surface —
+[`dispatchPress`](/api/functions/dispatchPress) plus `Scene.handlesAt`:
+
+```ts
+dispatchPress(scene.handlesAt(surface.hitTest(x, y, true)), [
+  [bar, () => select(bar)],
+])
+```
