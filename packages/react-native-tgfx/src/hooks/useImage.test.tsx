@@ -285,7 +285,9 @@ test('the hook routes markup the same way loadImage does', async () => {
 })
 
 test('a viewBox-only document needs no width or height attribute', async () => {
-  await loadImage('<svg viewBox="0 0 24 24"><rect width="24" height="24"/></svg>')
+  await loadImage(
+    '<svg viewBox="0 0 24 24"><rect width="24" height="24"/></svg>'
+  )
   expect(made.map((m) => m.via)).toEqual(['fromSvg'])
 })
 
