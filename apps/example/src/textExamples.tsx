@@ -17,7 +17,7 @@ import {
   glyphPositionAtCoordinate,
   measureText,
   rectsForRange,
-  textPath,
+  textToPath,
   useFonts,
   type GlyphPosition,
 } from 'react-native-tgfx';
@@ -275,14 +275,14 @@ export function TextSection() {
       </Panel>
 
       <Panel
-        label="textPath() · the same layout, stroked as a <Path>"
+        label="textToPath() · the same layout, stroked as a <Path>"
         height={110}
       >
         {/* SVG path data from the text layout, so it takes a stroke like any
             other path. Relative to the first baseline, hence the translate. */}
         <Group transform={[{ translateX: 0 }, { translateY: 60 }]}>
           <Path
-            path={textPath('outlined', {
+            path={textToPath('outlined', {
               fontSize: 44,
               fontFamily: FAMILY,
               fontWeight: 'bold',

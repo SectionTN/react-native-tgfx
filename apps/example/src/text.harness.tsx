@@ -24,7 +24,7 @@ import {
   measureText,
   rectsForRange,
   registeredFontFamilies,
-  textPath,
+  textToPath,
 } from 'react-native-tgfx';
 import { Stage, snapshot } from './testSupport';
 
@@ -93,7 +93,7 @@ describe('tgfx font registry', () => {
   });
 
   test('emits path data for a laid-out string', () => {
-    const data = textPath('outlined', { fontSize: 44, fontFamily: FAMILY });
+    const data = textToPath('outlined', { fontSize: 44, fontFamily: FAMILY });
     expect(data.length).toBeGreaterThan(0);
     expect(data.startsWith('M')).toBe(true);
   });
@@ -405,13 +405,13 @@ describe('tgfx text rendering', () => {
     await snapshot('text-on-path');
   });
 
-  test('strokes the outline textPath() returned', async () => {
+  test('strokes the outline textToPath() returned', async () => {
     await render(
       <Stage>
         <Fill color="white" />
         <Group transform={[{ translateX: 10 }, { translateY: 110 }]}>
           <Path
-            path={textPath('outlined', {
+            path={textToPath('outlined', {
               fontSize: 40,
               fontFamily: FAMILY,
               fontWeight: 'bold',

@@ -4,7 +4,12 @@ description: Shapes, paint, groups and hit testing.
 icon: Shapes
 ---
 
-Every drawing is a child of [`Canvas`](/api/functions/Canvas).
+Every drawing is a child of [`Canvas`](/api/functions/Canvas) — or, without
+React, a node built by the matching lowercase element factory and held in a
+[`Scene`](/api/classes/Scene). Both forms compile to the identical program:
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
 
 ```tsx
 import { Canvas, Rect } from 'react-native-tgfx'
@@ -13,6 +18,25 @@ import { Canvas, Rect } from 'react-native-tgfx'
   <Rect x={0} y={0} width={300} height={140} color="#101725" />
 </Canvas>
 ```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+import { Scene, rect } from 'react-native-tgfx'
+
+const scene = Scene.create()
+scene.add(rect({ x: 0, y: 0, width: 300, height: 140, color: '#101725' }))
+scene.attach(viewRef) // a TgfxViewRef from <TgfxNativeView>
+```
+
+</Tab>
+</Tabs>
+
+Every component in the tables below has a factory of the same name in
+lowercase (`Rect` → `rect`, `LinearGradient` → `linearGradient`, ...), taking
+the same props plus an optional children array — see
+[Imperative](/docs/imperative).
 
 ## Shapes
 

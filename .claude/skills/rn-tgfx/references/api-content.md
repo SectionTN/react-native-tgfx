@@ -95,7 +95,7 @@ const ready = useFonts({
 | `loadFonts` | imperative multi-family registration |
 | `registeredFontFamilies` | `() => string[]` |
 | `measureText` | `(text: string, style?: TextStyle) => TextMeasurement` |
-| `textPath` | `(text: string, style?: TextStyle) => string` (SVG path data) |
+| `textToPath` | `(text: string, style?: TextStyle) => string` (SVG path data) |
 | `glyphIds` | `(text: string, style?: TextStyle) => number[]` |
 | `glyphPositionAtCoordinate` | `(text, style, x, y) => GlyphPosition` — a point to an insertion point |
 | `rectsForRange` | `(text, style, start, end) => TextBox[]` — a byte range to its boxes |
@@ -147,12 +147,12 @@ Both calls lay the paragraph out, like `measureText`: fine per tap, wasteful per
 frame. `TextBox.endIndex` is exclusive; `LineMeasurement.endIndex` names its last
 glyph.
 
-`textPath` returns SVG path data relative to the first baseline at `(0, 0)`, so
+`textToPath` returns SVG path data relative to the first baseline at `(0, 0)`, so
 translate it by the `x`/`y` you would have given `<Text>`. Empty for a face with
 no outlines (a color emoji).
 
 ```tsx
-const outline = textPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
+const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
 
 <Group transform={[{ translateX: 8 }, { translateY: 60 }]}>
   <Path path={outline} color="#d98a4a" style="stroke" strokeWidth={2} />

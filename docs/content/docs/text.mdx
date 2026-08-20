@@ -158,11 +158,11 @@ is exclusive, where `LineMeasurement.endIndex` names its last glyph.
 
 ## Text as a path
 
-[`textPath`](/api/functions/textPath) returns SVG path data, so text can be
+[`textToPath`](/api/functions/textToPath) returns SVG path data, so text can be
 stroked, clipped or path-operated like any other shape.
 
 ```tsx
-const outline = textPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
+const outline = textToPath('outlined', { fontSize: 44, fontFamily: 'PT Serif' })
 
 <Group transform={[{ translateX: 8 }, { translateY: 60 }]}>
   <Path path={outline} color="#d98a4a" style="stroke" strokeWidth={2} />

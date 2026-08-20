@@ -1,7 +1,8 @@
 import defaultComponents from 'fumadocs-ui/mdx'
 import { Callout } from 'fumadocs-ui/components/callout'
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs'
 import type { MDXComponents } from 'mdx/types'
 
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
-  return { ...defaultComponents, Callout, ...components }
+  return { ...defaultComponents, Callout, Tab, Tabs, ...components }
 }

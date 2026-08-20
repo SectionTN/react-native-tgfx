@@ -158,7 +158,7 @@ export function measureText(
  * reports — so translate it by the `x`/`y` you would have given `<Text>`.
  * Empty for a face with no outlines, which is what a colour emoji is.
  */
-export function textPath(text: string, style: TextStyle = {}): string {
+export function textToPath(text: string, style: TextStyle = {}): string {
   return fonts().textPath(text, fontStyleOf(style))
 }
 

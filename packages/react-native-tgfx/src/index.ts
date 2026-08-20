@@ -71,6 +71,52 @@ export {
 export { createHandle, useNode } from './imperative'
 export type { NodeHandle } from './imperative'
 
+export {
+  group,
+  rect,
+  rrect,
+  oval,
+  circle,
+  line,
+  path,
+  image,
+  imageSvg,
+  text,
+  span,
+  glyphs,
+  textPath,
+  fill,
+  atlas,
+  vertices,
+  backdropBlur,
+  glass,
+  cameraFrame,
+  paint,
+  linearGradient,
+  radialGradient,
+  sweepGradient,
+  diamondGradient,
+  shader,
+  imageShader,
+  colorShader,
+  blend,
+  blendColor,
+  blur,
+  dropShadow,
+  colorMatrix,
+  luma,
+  alphaThreshold,
+  filmGrain,
+  fractalNoise,
+  turbulence,
+  dashPathEffect,
+  cornerPathEffect,
+  mask,
+} from './elements'
+export type { SceneNode, MaskElementProps } from './elements'
+export { Scene } from './scene'
+export type { SceneTarget } from './scene'
+
 export { useCameraFrame } from './hooks/useCameraFrame'
 export type {
   CameraFrameOptions,
@@ -88,7 +134,7 @@ export {
   rectsForRange,
   glyphIds,
   registeredFontFamilies,
-  textPath,
+  textToPath,
   useFonts,
   useFontsState,
 } from './hooks/useFonts'

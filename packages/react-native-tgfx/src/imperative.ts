@@ -983,6 +983,11 @@ export function createHandle(): NodeHandle {
         clearOverrides()
       }
       const props: Record<string, unknown> = { ...node.props }
+      // An unbound handle's slots hold nothing meaningful yet, so its first
+      // compile must seed them from the props whatever `reseed` says — that is
+      // what lets a Scene's structural commits use reseed=false without
+      // snapping already-written handles back to their factory-time props.
+      const seed = reseed || owner == null
       for (const key of SLOT_PROPS) {
         const value = props[key]
         if (typeof value !== 'number') {
@@ -992,7 +997,7 @@ export function createHandle(): NodeHandle {
           continue
         }
         // A write made before this handle had a program survived via `overrides`; do not reseed it.
-        if (reseed && overrides[key] === undefined) {
+        if (seed && overrides[key] === undefined) {
           slots[key]!.value = value
         }
         props[key] = slots[key]

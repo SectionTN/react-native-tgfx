@@ -1,5 +1,35 @@
 # Animation, node handles, buffers, performance
 
+## Element factories and `Scene` (React-free)
+
+Every component has a lowercase element factory returning the same plain node
+the JSX would: `rect`, `rrect`, `oval`, `circle`, `line`, `path`, `image`,
+`imageSvg`, `text`, `span`, `glyphs`, `textPath`, `fill`, `atlas`, `vertices`,
+`backdropBlur`, `glass`, `cameraFrame`, `group`, `paint`, `linearGradient`,
+`radialGradient`, `sweepGradient`, `diamondGradient`, `shader`, `imageShader`,
+`colorShader`, `blend`, `blendColor`, `blur`, `dropShadow`, `colorMatrix`,
+`luma`, `alphaThreshold`, `filmGrain`, `fractalNoise`, `turbulence`,
+`dashPathEffect`, `cornerPathEffect`, `mask`. Signature
+`(props, children?: SceneNode[]) => SceneNode`; props are the JSX props
+(including `ref` handles and `SharedValue`s). NOTE: the factory `textPath`
+builds the text-on-a-path node; the font utility that returns SVG path data is
+`textToPath`.
+
+`Scene` holds a root list of `SceneNode`s and drives targets with no React:
+
+```ts
+const scene = Scene.create()            // or Scene.from(nodes)
+scene.add(node); scene.insert(node, 0); scene.remove(node)
+scene.replaceChildren(nodes); scene.clear()
+scene.flush()                           // commit now (else once per microtask)
+const detach = scene.attach(viewRef)    // TgfxViewRef; several targets fan out
+scene.dispose()
+```
+
+Structural mutation = one re-encode per batched commit; value mutation goes
+through `createHandle()` exactly as with JSX. Factories and JSX compile
+byte-identically — components are sugar over the same nodes.
+
 ## The model
 
 A scene commit compiles the React tree into a binary draw program. Animated
