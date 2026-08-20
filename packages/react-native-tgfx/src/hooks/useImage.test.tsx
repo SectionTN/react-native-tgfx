@@ -6,7 +6,7 @@ import { nativeMocks } from '../testing/nativeMocks'
 const DEFAULT_ASSET = { uri: 'https://example.test/a.png' }
 
 interface Made {
-  via: 'fromFile' | 'fromBytes' | 'fromBase64'
+  via: 'fromFile' | 'fromBytes' | 'fromBase64' | 'fromSvg'
   arg: string
   handle: FakeImage
 }
@@ -34,6 +34,7 @@ nativeMocks.hybridObject = () => ({
   fromBytes: async (bytes: ArrayBuffer) =>
     record('fromBytes', new TextDecoder().decode(bytes)),
   fromBase64: async (data: string) => record('fromBase64', data),
+  fromSvg: async (markup: string) => record('fromSvg', markup),
   setCacheLimit: () => {},
   cachedBytes: 0,
 })
@@ -252,4 +253,51 @@ test('the pending state cannot be poisoned by a caller', async () => {
   }).toThrow()
   const second = await mount('https://example.test/other.png')
   expect(second.state.data).toBeNull()
+})
+
+const SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>'
+
+test('SVG markup loads as a document rather than as base64', async () => {
+  await loadImage(SVG)
+  expect(made.map((m) => m.via)).toEqual(['fromSvg'])
+  expect(made[0]!.arg).toBe(SVG)
+})
+
+test('markup is recognised through a prolog, leading space and a BOM', async () => {
+  await loadImage('\uFEFF\n  <?xml version="1.0"?><svg viewBox="0 0 1 1"/>')
+  expect(made.map((m) => m.via)).toEqual(['fromSvg'])
+})
+
+test('a base64 payload is still base64, not markup', async () => {
+  // A JPEG payload starts "/9j/", which must not be mistaken for a document.
+  await loadImage('/9j/4AAQSkZJRg==')
+  expect(made.map((m) => m.via)).toEqual(['fromBase64'])
+})
+
+test('a data: URI holding an SVG still goes through base64', async () => {
+  await loadImage('data:image/svg+xml;base64,PHN2Zy8+')
+  expect(made.map((m) => m.via)).toEqual(['fromBase64'])
+})
+
+test('the hook routes markup the same way loadImage does', async () => {
+  await mount(SVG)
+  expect(made.map((m) => m.via)).toEqual(['fromSvg'])
+})
+
+test('a viewBox-only document needs no width or height attribute', async () => {
+  await loadImage('<svg viewBox="0 0 24 24"><rect width="24" height="24"/></svg>')
+  expect(made.map((m) => m.via)).toEqual(['fromSvg'])
+})
+
+test('an empty or blank string is not markup', async () => {
+  // Neither is a document, and both must keep reporting as an unusable source
+  // rather than being handed to the SVG parser.
+  await loadImage('').catch(() => {})
+  await loadImage('   ').catch(() => {})
+  expect(made.map((m) => m.via)).toEqual(['fromBase64', 'fromBase64'])
+})
+
+test('a path is still a path', async () => {
+  await loadImage('file:///tmp/icon.svg')
+  expect(made.map((m) => m.via)).toEqual(['fromFile'])
 })

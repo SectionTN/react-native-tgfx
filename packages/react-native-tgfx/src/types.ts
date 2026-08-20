@@ -180,6 +180,19 @@ export interface ImageProps extends PaintProps {
   rect?: SrcRect
 }
 
+/**
+ * Props for {@link ImageSVG}. The same props as {@link ImageProps}, because it
+ * is the same node: an SVG source becomes an image handle at load, carrying a
+ * picture the renderer replays at draw resolution.
+ *
+ * Because it replays rather than resamples, `width`/`height` are a destination,
+ * not a raster size: a 24pt icon drawn at 240pt is redrawn, not blown up.
+ *
+ * Skia's `<ImageSVG>` takes `svg=` rather than `image=`, so migrating code needs
+ * that one rename; everything else carries over.
+ */
+export type ImageSVGProps = ImageProps
+
 /** One sprite placement in an `<Atlas>`. Every field is animatable. */
 export interface AtlasSprite {
   /** The sprite's rect in the atlas image, in image pixels. */

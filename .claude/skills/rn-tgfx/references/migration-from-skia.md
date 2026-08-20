@@ -45,7 +45,7 @@ model first, or you will write Skia code that compiles and runs slowly.
 | `<DashPathEffect>` `<CornerPathEffect>` | same names | children of `<Path>` |
 | `<RuntimeShader source={effect}>` | `<Shader source={string}>` | no `RuntimeEffect.Make` step |
 | `useImage` | `useImage` | returns `TgfxImage \| null`; `useImageState` adds `loading`/`error` |
-| `useSVG` + `<ImageSVG>` | `useImage(require('./x.svg'))` + `<Image>` | an SVG source decodes to a resolution-independent picture |
+| `useSVG` + `<ImageSVG svg=…>` | `useImage(require('./x.svg'))` or `useImage(markup)` + `<ImageSVG image=…>` | same name, `image=` instead of `svg=`; an SVG source decodes to a resolution-independent picture, and markup works as a source too |
 | `useVideo` | `useVideo` | `video.currentFrame` → `<Image image={...}>` |
 | `useFont` / `matchFont` | `useFonts` / `loadFont` + `fontFamily` prop | |
 | `useTouchHandler` | `canvas.hitTest()` / `useCanvasPress` + Gesture Handler | |

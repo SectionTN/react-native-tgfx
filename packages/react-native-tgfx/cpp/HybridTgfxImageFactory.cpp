@@ -133,6 +133,28 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromBase64(const std::stri
   });
 }
 
+std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromSvg(const std::string& markup) {
+  return ImagePromise::async([markup]() {
+    // Straight to the SVG path: markup that does not open like XML is a caller
+    // mistake, and falling through to the codecs would report it as an
+    // unsupported image format rather than as bad markup.
+    auto data = ::tgfx::Data::MakeWithCopy(markup.data(), markup.size());
+    if (data == nullptr || data->empty() || !tgfxrn::looksLikeSvg(*data)) {
+      throw std::runtime_error("tgfx: fromSvg was not given an SVG document");
+    }
+    auto image = tgfxrn::svgImage(data);
+    if (image == nullptr) {
+      throw std::runtime_error("tgfx: the given markup is not a renderable SVG document");
+    }
+    auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image));
+    if (handle.handle == 0) {
+      throw std::runtime_error("tgfx: failed to render the given markup");
+    }
+    return std::static_pointer_cast<HybridTgfxImageSpec>(
+        std::make_shared<HybridTgfxImage>(handle));
+  });
+}
+
 std::shared_ptr<Promise<std::string>> HybridTgfxImageFactory::toSvg(
     const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings,
     double width, double height, bool textAsPaths) {

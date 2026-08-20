@@ -22,41 +22,14 @@ import {
   type Fit,
   type TgfxImage,
 } from 'react-native-tgfx';
-import { Stage, sameFrame, snapshot, stageBytes } from './testSupport';
-
-const BACKGROUND = '#f2f2f7';
-
-/**
- * Render the scene, prove it drew something, then diff it against its baseline.
- *
- * An image-backed scene whose handles are not ready draws only the background,
- * and two identical background frames settle exactly like a finished one — so
- * without this the blank is written as the baseline and passes forever after.
- * The bare background is rendered first and the scene has to differ from it.
- */
-async function drawnSnapshot(name: string, scene: React.ReactNode) {
-  await render(
-    <Stage>
-      <Fill color={BACKGROUND} />
-    </Stage>,
-  );
-  const empty = await stageBytes();
-
-  await render(
-    <Stage>
-      <Fill color={BACKGROUND} />
-      {scene}
-    </Stage>,
-  );
-  const drawn = await stageBytes();
-
-  if (sameFrame(empty, drawn)) {
-    throw new Error(
-      `"${name}" drew nothing but the background — refusing to write that as a baseline.`,
-    );
-  }
-  await snapshot(name);
-}
+import {
+  BACKGROUND,
+  Stage,
+  drawnSnapshot,
+  sameFrame,
+  snapshot,
+  stageBytes,
+} from './testSupport';
 
 const SOURCES = {
   sample: require('./assets/sample.png'),

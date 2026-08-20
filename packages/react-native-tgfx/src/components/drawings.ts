@@ -4,6 +4,7 @@ import type {
   CameraFrameProps,
   CircleProps,
   ImageProps,
+  ImageSVGProps,
   AtlasProps,
   VerticesProps,
   BackdropProps,
@@ -54,6 +55,18 @@ export const Glyphs = NodeType.Glyphs as unknown as FC<GlyphsProps>
 
 /** Bitmap image drawn into the destination rect with the given `fit`. */
 export const Image = NodeType.Image as unknown as FC<ImageProps>
+
+/**
+ * An SVG document drawn into the destination rect — Skia's `<ImageSVG>` by
+ * name and by behaviour.
+ *
+ * An alias for {@link Image}, not a wrapper: an SVG source already becomes an
+ * image handle at load, carrying a parsed picture that replays at draw
+ * resolution, so this is the same host node and needs no wire-format kind of
+ * its own. Being an alias also keeps it on the direct-node fast path, which a
+ * component that merely re-exported `<Image>` would not.
+ */
+export const ImageSVG = NodeType.Image as unknown as FC<ImageSVGProps>
 
 /**
  * Many sprites from one image in a single node — the fast path for particle

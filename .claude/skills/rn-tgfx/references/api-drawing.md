@@ -50,6 +50,7 @@ A `NodeHandle.set` already redraws on its own.
 | `<Path>` | `path` (SVG data), `start`, `end`, `fillType` |
 | `<Fill>` | fills the current clip; the usual host for a full-surface `<Shader>` |
 | `<Image>` | see [api-content.md](api-content.md) |
+| `<ImageSVG>` | the same node under Skia's name, for a handle loaded from an SVG document |
 | `<Atlas>`, `<Vertices>` | batched sprites / meshes, see [api-content.md](api-content.md) |
 | `<Glyphs>`, `<Text>`, `<TextPath>`, `<Span>` | see [api-content.md](api-content.md) |
 | `<CameraFrame>` | see [vision-camera.md](vision-camera.md) |

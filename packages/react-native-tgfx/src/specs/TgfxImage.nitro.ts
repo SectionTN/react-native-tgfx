@@ -130,6 +130,16 @@ export interface TgfxImageFactory extends HybridObject<{
   fromBase64(data: string): Promise<TgfxImage>
 
   /**
+   * An SVG document as markup, for a document built in JS rather than loaded.
+   *
+   * Its own entry point rather than {@link fromBytes}: the string crosses as
+   * UTF-8 bytes natively, where encoding it in JS would mean a `TextEncoder`
+   * polyfill and a copy on the JS heap first. Parsed once into a picture that
+   * replays at whatever size it is drawn, exactly as an `.svg` file is.
+   */
+  fromSvg(markup: string): Promise<TgfxImage>
+
+  /**
    * Wrap a platform hardware buffer — an `AHardwareBuffer*` on Android, a
    * `CVPixelBufferRef` on iOS — as a GPU-resident handle. Pass
    * `frame.getNativeBuffer().pointer`.

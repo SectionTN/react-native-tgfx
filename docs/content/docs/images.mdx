@@ -27,6 +27,34 @@ never cross into JS. Two assets whose file names differ only by extension —
 `logo.png` beside `logo.webp` — collide as one Android resource, so give them
 distinct names.
 
+## SVG documents
+
+A whole SVG document — multiple shapes, fills, strokes, gradients, groups,
+`viewBox` scaling — loads through the same sources as any other image, and
+draws through [`ImageSVG`](/api/variables/ImageSVG):
+
+```tsx
+import { Canvas, ImageSVG, useImage } from 'react-native-tgfx'
+
+const icon = useImage(require('./logo.svg'))
+const dot = useImage('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0a84ff"/></svg>')
+
+<ImageSVG image={icon} x={0} y={0} width={96} height={96} />
+<ImageSVG image={dot} x={104} y={0} width={96} height={96} />
+```
+
+Markup is recognised by its opening `<`, so a document built in JS needs no
+`data:` URI and no base64 — it crosses as UTF-8 bytes and is parsed natively.
+
+`<ImageSVG>` is `<Image>` under a Skia-compatible name, not a second node kind.
+The document is parsed once, at load, into a picture the renderer *replays* at
+draw resolution, so it is already an image handle by the time a scene sees it —
+which is why `width`/`height` are a destination rather than a raster size, and
+why a 24pt icon drawn at 240pt is redrawn rather than blown up. `<Path>` remains
+the right thing for a single `d` string; this is for a document.
+
+[`ImageSVGProps`](/api/interfaces/ImageSVGProps)
+
 ## Colour profiles
 
 An embedded ICC profile is read at decode and honoured on draw. A photo tagged

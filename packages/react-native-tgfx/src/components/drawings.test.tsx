@@ -5,7 +5,12 @@ mock.module('react-native-reanimated', () => ({}))
 import { NodeType, type Node } from '../reconciler/types'
 import { compileScene } from '../compiler/compile'
 import { SceneWriter } from '../compiler/writer'
-import { BackdropBlur, Glass } from './drawings'
+import {
+  BackdropBlur,
+  Glass,
+  Image,
+  ImageSVG,
+} from './drawings'
 
 const panel = { x: 0, y: 0, width: 10, height: 10 }
 
@@ -29,6 +34,14 @@ test('Glass defaults refraction to 40, BackdropBlur leaves it a plain blur', () 
 
 /// directNodes is all-or-nothing: one element whose type is not a host string drops the whole
 /// canvas off the fast path, so neither of these may be a wrapper component.
+// The whole reason ImageSVG is an alias and not a wrapper: a component would
+// drop every scene using it off directNodes' fast path, and no pixel test can
+// see that — both would draw the same frame.
+test('ImageSVG is the Image host node, not a wrapper component', () => {
+  expect(typeof ImageSVG).toBe('string')
+  expect(ImageSVG).toBe(Image)
+})
+
 test('both panels stay host node types', () => {
   expect(typeof Glass).toBe('string')
   expect(typeof BackdropBlur).toBe('string')

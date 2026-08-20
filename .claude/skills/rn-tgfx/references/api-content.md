@@ -191,7 +191,16 @@ photo != null && (
 | `setImageCacheLimit` | `(bytes: number) => void`; default budget 64 MB, applied to both the decoded-pixel cache and the tgfx GPU resource cache |
 
 SVG sources decode to a resolution-independent picture that replays at whatever
-size it is drawn — `width` on one is nominal, not a resolution cap.
+size it is drawn — `width` on one is nominal, not a resolution cap. A document
+loads from a file, a `require()`'d asset, or **markup**, and draws through
+`<ImageSVG>` — Skia's name for what is the same node as `<Image>`, so a
+migrating `<ImageSVG svg={…}>` becomes `<ImageSVG image={…}>`:
+
+```tsx
+const icon = useImage('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>')
+
+<ImageSVG image={icon} x={0} y={0} width={96} height={96} />
+```
 
 A `require()`'d asset works in both build types. In a release Android build the
 asset becomes a drawable/raw resource read natively; **two assets whose names

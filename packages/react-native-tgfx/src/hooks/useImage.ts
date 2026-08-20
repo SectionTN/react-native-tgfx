@@ -5,7 +5,7 @@ import type {
   TgfxImage,
   TgfxImageFactory,
 } from '../specs/TgfxImage.nitro'
-import { loadSource } from './source'
+import { loadSource, looksLikeSvgMarkup } from './source'
 
 let factory: TgfxImageFactory | null = null
 function images(): TgfxImageFactory {
@@ -72,11 +72,21 @@ export function imageFromNativeBuffer(
 /**
  * Load an image source into a native handle, outside React.
  *
- * Same sources as {@link useImageState}, `.svg` included. The caller owns the
- * handle and must `dispose()` it; the hooks do that for you.
+ * Same sources as {@link useImageState}, `.svg` included — a `require()`d
+ * asset, a path or URI, base64, or an SVG document as markup. The caller owns
+ * the handle and must `dispose()` it; the hooks do that for you.
  */
-export function loadImage(source: number | string): Promise<TgfxImage> {
-  return loadSource(source, images())
+export function loadImage(
+  source: number | string,
+  signal?: AbortSignal
+): Promise<TgfxImage> {
+  // Ahead of the URI routing: markup is neither a path nor base64, and would
+  // otherwise be base64-decoded into nothing. The one place this decision is
+  // made — `useImageState` comes through here rather than repeating it.
+  if (typeof source === 'string' && looksLikeSvgMarkup(source)) {
+    return images().fromSvg(source)
+  }
+  return loadSource(source, images(), signal)
 }
 
 export interface ImageState {
@@ -95,7 +105,7 @@ const PENDING: ImageState = Object.freeze({
  * Load an image source into a native handle, with its loading and error state.
  *
  * Accepts a `require('./pic.png')` asset, an `http(s)://`, `file://`, `data:` or
- * `asset:`/`content:` URI, or a raw base64 string.
+ * `asset:`/`content:` URI, a raw base64 string, or an SVG document as markup.
  *
  * A local file is opened natively, so its bytes never enter JS at all. Only a
  * remote or Metro-served URI still goes through `fetch`, and then as an
@@ -116,7 +126,7 @@ export function useImageState(source: number | string): ImageState {
 
     async function load(): Promise<void> {
       // The point of the handle: a local file is decoded natively and never crosses into JS.
-      loaded = await loadSource(source, images(), aborter.signal)
+      loaded = await loadImage(source, aborter.signal)
 
       if (!active) {
         loaded.dispose()

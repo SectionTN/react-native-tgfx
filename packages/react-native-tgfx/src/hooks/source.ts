@@ -11,6 +11,24 @@ export interface SourceReader<T> {
   fromBase64(data: string): Promise<T>
 }
 
+/**
+ * True when the string opens like XML, so it is an SVG document rather than a
+ * path, a URI or base64. The same test native applies to bytes: no encoded
+ * raster format and no base64 payload starts with `<`.
+ */
+export function looksLikeSvgMarkup(source: string): boolean {
+  // A UTF-8 BOM ahead of the prolog is legal and common out of editors.
+  const start = source.charCodeAt(0) === 0xfeff ? 1 : 0
+  for (let i = start; i < source.length; i++) {
+    const c = source[i]!
+    if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+      continue
+    }
+    return c === '<'
+  }
+  return false
+}
+
 function dataPayload(uri: string): string | null {
   if (!uri.startsWith('data:')) {
     return null

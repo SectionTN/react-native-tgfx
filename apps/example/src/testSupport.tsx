@@ -2,10 +2,11 @@
 // Not a test file: the runner only picks up `*.harness.[jt]sx`.
 import React from 'react';
 import { View } from 'react-native';
-import { expect } from 'react-native-harness';
+import { expect, render } from 'react-native-harness';
 import { screen, type ElementReference } from '@react-native-harness/ui';
 import {
   Canvas,
+  Fill,
   type CanvasHandle,
   type ColorSpace,
   type Viewport,
@@ -97,6 +98,41 @@ export async function stageBytes(warmupMs?: number): Promise<Uint8Array> {
 /** Whether two settled frames are pixel-identical. */
 export function sameFrame(a: Uint8Array, b: Uint8Array): boolean {
   return sameBytes(a, b);
+}
+
+/** The stage background the image suites draw on, so a blank frame is nameable. */
+export const BACKGROUND = '#f2f2f7';
+
+/**
+ * Render the scene, prove it drew something, then diff it against its baseline.
+ *
+ * An image-backed scene whose handles are not ready draws only the background,
+ * and two identical background frames settle exactly like a finished one — so
+ * without this the blank is written as the baseline and passes forever after.
+ * The bare background is rendered first and the scene has to differ from it.
+ */
+export async function drawnSnapshot(name: string, scene: React.ReactNode) {
+  await render(
+    <Stage>
+      <Fill color={BACKGROUND} />
+    </Stage>,
+  );
+  const empty = await stageBytes();
+
+  await render(
+    <Stage>
+      <Fill color={BACKGROUND} />
+      {scene}
+    </Stage>,
+  );
+  const drawn = await stageBytes();
+
+  if (sameFrame(empty, drawn)) {
+    throw new Error(
+      `"${name}" drew nothing but the background — refusing to write that as a baseline.`,
+    );
+  }
+  await snapshot(name);
 }
 
 /**

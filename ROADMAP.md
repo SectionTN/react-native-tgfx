@@ -145,8 +145,9 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   strokeWidth, fontSize, transform ops (rotate/scale/translate), shader uniforms
   and colour (as `[r, g, b, a]`, scene version 16). Add slots for gradient
   stops/endpoints, path data, and text.
-- 🟠 **Native `<ImageSVG>`.** SVG *documents* are not parsed, only single path
-  data strings. Needs tgfx's SVG module (`TGFX_BUILD_SVG`, currently off).
+- ✅ **Native `<ImageSVG>`** (#133). Whole SVG documents parse once at load into
+  a picture that replays at draw resolution, from a file, a `require()`d asset
+  or markup. `<Path>` remains the single-`d`-string form.
 - 🟠 **Colour and image filters on `<Image>`.** The scene graph has no
   `ColorFilter`/`BlendMode` node at all, so blend-mode tint, matrix colour
   filters, blur and drop shadow are unavailable. `<Image>` now carries a full

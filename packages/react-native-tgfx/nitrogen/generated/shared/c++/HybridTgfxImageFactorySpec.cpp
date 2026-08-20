@@ -18,6 +18,7 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("fromFile", &HybridTgfxImageFactorySpec::fromFile);
       prototype.registerHybridMethod("fromBytes", &HybridTgfxImageFactorySpec::fromBytes);
       prototype.registerHybridMethod("fromBase64", &HybridTgfxImageFactorySpec::fromBase64);
+      prototype.registerHybridMethod("fromSvg", &HybridTgfxImageFactorySpec::fromSvg);
       prototype.registerHybridMethod("fromNativeBuffer", &HybridTgfxImageFactorySpec::fromNativeBuffer);
       prototype.registerHybridMethod("toSvg", &HybridTgfxImageFactorySpec::toSvg);
       prototype.registerHybridMethod("savePdf", &HybridTgfxImageFactorySpec::savePdf);
