@@ -42,6 +42,40 @@ export interface LineMeasurement {
   endIndex: number
 }
 
+/** Where a point in paragraph coordinates falls, as an insertion point. */
+export interface GlyphPosition {
+  /**
+   * The insertion point, as a UTF-8 byte offset into the string. Always where
+   * a caret goes — never a glyph index to advance past.
+   */
+  index: number
+  /**
+   * Which half produced it: true when the point fell on the leading half of the
+   * glyph that starts at `index`, false when it fell on the trailing half of
+   * the glyph that ends there, or past the end of the line. That is the
+   * affinity a caret needs at a wrap, where one offset has two positions.
+   */
+  leading: boolean
+  /** Which line the point resolved to, after clamping. */
+  line: number
+}
+
+/** One run of a byte range on a single line, in paragraph coordinates. */
+export interface TextBox {
+  x: number
+  y: number
+  width: number
+  height: number
+  line: number
+  /**
+   * The byte range of the glyphs this box covers: the requested range clipped
+   * to this line and rounded out to whole codepoints. `endIndex` is exclusive,
+   * unlike `LineMeasurement.endIndex`, which names its last glyph.
+   */
+  startIndex: number
+  endIndex: number
+}
+
 /** What a laid-out string occupies, with its first baseline at y = 0. */
 export interface TextMeasurement {
   width: number
@@ -94,6 +128,29 @@ export interface TgfxFonts extends HybridObject<{
    * Empty when the face has no outlines to give: a colour emoji is a bitmap.
    */
   textPath(text: string, style: TextLayoutStyle): string
+
+  /**
+   * The insertion point nearest `x`, `y` in the same coordinates `measureText`
+   * reports — first baseline at y = 0. The y picks a line and is clamped to the
+   * paragraph, so a point above or below one still resolves.
+   */
+  glyphPositionAtCoordinate(
+    text: string,
+    style: TextLayoutStyle,
+    x: number,
+    y: number
+  ): GlyphPosition
+
+  /**
+   * The boxes a UTF-8 byte range occupies, one per line it crosses. A selection
+   * highlight draws these; a one-glyph range reports that glyph's bounds.
+   */
+  rectsForRange(
+    text: string,
+    style: TextLayoutStyle,
+    start: number,
+    end: number
+  ): TextBox[]
 
   /**
    * The glyph id per codepoint of `text` in the face `style` selects, for a

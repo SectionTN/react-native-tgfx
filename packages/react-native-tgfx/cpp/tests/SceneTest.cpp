@@ -2560,6 +2560,148 @@ void anExplicitNewlineBreaksTheLine() {
         inkRows(render(single.finish(), strings, {})));
 }
 
+/// The caret half of #145: which byte offset a point lands on, and the boxes a
+/// byte range occupies. Both read the same layout the renderer draws.
+void aCoordinateResolvesToACaretAndARangeToItsBoxes() {
+  tgfxrn::FontRegistry::instance().clear();
+  tgfxrn::TextSpec spec;
+  spec.family = "Helvetica";
+  const auto runs = std::vector<tgfxrn::TextRun>{run("abcdef")};
+  auto measured = tgfxrn::layoutText(runs, spec, 20);
+  CHECK(measured.metrics.width > 0);
+
+  auto at = [&](float x, float y) {
+    return tgfxrn::positionAtCoordinate(runs, spec, 20, x, y);
+  };
+  // Left of everything is the very start, on the leading half of 'a'.
+  auto first = at(-50, 0);
+  CHECK(first.index == 0);
+  CHECK(first.leading);
+  // Past the right edge is after the last byte, and no longer leading.
+  auto past = at(measured.metrics.width + 50, 0);
+  CHECK(past.index == 6);
+  CHECK(!past.leading);
+  // The midpoint of the string lands somewhere inside it, and moving right
+  // never moves the caret left.
+  int32_t previous = 0;
+  for (int step = 0; step <= 12; step++) {
+    float x = measured.metrics.width * static_cast<float>(step) / 12.0f;
+    auto here = at(x, 0);
+    CHECK(here.index >= previous);
+    previous = here.index;
+  }
+  CHECK(previous == 6);
+
+  // One glyph's bounds. 'a' is the first byte, and its box starts at the origin.
+  auto one = tgfxrn::boxesForRange(runs, spec, 20, 0, 1);
+  CHECK(one.size() == 1);
+  CHECK(one[0].startIndex == 0);
+  CHECK(one[0].endIndex == 1);
+  CHECK(one[0].width > 0);
+  CHECK(one[0].height > 0);
+  CHECK(one[0].line == 0);
+  // Above the baseline, as measureText reports: ascent is negative.
+  CHECK(one[0].y < 0);
+
+  // The whole string is one box on one line, as wide as the paragraph.
+  auto all = tgfxrn::boxesForRange(runs, spec, 20, 0, 6);
+  CHECK(all.size() == 1);
+  CHECK(all[0].width > one[0].width);
+  CHECK(std::abs(all[0].width - measured.metrics.width) < 0.5f);
+  // An empty or reversed range has nothing to highlight.
+  CHECK(tgfxrn::boxesForRange(runs, spec, 20, 3, 3).empty());
+  CHECK(tgfxrn::boxesForRange(runs, spec, 20, 4, 2).empty());
+
+  // Wrapped, a range crossing the break comes back as one box per line, and a
+  // point below the first line resolves onto the second.
+  tgfxrn::TextSpec wrapped = spec;
+  wrapped.wrapWidth = 40;
+  const auto para = std::vector<tgfxrn::TextRun>{run("one two three four")};
+  auto layout = tgfxrn::layoutText(para, wrapped, 12);
+  CHECK(layout.metrics.lineCount > 1);
+  auto crossing = tgfxrn::boxesForRange(para, wrapped, 12, 0,
+                                        static_cast<int32_t>(std::string("one two three four").size()));
+  CHECK(crossing.size() == static_cast<size_t>(layout.metrics.lineCount));
+  for (size_t i = 1; i < crossing.size(); i++) {
+    CHECK(crossing[i].line == crossing[i - 1].line + 1);
+    CHECK(crossing[i].y > crossing[i - 1].y);
+  }
+  auto second = tgfxrn::positionAtCoordinate(para, wrapped, 12, 0,
+                                             layout.metrics.lines[1].baseline);
+  CHECK(second.line == 1);
+  CHECK(second.index >= layout.metrics.lines[1].startIndex);
+
+  // A caret on a trailing half says so, and reports the offset after the glyph
+  // rather than before it — one offset, two positions, which is what a caret at
+  // a wrap needs to tell apart.
+  auto firstBox = tgfxrn::boxesForRange(runs, spec, 20, 0, 1);
+  auto secondBox = tgfxrn::boxesForRange(runs, spec, 20, 1, 2);
+  CHECK(firstBox.size() == 1);
+  CHECK(secondBox.size() == 1);
+  auto trailing = at(firstBox[0].x + firstBox[0].width * 0.75f, 0);
+  CHECK(!trailing.leading);
+  CHECK(trailing.index == 1);
+  auto leadingHalf = at(secondBox[0].x + secondBox[0].width * 0.25f, 0);
+  CHECK(leadingHalf.leading);
+  CHECK(leadingHalf.index == 1);
+
+  // An explicit line height opens a gap between the lines, and the gap belongs
+  // to the line above it. Measured from the second line's own top, not from the
+  // first line's ink, which is where this used to hand the whole gap away.
+  tgfxrn::TextSpec spaced = spec;
+  spaced.wrapWidth = 40;
+  spaced.lineHeight = 40;
+  auto tall = tgfxrn::layoutText(para, spaced, 12);
+  CHECK(tall.metrics.lineCount > 1);
+  float gap = tall.metrics.lines[1].baseline + tall.metrics.lines[1].ascent - 2;
+  CHECK(tgfxrn::positionAtCoordinate(para, spaced, 12, 0, gap).line == 0);
+  CHECK(tgfxrn::positionAtCoordinate(para, spaced, 12, 0,
+                                     tall.metrics.lines[1].baseline)
+            .line == 1);
+
+  // An ellipsis stands in for text that is no longer laid out, so it owns no
+  // bytes. A caret past it lands exactly after the last glyph the line kept —
+  // asserted as an equality, because "somewhere in the string" passes whatever
+  // the ellipsis character's own byte length happens to be.
+  tgfxrn::TextSpec clipped = wrapped;
+  clipped.maxLines = 1;
+  clipped.ellipsis = "…";
+  auto cut = tgfxrn::layoutText(para, clipped, 12);
+  CHECK(cut.metrics.lineCount == 1);
+  auto tail = tgfxrn::positionAtCoordinate(para, clipped, 12, cut.metrics.width + 20, 0);
+  auto kept = tgfxrn::boxesForRange(para, clipped, 12, 0, 18);
+  CHECK(kept.size() == 1);
+  CHECK(tail.index == kept[0].endIndex);
+  // And the ellipsis never joins a range: it would otherwise straddle every one
+  // around its offset, widening the box and dragging its end index backwards.
+  auto around = tgfxrn::boxesForRange(para, clipped, 12, 1, tail.index - 1);
+  CHECK(around.size() == 1);
+  CHECK(around[0].endIndex == tail.index - 1);
+  CHECK(around[0].width < kept[0].width);
+
+  // Multi-byte text, which is the only thing the byte lengths exist for. Each
+  // caret offset has to start a codepoint, and a range over one accented letter
+  // has to be that letter's box rather than half of it.
+  const auto accented = std::vector<tgfxrn::TextRun>{run("héllo")};
+  auto accentedBox = tgfxrn::layoutText(accented, spec, 20);
+  CHECK(accentedBox.metrics.width > 0);
+  // h=1 byte, é=2, l l o=1 each, so the boundaries are 0 1 3 4 5 6.
+  const std::vector<int32_t> boundaries = {0, 1, 3, 4, 5, 6};
+  int32_t previousOffset = -1;
+  for (int step = 0; step <= 20; step++) {
+    float x = accentedBox.metrics.width * static_cast<float>(step) / 20.0f;
+    auto here = tgfxrn::positionAtCoordinate(accented, spec, 20, x, 0);
+    CHECK(std::find(boundaries.begin(), boundaries.end(), here.index) != boundaries.end());
+    CHECK(here.index >= previousOffset);
+    previousOffset = here.index;
+  }
+  auto accentBoxes = tgfxrn::boxesForRange(accented, spec, 20, 1, 2);
+  CHECK(accentBoxes.size() == 1);
+  CHECK(accentBoxes[0].startIndex == 1);
+  CHECK(accentBoxes[0].endIndex == 3);
+  CHECK(tgfxrn::boxesForRange(accented, spec, 20, 1, 3).size() == 1);
+}
+
 void theMeasuredWidthIsTheDrawnWidth() {
   tgfxrn::FontRegistry::instance().clear();
   tgfxrn::TextSpec spec;
@@ -5046,6 +5188,7 @@ int main() {
   aParagraphWrapsAlignsAndStacks();
   anExplicitNewlineBreaksTheLine();
   theMeasuredWidthIsTheDrawnWidth();
+  aCoordinateResolvesToACaretAndARangeToItsBoxes();
   theLayoutIsCachedByQuantisedSize();
   anEmojiFallsBackInsteadOfVanishing();
   textOnAPathFollowsTheCurve();

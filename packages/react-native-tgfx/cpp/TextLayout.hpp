@@ -80,6 +80,34 @@ struct TextMetrics {
   std::vector<LineMetrics> lines;
 };
 
+/// Where a point in paragraph coordinates falls, as an insertion point.
+struct TextPosition {
+  /// The insertion point, as a UTF-8 byte offset into the concatenated run
+  /// text. Always the offset a caret goes at — never a glyph index to advance
+  /// past.
+  int32_t index = 0;
+  /// Which half produced it: true when the point fell on the leading half of
+  /// the glyph that starts at `index`, false when it fell on the trailing half
+  /// of the glyph that ends there, or past the end of the line. That is the
+  /// affinity a caret needs at a wrap, where one offset has two positions.
+  bool leading = true;
+  int32_t line = 0;
+};
+
+/// One run of a range on a single line, in paragraph coordinates.
+struct TextBox {
+  float x = 0;
+  float y = 0;
+  float width = 0;
+  float height = 0;
+  int32_t line = 0;
+  /// The UTF-8 byte range of the glyphs this box covers: the requested range
+  /// clipped to the line and rounded out to whole codepoints. `endIndex` is
+  /// exclusive, unlike LineMetrics::endIndex, which names its last glyph.
+  int32_t startIndex = 0;
+  int32_t endIndex = 0;
+};
+
 struct TextBlobRun {
   std::shared_ptr<tgfx::TextBlob> blob;
   bool hasColor = false;
@@ -97,6 +125,16 @@ TextLayout layoutText(const std::vector<TextRun>& runs, const TextSpec& spec, fl
 std::vector<double> glyphIdsFor(const std::string& text, const TextSpec& spec, float size);
 
 TextLayout layoutGlyphs(const std::vector<PlacedGlyph>& glyphs, const TextSpec& spec, float size);
+
+/// The insertion point nearest (x, y), for a caret or a hit test. The y picks a
+/// line and is clamped to the paragraph, so a point above or below still lands.
+TextPosition positionAtCoordinate(const std::vector<TextRun>& runs, const TextSpec& spec,
+                                  float size, float x, float y);
+
+/// The boxes a UTF-8 byte range occupies, one per line it crosses — what a
+/// selection highlight draws, and what a single-glyph range reports as bounds.
+std::vector<TextBox> boxesForRange(const std::vector<TextRun>& runs, const TextSpec& spec,
+                                   float size, int32_t start, int32_t end);
 
 /// The same paragraph as one outline path. Empty for a face with no outlines, e.g. colour emoji.
 tgfx::Path textToPath(const std::vector<TextRun>& runs, const TextSpec& spec, float size);

@@ -1,4 +1,5 @@
 // Everything <Text> gained: families, wrapping, measurement, gradients, text on a path, RTL.
+import { useMemo, useState } from 'react';
 import { Text as RNText, StyleSheet, View } from 'react-native';
 import {
   Canvas,
@@ -13,9 +14,12 @@ import {
   Text,
   TextPath,
   glyphIds,
+  glyphPositionAtCoordinate,
   measureText,
+  rectsForRange,
   textPath,
   useFonts,
+  type GlyphPosition,
 } from 'react-native-tgfx';
 
 const FAMILY = 'PT Serif';
@@ -36,12 +40,26 @@ export function TextSection() {
   });
 
   const label = 'measured';
-  const box = measureText(label, { fontSize: 22, fontFamily: FAMILY, fontWeight: 'bold' });
+  const box = measureText(label, {
+    fontSize: 22,
+    fontFamily: FAMILY,
+    fontWeight: 'bold',
+  });
 
   return (
     <>
-      <Panel label={`Bundled font · ${FAMILY} (${ready ? 'loaded' : 'loading'})`} height={130}>
-        <Text x={0} y={28} text="Regular 400" fontSize={24} fontFamily={FAMILY} color="#111" />
+      <Panel
+        label={`Bundled font · ${FAMILY} (${ready ? 'loaded' : 'loading'})`}
+        height={130}
+      >
+        <Text
+          x={0}
+          y={28}
+          text="Regular 400"
+          fontSize={24}
+          fontFamily={FAMILY}
+          color="#111"
+        />
         <Text
           x={0}
           y={62}
@@ -80,9 +98,27 @@ export function TextSection() {
         />
       </Panel>
 
-      <Panel label="Forced synthetic emphasis · fauxBold / fauxItalic" height={80}>
-        <Text x={0} y={30} text="Regular" fontSize={22} fontFamily={FAMILY} color="#111" />
-        <Text x={96} y={30} text="fauxBold" fontSize={22} fontFamily={FAMILY} fauxBold color="#111" />
+      <Panel
+        label="Forced synthetic emphasis · fauxBold / fauxItalic"
+        height={80}
+      >
+        <Text
+          x={0}
+          y={30}
+          text="Regular"
+          fontSize={22}
+          fontFamily={FAMILY}
+          color="#111"
+        />
+        <Text
+          x={96}
+          y={30}
+          text="fauxBold"
+          fontSize={22}
+          fontFamily={FAMILY}
+          fauxBold
+          color="#111"
+        />
         <Text
           x={216}
           y={30}
@@ -168,7 +204,13 @@ export function TextSection() {
           fontFamily={FAMILY}
           color="#111"
         />
-        <Text x={0} y={70} text="gradient filled" fontSize={28} fontFamily={FAMILY}>
+        <Text
+          x={0}
+          y={70}
+          text="gradient filled"
+          fontSize={28}
+          fontFamily={FAMILY}
+        >
           <Paint>
             <LinearGradient
               start={{ x: 0, y: 50 }}
@@ -189,7 +231,14 @@ export function TextSection() {
       <Panel label="Styled runs · <Span> inside one paragraph" height={210}>
         {/* One paragraph: the spans wrap together and the line takes its height
             from the tallest one on it. */}
-        <Text x={0} y={30} width={340} fontSize={18} fontFamily={FAMILY} color="#1c1c1e">
+        <Text
+          x={0}
+          y={30}
+          width={340}
+          fontSize={18}
+          fontFamily={FAMILY}
+          color="#1c1c1e"
+        >
           <Span text="Total " />
           <Span text="4 500" fontWeight="bold" color="#d98a4a" fontSize={26} />
           <Span text=" credits, and a long tail that has to wrap onto the next line with " />
@@ -225,7 +274,10 @@ export function TextSection() {
         ))}
       </Panel>
 
-      <Panel label="textPath() · the same layout, stroked as a <Path>" height={110}>
+      <Panel
+        label="textPath() · the same layout, stroked as a <Path>"
+        height={110}
+      >
         {/* SVG path data from the text layout, so it takes a stroke like any
             other path. Relative to the first baseline, hence the translate. */}
         <Group transform={[{ translateX: 0 }, { translateY: 60 }]}>
@@ -243,7 +295,10 @@ export function TextSection() {
         </Group>
       </Panel>
 
-      <Panel label="<Glyphs> · ids placed by the caller, not by a layout" height={110}>
+      <Panel
+        label="<Glyphs> · ids placed by the caller, not by a layout"
+        height={110}
+      >
         {/* glyphIds gives the ids for this face; where they go is entirely ours,
             so the same string can ride a curve nothing in <Text> would produce. */}
         <Glyphs
@@ -263,11 +318,159 @@ export function TextSection() {
         />
       </Panel>
 
-      <Panel label="Emoji fallback · RTL (see the PR: RTL is unshaped)" height={110}>
-        <Text x={0} y={34} text="emoji 😀🎨🚀 fallback" fontSize={24} color="#111" />
+      <HitTestPanel />
+
+      <Panel
+        label="Emoji fallback · RTL (see the PR: RTL is unshaped)"
+        height={110}
+      >
+        <Text
+          x={0}
+          y={34}
+          text="emoji 😀🎨🚀 fallback"
+          fontSize={24}
+          color="#111"
+        />
         <Text x={0} y={76} text="مرحبا بالعالم" fontSize={24} color="#111" />
       </Panel>
     </>
+  );
+}
+
+const HIT_TEXT =
+  'Tap this paragraph to put the caret where you touched, and to highlight the word it landed in.';
+const HIT_STYLE = { fontSize: 17, fontFamily: FAMILY, width: 320 } as const;
+/** The offsets the hit-test API speaks in are UTF-8 bytes, so the word walk is too. */
+const HIT_BYTES = [...HIT_TEXT].flatMap(character => {
+  const c = character.codePointAt(0) ?? 0;
+  if (c < 0x80) {
+    return [c];
+  }
+  if (c < 0x800) {
+    return [0xc0 | (c >> 6), 0x80 | (c & 0x3f)];
+  }
+  if (c < 0x10000) {
+    return [0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)];
+  }
+  return [
+    0xf0 | (c >> 18),
+    0x80 | ((c >> 12) & 0x3f),
+    0x80 | ((c >> 6) & 0x3f),
+    0x80 | (c & 0x3f),
+  ];
+});
+const HIT_ORIGIN = { x: 6, y: 26 };
+
+/**
+ * The word around a UTF-8 byte offset, as a [start, end) byte pair. This is
+ * what Skia's `getWordBoundary` would hand back; here it is a few lines,
+ * because the offsets are bytes and a JS string index is not one.
+ */
+function wordAround(index: number): [number, number] {
+  const bytes = HIT_BYTES;
+  const space = 0x20;
+  let start = index;
+  let end = index;
+  while (start > 0 && bytes[start - 1] !== space) {
+    start -= 1;
+  }
+  while (end < bytes.length && bytes[end] !== space) {
+    end += 1;
+  }
+  return [start, end];
+}
+
+/**
+ * `glyphPositionAtCoordinate` + `rectsForRange`: a tap becomes a caret and a
+ * selection, with no text node of its own doing the work.
+ */
+function HitTestPanel() {
+  const [caret, setCaret] = useState<GlyphPosition>({
+    index: 0,
+    leading: true,
+    line: 0,
+  });
+  // Three layouts a tap, not a render: the panel re-renders whenever anything
+  // above it does, and each of these lays the paragraph out from scratch.
+  const { caretX, rule, word } = useMemo(() => {
+    // The caret sits on the leading edge of the glyph at `index`, or past the
+    // trailing edge of the one before it when nothing starts there — which is
+    // the end of the string, a line's wrap point, and a newline.
+    const at = rectsForRange(
+      HIT_TEXT,
+      HIT_STYLE,
+      caret.index,
+      caret.index + 1,
+    )[0];
+    const previous =
+      at == null
+        ? rectsForRange(HIT_TEXT, HIT_STYLE, caret.index - 1, caret.index)[0]
+        : undefined;
+    const [wordStart, wordEnd] = wordAround(caret.index);
+    return {
+      caretX:
+        at != null ? at.x : previous != null ? previous.x + previous.width : 0,
+      rule: at ?? previous,
+      word: rectsForRange(HIT_TEXT, HIT_STYLE, wordStart, wordEnd),
+    };
+  }, [caret.index]);
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.sectionLabel}>
+        {'Hit testing · tap to move the caret'}
+      </RNText>
+      <View
+        onStartShouldSetResponder={() => true}
+        onResponderRelease={event => {
+          const { locationX, locationY } = event.nativeEvent;
+          setCaret(
+            glyphPositionAtCoordinate(
+              HIT_TEXT,
+              HIT_STYLE,
+              locationX - HIT_ORIGIN.x,
+              locationY - HIT_ORIGIN.y,
+            ),
+          );
+        }}
+      >
+        <Canvas style={[styles.canvas, { height: 120 }]}>
+          <Fill color="#fff" />
+          <Group
+            transform={[
+              { translateX: HIT_ORIGIN.x },
+              { translateY: HIT_ORIGIN.y },
+            ]}
+          >
+            {word.map((box, i) => (
+              <Rect
+                key={i}
+                x={box.x}
+                y={box.y}
+                width={box.width}
+                height={box.height}
+                color="#cfe4ff"
+              />
+            ))}
+            {/* Spread, not re-listed: measuring with a style that is not the
+                one drawn is the mistake this whole API invites. */}
+            <Text x={0} y={0} text={HIT_TEXT} {...HIT_STYLE} color="#111" />
+            {rule != null && (
+              <Rect
+                x={caretX}
+                y={rule.y}
+                width={1.5}
+                height={rule.height}
+                color="#e0533d"
+              />
+            )}
+          </Group>
+        </Canvas>
+      </View>
+      <RNText style={styles.caption}>
+        {`caret at byte ${caret.index}, on line ${caret.line}`}
+      </RNText>
+    </View>
   );
 }
 
@@ -295,6 +498,12 @@ function Panel({
 
 const styles = StyleSheet.create({
   section: { paddingHorizontal: 16, marginTop: 14 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 6 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
   canvas: { backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden' },
+  caption: { fontSize: 12, color: '#888', marginTop: 6 },
 });

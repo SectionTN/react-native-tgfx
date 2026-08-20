@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { NitroModules } from 'react-native-nitro-modules'
 import { fontStyleOf } from '../compiler/text'
-import type { TextMeasurement, TgfxFonts } from '../specs/TgfxFonts.nitro'
+import type {
+  GlyphPosition,
+  TextBox,
+  TextMeasurement,
+  TgfxFonts,
+} from '../specs/TgfxFonts.nitro'
 import type { FontProps, ParagraphProps } from '../types'
 import { loadSource } from './source'
 
@@ -11,7 +16,12 @@ function fonts(): TgfxFonts {
   return manager
 }
 
-export type { LineMeasurement, TextMeasurement } from '../specs/TgfxFonts.nitro'
+export type {
+  GlyphPosition,
+  LineMeasurement,
+  TextBox,
+  TextMeasurement,
+} from '../specs/TgfxFonts.nitro'
 
 /** A `require('./Font.ttf')` asset, a URI, or raw base64 font bytes. */
 export type FontSource = number | string
@@ -150,6 +160,48 @@ export function measureText(
  */
 export function textPath(text: string, style: TextStyle = {}): string {
   return fonts().textPath(text, fontStyleOf(style))
+}
+
+/**
+ * The insertion point nearest a coordinate — a caret, or which character a tap
+ * landed on. The coordinates are the ones `measureText` reports, first baseline
+ * at y = 0, so subtract the `x`/`y` you gave `<Text>` from the point first.
+ *
+ * `index` is a UTF-8 byte offset, not a JS string index. For ASCII they are the
+ * same; for anything else, walk the string counting bytes rather than slicing
+ * it — one codepoint is 1 to 4 bytes, and a slice at a byte offset cuts one in
+ * half. Every offset the text API reports — here, `LineMeasurement.startIndex`,
+ * and `TextBox` — is in the same units, so they compose without converting.
+ *
+ * Lays the paragraph out on every call, the same as {@link measureText}: cheap
+ * for a tap, wasteful once a frame.
+ */
+export function glyphPositionAtCoordinate(
+  text: string,
+  style: TextStyle,
+  x: number,
+  y: number
+): GlyphPosition {
+  return fonts().glyphPositionAtCoordinate(text, fontStyleOf(style), x, y)
+}
+
+/**
+ * The boxes a UTF-8 byte range occupies, one per line it crosses — a selection
+ * highlight, or one glyph's bounds when the range is one glyph long. Same
+ * coordinates and the same per-call layout cost as {@link measureText}.
+ *
+ * Not every offset has a box: the space a line wraps at, a newline, and the
+ * ellipsis a truncated line ends with all draw nothing, so a range over one
+ * comes back empty. A caret drawn from `[index, index + 1)` needs
+ * `[index - 1, index)` as its fallback.
+ */
+export function rectsForRange(
+  text: string,
+  style: TextStyle,
+  start: number,
+  end: number
+): TextBox[] {
+  return fonts().rectsForRange(text, fontStyleOf(style), start, end)
 }
 
 /**

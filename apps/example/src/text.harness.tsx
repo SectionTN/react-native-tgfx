@@ -19,14 +19,25 @@ import {
   Text,
   TextPath,
   glyphIds,
+  glyphPositionAtCoordinate,
   loadFonts,
   measureText,
+  rectsForRange,
   registeredFontFamilies,
   textPath,
 } from 'react-native-tgfx';
 import { Stage, snapshot } from './testSupport';
 
 const FAMILY = 'PT Serif';
+
+/** The range APIs take UTF-8 byte offsets, which for ASCII are string indices. */
+const byteLength = (text: string) =>
+  [...text].reduce((total, character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return (
+      total + (code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4)
+    );
+  }, 0);
 
 const PARAGRAPH =
   'A paragraph that wraps inside an explicit width, breaks at word boundaries, and stacks on its own line height.';
@@ -85,6 +96,113 @@ describe('tgfx font registry', () => {
     const data = textPath('outlined', { fontSize: 44, fontFamily: FAMILY });
     expect(data.length).toBeGreaterThan(0);
     expect(data.startsWith('M')).toBe(true);
+  });
+
+  test('resolves a coordinate to a caret offset', () => {
+    const style = { fontSize: 22, fontFamily: FAMILY };
+    const box = measureText('abcdef', style);
+
+    // Left of the string is the very start, on the leading half of the glyph.
+    const start = glyphPositionAtCoordinate('abcdef', style, -50, 0);
+    expect(start.index).toBe(0);
+    expect(start.leading).toBe(true);
+
+    // Past the right edge is after the last byte, and no longer leading.
+    const end = glyphPositionAtCoordinate('abcdef', style, box.width + 50, 0);
+    expect(end.index).toBe(6);
+    expect(end.leading).toBe(false);
+
+    // Sweeping left to right never moves the caret backwards.
+    let previous = 0;
+    for (let step = 0; step <= 12; step += 1) {
+      const at = glyphPositionAtCoordinate(
+        'abcdef',
+        style,
+        (box.width * step) / 12,
+        0,
+      );
+      expect(at.index).toBeGreaterThanOrEqual(previous);
+      previous = at.index;
+    }
+    expect(previous).toBe(6);
+  });
+
+  test('a wrapped paragraph resolves a point onto its own line', () => {
+    const style = { fontSize: 14, fontFamily: FAMILY, width: 160 };
+    const wrapped = measureText(PARAGRAPH, style);
+    expect(wrapped.lines.length).toBeGreaterThan(1);
+
+    const second = glyphPositionAtCoordinate(
+      PARAGRAPH,
+      style,
+      0,
+      wrapped.lines[1]!.baseline,
+    );
+    expect(second.line).toBe(1);
+    // At x = 0 it is exactly the line's first byte, not merely at or after it.
+    expect(second.index).toBe(wrapped.lines[1]!.startIndex);
+  });
+
+  // The byte offsets exist for text where they differ from JS string indices.
+  test('multi-byte text resolves on codepoint boundaries', () => {
+    const style = { fontSize: 22, fontFamily: FAMILY };
+    // h=1 byte, é=2, l l o=1 each, so the only valid offsets are these.
+    const boundaries = [0, 1, 3, 4, 5, 6];
+    const box = measureText('héllo', style);
+    let previous = -1;
+    for (let step = 0; step <= 20; step += 1) {
+      const at = glyphPositionAtCoordinate(
+        'héllo',
+        style,
+        (box.width * step) / 20,
+        0,
+      );
+      expect(boundaries).toContain(at.index);
+      expect(at.index).toBeGreaterThanOrEqual(previous);
+      previous = at.index;
+    }
+    // One accented letter is one box covering both its bytes, not half of it.
+    const accent = rectsForRange('héllo', style, 1, 2);
+    expect(accent.length).toBe(1);
+    expect(accent[0]!.startIndex).toBe(1);
+    expect(accent[0]!.endIndex).toBe(3);
+  });
+
+  test('reports the boxes a byte range occupies', () => {
+    const style = { fontSize: 22, fontFamily: FAMILY };
+    const box = measureText('abcdef', style);
+
+    const one = rectsForRange('abcdef', style, 0, 1);
+    expect(one.length).toBe(1);
+    expect(one[0]!.width).toBeGreaterThan(0);
+    // Baseline-relative like measureText, so the top of the box is above it.
+    expect(one[0]!.y).toBeLessThan(0);
+    expect(one[0]!.line).toBe(0);
+
+    const all = rectsForRange('abcdef', style, 0, 6);
+    expect(all.length).toBe(1);
+    expect(all[0]!.width).toBeGreaterThan(one[0]!.width);
+    expect(Math.abs(all[0]!.width - box.width)).toBeLessThan(1);
+
+    // Nothing to highlight, rather than a zero-width box.
+    expect(rectsForRange('abcdef', style, 3, 3).length).toBe(0);
+
+    // One box per line the range crosses, in order, going down the page. The
+    // range is in bytes, and PARAGRAPH is ASCII, so its length is its own — a
+    // paragraph that was not would need the encoder.
+    const wrapStyle = { fontSize: 14, fontFamily: FAMILY, width: 160 };
+    const wrapped = measureText(PARAGRAPH, wrapStyle);
+    const crossing = rectsForRange(
+      PARAGRAPH,
+      wrapStyle,
+      0,
+      byteLength(PARAGRAPH),
+    );
+    expect(crossing.length).toBe(wrapped.lines.length);
+    for (let i = 1; i < crossing.length; i += 1) {
+      expect(crossing[i]!.line).toBe(crossing[i - 1]!.line + 1);
+      expect(crossing[i]!.y).toBeGreaterThan(crossing[i - 1]!.y);
+    }
   });
 });
 
@@ -330,6 +448,34 @@ describe('tgfx text rendering', () => {
       </Stage>,
     );
     await snapshot('text-spans');
+  });
+
+  // The one check the API most wants: the boxes have to land on the glyphs the
+  // renderer drew, not merely be self-consistent. Drawn behind the text, so a
+  // frame that is off by a line or a quantised pixel shows as a shifted band.
+  test('draws the boxes rectsForRange reported behind the text it measured', async () => {
+    const style = { fontSize: 18, fontFamily: FAMILY, width: 170 } as const;
+    const boxes = rectsForRange(PARAGRAPH, style, 0, byteLength(PARAGRAPH));
+    expect(boxes.length).toBeGreaterThan(1);
+    await render(
+      <Stage>
+        <Fill color="white" />
+        <Group transform={[{ translateX: 12 }, { translateY: 26 }]}>
+          {boxes.map((box, i) => (
+            <Rect
+              key={i}
+              x={box.x}
+              y={box.y}
+              width={box.width}
+              height={box.height}
+              color="#cfe4ff"
+            />
+          ))}
+          <Text x={0} y={0} text={PARAGRAPH} {...style} color="#111" />
+        </Group>
+      </Stage>,
+    );
+    await snapshot('text-range-boxes');
   });
 
   test('places glyph ids by hand', async () => {

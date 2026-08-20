@@ -20,6 +20,8 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("registerFromBase64", &HybridTgfxFontsSpec::registerFromBase64);
       prototype.registerHybridMethod("measureText", &HybridTgfxFontsSpec::measureText);
       prototype.registerHybridMethod("textPath", &HybridTgfxFontsSpec::textPath);
+      prototype.registerHybridMethod("glyphPositionAtCoordinate", &HybridTgfxFontsSpec::glyphPositionAtCoordinate);
+      prototype.registerHybridMethod("rectsForRange", &HybridTgfxFontsSpec::rectsForRange);
       prototype.registerHybridMethod("glyphIds", &HybridTgfxFontsSpec::glyphIds);
     });
   }

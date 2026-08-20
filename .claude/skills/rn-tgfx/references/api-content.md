@@ -97,6 +97,8 @@ const ready = useFonts({
 | `measureText` | `(text: string, style?: TextStyle) => TextMeasurement` |
 | `textPath` | `(text: string, style?: TextStyle) => string` (SVG path data) |
 | `glyphIds` | `(text: string, style?: TextStyle) => number[]` |
+| `glyphPositionAtCoordinate` | `(text, style, x, y) => GlyphPosition` — a point to an insertion point |
+| `rectsForRange` | `(text, style, start, end) => TextBox[]` — a byte range to its boxes |
 
 A `FontSource` is a `require()`'d asset, a URI, or raw base64 bytes.
 
@@ -112,6 +114,27 @@ const { lines } = measureText(label, { fontSize: 18, width: 200 })
 `TextMeasurement` is relative to the **first baseline**: `ascent` is negative and
 the box runs from `y + ascent` to `y + ascent + height`. Per-line entries are
 `LineMeasurement`.
+
+`glyphPositionAtCoordinate` and `rectsForRange` are the caret and selection
+half, in the same baseline-relative coordinates: subtract the `x`/`y` you gave
+`<Text>` from the touch point. `GlyphPosition` is `{ index, leading, line }` and
+`TextBox` is `{ x, y, width, height, line, startIndex, endIndex }`, one per line
+the range crosses. Every index is a **UTF-8 byte offset**, matching
+`LineMeasurement.startIndex` — the same as a JS string index for ASCII only.
+
+`index` is always the insertion point, never a glyph to advance past. **Not every
+offset has a box** — a line's wrap space, a newline and a truncating ellipsis
+draw nothing — so a caret needs the glyph before it as a fallback:
+
+```tsx
+const at = glyphPositionAtCoordinate(text, style, touch.x - x, touch.y - y)
+const box = rectsForRange(text, style, at.index, at.index + 1)[0]
+  ?? rectsForRange(text, style, at.index - 1, at.index)[0]
+```
+
+Both calls lay the paragraph out, like `measureText`: fine per tap, wasteful per
+frame. `TextBox.endIndex` is exclusive; `LineMeasurement.endIndex` names its last
+glyph.
 
 `textPath` returns SVG path data relative to the first baseline at `(0, 0)`, so
 translate it by the `x`/`y` you would have given `<Text>`. Empty for a face with

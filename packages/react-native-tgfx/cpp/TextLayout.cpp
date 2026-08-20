@@ -42,6 +42,8 @@ struct Glyph {
   int32_t code = 0;
   uint16_t run = 0;
   int32_t index = 0;
+  /// UTF-8 bytes this glyph's codepoint took, so a caret can land after it.
+  int32_t length = 0;
 };
 
 struct Line {
@@ -103,13 +105,15 @@ void shapeInto(std::vector<Glyph>& glyphs, const std::string& text, const FontSt
     if (code == '\r') {
       continue;
     }
+    auto length = baseIndex + static_cast<int32_t>(cursor - start) - at;
     if (code == '\n') {
-      glyphs.push_back({0, 0, 0, '\n', run, at});
+      glyphs.push_back({0, 0, 0, '\n', run, at, length});
       continue;
     }
     auto glyph = stack.shape(code, letterSpacing);
     glyph.run = run;
     glyph.index = at;
+    glyph.length = length;
     glyphs.push_back(glyph);
   }
 }
@@ -182,16 +186,23 @@ void truncate(std::vector<Line>& lines, const TextSpec& spec, const FontStack& s
   }
   std::vector<Glyph> tail;
   auto& last = lines.back();
-  int32_t at = last.glyphs.empty() ? 0 : last.glyphs.back().index;
   shapeInto(tail, spec.ellipsis, stack, spec.letterSpacing, run, 0);
-  for (auto& glyph : tail) {
-    glyph.index = at;
-  }
   float tailWidth = widthOf(tail);
   while (!last.glyphs.empty() && spec.wrapWidth > 0 &&
          last.width + tailWidth > spec.wrapWidth) {
     last.width -= last.glyphs.back().advance;
     last.glyphs.pop_back();
+  }
+  // After the trim, not before it: the ellipsis stands in for text that is no
+  // longer laid out, so it takes the offset just past the last glyph actually
+  // kept. Length zero keeps a caret on it from landing in the middle of a
+  // codepoint the ellipsis character happens to be as long as, and keeps it out
+  // of a range's boxes, which measure real text.
+  int32_t at = last.glyphs.empty() ? last.startIndex
+                                   : last.glyphs.back().index + last.glyphs.back().length;
+  for (auto& glyph : tail) {
+    glyph.index = at;
+    glyph.length = 0;
   }
   last.glyphs.insert(last.glyphs.end(), tail.begin(), tail.end());
   last.width += tailWidth;
@@ -284,6 +295,8 @@ size_t lastUsableRun(const Paragraph& paragraph) {
 struct Placement {
   std::vector<Glyph> glyphs;
   std::vector<tgfx::Point> positions;
+  /// Which line each glyph landed on, parallel to the two above.
+  std::vector<int32_t> lines;
   TextMetrics metrics;
 };
 
@@ -373,6 +386,7 @@ Placement place(const std::vector<TextRun>& runs, const TextSpec& spec,
       if (glyph.code != '\n') {
         out.glyphs.push_back(glyph);
         out.positions.push_back({x, baseline});
+        out.lines.push_back(static_cast<int32_t>(i));
       }
       x += glyph.advance;
     }
@@ -395,6 +409,114 @@ TextLayout layoutText(const std::vector<TextRun>& runs, const TextSpec& spec, fl
     layout.runs = buildBlobs(placement.glyphs, placement.positions, runs, paragraph.stacks);
   }
   return layout;
+}
+
+TextPosition positionAtCoordinate(const std::vector<TextRun>& runs, const TextSpec& spec,
+                                  float size, float x, float y) {
+  TextPosition out;
+  auto paragraph = buildParagraph(runs, spec, size);
+  if (paragraph.empty) {
+    return out;
+  }
+  auto placement = place(runs, spec, paragraph);
+  const auto& lines = placement.metrics.lines;
+  if (lines.empty()) {
+    return out;
+  }
+  // The line whose band holds y, clamped: a point above the first line or below
+  // the last one still resolves rather than reporting nothing. The band runs to
+  // where the next line begins, not to where this one's ink ends — an explicit
+  // lineHeight opens a gap between the two, and the gap belongs to the line
+  // above it, not below.
+  size_t line = lines.size() - 1;
+  for (size_t i = 0; i + 1 < lines.size(); i++) {
+    if (y < lines[i + 1].baseline + lines[i + 1].ascent) {
+      line = i;
+      break;
+    }
+  }
+  out.line = static_cast<int32_t>(line);
+  // Every glyph on that line, in order. Empty lines keep the caret at their own
+  // start offset, which is the only offset they have.
+  const Glyph* last = nullptr;
+  bool found = false;
+  for (size_t i = 0; i < placement.glyphs.size(); i++) {
+    if (placement.lines[i] != out.line) {
+      continue;
+    }
+    const auto& glyph = placement.glyphs[i];
+    float left = placement.positions[i].x;
+    if (x < left + glyph.advance / 2) {
+      // The leading half: the caret goes before this glyph.
+      out.index = glyph.index;
+      out.leading = true;
+      found = true;
+      break;
+    }
+    if (x < left + glyph.advance) {
+      // The trailing half: the caret goes after it, and says so.
+      out.index = glyph.index + glyph.length;
+      out.leading = false;
+      found = true;
+      break;
+    }
+    last = &glyph;
+  }
+  if (!found) {
+    // Past the last glyph on the line, so the caret goes after it. An ellipsis
+    // carries no bytes, so this is the offset past the last real glyph.
+    out.index = last != nullptr ? last->index + last->length : lines[line].startIndex;
+    out.leading = last == nullptr;
+  }
+  return out;
+}
+
+std::vector<TextBox> boxesForRange(const std::vector<TextRun>& runs, const TextSpec& spec,
+                                   float size, int32_t start, int32_t end) {
+  std::vector<TextBox> boxes;
+  if (start >= end) {
+    return boxes;
+  }
+  auto paragraph = buildParagraph(runs, spec, size);
+  if (paragraph.empty) {
+    return boxes;
+  }
+  auto placement = place(runs, spec, paragraph);
+  const auto& lines = placement.metrics.lines;
+  // One box per line the range crosses, grown glyph by glyph. The glyphs are in
+  // line order already, so a new line is always a new box.
+  for (size_t i = 0; i < placement.glyphs.size(); i++) {
+    const auto& glyph = placement.glyphs[i];
+    // An ellipsis owns no bytes and stands for text that was dropped, so it is
+    // never part of a range: without this it straddles every range around its
+    // offset and both widens the box and drags its end index backwards.
+    if (glyph.length <= 0) {
+      continue;
+    }
+    if (glyph.index >= end || glyph.index + glyph.length <= start) {
+      continue;
+    }
+    int32_t line = placement.lines[i];
+    float left = placement.positions[i].x;
+    float right = left + glyph.advance;
+    if (!boxes.empty() && boxes.back().line == line) {
+      auto& box = boxes.back();
+      box.width = std::max(box.width, right - box.x);
+      box.endIndex = std::max(box.endIndex, glyph.index + glyph.length);
+      continue;
+    }
+    const auto& metrics = lines[static_cast<size_t>(line)];
+    TextBox box;
+    box.x = left;
+    box.y = metrics.baseline + metrics.ascent;
+    box.width = right - left;
+    box.height = metrics.descent - metrics.ascent;
+    box.line = line;
+    box.startIndex = glyph.index;
+    box.endIndex = glyph.index + glyph.length;
+    boxes.push_back(box);
+  }
+  return boxes;
 }
 
 std::vector<double> glyphIdsFor(const std::string& text, const TextSpec& spec, float size) {

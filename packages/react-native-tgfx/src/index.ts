@@ -83,7 +83,9 @@ export { useClock } from './hooks/useClock'
 export {
   loadFont,
   loadFonts,
+  glyphPositionAtCoordinate,
   measureText,
+  rectsForRange,
   glyphIds,
   registeredFontFamilies,
   textPath,
@@ -104,7 +106,9 @@ export type { PathBounds, PathMatrix, PathOp, PathPoint } from './hooks/usePath'
 export type {
   FontsState,
   FontSource,
+  GlyphPosition,
   LineMeasurement,
+  TextBox,
   TextMeasurement,
   TextStyle,
 } from './hooks/useFonts'

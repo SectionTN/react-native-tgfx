@@ -1,6 +1,7 @@
 #include "HybridTgfxFonts.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -52,6 +53,15 @@ tgfxrn::TextSpec specOf(const TextLayoutStyle& style) {
   spec.maxLines = static_cast<int>(style.maxLines);
   spec.ellipsis = style.ellipsis;
   return spec;
+}
+
+/// The size the renderer will actually lay out at. It quantises to a quarter of
+/// a pixel so its memoised blob survives an animating fontSize; measuring at the
+/// unquantised size would report a paragraph a fraction wider than the drawn
+/// one, which a caret or a highlight box then sits beside.
+float layoutSize(double fontSize) {
+  auto size = static_cast<float>(fontSize);
+  return std::round(size * 4) / 4;
 }
 
 }  // namespace
@@ -118,19 +128,51 @@ std::vector<tgfxrn::TextRun> runsOf(const std::string& text, const tgfxrn::TextS
 std::vector<double> HybridTgfxFonts::glyphIds(const std::string& text,
                                               const TextLayoutStyle& style) {
   auto spec = specOf(style);
-  return tgfxrn::glyphIdsFor(text, spec, static_cast<float>(style.fontSize));
+  return tgfxrn::glyphIdsFor(text, spec, layoutSize(style.fontSize));
 }
 
 std::string HybridTgfxFonts::textPath(const std::string& text, const TextLayoutStyle& style) {
   auto spec = specOf(style);
   return tgfxrn::pathToSvg(
-      tgfxrn::textToPath(runsOf(text, spec), spec, static_cast<float>(style.fontSize)));
+      tgfxrn::textToPath(runsOf(text, spec), spec, layoutSize(style.fontSize)));
+}
+
+GlyphPosition HybridTgfxFonts::glyphPositionAtCoordinate(const std::string& text,
+                                                         const TextLayoutStyle& style, double x,
+                                                         double y) {
+  auto spec = specOf(style);
+  auto at = tgfxrn::positionAtCoordinate(runsOf(text, spec), spec, layoutSize(style.fontSize),
+                                         static_cast<float>(x), static_cast<float>(y));
+  return GlyphPosition(static_cast<double>(at.index), at.leading, static_cast<double>(at.line));
+}
+
+std::vector<TextBox> HybridTgfxFonts::rectsForRange(const std::string& text,
+                                                    const TextLayoutStyle& style, double start,
+                                                    double end) {
+  auto spec = specOf(style);
+  // A NaN or out-of-range double is one `at.index + 1` away when `index` came
+  // back undefined, and casting one to int32_t is undefined behaviour.
+  auto clamp = [](double value) {
+    if (!std::isfinite(value)) {
+      return 0;
+    }
+    return static_cast<int>(std::clamp(value, -2147483648.0, 2147483647.0));
+  };
+  auto boxes = tgfxrn::boxesForRange(runsOf(text, spec), spec, layoutSize(style.fontSize),
+                                     clamp(start), clamp(end));
+  std::vector<TextBox> out;
+  out.reserve(boxes.size());
+  for (const auto& box : boxes) {
+    out.emplace_back(box.x, box.y, box.width, box.height, static_cast<double>(box.line),
+                     static_cast<double>(box.startIndex), static_cast<double>(box.endIndex));
+  }
+  return out;
 }
 
 TextMeasurement HybridTgfxFonts::measureText(const std::string& text,
                                              const TextLayoutStyle& style) {
   auto spec = specOf(style);
-  auto layout = tgfxrn::layoutText(runsOf(text, spec), spec, static_cast<float>(style.fontSize));
+  auto layout = tgfxrn::layoutText(runsOf(text, spec), spec, layoutSize(style.fontSize));
   std::vector<LineMeasurement> lines;
   lines.reserve(layout.metrics.lines.size());
   for (const auto& line : layout.metrics.lines) {

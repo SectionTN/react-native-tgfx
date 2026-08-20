@@ -63,6 +63,58 @@ const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
 const { lines } = measureText(label, { fontSize: 18, width: 200 })
 ```
 
+## Hit testing
+
+[`glyphPositionAtCoordinate`](/api/functions/glyphPositionAtCoordinate) turns a
+point into an insertion point, and
+[`rectsForRange`](/api/functions/rectsForRange) turns a byte range into the
+boxes it occupies — a caret and a selection, from the same layout `<Text>` draws.
+
+Both take the coordinates `measureText` reports, with the first baseline at
+`y = 0`, so subtract the `x`/`y` you gave `<Text>` from the touch point first.
+
+```tsx
+const style = { fontSize: 17, fontFamily: 'PT Serif', width: 320 }
+
+const at = glyphPositionAtCoordinate(text, style, touch.x - x, touch.y - y)
+// at.index is a UTF-8 byte offset; at.leading says which half of the glyph it
+// landed on, and at.line which line it resolved to after clamping.
+
+const boxes = rectsForRange(text, style, selection.start, selection.end)
+// One box per line the range crosses; a one-glyph range is that glyph's bounds.
+```
+
+`index` is always the insertion point, never a glyph to advance past. `leading`
+says which half produced it — the leading half of the glyph starting there, or
+the trailing half of the one ending there — which is the affinity a caret needs
+at a wrap, where one offset has two positions on screen.
+
+**Not every offset has a box.** The space a line wraps at, a newline, and the
+ellipsis a truncated line ends with all draw nothing, so a caret drawn from the
+glyph at `index` needs the one before it as a fallback:
+
+```tsx
+const at = rectsForRange(text, style, caret, caret + 1)[0]
+const before = at == null ? rectsForRange(text, style, caret - 1, caret)[0] : undefined
+const x = at ? at.x : before ? before.x + before.width : 0
+const rule = at ?? before
+```
+
+Each call lays the paragraph out, the same as
+[`measureText`](/api/functions/measureText) — cheap for a tap, wasteful once a
+frame. [`TextBox`](/api/interfaces/TextBox) is what `rectsForRange` returns.
+
+Offsets are UTF-8 byte offsets throughout, matching `startIndex` on
+[`LineMeasurement`](/api/interfaces/LineMeasurement) — for ASCII they are the
+same as JS string indices, and for anything else they are not. `TextBox.endIndex`
+is exclusive, where `LineMeasurement.endIndex` names its last glyph.
+
+```tsx
+{boxes.map((box, i) => (
+  <Rect key={i} x={box.x} y={box.y} width={box.width} height={box.height} color="#cfe4ff" />
+))}
+```
+
 ## Text as a path
 
 [`textPath`](/api/functions/textPath) returns SVG path data, so text can be

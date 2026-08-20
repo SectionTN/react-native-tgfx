@@ -17,6 +17,10 @@
 namespace margelo::nitro::tgfx { struct TextMeasurement; }
 // Forward declaration of `TextLayoutStyle` to properly resolve imports.
 namespace margelo::nitro::tgfx { struct TextLayoutStyle; }
+// Forward declaration of `GlyphPosition` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct GlyphPosition; }
+// Forward declaration of `TextBox` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct TextBox; }
 
 #include <string>
 #include <vector>
@@ -24,6 +28,8 @@ namespace margelo::nitro::tgfx { struct TextLayoutStyle; }
 #include <NitroModules/ArrayBuffer.hpp>
 #include "TextMeasurement.hpp"
 #include "TextLayoutStyle.hpp"
+#include "GlyphPosition.hpp"
+#include "TextBox.hpp"
 
 namespace margelo::nitro::tgfx {
 
@@ -61,6 +67,8 @@ namespace margelo::nitro::tgfx {
       virtual std::shared_ptr<Promise<std::string>> registerFromBase64(const std::string& data, const std::string& family) = 0;
       virtual TextMeasurement measureText(const std::string& text, const TextLayoutStyle& style) = 0;
       virtual std::string textPath(const std::string& text, const TextLayoutStyle& style) = 0;
+      virtual GlyphPosition glyphPositionAtCoordinate(const std::string& text, const TextLayoutStyle& style, double x, double y) = 0;
+      virtual std::vector<TextBox> rectsForRange(const std::string& text, const TextLayoutStyle& style, double start, double end) = 0;
       virtual std::vector<double> glyphIds(const std::string& text, const TextLayoutStyle& style) = 0;
 
     protected:

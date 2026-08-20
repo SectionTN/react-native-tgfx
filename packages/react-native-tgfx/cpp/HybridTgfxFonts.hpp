@@ -24,6 +24,10 @@ class HybridTgfxFonts : public HybridTgfxFontsSpec {
   TextMeasurement measureText(const std::string& text, const TextLayoutStyle& style) override;
   std::string textPath(const std::string& text, const TextLayoutStyle& style) override;
   std::vector<double> glyphIds(const std::string& text, const TextLayoutStyle& style) override;
+  GlyphPosition glyphPositionAtCoordinate(const std::string& text, const TextLayoutStyle& style,
+                                          double x, double y) override;
+  std::vector<TextBox> rectsForRange(const std::string& text, const TextLayoutStyle& style,
+                                     double start, double end) override;
 };
 
 }  // namespace margelo::nitro::tgfx
