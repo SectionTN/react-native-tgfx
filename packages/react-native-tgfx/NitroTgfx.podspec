@@ -48,6 +48,9 @@ Pod::Spec.new do |s|
     "HEADER_SEARCH_PATHS" => [
       "\"#{tgfx_dir}/include\"",
       "\"$(PODS_TARGET_SRCROOT)/cpp\"",
+      # HarfBuzz's public headers only; the code is already inside the prebuilt
+      # tgfx archive below. See cpp/third_party/harfbuzz/README.md.
+      "\"$(PODS_TARGET_SRCROOT)/cpp/third_party/harfbuzz\"",
     ].join(" "),
     "OTHER_LDFLAGS" => "-lc++",
   }

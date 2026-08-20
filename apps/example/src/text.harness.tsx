@@ -478,6 +478,112 @@ describe('tgfx text rendering', () => {
     await snapshot('text-range-boxes');
   });
 
+  // #143. The fallback chain is emoji-only by design, so a script needs a face
+  // registered for it — which is what the once-per-codepoint warning says. On
+  // Android the device ships them, so the tests below register those.
+  // One family per script: a family resolves to a single face, so an Arabic and
+  // a Hebrew one filed together would leave whichever lost drawing .notdef.
+  const RTL_FAMILY = 'Harness Arabic';
+  const HEBREW_FAMILY = 'Harness Hebrew';
+  let rtlReady = false;
+  beforeAll(async () => {
+    try {
+      await loadFonts({
+        [RTL_FAMILY]: ['file:///system/fonts/NotoNaskhArabic-Regular.ttf'],
+        [HEBREW_FAMILY]: ['file:///system/fonts/NotoSansHebrew-Regular.ttf'],
+      });
+      rtlReady = true;
+    } catch {
+      // A host without those files skips the drawing test below; the ordering
+      // tests still run, because .notdef glyphs still carry advances.
+      rtlReady = false;
+    }
+  });
+
+  // The caret API is the probe: on a right-to-left line the leftmost glyph is
+  // the last character of the string.
+  test('right-to-left text reads right to left', async () => {
+    const arabic = 'مرحبا';
+    const style = { fontSize: 28, fontFamily: RTL_FAMILY };
+    const box = measureText(arabic, style);
+    expect(box.width).toBeGreaterThan(0);
+
+    const bytes = byteLength(arabic);
+    const left = glyphPositionAtCoordinate(arabic, style, 0, 0);
+    const right = glyphPositionAtCoordinate(arabic, style, box.width, 0);
+    expect(left.index).toBe(bytes);
+    expect(right.index).toBe(0);
+
+    // Latin in the same run still reads the other way, so this is not simply
+    // everything coming out reversed.
+    const latin = measureText('abcdef', style);
+    expect(glyphPositionAtCoordinate('abcdef', style, 0, 0).index).toBe(0);
+    expect(
+      glyphPositionAtCoordinate('abcdef', style, latin.width, 0).index,
+    ).toBe(6);
+  });
+
+  test('a mixed-direction line resolves into runs', async () => {
+    const mixed = 'ab مرحبا cd';
+    const style = { fontSize: 24, fontFamily: RTL_FAMILY };
+    const box = measureText(mixed, style);
+    expect(box.width).toBeGreaterThan(0);
+    // The paragraph starts Latin, so its ends are the string's ends.
+    expect(glyphPositionAtCoordinate(mixed, style, 0, 0).index).toBe(0);
+    expect(glyphPositionAtCoordinate(mixed, style, box.width, 0).index).toBe(
+      byteLength(mixed),
+    );
+    // But somewhere in the middle the offsets run backwards, which they never
+    // would in a line laid out purely left to right.
+    let previous = -1;
+    let backwards = 0;
+    for (let step = 0; step <= 40; step += 1) {
+      const at = glyphPositionAtCoordinate(
+        mixed,
+        style,
+        (box.width * step) / 40,
+        0,
+      );
+      if (at.index < previous) {
+        backwards += 1;
+      }
+      previous = at.index;
+    }
+    expect(backwards).toBeGreaterThan(0);
+  });
+
+  // Two scripts, two families — a mixed Latin/Arabic line is not drawn here
+  // because one family resolves to one face and the fallback chain is
+  // emoji-only, so the Latin would come out .notdef. Its ordering is covered
+  // above, where .notdef advances are enough to prove it.
+  test('draws Arabic and Hebrew right to left, with joined forms', async () => {
+    if (!rtlReady) {
+      return;
+    }
+    await render(
+      <Stage>
+        <Fill color="white" />
+        <Text
+          x={8}
+          y={36}
+          text="مرحبا بالعالم"
+          fontSize={26}
+          fontFamily={RTL_FAMILY}
+          color="#111"
+        />
+        <Text
+          x={8}
+          y={80}
+          text="שלום עולם"
+          fontSize={26}
+          fontFamily={HEBREW_FAMILY}
+          color="#111"
+        />
+      </Stage>,
+    );
+    await snapshot('text-bidi');
+  });
+
   test('places glyph ids by hand', async () => {
     await render(
       <Stage>

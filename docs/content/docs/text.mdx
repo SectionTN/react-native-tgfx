@@ -63,6 +63,47 @@ const box = measureText('measured', { fontSize: 22, fontFamily: 'PT Serif' })
 const { lines } = measureText(label, { fontSize: 18, width: 200 })
 ```
 
+## Bidi and complex scripts
+
+Text is shaped through HarfBuzz and reordered by the Unicode bidirectional
+algorithm, so Arabic joins into its initial, medial and final forms, Indic
+scripts reorder, ligatures and mark positioning apply, and a right-to-left run
+reads right to left inside a left-to-right paragraph.
+
+```tsx
+<Text x={0} y={40} text="مرحبا بالعالم" fontSize={24} fontFamily="Noto Naskh Arabic" />
+<Text x={0} y={80} text="ab مرحبا cd" fontSize={24} fontFamily="Noto Naskh Arabic" />
+```
+
+The paragraph's base direction comes from its first strong character, so a
+string that starts in Arabic lays out right-to-left and one that starts in Latin
+does not. `textAlign` is unaffected — it still defaults to `'left'`, so a
+right-to-left paragraph that should sit against the right edge needs
+`textAlign="right"`.
+
+**A script still needs a face that covers it.** The fallback chain is emoji-only
+by design, so register one for anything outside the primary family:
+
+```tsx
+await loadFonts({ 'Noto Naskh Arabic': [require('./NotoNaskhArabic-Regular.ttf')] })
+```
+
+Without it the glyphs are `.notdef` — laid out in the right order, drawn as
+blanks — and a warning names the codepoint once.
+
+`U+200E`, `U+200F` and `U+061C` — the left-to-right, right-to-left and Arabic
+letter marks — work, so a neutral that resolves the wrong way can be placed by
+hand.
+
+Three parts of UAX#9 are not implemented. The explicit embedding, override and
+isolate controls (`U+202A`–`U+202E`, `U+2066`–`U+2069`) are treated as
+formatting characters with no direction of their own. The paired-bracket rule N0
+is absent, so a bracket takes its direction from its surroundings rather than
+from its pair. And P1 is not applied: a `<Text>` is one paragraph however many
+newlines it holds, so every line shares the base direction the first strong
+character set. W1–W7, N1–N2, I1–I2 and L1–L2 are all there, with format
+characters removed as X9 requires.
+
 ## Hit testing
 
 [`glyphPositionAtCoordinate`](/api/functions/glyphPositionAtCoordinate) turns a

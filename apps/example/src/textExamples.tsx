@@ -332,6 +332,13 @@ export function TextSection() {
           color="#111"
         />
         <Text x={0} y={76} text="مرحبا بالعالم" fontSize={24} color="#111" />
+        <Text
+          x={0}
+          y={118}
+          text="ab مرحبا cd · שלום"
+          fontSize={22}
+          color="#111"
+        />
       </Panel>
     </>
   );

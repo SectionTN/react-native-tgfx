@@ -115,6 +115,17 @@ const { lines } = measureText(label, { fontSize: 18, width: 200 })
 the box runs from `y + ascent` to `y + ascent + height`. Per-line entries are
 `LineMeasurement`.
 
+Text is shaped through HarfBuzz and reordered by the Unicode bidi algorithm:
+Arabic joins, Indic reorders, ligatures and marks apply, and a right-to-left run
+reads right to left inside a left-to-right paragraph. The base direction is the
+first strong character's. `textAlign` still defaults to `'left'` — a
+right-to-left paragraph that should sit right needs `textAlign="right"`. A script
+still needs a face registered for it: the fallback chain is emoji-only, and an
+uncovered codepoint warns once and draws `.notdef`. `U+200E`/`U+200F`/`U+061C`
+work. Not implemented: UAX#9's explicit embedding/override/isolate controls, the
+paired-bracket rule N0, and P1 — a `<Text>` is one paragraph however many
+newlines it holds.
+
 `glyphPositionAtCoordinate` and `rectsForRange` are the caret and selection
 half, in the same baseline-relative coordinates: subtract the `x`/`y` you gave
 `<Text>` from the touch point. `GlyphPosition` is `{ index, leading, line }` and

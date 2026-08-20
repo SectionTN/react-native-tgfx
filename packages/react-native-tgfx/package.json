@@ -34,6 +34,7 @@
     "NOTICE",
     "cpp/*.cpp",
     "cpp/*.hpp",
+    "cpp/third_party/harfbuzz",
     "cpp/third_party/tgfx/LICENSE.txt",
     "cpp/third_party/tgfx/include"
   ],

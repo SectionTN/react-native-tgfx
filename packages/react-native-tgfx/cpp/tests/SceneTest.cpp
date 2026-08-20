@@ -2560,6 +2560,241 @@ void anExplicitNewlineBreaksTheLine() {
         inkRows(render(single.finish(), strings, {})));
 }
 
+/// Register a system face by name, so a script test uses a face that actually
+/// covers it rather than whatever the Latin-first matcher settles on. Returns
+/// false when the host has no such face, which is a skip and not a failure.
+bool registerSystemFamily(const char* family) {
+  auto typeface = tgfx::Typeface::MakeFromName(family, "");
+  if (typeface == nullptr) {
+    return false;
+  }
+  tgfxrn::FontRegistry::instance().add(typeface, family);
+  return true;
+}
+
+/// #143: Arabic and Hebrew laid out in logical order with unshaped glyphs. The
+/// caret API is the cleanest probe there is — on a right-to-left line the
+/// leftmost glyph is the *last* character of the string.
+void rightToLeftTextReadsRightToLeft() {
+  tgfxrn::FontRegistry::instance().clear();
+  if (!registerSystemFamily("Geeza Pro")) {
+    std::printf("  skip: no Arabic face on this host\n");
+    return;
+  }
+  tgfxrn::TextSpec spec;
+  spec.family = "Geeza Pro";
+  const std::string arabic = "مرحبا";
+  const auto runs = std::vector<tgfxrn::TextRun>{run(arabic)};
+  auto layout = tgfxrn::layoutText(runs, spec, 24);
+  CHECK(layout.metrics.width > 0);
+
+  // The left edge of the line is the end of the string and the right edge is
+  // the start, which is the whole of what "reads right to left" means.
+  auto left = tgfxrn::positionAtCoordinate(runs, spec, 24, 0, 0);
+  auto right = tgfxrn::positionAtCoordinate(runs, spec, 24, layout.metrics.width, 0);
+  CHECK(left.index > right.index);
+  CHECK(left.index == static_cast<int32_t>(arabic.size()));
+  CHECK(right.index == 0);
+
+  // Latin in the same paragraph still reads left to right, so this is not just
+  // "everything is reversed".
+  tgfxrn::TextSpec latin;
+  latin.family = "Helvetica";
+  const auto plain = std::vector<tgfxrn::TextRun>{run("abcdef")};
+  auto plainBox = tgfxrn::layoutText(plain, latin, 24);
+  CHECK(tgfxrn::positionAtCoordinate(plain, latin, 24, 0, 0).index == 0);
+  CHECK(tgfxrn::positionAtCoordinate(plain, latin, 24, plainBox.metrics.width, 0).index == 6);
+
+  // Hebrew, which is right-to-left but does not join, so it exercises the
+  // reordering without the contextual forms below.
+  // Shaping collapses codepoints into clusters and splits them into several
+  // glyphs, so a cluster owns every byte up to the next one — not just its own
+  // first codepoint's. Every caret offset has to be a boundary of the string.
+  const std::vector<int32_t> boundaries = {0, 2, 4, 6, 8, 10};
+  for (int step = 0; step <= 24; step++) {
+    auto here = tgfxrn::positionAtCoordinate(
+        runs, spec, 24, layout.metrics.width * static_cast<float>(step) / 24.0f, 0);
+    CHECK(std::find(boundaries.begin(), boundaries.end(), here.index) != boundaries.end());
+  }
+  // And a range over one Arabic letter is that letter, not part of a cluster.
+  auto oneLetter = tgfxrn::boxesForRange(runs, spec, 24, 0, 2);
+  CHECK(oneLetter.size() == 1);
+  CHECK(oneLetter[0].startIndex == 0);
+  CHECK(oneLetter[0].endIndex == 2);
+
+  if (registerSystemFamily("Arial Hebrew")) {
+    tgfxrn::TextSpec hebrew;
+    hebrew.family = "Arial Hebrew";
+    const std::string shalom = "שלום";
+    const auto hebrewRuns = std::vector<tgfxrn::TextRun>{run(shalom)};
+    auto hebrewBox = tgfxrn::layoutText(hebrewRuns, hebrew, 24);
+    CHECK(hebrewBox.metrics.width > 0);
+    auto hebrewLeft = tgfxrn::positionAtCoordinate(hebrewRuns, hebrew, 24, 0, 0);
+    CHECK(hebrewLeft.index == static_cast<int32_t>(shalom.size()));
+  }
+}
+
+/// The other half of #143: contextual forms. A naive per-codepoint lookup gets
+/// the isolated shapes; a shaper gets initial, medial and final ones — which
+/// are different glyphs, with different advances.
+void arabicTakesItsContextualForms() {
+  tgfxrn::FontRegistry::instance().clear();
+  // Arial rather than Geeza Pro: Geeza Pro's cmap already returns the glyphs
+  // the shaper picks, so it cannot tell a joined form from an isolated one.
+  if (!registerSystemFamily("Arial")) {
+    std::printf("  skip: no Arabic face on this host\n");
+    return;
+  }
+  tgfxrn::TextSpec spec;
+  spec.family = "Arial";
+  const std::string arabic = "مرحبا";
+  const auto runs = std::vector<tgfxrn::TextRun>{run(arabic)};
+  auto layout = tgfxrn::layoutText(runs, spec, 40);
+  CHECK(layout.metrics.width > 0);
+
+  // Each letter measured twice: on its own, where it can only be the isolated
+  // form, and in the word, where it joins. A joined form is a different glyph,
+  // so its advance differs — and one letter differing is enough, because a
+  // font may happen to give two forms the same width.
+  int differing = 0;
+  for (int32_t at = 0; at + 2 <= static_cast<int32_t>(arabic.size()); at += 2) {
+    auto inWord = tgfxrn::boxesForRange(runs, spec, 40, at, at + 2);
+    const auto alone = std::vector<tgfxrn::TextRun>{run(arabic.substr(
+        static_cast<size_t>(at), 2))};
+    auto isolated = tgfxrn::boxesForRange(alone, spec, 40, 0, 2);
+    CHECK(inWord.size() == 1);
+    CHECK(isolated.size() == 1);
+    if (inWord.size() == 1 && isolated.size() == 1 &&
+        std::abs(inWord[0].width - isolated[0].width) > 0.5f) {
+      differing++;
+    }
+  }
+  CHECK(differing > 0);
+
+  // And the word is not simply the isolated letters laid end to end: joining
+  // and the kerning that comes with it change the whole string's width.
+  float isolatedTotal = 0;
+  for (int32_t at = 0; at + 2 <= static_cast<int32_t>(arabic.size()); at += 2) {
+    const auto alone = std::vector<tgfxrn::TextRun>{run(arabic.substr(
+        static_cast<size_t>(at), 2))};
+    isolatedTotal += tgfxrn::layoutText(alone, spec, 40).metrics.width;
+  }
+  CHECK(std::abs(isolatedTotal - layout.metrics.width) > 0.5f);
+}
+
+/// The three marks whose only job is to be strong, and the line and range
+/// indices a reordered line must still report in logical order.
+void bidiMarksPlaceNeutralsAndIndicesStayLogical() {
+  tgfxrn::FontRegistry::instance().clear();
+  if (!registerSystemFamily("Geeza Pro")) {
+    std::printf("  skip: no Arabic face on this host\n");
+    return;
+  }
+  tgfxrn::TextSpec spec;
+  spec.family = "Geeza Pro";
+
+  // "a عربي!" — the '!' is a neutral between the Arabic and eos, which in a
+  // left-to-right paragraph is L, so N1 finds no agreement, N2 gives it the
+  // paragraph and it sits at the right-hand end. A right-to-left mark *after*
+  // it makes both sides R, so it joins the Arabic run and moves left. That is
+  // the whole point of the mark, and it does nothing at all if it is read as a
+  // formatting character.
+  const std::string plain = "a عربي!";
+  const std::string marked = plain + "\u200F";
+  const auto plainRuns = std::vector<tgfxrn::TextRun>{run(plain)};
+  const auto markedRuns = std::vector<tgfxrn::TextRun>{run(marked)};
+  auto plainBox = tgfxrn::layoutText(plainRuns, spec, 24);
+  CHECK(plainBox.metrics.width > 0);
+  auto bang = static_cast<int32_t>(plain.size()) - 1;
+  auto plainBang = tgfxrn::boxesForRange(plainRuns, spec, 24, bang, bang + 1);
+  auto markedBang = tgfxrn::boxesForRange(markedRuns, spec, 24, bang, bang + 1);
+  CHECK(plainBang.size() == 1);
+  CHECK(markedBang.size() == 1);
+  if (plainBang.size() == 1 && markedBang.size() == 1) {
+    CHECK(markedBang[0].x < plainBang[0].x);
+  }
+
+  // A right-to-left line is stored visually once it is placed, so its reported
+  // first and last bytes have to come from the logical order, not from the ends
+  // of the array.
+  const std::string arabic = "مرحبا";
+  const auto runs = std::vector<tgfxrn::TextRun>{run(arabic)};
+  auto layout = tgfxrn::layoutText(runs, spec, 24);
+  CHECK(layout.metrics.lines.size() == 1);
+  CHECK(layout.metrics.lines[0].startIndex == 0);
+  CHECK(layout.metrics.lines[0].endIndex > layout.metrics.lines[0].startIndex);
+
+  // And a range over the whole string reports the whole string, not the one
+  // cluster that happens to be leftmost.
+  auto whole = tgfxrn::boxesForRange(runs, spec, 24, 0,
+                                     static_cast<int32_t>(arabic.size()));
+  CHECK(whole.size() == 1);
+  CHECK(whole[0].startIndex == 0);
+  CHECK(whole[0].endIndex == static_cast<int32_t>(arabic.size()));
+}
+
+/// <TextPath> is one line and was never reordered, so right-to-left text ran
+/// along the path backwards even with every glyph correctly joined.
+void textOnAPathIsReorderedToo() {
+  tgfxrn::FontRegistry::instance().clear();
+  if (!registerSystemFamily("Geeza Pro")) {
+    std::printf("  skip: no Arabic face on this host\n");
+    return;
+  }
+  tgfxrn::TextSpec spec;
+  spec.family = "Geeza Pro";
+  tgfx::Path line;
+  line.moveTo(4, 40);
+  line.lineTo(200, 40);
+
+  const std::string arabic = "مرحبا";
+  const auto runs = std::vector<tgfxrn::TextRun>{run(arabic)};
+  auto onPath = tgfxrn::layoutTextOnPath(runs, spec, 24, line);
+  CHECK(!onPath.runs.empty());
+  // Straight and horizontal, so the path layout has to put the glyphs exactly
+  // where the flat one does, reordering included.
+  auto flat = tgfxrn::layoutText(runs, spec, 24);
+  CHECK(std::abs(onPath.metrics.width - flat.metrics.width) < 1.0f);
+}
+
+/// Mixed direction: the Latin runs keep their order while the Arabic between
+/// them is reversed, which is the run resolution the issue said was missing.
+void mixedDirectionResolvesIntoRuns() {
+  tgfxrn::FontRegistry::instance().clear();
+  if (!registerSystemFamily("Geeza Pro")) {
+    std::printf("  skip: no Arabic face on this host\n");
+    return;
+  }
+  tgfxrn::TextSpec spec;
+  spec.family = "Geeza Pro";
+  const std::string mixed = "ab مرحبا cd";
+  const auto runs = std::vector<tgfxrn::TextRun>{run(mixed)};
+  auto layout = tgfxrn::layoutText(runs, spec, 24);
+  CHECK(layout.metrics.width > 0);
+  // The paragraph starts with Latin, so its base direction is left to right:
+  // the leftmost glyph is byte 0 and the rightmost is the last byte.
+  auto left = tgfxrn::positionAtCoordinate(runs, spec, 24, 0, 0);
+  CHECK(left.index == 0);
+  auto right = tgfxrn::positionAtCoordinate(runs, spec, 24, layout.metrics.width, 0);
+  CHECK(right.index == static_cast<int32_t>(mixed.size()));
+
+  // Inside the Arabic, though, the offsets run backwards. Walk left to right
+  // across the whole line and count how often the offset goes down: a purely
+  // left-to-right layout never would.
+  int32_t previous = -1;
+  int backwards = 0;
+  for (int step = 0; step <= 40; step++) {
+    auto here = tgfxrn::positionAtCoordinate(runs, spec, 24,
+                                             layout.metrics.width * static_cast<float>(step) / 40.0f,
+                                             0);
+    if (here.index < previous) {
+      backwards++;
+    }
+    previous = here.index;
+  }
+  CHECK(backwards > 0);
+}
+
 /// The caret half of #145: which byte offset a point lands on, and the boxes a
 /// byte range occupies. Both read the same layout the renderer draws.
 void aCoordinateResolvesToACaretAndARangeToItsBoxes() {
@@ -5189,6 +5424,11 @@ int main() {
   anExplicitNewlineBreaksTheLine();
   theMeasuredWidthIsTheDrawnWidth();
   aCoordinateResolvesToACaretAndARangeToItsBoxes();
+  rightToLeftTextReadsRightToLeft();
+  arabicTakesItsContextualForms();
+  mixedDirectionResolvesIntoRuns();
+  bidiMarksPlaceNeutralsAndIndicesStayLogical();
+  textOnAPathIsReorderedToo();
   theLayoutIsCachedByQuantisedSize();
   anEmojiFallsBackInsteadOfVanishing();
   textOnAPathFollowsTheCurve();

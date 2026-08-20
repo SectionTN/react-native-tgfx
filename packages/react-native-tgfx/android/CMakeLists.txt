@@ -157,6 +157,7 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/HybridTgfxImageFactory.cpp
         ../cpp/FontRegistry.cpp
         ../cpp/TextLayout.cpp
+        ../cpp/TextShaping.cpp
         ../cpp/HybridTgfxFonts.cpp
         ../cpp/PathOps.cpp
         ../cpp/HybridTgfxPath.cpp
@@ -177,6 +178,10 @@ include(${CMAKE_SOURCE_DIR}/../nitrogen/generated/android/NitroTgfx+autolinking.
 target_include_directories(${PACKAGE_NAME} PRIVATE
         "src/main/cpp"
         "../cpp"
+        # HarfBuzz's public headers only. It is already compiled into the tgfx
+        # archive this links against, so these declare what is there rather than
+        # adding a dependency — see cpp/third_party/harfbuzz/README.md.
+        "../cpp/third_party/harfbuzz"
         "${TGFX_DIR}/include"
 )
 
