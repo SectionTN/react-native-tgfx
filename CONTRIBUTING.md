@@ -59,6 +59,13 @@ are the GPU's, so baselines do not carry between devices. Install a **debug**
 build first (`bun run android`); Harness drives the app through `run-as`, which
 a release build refuses.
 
+`patches/` carries a patch on `@react-native-harness/runtime`: the stock
+runtime defines a `globalThis.jest` trap inside the app, which trips
+Reanimated's Jest detection and swaps in its mocks — every mapper dies, so
+shared values and `handle.set` slot writes stop repainting *under the harness
+only* (#230). Do not drop the patch on a harness upgrade without re-running
+the imperative suite.
+
 Baselines live in `src/__image_snapshots__/<runner>/`, and the directory is
 named after the runner — a second runner forks the whole set, which is why
 there is only one. A missing baseline is **written** on the first run rather

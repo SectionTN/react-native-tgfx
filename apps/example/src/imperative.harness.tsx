@@ -86,6 +86,25 @@ describe('tgfx node handles', () => {
     await snapshot('imperative-rect-patched');
   });
 
+  // The write above took the recompile path (`color` on a packed-colour node
+  // has no slot). This is the pure slot path: no colour, one prop, only
+  // pushValues() — the #230 shape, asserted as a frame change because a
+  // baseline written from an unpatched frame passes forever.
+  test('a single-prop write with no colour repaints', async () => {
+    let rect: NodeHandle | null = null;
+    function Scene() {
+      const handle = useNode();
+      rect = handle;
+      return <Patched handle={handle} />;
+    }
+    await render(<Scene />);
+    const before = await stageBytes();
+
+    rect!.set({ x: 110 });
+    await sleep(200);
+    expect(sameFrame(before, await stageBytes(0))).toBe(false);
+  });
+
   test('hides a node through the visible slot', async () => {
     let rect: NodeHandle | null = null;
     function Scene() {
@@ -219,10 +238,14 @@ describe('tgfx shared values', () => {
 
     await render(<Scene />);
     const before = renders;
+    const unwritten = await stageBytes();
     radius!.value = 85;
     await sleep(200);
 
     expect(renders).toBe(before);
+    // Against the previous frame too: if the write never lands, the baseline
+    // below is captured from the unwritten frame and passes forever after.
+    expect(sameFrame(unwritten, await stageBytes(0))).toBe(false);
     await snapshot('animated-shared-value-written');
   });
 });

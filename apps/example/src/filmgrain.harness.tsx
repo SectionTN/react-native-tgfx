@@ -119,11 +119,7 @@ describe('tgfx film grain', () => {
     await snapshot('film-grain-multi');
   });
 
-  // Skipped, not deleted: the slot itself is proven in SceneTest, and a pure
-  // pushValues() never repaints on Android — see #230, which affects every slot
-  // in the library, not just this one. It passed here until `seed` became a real
-  // slot prop, because before that the write fell through to a re-encode.
-  test.skip('a handle write recrawls the grain', async () => {
+  test('a handle write recrawls the grain', async () => {
     let grain: NodeHandle | null = null;
     function Scene() {
       grain = useNode();

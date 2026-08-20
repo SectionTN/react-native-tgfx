@@ -122,10 +122,8 @@ describe('tgfx filter order', () => {
   });
 
   // The re-render above is a re-encode. This is the slot: one native write, no
-  // React render and no recompile. Skipped, not deleted: the slot itself is
-  // proven in SceneTest, and this fails on Android for the reason in #230 —
-  // a pure pushValues() never repaints there, for any slot, not just this one.
-  test.skip('a handle moves the threshold without a re-encode', async () => {
+  // React render and no recompile.
+  test('a handle moves the threshold without a re-encode', async () => {
     let cut: NodeHandle | null = null;
     function Scene() {
       cut = useNode();

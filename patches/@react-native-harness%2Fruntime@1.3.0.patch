@@ -1,0 +1,38 @@
+diff --git a/dist/jest-mock.js b/dist/jest-mock.js
+index a30ddd28b3b17c74ca46b29519ae8bf67260625a..bdb678cc6b38698ce0b5166d33a0cc5837cd8138 100644
+--- a/dist/jest-mock.js
++++ b/dist/jest-mock.js
+@@ -1,25 +1,8 @@
+-// Mock jest global to warn users about using Jest APIs in Harness tests
+-export const setupJestMock = () => {
+-    function throwError() {
+-        throw new Error(`Jest globals are not available in Harness tests. Import from 'react-native-harness' instead (e.g., import { harness } from 'react-native-harness'; harness.fn())`);
+-    }
+-    const jestMock = new Proxy({}, {
+-        get() {
+-            throwError();
+-        },
+-        set() {
+-            throwError();
+-        },
+-        has() {
+-            throwError();
+-        },
+-        ownKeys() {
+-            throwError();
+-        },
+-    });
+-    Object.defineProperty(globalThis, 'jest', {
+-        value: jestMock,
+-        writable: false,
+-        configurable: false,
+-    });
+-};
++// Patched: defining `globalThis.jest` on the device runtime makes every
++// library's `typeof jest !== 'undefined'` Jest detection fire. Reanimated
++// then swaps in its Jest mocks (plain-object mutables), so every mapper on
++// the real UI runtime dies against remote functions — shared values and
++// value-slot writes silently stop repainting under the harness while
++// working fine in the real app. The friendly "use harness.fn()" warning is
++// not worth that: an absent global already throws a clear ReferenceError.
++export const setupJestMock = () => {};
