@@ -3279,6 +3279,163 @@ void anOffscreenRenderCarriesItsColorSpace() {
   }
 }
 
+/// An embedded ICC profile that is neither sRGB nor Display-P3 — Adobe RGB here —
+/// has to survive the decode and be converted on draw. Dropped, the same bytes
+/// render with sRGB's primaries, which is a different colour and not an obvious
+/// one: a screenshot looks plausible, so this asserts the pixels instead.
+void anEmbeddedIccProfileSurvivesTheDecode() {
+  auto adobe = tgfx::ColorSpace::MakeRGB(tgfx::NamedTransferFunction::TwoDotTwo,
+                                         tgfx::NamedGamut::AdobeRGB);
+  CHECK(adobe != nullptr);
+  CHECK(!adobe->isSRGB());
+
+  // The same bytes twice, tagged two ways: only the profile differs, so any
+  // difference downstream is the profile being read and honoured.
+  // kWidth x kHeight: pixelAt strides by kWidth, so a smaller surface reads past the end.
+  constexpr int kSide = kWidth;
+  std::vector<uint8_t> rgba(static_cast<size_t>(kSide) * kSide * 4);
+  for (size_t i = 0; i < rgba.size(); i += 4) {
+    rgba[i] = 60;       // a green whose red clips on the way into sRGB, so the
+    rgba[i + 1] = 180;  // conversion cannot come out as a no-op
+    rgba[i + 2] = 75;
+    rgba[i + 3] = 255;
+  }
+  auto encode = [&](const std::shared_ptr<tgfx::ColorSpace>& space,
+                    tgfx::EncodedFormat format) {
+    auto info = tgfx::ImageInfo::Make(kSide, kSide, tgfx::ColorType::RGBA_8888,
+                                      tgfx::AlphaType::Unpremultiplied, 0, space);
+    tgfx::Pixmap pixmap(info, rgba.data());
+    return tgfx::ImageCodec::Encode(pixmap, format, 100);
+  };
+  auto wide = encode(adobe, tgfx::EncodedFormat::PNG);
+  auto plain = encode(tgfx::ColorSpace::SRGB(), tgfx::EncodedFormat::PNG);
+  CHECK(wide != nullptr && plain != nullptr);
+  if (wide == nullptr || plain == nullptr) {
+    return;
+  }
+
+  // Through the file and back: the decoder has to read iCCP, not guess.
+  auto wideCodec = tgfx::ImageCodec::MakeFrom(wide);
+  auto plainCodec = tgfx::ImageCodec::MakeFrom(plain);
+  CHECK(wideCodec != nullptr && plainCodec != nullptr);
+  if (wideCodec == nullptr || plainCodec == nullptr) {
+    return;
+  }
+  CHECK(wideCodec->colorSpace() != nullptr && !wideCodec->colorSpace()->isSRGB());
+  CHECK(plainCodec->colorSpace() != nullptr && plainCodec->colorSpace()->isSRGB());
+
+  // And through the registry, which is what a scene actually draws.
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto wideHandle = registry.add(wideCodec);
+  auto plainHandle = registry.add(plainCodec);
+  CHECK(wideHandle.handle != 0 && plainHandle.handle != 0);
+  auto wideImage = registry.sourceImage(wideHandle.handle);
+  auto plainImage = registry.sourceImage(plainHandle.handle);
+  CHECK(wideImage != nullptr && plainImage != nullptr);
+  if (wideImage == nullptr || plainImage == nullptr) {
+    return;
+  }
+
+  auto drawn = [&](const std::shared_ptr<tgfx::Image>& image) {
+    auto* context = device()->lockContext();
+    auto surface = tgfx::Surface::Make(context, kSide, kSide, false, 1, false, 0,
+                                       tgfx::ColorSpace::SRGB());
+    CHECK(surface != nullptr);
+    surface->getCanvas()->clear();
+    surface->getCanvas()->drawImage(image);
+    context->flushAndSubmit(true);
+    auto info = tgfx::ImageInfo::Make(kSide, kSide, tgfx::ColorType::RGBA_8888,
+                                      tgfx::AlphaType::Premultiplied, 0,
+                                      tgfx::ColorSpace::SRGB());
+    Pixels out(static_cast<size_t>(info.byteSize()));
+    surface->readPixels(info, out.data());
+    device()->unlock();
+    return out;
+  };
+
+  auto fromWide = drawn(wideImage);
+  auto fromPlain = drawn(plainImage);
+  // The sRGB-tagged one lands on the bytes it started as; the Adobe RGB one does not.
+  CHECK(pixelAt(fromPlain, 32, 32)[0] == 60);
+  CHECK(pixelAt(fromPlain, 32, 32)[1] == 180);
+  CHECK(pixelAt(fromPlain, 32, 32)[2] == 75);
+  int spread = 0;
+  for (int channel = 0; channel < 3; channel++) {
+    spread += std::abs(static_cast<int>(pixelAt(fromWide, 32, 32)[channel]) -
+                       static_cast<int>(pixelAt(fromPlain, 32, 32)[channel]));
+  }
+  // Adobe RGB's wider primaries and 2.2 gamma move this green a long way; a
+  // dropped profile would leave the two byte-identical.
+  CHECK(spread > 12);
+
+  // The issue's own example is a tagged JPEG, and JPEG carries its profile in an
+  // APP2 marker rather than a PNG chunk — a different reader on the same path.
+  auto wideJpeg = tgfx::ImageCodec::MakeFrom(encode(adobe, tgfx::EncodedFormat::JPEG));
+  CHECK(wideJpeg != nullptr);
+  if (wideJpeg != nullptr) {
+    CHECK(wideJpeg->colorSpace() != nullptr && !wideJpeg->colorSpace()->isSRGB());
+    auto jpegHandle = registry.add(wideJpeg);
+    CHECK(jpegHandle.handle != 0);
+    auto jpegImage = registry.sourceImage(jpegHandle.handle);
+    CHECK(jpegImage != nullptr);
+    if (jpegImage != nullptr) {
+      auto fromJpeg = drawn(jpegImage);
+      // JPEG is lossy, so this is the conversion showing through the loss, not equality.
+      int jpegSpread = 0;
+      for (int channel = 0; channel < 3; channel++) {
+        jpegSpread += std::abs(static_cast<int>(pixelAt(fromJpeg, 32, 32)[channel]) -
+                               static_cast<int>(pixelAt(fromPlain, 32, 32)[channel]));
+      }
+      CHECK(jpegSpread > 12);
+    }
+    registry.remove(jpegHandle.handle);
+  }
+
+  // An image with no profile at all is read as sRGB, which is the web's default
+  // and what tgfx substitutes for a null source space. This is the "no profile"
+  // half of the same guarantee, and it is why the registry does not re-tag: the
+  // conversion already treats untagged as sRGB, so tagging it would change no
+  // pixel and would cost a second decode on every platform-decoded image.
+  auto untagged = tgfx::ImageCodec::MakeFrom(
+      tgfx::ImageInfo::Make(kSide, kSide, tgfx::ColorType::RGBA_8888,
+                            tgfx::AlphaType::Unpremultiplied),
+      tgfx::Data::MakeWithCopy(rgba.data(), rgba.size()));
+  CHECK(untagged != nullptr);
+  if (untagged != nullptr) {
+    CHECK(untagged->colorSpace() == nullptr);
+    auto untaggedHandle = registry.add(untagged);
+    CHECK(untaggedHandle.handle != 0);
+    auto untaggedImage = registry.sourceImage(untaggedHandle.handle);
+    CHECK(untaggedImage != nullptr);
+    if (untaggedImage != nullptr) {
+      auto fromUntagged = drawn(untaggedImage);
+      // Byte-identical to the sRGB-tagged draw: read as sRGB, not as Adobe RGB
+      // and not as the destination's space.
+      for (int channel = 0; channel < 3; channel++) {
+        CHECK(pixelAt(fromUntagged, 32, 32)[channel] == pixelAt(fromPlain, 32, 32)[channel]);
+      }
+      registry.remove(untaggedHandle.handle);
+    }
+  }
+
+  // A derived handle keeps the profile too: a thumbnail that lost it would be a
+  // different colour from the image it came from.
+  auto scaled = wideImage->makeScaled(kSide / 2, kSide / 2);
+  CHECK(scaled != nullptr);
+  if (scaled != nullptr) {
+    CHECK(scaled->colorSpace() != nullptr && !scaled->colorSpace()->isSRGB());
+  }
+  auto oriented = wideImage->makeOriented(tgfx::Orientation::RightTop);
+  CHECK(oriented != nullptr);
+  if (oriented != nullptr) {
+    CHECK(oriented->colorSpace() != nullptr && !oriented->colorSpace()->isSRGB());
+  }
+
+  // The registry is process-wide and the byte-budget test counts what is in it.
+  registry.remove(wideHandle.handle);
+  registry.remove(plainHandle.handle);
+}
+
 /// A derived image must outlive its parent's eviction, so it comes from the codec.
 void aDerivedImageSurvivesTheParentsEviction() {
   auto& registry = tgfxrn::ImageRegistry::instance();
@@ -4363,6 +4520,7 @@ int main() {
   verticesSampleTheirTextureCoordinates();
   anOffscreenRenderProducesTheSamePixels();
   anOffscreenRenderCarriesItsColorSpace();
+  anEmbeddedIccProfileSurvivesTheDecode();
   aDerivedImageSurvivesTheParentsEviction();
   aLiveHandleRefusesToBeDerivedFrom();
   aRecordedGroupReplaysWhatItDrew();

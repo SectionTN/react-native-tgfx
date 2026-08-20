@@ -173,8 +173,11 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   alignment, font weight/style, measurement, custom fonts from assets, emoji/RTL.
   Android relies on hardcoded `/system/fonts/*.ttf` (OEM-fragile).
 - ✅ Pixel readback: `<Canvas ref>` exposes `snapshot()` and `save(path)`.
-- 🟡 Wide-gamut/P3 colour handling, including on readback (snapshots come back
-  as sRGB straight-alpha RGBA8888).
+- 🟡 Wide-gamut/P3 colour handling. `<Canvas colorSpace>` (#209), P3 colour
+  syntax (#208) and profile-honouring decode (#212) have landed, and a readback
+  now carries the surface's space. What is left is iOS: PNG and JPEG decode
+  through ImageIO, which flattens a wide-gamut source to sRGB before any canvas
+  sees it, because tgfx's Apple codec does not report the `CGImage`'s own space.
 
 ## Animation / Reanimated
 

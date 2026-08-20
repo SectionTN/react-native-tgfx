@@ -27,6 +27,32 @@ never cross into JS. Two assets whose file names differ only by extension —
 `logo.png` beside `logo.webp` — collide as one Android resource, so give them
 distinct names.
 
+## Colour profiles
+
+An embedded ICC profile is read at decode and honoured on draw. A photo tagged
+Adobe RGB, ProPhoto or Rec.2020 is converted into the canvas's own space rather
+than having its numbers reinterpreted, so it looks the same on an `srgb` canvas
+as on a `display-p3` one — a browser does the same thing.
+
+Converting into sRGB is a real conversion, not a no-op: out-of-gamut colour is
+clipped, which is the correct and unavoidable answer for a display that cannot
+show it. A [`colorSpace="display-p3"` canvas](/api/interfaces/CanvasProps) keeps
+it instead.
+
+An image with no profile at all — or with one the decoder cannot parse — is read
+as **sRGB**, silently. That is the web's default and what the conversion
+substitutes for an untagged source, so it is a definition rather than a
+correction: nothing has to re-tag the image for it to hold.
+
+<Callout type="warn">
+  On iOS, PNG and JPEG decode through ImageIO rather than through tgfx's own
+  readers, and ImageIO renders into an sRGB bitmap. A wide-gamut source is
+  therefore flattened at decode on iOS, before any canvas sees it, and a P3
+  canvas cannot recover what was already clipped. Android reads the profile and
+  converts at draw, as described above. Closing the gap means having the Apple
+  codec report the `CGImage`'s own colour space — a change in tgfx itself.
+</Callout>
+
 ## Sub-rects
 
 ```tsx
