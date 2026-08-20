@@ -150,6 +150,8 @@ add_library(${PACKAGE_NAME} SHARED
         ../cpp/SvgImage.cpp
         ../cpp/TgfxRenderer.cpp
         ../cpp/OffscreenRender.cpp
+        ../cpp/OffscreenSurface.cpp
+        ../cpp/HybridTgfxOffscreenSurface.cpp
         ../cpp/PdfExport.cpp
         ../cpp/SvgExport.cpp
         ../cpp/ImageRegistry.cpp

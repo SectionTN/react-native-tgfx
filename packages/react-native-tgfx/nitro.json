@@ -53,6 +53,12 @@
         "implementationClassName": "HybridTgfxBufferFactory"
       }
     },
+    "TgfxOffscreenSurfaceFactory": {
+      "all": {
+        "language": "c++",
+        "implementationClassName": "HybridTgfxOffscreenSurfaceFactory"
+      }
+    },
     "TgfxVideoFactory": {
       "ios": {
         "language": "swift",

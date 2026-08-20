@@ -76,6 +76,34 @@ const still = await renderToImage(scene, { width: 400, height: 400 })
 `renderToPdf` pages carry either `element` (JSX) or `scene` (nodes or a
 `Scene`), mixed freely.
 
+## Retained surface
+
+[`createOffscreenSurface`](/api/functions/createOffscreenSurface) keeps a GPU
+surface and its compiled program alive between renders — the
+iterate-and-export loop `renderToImage` would pay full price for every time
+(surface allocation, program compile, synchronous readback, per call):
+
+```ts
+const surface = createOffscreenSurface({ width: 1024, height: 1024 })
+scene.attach(surface)                 // a surface is a scene target, like a view
+
+for (let f = 0; f < 120; f++) {
+  t.set({ x: f * 4 })                 // slot write — no re-encode
+  surface.flush()                     // render on the offscreen worker
+  if (f % 30 === 0) await surface.save(`${dir}/frame-${f}.png`)
+}
+const still = await surface.toImage() // readback only when asked
+surface.dispose()                     // GPU memory is explicit-lifetime
+```
+
+It speaks the view's `setScene`/`setValues` contract, so `Scene.attach`, node
+handles and the Reanimated drivers work unchanged, and it boxes with
+`NitroModules.box()` for worklet runtimes. `setViewport([zoom, x, y])` crops
+and zooms an export; `hitTest(x, y, precise)` answers headless from the staged
+scene. The colour space is a creation option — like a view, a surface cannot
+change space after it exists. For a single export, `renderToImage` remains the
+cheaper call.
+
 `colorSpace` picks the offscreen surface's space, exactly as the prop does for
 a `<Canvas>`, and the result carries it:
 

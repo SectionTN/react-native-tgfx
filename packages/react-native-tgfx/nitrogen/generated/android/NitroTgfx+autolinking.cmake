@@ -38,6 +38,8 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridTgfxFontsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxImageSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxImageFactorySpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxOffscreenSurfaceSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridTgfxOffscreenSurfaceFactorySpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxPathSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxSlotsSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTgfxSlotsFactorySpec.cpp

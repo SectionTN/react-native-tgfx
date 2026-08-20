@@ -679,3 +679,117 @@ The synthetic `mixed` workload remains tgfx's weak spot (batch breaking), but it
 is worth noting that it is synthetic by construction: it alternates draw kinds
 shape-by-shape, which real scenes do not. `showcase` mixes draw kinds the way an
 actual UI does — in contiguous groups — and tgfx wins it outright.
+
+---
+
+## 4-backend matrix — tgfx {OpenGL ES, Vulkan} × Skia {Ganesh, Graphite}
+
+Same device (SM-E146B, Android 15, Mali-G68, 90 Hz pinned), release arm64 APKs,
+one engine mounted at a time. Four APK variants — one tgfx backend + one Skia
+backend each — so every tgfx/Skia pair is compared **in-process, in the same
+sweep**, with strict run-order alternation. Each backend appears in two sweeps:
+8 runs per config (4 for the N>=6000 configs). Raw rows, the matrix runner, the
+aggregator and per-APK `.so` manifests: `results-matrix/`.
+
+**Version fairness.** One Skia version for both backends:
+`@shopify/react-native-skia@2.12.0-next.1` (the `@next` Graphite preview).
+Marker absent -> Ganesh, linking `react-native-skia-android@152.0.0` — the
+*identical* binary package stable 2.11.0 ships — marker present -> Graphite,
+linking `react-native-skia-graphite-android@152.0.0` (same Skia milestone m152).
+The Graphite npm package ships no `libwebgpu_dawn.so`; the chrome-m152 Dawn
+shared library from `react-native-webgpu@0.8.2` (the tag Graphite declares) was
+placed in its libs dir. tgfx backends flip via `-PTgfxVulkan=ON|OFF` (same-day
+prebuilt pair). Every APK was verified before its sweep: vk/egl symbols in the
+tgfx `.so`, Dawn strings in `librnskia.so`, and Graphite confirmed live at
+runtime (`RNSkia: Selected Dawn adapter - Backend: Vulkan, Device: Mali-G68`).
+
+**Pre-roll** now also covers `showcase` (runtime shader, gradients, path), so
+no engine pays a first-pipeline compile inside a measured window.
+
+### 20,000 animated objects
+
+Per-object SharedValue slots at 20k (40,000 mutables) mount for tens of minutes
+on **both** engines — the JS thread pegs a core wiring 20k React nodes with
+40k value subscriptions. That is a shared architectural ceiling, reported, not
+measured. The 20k rows are renderer-bound instead: `group`@6000/@20000 — every
+object moves every frame through one animated transform. `leaves`@6000 (12,000
+independently animated slots) is kept as the per-object overload probe.
+
+### Results (median of 8 runs; 4 runs for N>=6000; `[min-max]`)
+
+| wl | N | backend | uiFps | jsFps | prsFps | f95 | cpu% | pssMB |
+|:---|---:|:---|---:|---:|---:|---:|---:|---:|
+| leaves | 1500 | tgfx-gl | **90.3** | **89.1** | **91.2** | 16 | **100.7** | 310.9 |
+| leaves | 1500 | tgfx-vk | **90.3** | **89.2** | **91.2** | 16 | 104.0 | 365.6 |
+| leaves | 1500 | skia-ganesh | 83.0 | 41.9 | 80.0 | 32 | 114.2 | 299.8 |
+| leaves | 1500 | skia-graphite | 76.5 | 38.6 | 25.9 | 36 | 107.9 | 369.3 |
+| leaves | 6000 | tgfx-gl | **44.2** | **21.7** | **44.6** | 50 | 149.2 | 385.4 |
+| leaves | 6000 | tgfx-vk | 35.2 | 17.4 | 35.8 | 48 | 160.1 | 423.4 |
+| leaves | 6000 | skia-ganesh | 17.8 | 9.5 | 17.6 | 123 | 113.7 | 371.0 |
+| leaves | 6000 | skia-graphite | 15.2 | 7.7 | 4.8 | 150 | 98.9 | 454.6 |
+| group | 6000 | tgfx-gl | **90.1** | **89.9** | **91.1** | 12 | 116.2 | 394.8 |
+| group | 6000 | tgfx-vk | **90.0** | **89.8** | **90.9** | **10** | 117.4 | 411.9 |
+| group | 6000 | skia-ganesh | 86.0 | 60.6 | 84.3 | 30 | 124.2 | 366.4 |
+| group | 6000 | skia-graphite | 47.2 | 23.7 | 15.8 | 67 | 88.8 | 445.8 |
+| group | 20000 | tgfx-gl | **90.1** | **89.6** | **87.1** | 18 | 232.7 | 499.0 |
+| group | 20000 | tgfx-vk | **90.0** | **89.8** | 79.9 | **11** | 195.4 | 525.1 |
+| group | 20000 | skia-ganesh | 30.8 | 15.7 | 31.2 | 101 | 106.9 | 416.4 |
+| group | 20000 | skia-graphite | 14.9 | 7.4 | 4.8 | 200 | 71.5 | 538.9 |
+| showcase | 900 | tgfx-gl | **90.2** | **89.0** | **91.2** | 20 | **87.7** | 361.1 |
+| showcase | 900 | tgfx-vk | **90.2** | **89.3** | **91.2** | 20 | 95.8 | 388.5 |
+| showcase | 900 | skia-ganesh | 89.7 | 81.3 | 82.9 | 24 | 99.7 | 345.4 |
+| showcase | 900 | skia-graphite | 90.3 | 86.5 | 44.6 | 19 | 97.5 | 377.9 |
+
+(Light workloads — leaves 100/600, group 1500, mixed 600, showcase 300, idle —
+are FPS-capped ~90-91 on tgfx-gl, tgfx-vk and skia-ganesh alike; tgfx holds the
+lower f95 at every one of them. Full rows in `results-matrix/`.)
+
+### Read of the matrix
+
+- **20k animated objects:** tgfx-gl presents **87 fps** with the main thread
+  and JS thread both still at 90 fps; Ganesh presents 31 with its main thread
+  at 31 and JS at 16. Graphite presents 4.8. Per delivered frame tgfx is also
+  the cheaper engine (2.7 cpu%/fps vs 3.4 for Ganesh).
+- **tgfx-gl vs tgfx-vk:** GL presents more under saturation (44.6 vs 35.8 at
+  `leaves`@6000; 87.1 vs 79.9 at `group`@20000); Vulkan has the better frame
+  times (f95 10-11 vs 12-18 on `group`) and lower CPU at 20k, but +40-60 MB
+  PSS and a +48 MB idle baseline. The Vulkan sweeps also ran ~3 °C hotter
+  (they came later in the matrix) — a cross-sweep caveat that does not affect
+  any tgfx-vs-Skia comparison, which is always in-sweep.
+- **Skia Graphite (experimental preview):** presented FPS is pinned at ~45 —
+  exactly half the 90 Hz panel — on *every* light workload, while its UI and
+  JS threads run at 90 and f95 stays low; under load it collapses (4.8-25.9).
+  This is a present-path defect of the preview on this Dawn/Vulkan/Mali stack,
+  the same half-refresh symptom tgfx itself had before iteration 1. Its
+  Vulkan-via-Dawn stack also carries the largest graphics memory footprint
+  (+80-200 MB at high N).
+- **Memory:** Ganesh stays lightest at every config. tgfx pays its swapchain
+  (~+10-30 MB GL, more on Vulkan); Graphite pays the most. Absolute PSS in all
+  rows includes a ~40 MB harness slot pool (12k mutables), identical for every
+  engine. Idle baselines per sweep: 198.1 / 205.1 / 245.9 / 252.1 MB
+  (gl-ganesh / gl-graphite / vk-ganesh / vk-graphite).
+
+## Iteration 12 — retained offscreen surface vs one-shot renderToImage
+
+Harness: `src/OffscreenBench.tsx` (self-measuring screen, debug build, Samsung
+SM-E146B). Each side does 20 fenced export cycles at 1024×1024, opaque: mutate
+one group's rotation, render, read the frame back (`toImage()` for the
+surface, `renderToImage()` for the one-shot). The retained surface pays
+compile + surface allocation once; the one-shot pays them per call. Both pay
+the same GPU→CPU readback per export, which is why this is not the
+order-of-magnitude gap of the flush-only path — readback (~65 ms at 1024²)
+dominates the export loop.
+
+| objects | retained ms/export | one-shot ms/export | speedup |
+| --- | --- | --- | --- |
+| 400 | 68.9 | 81.5 | **1.2x** |
+| 2000 | 77.3 | 122.3 | **1.6x** |
+
+Read: the saving is the per-call `SceneRenderer::setScene` compile plus
+`Surface::Make`, so it scales with scene complexity (12.6 ms/export at 400
+objects, 45 ms/export at 2000) while the readback stays constant. A
+flush-only loop (mutate + `flush()`, no readback until the end) coalesces on
+the offscreen worker and renders at slot-patch cost, like a view — the export
+numbers above are the *worst case* for the retained surface, and it still
+wins everywhere measured. Verdict: `renderToImage` for one-shots,
+`createOffscreenSurface` as soon as the same scene renders twice.

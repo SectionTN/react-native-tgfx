@@ -51,6 +51,16 @@ const image = await renderToImage(
 )                                              // Promise<TgfxImage>
 ```
 
+`createOffscreenSurface({width, height, pixelRatio?, opaque?, colorSpace?})`
+returns a retained GPU surface — a `SceneTarget` speaking the view's
+`setScene`/`setValues`/`setStringValues` contract plus `setViewport([zoom,x,y])`,
+`hitTest(x,y,precise)`, `flush()` (stage + wake the offscreen worker; never
+renders on the calling thread), `toImage(): Promise<TgfxImage>`,
+`save(path, format?, quality?)`, `dispose()`. Use for repeated renders
+(`scene.attach(surface)`, slot writes, flush); `renderToImage` stays cheaper
+for one-shots. Boxable to worklet runtimes. Colour space is fixed at creation
+(no `setColorSpace`).
+
 `TgfxImage.encode(format?, quality?)` returns the encoded bytes as an `ArrayBuffer`;
 `TgfxImage.save(path, format?, quality?)` writes natively (bytes never enter
 JS). Formats: `png` (default) / `jpeg` / `webp` / `raw` (straight-alpha RGBA).

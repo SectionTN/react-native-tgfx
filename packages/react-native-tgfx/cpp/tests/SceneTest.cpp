@@ -1,5 +1,8 @@
 // Host tests for the compiled draw program, through a real headless Metal surface.
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -22,6 +25,7 @@
 
 #include "OffscreenRender.hpp"
 #include "PdfExport.hpp"
+#include "OffscreenSurface.hpp"
 #include "Snapshot.hpp"
 #include "SvgExport.hpp"
 #include "TgfxScene.hpp"
@@ -5341,6 +5345,91 @@ void aRegisteredImageRasterizesForEncoding() {
   CHECK(threw);
 }
 
+
+namespace {
+/// Bounded spin for the offscreen worker's callback; SceneTest has no runloop.
+bool waitFor(const std::atomic<bool>& flag) {
+  for (int i = 0; i < 500 && !flag.load(); i++) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return flag.load();
+}
+
+std::vector<uint8_t> surfaceRaw(const std::shared_ptr<tgfxrn::OffscreenSurface>& surface) {
+  std::atomic<bool> done{false};
+  std::vector<uint8_t> out;
+  std::string error;
+  tgfxrn::SnapshotRequest request;
+  request.format = "raw";
+  surface->requestSave(request, [&](std::shared_ptr<tgfx::Data> data, int, int,
+                                    const std::string& err) {
+    error = err;
+    if (data != nullptr) {
+      const auto* bytes = static_cast<const uint8_t*>(data->data());
+      out.assign(bytes, bytes + data->size());
+    }
+    done.store(true);
+  });
+  CHECK(waitFor(done));
+  CHECK(error.empty());
+  return out;
+}
+}  // namespace
+
+/// The retained surface: staged state renders on the worker, readbacks serve on demand.
+void anOffscreenSurfaceRendersSlotsAndViewport() {
+  auto surface = std::make_shared<tgfxrn::OffscreenSurface>(8, 8, 1.0f, true, false);
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0, 0);
+  w.pushAnim(0);
+  w.pushAnim(4);
+  w.pushAnim(4);
+  w.pushPaint(0xffff2d55, false);
+  auto words = w.finish();
+  surface->setScene(words, {"0"});
+  surface->setValues({0});
+
+  auto first = surfaceRaw(surface);
+  CHECK(first.size() == 8u * 8u * 4u);
+  CHECK(first[0] == 255 && first[1] == 45 && first[2] == 85);   // (0,0) inside the rect
+  size_t right = (0 * 8 + 6) * 4;
+  CHECK(first[right + 0] == 0 && first[right + 1] == 0);        // (6,0) is background
+
+  // A slot write moves the rect with no re-encode; the retained program re-renders.
+  surface->setValues({4});
+  auto moved = surfaceRaw(surface);
+  CHECK(moved[0] == 0);                                          // left edge vacated
+  CHECK(moved[right + 0] == 255 && moved[right + 2] == 85);      // landed at x=4..8
+
+  // The viewport rides above the program, exactly as on a view.
+  surface->setValues({0});
+  surface->setViewport(2.0f, 0.0f, 0.0f);
+  auto zoomed = surfaceRaw(surface);
+  size_t past = (0 * 8 + 7) * 4;
+  CHECK(zoomed[past + 0] == 255);                                // 4pt rect fills 8px at zoom 2
+
+  // Headless hit test answers from the staged scene in canvas points.
+  surface->setViewport(1.0f, 0.0f, 0.0f);
+  auto hit = surface->hitTest(2.0f, 2.0f, true);
+  CHECK(hit.size() >= 2 && hit[0] == 1 && hit[1] == 0);
+  auto miss = surface->hitTest(7.5f, 7.5f, true);
+  CHECK(miss.empty());
+
+  // Dispose rejects late readbacks instead of hanging them.
+  surface->dispose();
+  std::atomic<bool> rejected{false};
+  tgfxrn::SnapshotRequest request;
+  surface->requestSave(request, [&](std::shared_ptr<tgfx::Data> data, int, int,
+                                    const std::string& err) {
+    CHECK(data == nullptr);
+    CHECK(!err.empty());
+    rejected.store(true);
+  });
+  CHECK(waitFor(rejected));
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -5469,6 +5558,7 @@ int main() {
   anEmojiFallsBackInsteadOfVanishing();
   textOnAPathFollowsTheCurve();
   aRegisteredImageRasterizesForEncoding();
+  anOffscreenSurfaceRendersSlotsAndViewport();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

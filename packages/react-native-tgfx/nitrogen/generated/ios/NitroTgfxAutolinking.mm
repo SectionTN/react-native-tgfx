@@ -16,6 +16,7 @@
 #include "HybridTgfxPath.hpp"
 #include "HybridTgfxSlotsFactory.hpp"
 #include "HybridTgfxBufferFactory.hpp"
+#include "HybridTgfxOffscreenSurfaceFactory.hpp"
 #include "HybridTgfxVideoFactorySpecSwift.hpp"
 
 @interface NitroTgfxAutolinking : NSObject
@@ -77,6 +78,15 @@
                     "The HybridObject \"HybridTgfxBufferFactory\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridTgfxBufferFactory>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "TgfxOffscreenSurfaceFactory",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridTgfxOffscreenSurfaceFactory>,
+                    "The HybridObject \"HybridTgfxOffscreenSurfaceFactory\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridTgfxOffscreenSurfaceFactory>();
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(
