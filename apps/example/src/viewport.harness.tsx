@@ -1,7 +1,15 @@
 // The root viewport: a zoom/pan the renderer owns, above the whole draw program.
 import React, { useRef } from 'react';
 import { describe, expect, render, test } from 'react-native-harness';
-import { Circle, Fill, Rect, type CanvasHandle } from 'react-native-tgfx';
+import { makeMutable } from 'react-native-reanimated';
+import { scheduleOnUI } from 'react-native-worklets';
+import {
+  Circle,
+  Fill,
+  Rect,
+  type CanvasHandle,
+  type Viewport,
+} from 'react-native-tgfx';
 import { Stage, sameFrame, sleep, snapshot, stageBytes } from './testSupport';
 
 /** Two shapes, off-centre on both axes, so a zoom and a pan look different. */
@@ -118,6 +126,30 @@ describe('tgfx viewport', () => {
     canvas!.current!.setViewport({ zoom: 1.8 });
     await sleep(400);
     expect(sameFrame(before, await stageBytes(0))).toBe(false);
+  });
+
+  test('a shared value viewport pans from the UI thread', async () => {
+    const vp = makeMutable<Viewport>({ zoom: 1, x: 0, y: 0 });
+    await render(
+      <Stage viewport={vp}>
+        <Shapes />
+      </Stage>,
+    );
+    const before = await stageBytes();
+
+    // Written on the UI runtime, as a gesture worklet would — no JS-thread hop.
+    scheduleOnUI(() => {
+      'worklet';
+      vp.value = { zoom: 2, x: -40, y: -40 };
+    });
+    await sleep(300);
+    expect(sameFrame(before, await stageBytes(0))).toBe(false);
+
+    // A JS-thread write drives the same path, and the identity round-trips
+    // back to the exact original frame.
+    vp.value = { zoom: 1, x: 0, y: 0 };
+    await sleep(300);
+    expect(sameFrame(before, await stageBytes(0))).toBe(true);
   });
 
   test('snapshot reads back the zoomed frame', async () => {

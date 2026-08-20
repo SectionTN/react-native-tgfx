@@ -613,10 +613,12 @@ export interface CanvasHandle {
  * })
  * ```
  *
- * Plain numbers, not SharedValues: moving the viewport is a native write that
- * never re-encodes the scene, so a gesture drives it through
- * {@link CanvasHandle.setViewport} from a JS-thread gesture callback
- * (`Gesture.Pan().runOnJS(true)`) rather than through a value slot.
+ * Fields are plain numbers — the viewport is a native write above the draw
+ * program, never a value slot. To drive it from a gesture without touching the
+ * JS thread, pass the whole object as one `SharedValue<Viewport>` to
+ * `<Canvas viewport>` and write it from the gesture worklet; the update is
+ * atomic, so a pinch never presents a zoom with last frame's pan.
+ * {@link CanvasHandle.setViewport} is the same write from the JS thread.
  */
 export interface Viewport {
   /** Scale about the scene origin. Defaults to 1; a non-positive value is ignored. */
@@ -680,10 +682,12 @@ export interface CanvasProps {
    * A root zoom/pan the renderer owns — see {@link Viewport}.
    *
    * Applied above the whole draw program, so moving it never re-encodes the
-   * scene. Set from a commit; for a gesture, drive
-   * {@link CanvasHandle.setViewport} instead, which skips the React render too.
+   * scene. A plain object is set from the commit. A `SharedValue<Viewport>` is
+   * pushed from the UI thread whenever it is written — a gesture worklet can
+   * drive it with no JS-thread hop and no React render. Drive it from one side
+   * or the other, not both.
    */
-  viewport?: Viewport
+  viewport?: Viewport | SharedValueLike<Viewport>
   /** Device-pixel debugging overlay hook (reserved). */
   debug?: boolean
 }

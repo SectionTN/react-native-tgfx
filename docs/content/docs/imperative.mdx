@@ -46,18 +46,22 @@ const pan = Gesture.Pan().onUpdate((e) => {
 
 A node handle writes a value slot, which is worklet-safe. The canvas
 [`viewport`](/docs/animation#zoom-and-pan) is not a slot — it sits above the
-draw program entirely — so `setViewport` is a plain JS call and a gesture
-driving it needs `runOnJS(true)`:
+draw program entirely — but it has its own UI-thread path: pass a
+`SharedValue<Viewport>` as the `viewport` prop and write it from the gesture
+worklet.
 
 ```tsx
-const zoom = Gesture.Pinch()
-  .runOnJS(true)
-  .onChange((e) => canvas.current?.setViewport({ zoom: at.current.zoom * e.scaleChange }))
+const viewport = useSharedValue({ zoom: 1, x: 0, y: 0 })
+const zoom = Gesture.Pinch().onChange((e) => {
+  const at = viewport.value
+  viewport.value = { ...at, zoom: at.zoom * e.scaleChange }
+})
+// <Canvas viewport={viewport}>
 ```
 
-That is still one native write per tick with no React render and no scene
-re-encode; it is the JS thread being on the path that the slot writes above
-avoid.
+`CanvasHandle.setViewport()` is the same write from the JS thread, for a
+gesture running with `runOnJS(true)` or any other JS-side caller. Both cost
+one native write per tick, with no React render and no scene re-encode.
 
 ## What has slots
 

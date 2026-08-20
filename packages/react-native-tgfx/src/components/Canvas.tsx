@@ -6,11 +6,16 @@ import React, {
   useState,
 } from 'react'
 import { callback } from 'react-native-nitro-modules'
-import type { MaybeSharedValue } from '../compiler/values'
+import {
+  isSharedValue,
+  type MaybeSharedValue,
+  type SharedValueLike,
+} from '../compiler/values'
 import type { Color } from '../compiler/colors'
 import { packStringTable } from '../compiler/writer'
 import { Fill } from './drawings'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
+import { ViewportDriver } from '../reanimated/ViewportDriver'
 import { isLive } from '../reanimated/liveValue'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import { directNodes } from '../reconciler/directNodes'
@@ -212,7 +217,15 @@ export function Canvas({
   const viewportRef = useRef<[number, number, number]>([1, 0, 0])
   const propViewport = useRef<[number, number, number]>([1, 0, 0])
   const sentViewport = useRef<[number, number, number]>([1, 0, 0])
-  const nextProp = resolveViewport(viewport, scratchViewport)
+  // A SharedValue viewport is pushed by the UI-thread driver below; the
+  // plain-prop machinery here must then stay at identity and not fight it.
+  const liveViewport = isSharedValue(viewport)
+    ? (viewport as SharedValueLike<Viewport>)
+    : null
+  const nextProp = resolveViewport(
+    liveViewport == null ? (viewport as Viewport | undefined) : undefined,
+    scratchViewport
+  )
   if (!sameViewport(nextProp, propViewport.current)) {
     propViewport.current = [nextProp[0], nextProp[1], nextProp[2]]
     viewportRef.current = [nextProp[0], nextProp[1], nextProp[2]]
@@ -240,7 +253,9 @@ export function Canvas({
     }
     sentViewport.current = [at[0], at[1], at[2]]
     viewRef.current?.setViewport?.(at)
-  }, [view, viewport?.zoom, viewport?.x, viewport?.y])
+    // The resolved triple, not the prop's fields: a SharedValue viewport keeps
+    // this identity and is pushed by the driver instead.
+  }, [view, nextProp[0], nextProp[1], nextProp[2]])
 
   if (rootRef.current == null) {
     // Straight to the hybrid object: as a prop it would ride a React and a Fabric commit per frame.
@@ -373,7 +388,8 @@ export function Canvas({
   if (
     AnimationDriver == null &&
     !warnedNoDriver &&
-    (values.some((value) => !isLive(value)) ||
+    (liveViewport != null ||
+      values.some((value) => !isLive(value)) ||
       stringValues.some((value) => !isLive(value)))
   ) {
     warnedNoDriver = true
@@ -394,6 +410,9 @@ export function Canvas({
       view != null &&
       (values.length > 0 || stringValues.length > 0) ? (
         <AnimationDriver view={view} values={values} strings={stringValues} />
+      ) : null}
+      {ViewportDriver != null && view != null && liveViewport != null ? (
+        <ViewportDriver view={view} viewport={liveViewport} />
       ) : null}
     </>
   )

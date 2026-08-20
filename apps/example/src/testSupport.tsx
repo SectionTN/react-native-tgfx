@@ -8,8 +8,8 @@ import {
   Canvas,
   Fill,
   type CanvasHandle,
+  type CanvasProps,
   type ColorSpace,
-  type Viewport,
 } from 'react-native-tgfx';
 
 export const CANVAS_ID = 'tgfx-harness-canvas';
@@ -27,7 +27,7 @@ export function Stage({
   /** Only the readback and hit-test suites need one. */
   canvasRef?: React.Ref<CanvasHandle>;
   /** Only the viewport suite needs one. */
-  viewport?: Viewport;
+  viewport?: CanvasProps['viewport'];
   /** Only the colour suite needs one. Read once, when the canvas mounts. */
   colorSpace?: ColorSpace;
 }) {

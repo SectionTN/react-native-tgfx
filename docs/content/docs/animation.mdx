@@ -67,32 +67,32 @@ that is one matrix. The viewport is that matrix, owned by the renderer and
 applied above the whole program, so moving it costs one native write and a
 redraw: no recommit, no wire traffic.
 
+Pass a `SharedValue<Viewport>` as the `viewport` prop and the canvas follows
+it from the UI thread: the gesture worklet writes the shared value, the frame
+moves, and the JS thread is never on the path.
+
 ```tsx
-import { useRef } from 'react'
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
-import { Canvas, Circle, type CanvasHandle } from 'react-native-tgfx'
+import { useSharedValue } from 'react-native-reanimated'
+import { Canvas, Circle } from 'react-native-tgfx'
 
 function Map() {
-  const canvas = useRef<CanvasHandle>(null)
-  const at = useRef({ zoom: 1, x: 0, y: 0 })
+  const viewport = useSharedValue({ zoom: 1, x: 0, y: 0 })
 
-  // runOnJS: the handle is a JS object. One JS call per tick, and still no
-  // React render and no scene re-encode.
-  const pan = Gesture.Pan()
-    .runOnJS(true)
-    .onChange(e => {
-      at.current = {
-        ...at.current,
-        x: at.current.x + e.changeX,
-        y: at.current.y + e.changeY,
-      }
-      canvas.current?.setViewport(at.current)
-    })
+  // A worklet end to end: no runOnJS, no React render, no scene re-encode.
+  const pan = Gesture.Pan().onChange(e => {
+    const at = viewport.value
+    viewport.value = {
+      zoom: at.zoom,
+      x: at.x + e.changeX,
+      y: at.y + e.changeY,
+    }
+  })
 
   return (
     <GestureDetector gesture={pan}>
       <View style={{ height: 200 }} collapsable={false}>
-        <Canvas ref={canvas} style={{ flex: 1 }}>
+        <Canvas viewport={viewport} style={{ flex: 1 }}>
           <Circle cx={100} cy={100} r={40} color="#d98a4a" />
         </Canvas>
       </View>
@@ -101,6 +101,9 @@ function Map() {
 }
 ```
 
+Write the whole object, not one field at a time: the triple is applied
+atomically, so a pinch never presents this frame's zoom with last frame's pan.
+
 `zoom` scales about the scene origin and `x`/`y` pan in canvas points *after*
 it — `scale(pixelRatio) · translate(x, y) · scale(zoom)`, the order a scroll
 view uses. A pinch usually wants to zoom about the gesture centroid instead,
@@ -108,21 +111,22 @@ which is that same matrix with the offset solved for: hold the scene point
 under the focus still.
 
 ```tsx
-const pinch = Gesture.Pinch()
-  .runOnJS(true)
-  .onChange(e => {
-    const { zoom, x, y } = at.current
-    const next = Math.max(0.5, Math.min(8, zoom * e.scaleChange))
-    const sceneX = (e.focalX - x) / zoom
-    const sceneY = (e.focalY - y) / zoom
-    at.current = {
-      zoom: next,
-      x: e.focalX - next * sceneX,
-      y: e.focalY - next * sceneY,
-    }
-    canvas.current?.setViewport(at.current)
-  })
+const pinch = Gesture.Pinch().onChange(e => {
+  const at = viewport.value
+  const next = Math.max(0.5, Math.min(8, at.zoom * e.scaleChange))
+  const sceneX = (e.focalX - at.x) / at.zoom
+  const sceneY = (e.focalY - at.y) / at.zoom
+  viewport.value = {
+    zoom: next,
+    x: e.focalX - next * sceneX,
+    y: e.focalY - next * sceneY,
+  }
+})
 ```
+
+Without Reanimated, drive `CanvasHandle.setViewport()` from a JS-thread
+gesture callback (`Gesture.Pan().runOnJS(true)`) instead — the same one
+native write per tick, with a JS hop on the path.
 
 `hitTest` inverts the viewport along with each group's transform, so a tap
 reports the node actually under the finger at any zoom, and `snapshot()` reads

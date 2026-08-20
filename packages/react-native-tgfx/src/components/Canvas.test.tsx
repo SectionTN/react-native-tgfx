@@ -171,7 +171,9 @@ test('a background the scene cannot encode is left to the platform view', async 
 
 test('a later style entry unsets an earlier backgroundColor', async () => {
   await render(
-    <Canvas style={[{ backgroundColor: '#ff0000' }, { backgroundColor: undefined }]}>
+    <Canvas
+      style={[{ backgroundColor: '#ff0000' }, { backgroundColor: undefined }]}
+    >
       <Rect x={0} y={0} width={10} height={10} color="blue" />
     </Canvas>
   )
@@ -891,6 +893,21 @@ test('a static viewport is pushed once, and again only when it moves', async () 
     tree.update(scene(3))
   })
   expect(viewports).toEqual([[3, -10, -20]])
+})
+
+// The UI-thread driver owns a SharedValue viewport; the prop path must stay at
+// the identity and not push the shared value's fields from the JS side.
+test('a shared value viewport keeps the prop path at the identity', async () => {
+  const vp = {
+    value: { zoom: 3, x: 9, y: 9 },
+    _isReanimatedSharedValue: true as const,
+  }
+  await render(
+    <Canvas viewport={vp}>
+      <Rect x={0} y={0} width={10} height={10} color="red" />
+    </Canvas>
+  )
+  expect(viewports).toEqual([[1, 0, 0]])
 })
 
 test('a non-positive or non-finite field falls back rather than reaching native', async () => {
