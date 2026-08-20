@@ -33,7 +33,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 27;
+inline constexpr double kSceneVersion = 28;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -306,12 +306,18 @@ struct DrawCmd {
   };
 
   /// Backdrop only: the panel's shape and the style's parameters.
+  /// Static: it is a clip, rebuilt only when the program is.
   float cornerRadius = 0;
-  float blur = 0;
-  float refraction = 0;
-  float depth = 0;
-  float frost = 0;
-  float dispersion = 0;
+  /// The material, all animatable: each is read per frame into the style the
+  /// draw builds anyway, so a slot write costs nothing a literal does not.
+  AnimF blur;
+  AnimF refraction;
+  AnimF depth;
+  AnimF frost;
+  AnimF dispersion;
+  AnimF splay;
+  AnimF lightAngle;
+  AnimF lightIntensity;
 
 
   /// Mask only: the subtree whose alpha or luminance cuts `children` down.

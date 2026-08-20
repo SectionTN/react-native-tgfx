@@ -3777,11 +3777,14 @@ void aBackdropFrostsWhatIsBeneathIt() {
     w.pushAnim(48);
     w.pushAnim(48);
     w.push(0);           // corner radius
-    w.push(10);          // blur
-    w.push(refraction);  // 0 is a plain blur, above 0 is glass
-    w.push(20);
-    w.push(20);
-    w.push(0);
+    w.pushAnim(10);          // blur
+    w.pushAnim(refraction);  // 0 is a plain blur, above 0 is glass
+    w.pushAnim(20);
+    w.pushAnim(20);
+    w.pushAnim(0);
+    w.pushAnim(0);   // splay
+    w.pushAnim(45);  // light angle
+    w.pushAnim(50);  // light intensity
     w.pushPaint(0xffffffff, false);
     return w.finish();
   };
@@ -3808,6 +3811,109 @@ void aBackdropFrostsWhatIsBeneathIt() {
   // Glass takes a different path through tgfx, so it must not draw the same thing.
   auto glassy = render(program(40), {}, {});
   CHECK(glassy != plain);
+}
+
+/// The three light words scene 28 added. Hardcoded, a <Glass> could only ever be
+/// lit from one direction at one brightness; each has to reach GlassStyle::Make
+/// and change what is drawn, or the props are decoration.
+void glassTakesItsLightFromTheScene() {
+  auto program = [](double splay, double lightAngle, double lightIntensity) {
+    Writer w;
+    w.push(2);
+    // A blue rect over transparency, so the panel's edges have an edge to catch.
+    w.push(1);
+    w.pushAnim(0);
+    w.pushAnim(0);
+    w.pushAnim(32);
+    w.pushAnim(64);
+    w.pushPaint(0xff0000ff, false);
+    w.push(17);  // Backdrop
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(48);
+    w.pushAnim(48);
+    w.push(12);  // corner radius, so there is a curved edge to refract along
+    w.pushAnim(10);  // blur, ignored on the glass path
+    w.pushAnim(60);  // refraction: above 0 is glass
+    w.pushAnim(30);  // depth
+    w.pushAnim(20);  // frost
+    w.pushAnim(0);   // dispersion
+    w.pushAnim(splay);
+    w.pushAnim(lightAngle);
+    w.pushAnim(lightIntensity);
+    w.pushPaint(0xffffffff, false);
+    return w.finish();
+  };
+
+  // The same scene with no panel at all, so "the glass drew something" is a
+  // comparison rather than a pixel count the rect underneath would satisfy.
+  Writer bare;
+  bare.push(1);
+  bare.push(1);
+  bare.pushAnim(0);
+  bare.pushAnim(0);
+  bare.pushAnim(32);
+  bare.pushAnim(64);
+  bare.pushPaint(0xff0000ff, false);
+  auto unpanelled = render(bare.finish(), {}, {});
+
+  // The defaults the compiler writes when a <Glass> names none of the three.
+  auto base = render(program(0, 45, 50), {}, {});
+  CHECK(base != unpanelled);
+
+  // Each one alone has to move the frame.
+  auto splayed = render(program(100, 45, 50), {}, {});
+  auto turned = render(program(0, -135, 50), {}, {});
+  auto unlit = render(program(0, 45, 0), {}, {});
+  CHECK(splayed != base);  // splay
+  CHECK(turned != base);   // light from the other side
+  CHECK(unlit != base);    // highlight off entirely
+
+  // And they are three separate words: transposing any two in the reader would
+  // leave every check above green, because each variant still differs from base.
+  CHECK(splayed != turned);
+  CHECK(splayed != unlit);
+  CHECK(turned != unlit);
+
+  // An unlit panel is not an absent one: refraction and frost stay.
+  CHECK(unlit != unpanelled);
+}
+
+/// Every material word is a slot, so a handle drives the glass without a
+/// re-encode. Written as a literal in the program and patched by a value.
+void theGlassMaterialResolvesFromValueSlots() {
+  Writer w;
+  w.push(2);
+  w.push(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(64);
+  w.pushPaint(0xff0000ff, false);
+  w.push(17);  // Backdrop
+  w.pushAnim(8);
+  w.pushAnim(8);
+  w.pushAnim(48);
+  w.pushAnim(48);
+  w.push(12);           // corner radius, static
+  w.pushAnim(10);       // blur
+  w.pushAnim(60);       // refraction
+  w.pushAnim(30);       // depth
+  w.pushAnim(20);       // frost
+  w.pushAnim(0);        // dispersion
+  w.pushAnim(0);        // splay
+  w.pushAnim(45, 0);    // light angle, slot 0
+  w.pushAnim(50, 1);    // light intensity, slot 1
+  w.pushPaint(0xffffffff, false);
+  auto program = w.finish();
+
+  auto asWritten = render(program, {}, {45, 50});
+  // Only the slots move; the program is byte-identical.
+  auto turned = render(program, {}, {-135, 50});
+  auto unlit = render(program, {}, {45, 0});
+  CHECK(turned != asWritten);
+  CHECK(unlit != asWritten);
+  CHECK(turned != unlit);
 }
 
 /// The example app's own geometry: a wide canvas at a phone's pixel ratio, with a panel big
@@ -3837,11 +3943,14 @@ void aBackdropOnACanvasTheSizeOfARealOne() {
   w.pushAnim(150);
   w.pushAnim(72);
   w.push(18);  // corner radius
-  w.push(14);  // blur
-  w.push(0);   // refraction: a plain frosted panel
-  w.push(20);
-  w.push(20);
-  w.push(0);
+  w.pushAnim(14);  // blur
+  w.pushAnim(0);   // refraction: a plain frosted panel
+  w.pushAnim(20);
+  w.pushAnim(20);
+  w.pushAnim(0);
+  w.pushAnim(0);   // splay
+  w.pushAnim(45);  // light angle
+  w.pushAnim(50);  // light intensity
   w.pushPaint(0xffffffff, false);
   auto drawn = render(w.finish(), {}, {}, kRatio, kW, kH);
 
@@ -3888,11 +3997,14 @@ void aBackdropHangingOffTheEdgeStillDrawsWhereItOverlaps() {
       w.pushAnim(40);
       w.pushAnim(40);
       w.push(8);
-      w.push(6);
-      w.push(refraction);
-      w.push(20);
-      w.push(20);
-      w.push(0);
+      w.pushAnim(6);
+      w.pushAnim(refraction);
+      w.pushAnim(20);
+      w.pushAnim(20);
+      w.pushAnim(0);
+      w.pushAnim(0);   // splay
+      w.pushAnim(45);  // light angle
+      w.pushAnim(50);  // light intensity
       w.pushPaint(0xffffffff, false);
     }
     return w.finish();
@@ -3928,11 +4040,14 @@ void aBackdropAtAPixelRatioLeavesTheRestOfTheSceneAlone() {
       w.pushAnim(16);
       w.pushAnim(16);
       w.push(3);           // corner radius
-      w.push(6);           // blur
-      w.push(refraction);  // 0 is a plain blur, above 0 is glass
-      w.push(20);
-      w.push(20);
-      w.push(0);
+      w.pushAnim(6);           // blur
+      w.pushAnim(refraction);  // 0 is a plain blur, above 0 is glass
+      w.pushAnim(20);
+      w.pushAnim(20);
+      w.pushAnim(0);
+      w.pushAnim(0);   // splay
+      w.pushAnim(45);  // light angle
+      w.pushAnim(50);  // light intensity
       w.pushPaint(0xffffffff, false);
     }
     return w.finish();
@@ -4529,6 +4644,8 @@ int main() {
   hitTestFollowsTheViewport();
   aPdfIsWrittenWithAPagePerScene();
   aBackdropFrostsWhatIsBeneathIt();
+  glassTakesItsLightFromTheScene();
+  theGlassMaterialResolvesFromValueSlots();
   aBackdropAtAPixelRatioLeavesTheRestOfTheSceneAlone();
   aBackdropOnACanvasTheSizeOfARealOne();
   aBackdropHangingOffTheEdgeStillDrawsWhereItOverlaps();

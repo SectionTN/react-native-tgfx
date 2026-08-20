@@ -1,5 +1,13 @@
 // Colour filters, blend modes and image filters (#134), all built once when the scene compiles.
+import { useEffect } from 'react';
 import { Text as RNText, StyleSheet, View } from 'react-native';
+import {
+  Easing,
+  cancelAnimation,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import {
   BackdropBlur,
   Blend,
@@ -315,6 +323,18 @@ function LateFilters() {
 
 function Backdrops() {
   const img = useImage(sample);
+  // The light sweeps right round the panel: a slot write per frame, no commit.
+  const angle = useSharedValue(-179);
+
+  useEffect(() => {
+    angle.value = withRepeat(
+      withTiming(180, { duration: 4000, easing: Easing.linear }),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(angle);
+  }, [angle]);
+
   return (
     <View style={styles.section}>
       <RNText style={styles.label}>
@@ -326,13 +346,25 @@ function Backdrops() {
           <>
             <Image image={img} x={0} y={0} width={360} height={120} fit="cover" />
             <BackdropBlur x={12} y={24} width={150} height={72} r={18} blur={14} />
-            <Glass x={198} y={24} width={150} height={72} r={18} refraction={45} frost={25} dispersion={15} />
+            <Glass
+              x={198}
+              y={24}
+              width={150}
+              height={72}
+              r={18}
+              refraction={45}
+              frost={25}
+              dispersion={15}
+              lightAngle={angle}
+              lightIntensity={70}
+            />
           </>
         )}
       </Canvas>
       <RNText style={styles.caption}>
         Frosted panel on the left, liquid glass on the right — both reading the
-        photo beneath them.
+        photo beneath them. The glass panel's highlight is a shared value, so it
+        travels round the edge without a React render.
       </RNText>
     </View>
   );

@@ -1529,11 +1529,14 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
       cmd.w = r.nextAnim();
       cmd.h = r.nextAnim();
       cmd.cornerRadius = static_cast<float>(r.next());
-      cmd.blur = static_cast<float>(r.next());
-      cmd.refraction = static_cast<float>(r.next());
-      cmd.depth = static_cast<float>(r.next());
-      cmd.frost = static_cast<float>(r.next());
-      cmd.dispersion = static_cast<float>(r.next());
+      cmd.blur = r.nextAnim();
+      cmd.refraction = r.nextAnim();
+      cmd.depth = r.nextAnim();
+      cmd.frost = r.nextAnim();
+      cmd.dispersion = r.nextAnim();
+      cmd.splay = r.nextAnim();
+      cmd.lightAngle = r.nextAnim();
+      cmd.lightIntensity = r.nextAnim();
       // It samples what is already on the surface, so it can never be recorded.
       r.dynamic++;
       break;
@@ -2263,14 +2266,18 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
       auto panel = matrix.mapRect(rect);
       panel.roundOut();
       auto surfaceBounds = tgfx::Rect::MakeWH(surface->width(), surface->height());
-      // Splay and light angle are tgfx's own defaults; the light is dimmed from its 80 to 50.
-      auto glass = cmd.refraction > 0 ? tgfx::GlassStyle::Make(cmd.refraction, cmd.depth, cmd.frost,
-                                                               cmd.dispersion, 0, 45, 50)
-                                      : nullptr;
+      float refraction = cmd.refraction.resolve(v);
+      auto glass = refraction > 0
+                       ? tgfx::GlassStyle::Make(refraction, cmd.depth.resolve(v),
+                                                cmd.frost.resolve(v), cmd.dispersion.resolve(v),
+                                                cmd.splay.resolve(v), cmd.lightAngle.resolve(v),
+                                                cmd.lightIntensity.resolve(v))
+                       : nullptr;
       // Mirrored at the edges, as tgfx's own frost is: a panel flush with the surface edge would
       // otherwise blur against transparency and let the sharp content show through underneath.
-      auto blur = glass == nullptr && cmd.blur > 0
-                      ? tgfx::ImageFilter::Blur(cmd.blur * scale, cmd.blur * scale,
+      float blurAmount = cmd.blur.resolve(v);
+      auto blur = glass == nullptr && blurAmount > 0
+                      ? tgfx::ImageFilter::Blur(blurAmount * scale, blurAmount * scale,
                                                 tgfx::TileMode::Mirror)
                       : nullptr;
       if (glass == nullptr && blur == nullptr) {

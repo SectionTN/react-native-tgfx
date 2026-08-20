@@ -301,19 +301,44 @@ export interface BackdropProps extends PaintProps {
   /** Corner radius. Defaults to 0. Static: the writer does not give it a slot. */
   r?: number
   /** Gaussian blur of the backdrop. Defaults to 12. */
-  blur?: number
+  blur?: Animated<number>
 }
 
-/** `blur` is absent: glass frosts with `frost`, and the blur word is ignored on this path. */
+/**
+ * `blur` is absent: glass frosts with `frost`, and the blur word is ignored on
+ * this path.
+ *
+ * Every field here is animatable and every one is a value slot, so driving the
+ * material from a SharedValue — a highlight that tracks device tilt, a frost
+ * that fades in — costs one slot write per frame and no scene re-encode. Only
+ * the inherited `r` is static: it is a clip, not a material parameter.
+ */
 export interface GlassProps extends Omit<BackdropProps, 'blur'> {
-  /** Edge refraction strength. Defaults to 40. */
-  refraction?: number
-  /** How far the refraction reaches in from the edge. Defaults to 20. */
-  depth?: number
-  /** Background frost. Defaults to 20. */
-  frost?: number
-  /** Chromatic aberration at the edge. Defaults to 0. */
-  dispersion?: number
+  /** Edge refraction strength, 0–100. Defaults to 40. */
+  refraction?: Animated<number>
+  /** How far the refraction reaches in from the edge, 1–100. Defaults to 20. */
+  depth?: Animated<number>
+  /** Background frost, 0–100. Defaults to 20. */
+  frost?: Animated<number>
+  /** Chromatic aberration at the edge, 0–100. Defaults to 0. */
+  dispersion?: Animated<number>
+  /**
+   * How the refraction is aimed, 0–100. At 0 it follows the panel's edge
+   * curvature; at 100 it points at the panel's centre. Defaults to 0.
+   */
+  splay?: Animated<number>
+  /**
+   * Where the edge highlight comes from, in degrees. 0 is straight above and
+   * positive turns clockwise, −179 to 180. Defaults to 45.
+   */
+  lightAngle?: Animated<number>
+  /**
+   * How bright the edge highlight is, 0–100 (values above 100 are not clamped).
+   * Defaults to 50 — tgfx's own default is 80, which reads as chrome rather
+   * than glass over most content. 0 removes the highlight and leaves the
+   * refraction and frost alone.
+   */
+  lightIntensity?: Animated<number>
 }
 
 export interface CameraFrameProps extends PaintProps {

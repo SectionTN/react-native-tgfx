@@ -59,8 +59,10 @@ A `NodeHandle.set` already redraws on its own.
 The numeric geometry props above are `Animated<number>` — a plain number or a
 Reanimated `SharedValue`. Not every geometry prop is: `<Path>`'s `path` is
 `Animated<string>` (a string slot) and its `fillType` is static, and
-`<BackdropBlur>`/`<Glass>` animate only `x`/`y`/`width`/`height` — their corner
-radius `r` is a plain `number` with no slot.
+`<BackdropBlur>`/`<Glass>` animate their rect **and their whole material** —
+`blur`, `refraction`, `depth`, `frost`, `dispersion`, `splay`, `lightAngle`,
+`lightIntensity` are all value slots. Only the corner radius `r` is a plain
+`number` with no slot: it is a clip, not a material parameter.
 
 ```tsx
 <Rect x={0} y={0} width={300} height={140} color="#101725" />

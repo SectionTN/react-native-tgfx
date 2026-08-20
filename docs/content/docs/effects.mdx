@@ -111,4 +111,43 @@ read the pixels already drawn beneath them.
 <Glass x={20} y={40} width={260} height={120} r={24} refraction={40} frost={30} />
 ```
 
+The panel is sampled, not painted, so of the inherited paint only `opacity`,
+`visible` and `ref` apply, plus the alpha of `color`. It has no hit bounds, so
+it is never pressable, and it reads the surface — put it *after* the content it
+frosts, and note that a `<Group picture>` holding one is never recorded.
+
+### Lighting the glass
+
+`refraction`, `depth`, `frost` and `dispersion` shape the material; `splay`,
+`lightAngle` and `lightIntensity` light it. Together they are the whole of
+tgfx's `GlassStyle`.
+
+```tsx
+<Glass
+  x={20} y={40} width={260} height={120} r={24}
+  refraction={40} depth={20} frost={30}
+  splay={0}            // 0 follows the edge curvature, 100 aims at the centre
+  lightAngle={45}      // degrees; 0 is straight above, positive turns clockwise
+  lightIntensity={50}  // 0 removes the highlight and leaves refraction and frost
+/>
+```
+
+The defaults are the values the renderer used to hardcode, so a `<Glass>` that
+names none of them looks exactly as it did. `lightIntensity` defaults to 50
+rather than tgfx's own 80, which over most content reads as chrome rather than
+as glass.
+
+Every one of those eight — `blur` included — is a value slot, so the whole
+material animates without a commit:
+
+```tsx
+const angle = useSharedValue(45)
+const panel = useNode()
+
+<Glass ref={panel} x={20} y={40} width={260} height={120} r={24} lightAngle={angle} />
+// or, from an event handler: panel.set({ lightAngle: 120 })
+```
+
+Only `r` is static — it is a clip, not a material parameter.
+
 [`BackdropProps`](/api/interfaces/BackdropProps) · [`GlassProps`](/api/interfaces/GlassProps)

@@ -46,6 +46,14 @@ const SLOT_PROPS = [
   'startAngle',
   'endAngle',
   'strokeMiter',
+  // The backdrop material, for a handle on <BackdropBlur> / <Glass>.
+  'refraction',
+  'depth',
+  'frost',
+  'dispersion',
+  'splay',
+  'lightAngle',
+  'lightIntensity',
 ] as const
 
 /** Enum props: the slot carries the wire code, seeded from the written name. */

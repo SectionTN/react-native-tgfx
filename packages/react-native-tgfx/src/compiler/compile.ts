@@ -572,12 +572,20 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
+      // The corner radius is a clip, so it stays a literal; every material word
+      // is an anim word — the style object is rebuilt per draw either way, so a
+      // slot write costs nothing a literal does not.
       w.push(resolveNumber(p.r, 0))
-      w.push(resolveNumber(p.blur, 12))
-      w.push(resolveNumber(p.refraction, node.type === NodeType.Glass ? 40 : 0))
-      w.push(resolveNumber(p.depth, 20))
-      w.push(resolveNumber(p.frost, 20))
-      w.push(resolveNumber(p.dispersion, 0))
+      w.pushAnim(p.blur, 12)
+      w.pushAnim(p.refraction, node.type === NodeType.Glass ? 40 : 0)
+      w.pushAnim(p.depth, 20)
+      w.pushAnim(p.frost, 20)
+      w.pushAnim(p.dispersion, 0)
+      // tgfx's own splay and angle; its light intensity is 80, dimmed to 50
+      // here because over most content 80 reads as chrome rather than glass.
+      w.pushAnim(p.splay, 0)
+      w.pushAnim(p.lightAngle, 45)
+      w.pushAnim(p.lightIntensity, 50)
       break
     case Kind.Text:
       w.pushAnim(p.x)

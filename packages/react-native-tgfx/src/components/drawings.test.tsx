@@ -32,6 +32,30 @@ test('Glass defaults refraction to 40, BackdropBlur leaves it a plain blur', () 
   expect(refractionOf(compile(NodeType.Backdrop, { ...panel, blur: 8 }))).toBe(0)
 })
 
+// splay, light angle, light intensity: the three anim words after dispersion.
+const lightOf = (words: Float64Array) =>
+  Array.from(words.subarray(3 + 1 + 1 + 4 + 1 + 1 + 3 + 1, 3 + 1 + 1 + 4 + 1 + 1 + 3 + 1 + 3))
+
+/// These carry tgfx's own defaults rather than zeros, so a <Glass> that names none of them
+/// draws exactly as it did before they were writable — and a named one has to reach the wire.
+test('Glass writes its light words, defaulted to what the reader used to hardcode', () => {
+  expect(lightOf(compile(NodeType.Glass, panel))).toEqual([0, 45, 50])
+  expect(
+    lightOf(
+      compile(NodeType.Glass, {
+        ...panel,
+        splay: 100,
+        lightAngle: -135,
+        lightIntensity: 0,
+      })
+    )
+  ).toEqual([100, -135, 0])
+  // A plain blur ignores them, but the words are still there: one kind, one layout.
+  expect(lightOf(compile(NodeType.Backdrop, { ...panel, blur: 8 }))).toEqual([
+    0, 45, 50,
+  ])
+})
+
 /// directNodes is all-or-nothing: one element whose type is not a host string drops the whole
 /// canvas off the fast path, so neither of these may be a wrapper component.
 // The whole reason ImageSVG is an alias and not a wrapper: a component would

@@ -117,12 +117,16 @@ the content it frosts, and the region is its own rect.
 The panel is sampled, not painted: of the inherited paint only `opacity`,
 `visible`, `ref` and the **alpha** of `color` apply — its RGB, the stroke props
 and any paint or shader child are ignored. A backdrop has no hit bounds, so it
-is never pressable. `r` is static (no slot).
+is never pressable. `r` is static (no slot); every material number is a slot.
 
 `GlassProps` drops `blur` (it frosts with `frost`) and adds `refraction` (edge
 refraction strength, default 40), `depth` (how far refraction reaches in from
 the edge, default 20), `frost` (background frost, default 20), `dispersion`
-(chromatic aberration at the edge, default 0).
+(chromatic aberration at the edge, default 0), plus the three that light it:
+`splay` (0 follows the edge curvature, 100 aims at the panel centre, default 0),
+`lightAngle` (degrees, 0 straight above, positive clockwise, −179 to 180,
+default 45) and `lightIntensity` (0–100, default 50; 0 removes the highlight and
+leaves refraction and frost). Together they are all of tgfx's `GlassStyle`.
 
 ---
 

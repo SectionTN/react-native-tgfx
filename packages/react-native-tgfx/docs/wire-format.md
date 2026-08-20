@@ -143,3 +143,12 @@ string array pushed with `setStringValues`.
   refraction, depth, frost and dispersion. One node covers both `<BackdropBlur>`
   and `<Glass>`; a zero refraction is a plain blur. It samples the surface, so the
   reader marks it dynamic and a `<Group picture>` holding one is never recorded.
+- **28** — the backdrop kind gains three words after dispersion: splay, light
+  angle and light intensity, so `<Glass>`'s edge lighting is writable rather
+  than fixed at what the reader hardcoded. They carry tgfx's own splay and angle
+  and a light intensity of 50, so a scene naming none of them draws exactly as
+  it did. All eight material words — blur, refraction, depth, frost, dispersion
+  and the three above — are now **anim** words, so the whole material animates
+  from value slots instead of re-encoding; the corner radius stays a literal
+  because it is a clip. An older reader would take the splay word for the next
+  node's kind, and would walk the patch cursor past the new entries.
