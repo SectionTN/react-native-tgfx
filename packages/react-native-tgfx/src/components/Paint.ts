@@ -11,6 +11,7 @@ import type {
   LumaProps,
   ColorMatrixProps,
   DropShadowProps,
+  FilmGrainProps,
   ImageShaderProps,
   LinearGradientProps,
   NoiseProps,
@@ -86,7 +87,8 @@ export const DropShadow = NodeType.DropShadow as unknown as FC<DropShadowProps>
 export const Blend = NodeType.Blend as unknown as FC<BlendProps>
 
 /** A solid colour as a shader input. */
-export const ColorShader = NodeType.ColorShader as unknown as FC<ColorShaderProps>
+export const ColorShader =
+  NodeType.ColorShader as unknown as FC<ColorShaderProps>
 
 /** Luminance as alpha. A colour filter, so it costs no offscreen. */
 export const Luma = NodeType.Luma as unknown as FC<LumaProps>
@@ -94,6 +96,12 @@ export const Luma = NodeType.Luma as unknown as FC<LumaProps>
 /** Translucency to a hard edge. A colour filter, so it costs no offscreen. */
 export const AlphaThreshold =
   NodeType.AlphaThreshold as unknown as FC<AlphaThresholdProps>
+
+/**
+ * Film grain over a `<Group>`, clipped to what the group drew. Rasterises the
+ * group once a frame, so keep the grained subtree to what needs the grain.
+ */
+export const FilmGrain = NodeType.FilmGrain as unknown as FC<FilmGrainProps>
 
 /** Dashes its `<Path>`. Reshapes the geometry, so it needs no offscreen. */
 export const DashPathEffect =

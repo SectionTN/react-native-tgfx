@@ -15,6 +15,7 @@
 #include "TextLayout.hpp"
 #include "tgfx/core/PictureRecorder.h"
 #include "tgfx/layers/layerstyles/GlassStyle.h"
+#include "tgfx/layers/layerstyles/NoiseStyle.h"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Color.h"
 #include "tgfx/core/ColorFilter.h"
@@ -984,6 +985,18 @@ std::shared_ptr<tgfx::ImageFilter> ImageFilterCmd::build(
   return filter;
 }
 
+/// A grain colour: the packed word, a live flag, then the channels when live.
+static void readGrainColor(SceneReader& r, uint32_t& packed, std::array<AnimF, 4>& rgba,
+                           bool& live) {
+  packed = static_cast<uint32_t>(r.next());
+  live = r.nextInt() != 0;
+  if (live) {
+    for (auto& channel : rgba) {
+      channel = r.nextAnim();
+    }
+  }
+}
+
 std::shared_ptr<ColorFilterCmd> SceneRenderer::readColorFilterCmd(SceneReader& r, int depth) {
   if (depth > kMaxNodeDepth) {
     r.ok = false;
@@ -1266,6 +1279,29 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         }
         if (cmd.layer) {
           cmd.layerAlpha = r.nextAnim();
+        }
+        if ((flags & 16) != 0) {
+          auto grain = std::make_shared<GrainCmd>();
+          grain->mode = r.nextInt();
+          grain->size = r.nextAnim();
+          grain->density = r.nextAnim();
+          grain->seed = r.nextAnim();
+          grain->blendMode = r.nextAnim();
+          if (grain->mode == 2) {
+            grain->opacity = r.nextAnim();
+          } else {
+            readGrainColor(r, grain->color, grain->rgba, grain->animColor);
+            if (grain->mode == 1) {
+              readGrainColor(r, grain->secondColor, grain->secondRgba,
+                             grain->animSecondColor);
+            }
+          }
+          // A recorder canvas has an identity matrix and no surface, so a
+          // grained group inside a recorded one would be dusted at scale 1 and
+          // replayed under the real matrix. Counting the block as dynamic takes
+          // the ancestor off the recording path, the way a video handle does.
+          r.dynamic++;
+          cmd.grain = std::move(grain);
         }
       }
       int childCount = r.nextInt();
@@ -1950,6 +1986,98 @@ std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
   return out;
 }
 
+/// A ceiling on the offscreen a grained group can ask for, so a group hanging
+/// far off the surface cannot turn into an unbounded render target.
+constexpr int64_t kMaxGrainPixels = 4096 * 4096;
+
+/// The grain the group's pixels are dusted with. Rebuilt per frame, as tgfx's
+/// own layer does: a NoiseStyle is a shader, not a render target.
+static std::shared_ptr<tgfx::NoiseStyle> buildNoiseStyle(const GrainCmd& g,
+                                                         std::span<const double> v) {
+  float size = g.size.resolve(v);
+  if (!(size > 0)) {
+    return nullptr;
+  }
+  float density = g.density.resolve(v);
+  float seed = g.seed.resolve(v);
+  if (g.mode == 2) {
+    return tgfx::NoiseStyle::MakeMulti(size, density, g.opacity.resolve(v), seed);
+  }
+  auto first = g.animColor ? tgfx::Color::FromRGBA(channelOf(g.rgba[0], v), channelOf(g.rgba[1], v),
+                                                   channelOf(g.rgba[2], v), channelOf(g.rgba[3], v))
+                           : colorFromPacked(g.color);
+  if (g.mode == 0) {
+    return tgfx::NoiseStyle::MakeMono(size, density, first, seed);
+  }
+  auto second = g.animSecondColor
+                    ? tgfx::Color::FromRGBA(channelOf(g.secondRgba[0], v),
+                                            channelOf(g.secondRgba[1], v),
+                                            channelOf(g.secondRgba[2], v),
+                                            channelOf(g.secondRgba[3], v))
+                    : colorFromPacked(g.secondColor);
+  return tgfx::NoiseStyle::MakeDuo(size, density, first, second, seed);
+}
+
+/// Dusts an already-drawn group. The picture is what the group drew, so the
+/// style clips the grain to that alpha rather than to any bounding box. The
+/// noise covers the whole content rect, so this is a second full replay of the
+/// subtree into an offscreen every frame, on top of the direct draw — which is
+/// why the docs say to keep a grained subtree to what needs the grain.
+static void drawGrain(tgfx::Canvas* canvas, const GrainCmd& g,
+                      const std::shared_ptr<tgfx::Picture>& picture,
+                      std::span<const double> v) {
+  auto* surface = canvas->getSurface();
+  if (picture == nullptr || surface == nullptr) {
+    // No surface means a recording or an exporter canvas, where the matrix is
+    // the identity and the grain would be baked at the wrong scale.
+    return;
+  }
+  auto local = picture->getBounds();
+  if (local.isEmpty()) {
+    return;
+  }
+  // The style works in surface pixels, so the content image and everything
+  // handed to it are in pixels too — the same convention the backdrop uses.
+  const auto& matrix = canvas->getMatrix();
+  float scale = matrix.getMaxScale();
+  if (!(scale > 0)) {
+    scale = 1;
+  }
+  auto device = matrix.mapRect(local);
+  device.roundOut();
+  // Sized from everything the group drew, not from what survives the surface or
+  // the clip: the style anchors its pattern to half the content image's size,
+  // so cropping would slide the grain half a pixel per pixel of crop and make
+  // it crawl as the group scrolls off an edge. The canvas clip drops what falls
+  // outside anyway, and the ceiling below bounds the offscreen.
+  int width = static_cast<int>(device.width());
+  int height = static_cast<int>(device.height());
+  if (width <= 0 || height <= 0 ||
+      static_cast<int64_t>(width) * height > kMaxGrainPixels) {
+    return;
+  }
+  auto style = buildNoiseStyle(g, v);
+  if (style == nullptr) {
+    return;
+  }
+  auto contentMatrix = matrix;
+  contentMatrix.postTranslate(-device.left, -device.top);
+  auto content = tgfx::Image::MakeFrom(picture, width, height, &contentMatrix);
+  if (content == nullptr) {
+    return;
+  }
+  style->setBlendMode(blendModeOf(g.blendMode.resolveInt(v)));
+  tgfx::LayerStyleInput input;
+  input.content = std::move(content);
+  // In pixels, so the pattern stays put while the group moves under it.
+  input.contentOffset = {device.left, device.top};
+  input.contentScale = scale;
+  canvas->save();
+  canvas->setMatrix(tgfx::Matrix::MakeTrans(device.left, device.top));
+  style->draw(canvas, input, 1.0f);
+  canvas->restore();
+}
+
 void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             std::span<const double> v,
                             std::span<const std::string> strings,
@@ -1987,19 +2115,27 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     if (cmd.layer) {
       canvas->saveLayerAlpha(cmd.layerAlpha.resolve(v));
     }
-    if (cmd.cachePicture) {
-      if (cmd.picture == nullptr) {
-        // Recorded under the identity, so the transform above stays live and the
-        // replay is not baked to whatever matrix the first frame happened to have.
+    if (cmd.cachePicture || cmd.grain != nullptr) {
+      // Recorded under the identity, so the transform above stays live and the
+      // replay is not baked to whatever matrix the first frame happened to have.
+      // Grain needs the recording anyway, so it costs one walk, not two.
+      auto picture = cmd.picture;
+      if (picture == nullptr) {
         tgfx::PictureRecorder recorder;
         auto* into = recorder.beginRecording();
         for (const auto& child : cmd.children) {
           drawCmd(into, child, v, strings, stringGen, stringPushed, paint);
         }
-        cmd.picture = recorder.finishRecordingAsPicture();
+        picture = recorder.finishRecordingAsPicture();
+        if (cmd.cachePicture) {
+          cmd.picture = picture;
+        }
       }
-      if (cmd.picture != nullptr) {
-        canvas->drawPicture(cmd.picture);
+      if (picture != nullptr) {
+        canvas->drawPicture(picture);
+        if (cmd.grain != nullptr) {
+          drawGrain(canvas, *cmd.grain, picture, v);
+        }
       }
     } else {
       for (const auto& child : cmd.children) {

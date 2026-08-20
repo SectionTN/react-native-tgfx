@@ -794,6 +794,46 @@ export interface DropShadowProps {
 }
 
 /**
+ * Procedural film grain over a `<Group>`, clipped to what the group actually
+ * drew. A child of `Group`, not a paint: it reads the group's own pixels, so
+ * the group is rasterised once per frame while one is attached.
+ *
+ * `color` alone gives single-colour grain; `color` with `secondColor` splits
+ * the grain into two complementary halves; neither keeps the noise's own RGB
+ * and takes its strength from `opacity`.
+ */
+export interface FilmGrainProps {
+  /** Grain size in points — larger is coarser. Defaults to 4. */
+  size?: Animated<number>
+  /** How much of the group the grain reaches, 0–1. Defaults to 0.5. */
+  density?: Animated<number>
+  /** The pattern's seed. Defaults to 0. */
+  seed?: Animated<number>
+  /** Single-colour grain, its alpha the grain's opacity. */
+  color?: Color
+  /**
+   * With `color`, the second half's colour. A handle keeps one colour pool, so
+   * unlike `color` this one re-encodes rather than patching; live channels
+   * still work, written as `[r, g, b, a]` with shared values in it.
+   */
+  secondColor?: Color
+  /**
+   * Colourless grain only: overall strength, 0–1. Defaults to 1. It is not
+   * written in the other two modes, so a handle write there re-encodes and
+   * changes nothing — set the colour's alpha instead.
+   */
+  opacity?: Animated<number>
+  /**
+   * How the grain composites over the group. Defaults to `'srcOver'`. Not
+   * `Animated`: a value slot carries a number, and an enum only reaches one
+   * through a handle write, which resolves the name to its wire code.
+   */
+  blendMode?: BlendMode
+  /** A handle from `useNode()`, for patching the grain without a render. */
+  ref?: NodeHandle
+}
+
+/**
  * Hides its children through another drawing. `'alpha'` keeps what the mask is
  * opaque under; `'luminance'` keeps what it is bright under.
  */

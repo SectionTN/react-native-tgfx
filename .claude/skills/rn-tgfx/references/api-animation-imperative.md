@@ -107,6 +107,10 @@ const pan = Gesture.Pan().onUpdate((e) => {
   (max 16 stops)
 - **Filters**: `blur`, `blurX`, `blurY`, `dx`, `dy` on `<Blur>` / `<DropShadow>`;
   `threshold` on `<AlphaThreshold>`; `matrix` on `<ColorMatrix>`
+- **Backdrop material**: `blur`, `refraction`, `depth`, `frost`, `dispersion`,
+  `splay`, `lightAngle`, `lightIntensity` on `<BackdropBlur>` / `<Glass>`
+- **Film grain**: `size`, `density`, `seed` on `<FilmGrain>` (`opacity` only in
+  the colourless mode; `secondColor` re-encodes)
 - **Strings**: `text` and `path` — re-shaped / re-parsed on the render thread
 
 ```tsx

@@ -3946,6 +3946,216 @@ void aBackdropFrostsWhatIsBeneathIt() {
   CHECK(glassy != plain);
 }
 
+/// Film grain is a NoiseStyle over the group's own pixels, so it has to be
+/// clipped to what the group drew and has to answer to every one of its words.
+void filmGrainDustsOnlyWhatTheGroupDrew() {
+  // mode: 0 mono, 1 duo, 2 multi. A 40x40 blue square at (8,8), grained.
+  auto program = [](int mode, double density, double size, double seed) {
+    Writer w;
+    w.push(1);
+    w.push(13);  // GroupLayer
+    w.push(0);   // no transform ops
+    w.push(16);  // flags: grain
+    w.push(mode);
+    w.pushAnim(size);
+    w.pushAnim(density);
+    w.pushAnim(seed);
+    w.pushAnim(3);  // srcOver
+    if (mode == 2) {
+      w.pushAnim(1);  // opacity
+    } else {
+      w.push(0xffffffff);  // white grain
+      w.push(0);           // static colour
+      if (mode == 1) {
+        w.push(0xff000000);  // second colour: black
+        w.push(0);
+      }
+    }
+    w.push(1);  // one child
+    w.push(1);  // Rect
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushPaint(0xff0000ff, false);
+    return w.finish();
+  };
+
+  // The same group with no grain block at all.
+  Writer bare;
+  bare.push(1);
+  bare.push(13);
+  bare.push(0);
+  bare.push(0);
+  bare.push(1);
+  bare.push(1);
+  bare.pushAnim(8);
+  bare.pushAnim(8);
+  bare.pushAnim(40);
+  bare.pushAnim(40);
+  bare.pushPaint(0xff0000ff, false);
+  auto plain = render(bare.finish(), {}, {});
+  CHECK(inkPixels(plain) == 40 * 40);
+
+  auto mono = render(program(0, 0.5, 4, 0), {}, {});
+  CHECK(mono != plain);
+  // Clipped to the content's alpha: outside the rect nothing is dusted, and the
+  // grain adds no coverage of its own inside it either.
+  CHECK(inkPixels(mono) == inkPixels(plain));
+  CHECK(!opaqueAt(mono, 2, 2));
+
+  // White grain over blue can only lighten, never darken.
+  size_t lightened = 0;
+  for (int y = 8; y < 48; y++) {
+    for (int x = 8; x < 48; x++) {
+      auto grained = pixelAt(mono, x, y);
+      auto flat = pixelAt(plain, x, y);
+      CHECK(grained[0] >= flat[0]);
+      if (grained[0] > flat[0]) {
+        lightened++;
+      }
+    }
+  }
+  CHECK(lightened > 0);
+
+  // Density is the proportion of pixels the grain reaches, so zero is off.
+  CHECK(render(program(0, 0, 4, 0), {}, {}) == plain);
+
+  // Every remaining word has to reach NoiseStyle, or it is decoration.
+  CHECK(render(program(0, 0.5, 16, 0), {}, {}) != mono);   // coarser grain
+  CHECK(render(program(0, 0.5, 4, 7), {}, {}) != mono);    // a different pattern
+  CHECK(render(program(0, 0.9, 4, 0), {}, {}) != mono);    // denser
+  // Duo fills the complementary half too, and multi keeps the noise's own RGB.
+  auto duo = render(program(1, 0.5, 4, 0), {}, {});
+  auto multi = render(program(2, 0.5, 4, 0), {}, {});
+  CHECK(duo != mono);
+  CHECK(multi != mono);
+  CHECK(multi != duo);
+}
+
+/// A recorder canvas has an identity matrix and no surface, so grain inside a
+/// recorded group would be dusted at the wrong scale and then frozen. The grain
+/// block counts as dynamic for exactly that reason; this is the proof.
+void aRecordedGroupHoldingGrainIsNotRecorded() {
+  Writer w;
+  w.push(1);
+  w.push(13);  // outer GroupLayer
+  w.push(0);
+  w.push(8);   // <Group picture>
+  w.push(1);   // one child
+  w.push(13);  // inner GroupLayer
+  w.push(0);
+  w.push(16);  // grain
+  w.push(0);   // mono
+  w.pushAnim(4);
+  w.pushAnim(0.6);
+  w.pushAnim(0, 0);  // seed, slot 0
+  w.pushAnim(3);
+  w.push(0xff000000);
+  w.push(0);
+  w.push(1);  // one child
+  w.push(1);  // Rect
+  w.pushAnim(8);
+  w.pushAnim(8);
+  w.pushAnim(40);
+  w.pushAnim(40);
+  w.pushPaint(0xffffffff, false);
+  auto program = w.finish();
+
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(program, {});
+  auto first = drawFrame(renderer, {0});
+  auto second = drawFrame(renderer, {11});
+  // A recording would replay the first frame's grain for ever.
+  CHECK(first != second);
+}
+
+/// The two grain words the mode/size/seed test cannot reach: the blend mode,
+/// and the live-colour branch of readGrainColor, which is the one cursor path
+/// in the block that changes how many words follow.
+void filmGrainAnswersToItsBlendModeAndLiveColour() {
+  // Mode 0 with the colour as four live channels behind the packed word.
+  auto liveColor = [](int blendMode) {
+    Writer w;
+    w.push(1);
+    w.push(13);  // GroupLayer
+    w.push(0);
+    w.push(16);  // grain
+    w.push(0);   // mono
+    w.pushAnim(4);
+    w.pushAnim(0.6);
+    w.pushAnim(0);
+    w.pushAnim(blendMode);
+    w.push(0xff000000);  // packed, ignored once the live flag is set
+    w.push(1);           // live colour
+    w.pushAnim(0, 0);    // red
+    w.pushAnim(0, 1);    // green
+    w.pushAnim(0, 2);    // blue
+    w.pushAnim(1, 3);    // alpha
+    w.push(1);  // one child
+    w.push(1);  // Rect
+    w.pushAnim(8);
+    w.pushAnim(8);
+    w.pushAnim(40);
+    w.pushAnim(40);
+    w.pushPaint(0xff808080, false);
+    return w.finish();
+  };
+
+  auto program = liveColor(3);  // srcOver
+  auto black = render(program, {}, {0, 0, 0, 1});
+  auto white = render(program, {}, {1, 1, 1, 1});
+  auto clear = render(program, {}, {0, 0, 0, 0});
+  // The channels reach the style: black grain darkens, white lightens, and a
+  // zero alpha leaves the grey rect exactly as it drew itself.
+  CHECK(black != white);
+  CHECK(pixelAt(black, 16, 16)[0] <= 0x80);
+  CHECK(pixelAt(white, 16, 16)[0] >= 0x80);
+  CHECK(inkPixels(clear) == 40 * 40);
+
+  // The live branch reads four extra words; the reader has to consume exactly
+  // those, or the child rect that follows would be read from the wrong offset.
+  CHECK(opaqueAt(black, 16, 16));
+  CHECK(!opaqueAt(black, 2, 2));
+
+  // Plus-lighter cannot darken, so it has to differ from srcOver black grain.
+  auto lighter = render(liveColor(12), {}, {0, 0, 0, 1});
+  CHECK(lighter != black);
+}
+
+/// Grain is rebuilt per frame from the buffer, so a handle drives it without a
+/// re-encode. Every word that shapes the pattern has to be slot-capable.
+void filmGrainResolvesFromValueSlots() {
+  Writer w;
+  w.push(1);
+  w.push(13);
+  w.push(0);
+  w.push(16);
+  w.push(0);      // mono
+  w.pushAnim(4);
+  w.pushAnim(0, 0);  // density
+  w.pushAnim(0, 1);  // seed
+  w.pushAnim(3);
+  w.push(0xffffffff);
+  w.push(0);
+  w.push(1);
+  w.push(1);
+  w.pushAnim(8);
+  w.pushAnim(8);
+  w.pushAnim(40);
+  w.pushAnim(40);
+  w.pushPaint(0xff0000ff, false);
+  auto words = w.finish();
+
+  auto off = render(words, {}, {0, 0});
+  auto on = render(words, {}, {0.6, 0});
+  auto reseeded = render(words, {}, {0.6, 9});
+  CHECK(off != on);
+  CHECK(reseeded != on);
+  // Density zero leaves the group exactly as it drew itself.
+  CHECK(inkPixels(off) == 40 * 40);
+}
+
 /// The three light words scene 28 added. Hardcoded, a <Glass> could only ever be
 /// lit from one direction at one brightness; each has to reach GlassStyle::Make
 /// and change what is drawn, or the props are decoration.
@@ -4780,6 +4990,10 @@ int main() {
   aBackdropFrostsWhatIsBeneathIt();
   glassTakesItsLightFromTheScene();
   theGlassMaterialResolvesFromValueSlots();
+  filmGrainDustsOnlyWhatTheGroupDrew();
+  filmGrainResolvesFromValueSlots();
+  filmGrainAnswersToItsBlendModeAndLiveColour();
+  aRecordedGroupHoldingGrainIsNotRecorded();
   aBackdropAtAPixelRatioLeavesTheRestOfTheSceneAlone();
   aBackdropOnACanvasTheSizeOfARealOne();
   aBackdropHangingOffTheEdgeStillDrawsWhereItOverlaps();

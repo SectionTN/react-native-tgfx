@@ -33,7 +33,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 29;
+inline constexpr double kSceneVersion = 30;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -120,6 +120,23 @@ struct GradientShaderCmd {
 
   bool animated() const;
   std::shared_ptr<tgfx::Shader> build(std::span<const double> values) const;
+};
+
+/// `<FilmGrain>` on a group: tgfx's NoiseStyle over the group's own pixels.
+struct GrainCmd {
+  /// 0 mono, 1 duo, 2 multi.
+  int mode = 0;
+  AnimF size{4, -1};
+  AnimF density{0.5f, -1};
+  AnimF seed{0, -1};
+  AnimF blendMode{3, -1};
+  AnimF opacity{1, -1};
+  uint32_t color = 0xffffffff;
+  uint32_t secondColor = 0xff000000;
+  std::array<AnimF, 4> rgba{};
+  std::array<AnimF, 4> secondRgba{};
+  bool animColor = false;
+  bool animSecondColor = false;
 };
 
 /// A colour filter whose parameters may carry value slots; static ones never get here.
@@ -342,6 +359,8 @@ struct DrawCmd {
   bool cachePicture = false;
   /// Filled on the first draw and replayed after, so the recording costs one frame.
   mutable std::shared_ptr<tgfx::Picture> picture;
+  /// Group only: behind a pointer so an ungrained group costs one word.
+  std::shared_ptr<GrainCmd> grain;
   AnimF layerAlpha{1, -1};
   tgfx::Rect clipRect = tgfx::Rect::MakeEmpty();
   float clipRadiusX = 0;

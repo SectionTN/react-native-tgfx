@@ -35,6 +35,13 @@ all. A name outside the union silently falls back to `srcOver`.
 - `<BlendColor color mode? ref?>` — blends `color` (src) with the drawing (dst);
   `mode` defaults to `'srcOver'`.
 - `<Luma />` — replaces every color with its luminance, carried into alpha.
+- `<FilmGrain size? density? seed? color? secondColor? opacity? blendMode? ref?>`
+  — a child of a `<Group>`, not a paint: tgfx's `NoiseStyle` over what the group
+  drew, clipped to that alpha. `color` alone is single-colour grain, `color` with
+  `secondColor` splits it into two complementary halves, neither keeps the
+  noise's own RGB and takes its strength from `opacity`. `size` (default 4),
+  `density` (default 0.5) and `seed` are slots; the group is replayed into an
+  offscreen every frame it is grained.
 - `<AlphaThreshold threshold? ref?>` — alpha below `threshold` (default 0.5)
   becomes fully transparent, at or above it fully opaque; colors untouched.
   tgfx's own, no Skia equivalent. `threshold` is animatable.

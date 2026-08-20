@@ -116,6 +116,52 @@ a solid shape — a sticker outline, a metaball:
 </Rect>
 ```
 
+## Film grain
+
+[`FilmGrain`](/api/variables/FilmGrain) is a child of a
+[`Group`](/api/variables/Group), not a paint: it dusts tgfx's `NoiseStyle` over
+what the group actually drew, clipped to that alpha rather than to a bounding
+box.
+
+```tsx
+<Group>
+  <Image image={photo} x={0} y={0} width={300} height={200} />
+  <FilmGrain size={2} density={0.4} color="rgba(255,255,255,0.35)" />
+</Group>
+```
+
+`color` alone gives single-colour grain, its alpha the grain's opacity. Adding
+`secondColor` splits the grain into two complementary halves, one per colour —
+the classic light-and-dark stock look. Naming neither keeps the noise's own RGB
+and takes its strength from `opacity`.
+
+```tsx
+<FilmGrain size={3} density={0.5} color="white" secondColor="black" />
+<FilmGrain size={1.5} density={0.6} opacity={0.25} />
+```
+
+`size`, `density`, `seed` and the colour channels are value slots, so grain
+animates without a commit — a per-frame `seed` is what makes it crawl like film
+rather than sit still:
+
+```tsx
+const seed = useSharedValue(0)
+useFrameCallback(() => { seed.value += 1 })
+
+<FilmGrain size={2} density={0.4} color="white" seed={seed} />
+```
+
+`opacity` is written only in the colourless mode, and `blendMode` moves through
+a handle rather than a shared value — an enum reaches a slot as its wire code,
+which only `set()` resolves. `secondColor` re-encodes through a handle; passing
+it as `[r, g, b, a]` with shared values in it keeps it live.
+
+A grained group is drawn once and then replayed into an offscreen for the style,
+so it costs about two draws of its subtree per frame. Keep the grained subtree
+to what needs the grain rather than wrapping the whole scene, and note that a
+`<Group picture>` holding one is never recorded — a recording has no surface to
+measure the grain against.
+
 ## Mask
 
 [`MaskProps`](/api/interfaces/MaskProps) — `mode` is `'alpha'` or `'luminance'`.

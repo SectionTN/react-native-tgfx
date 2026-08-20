@@ -1,7 +1,12 @@
 import { isNodeHandle, nodeInternals, type NodeHandle } from '../imperative'
 import { NodeType, type Node } from '../reconciler/types'
-import { resolveColor, type Color } from './colors'
-import type { BlendMode, ColorFilterInput, ImageFilterInput } from './filters'
+import { isColorComponents, resolveColor, type Color } from './colors'
+import {
+  blendCode,
+  type BlendMode,
+  type ColorFilterInput,
+  type ImageFilterInput,
+} from './filters'
 import {
   fitCode,
   imageHandle,
@@ -529,6 +534,19 @@ function addPaintSource(
 function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
   let paint: PaintInput | null = null
   for (const child of node.children) {
+    if (child.type === NodeType.FilmGrain) {
+      // Grain is a group's own style, not a paint contribution, and writeGroup
+      // routes its ref itself — walking it here would register the handle
+      // twice. Reaching it here at all means it is not a group's direct child,
+      // which is the only place it draws anything.
+      if (!warnedStrandedGrain && inDev()) {
+        warnedStrandedGrain = true
+        console.warn(
+          '[tgfx] <FilmGrain> applies only as a direct child of a <Group>: it dusts what that group drew. Anywhere else it draws nothing.'
+        )
+      }
+      continue
+    }
     if (KIND_OF[child.type] !== undefined) {
       continue
     }
@@ -862,6 +880,59 @@ function writeMask(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   w.patch(contentCountAt, writeNodes(w, content, contentCtx))
 }
 
+/**
+ * A grain colour: one packed word, then a live flag, then the four channels
+ * when any of them is a value slot.
+ */
+function writeGrainColor(w: SceneWriter, color: unknown): void {
+  const channels =
+    isColorComponents(color) && color.some(isSharedValue) ? color : null
+  w.push(resolveColor(resolveValue(color) as Color))
+  w.push(channels != null ? 1 : 0)
+  if (channels != null) {
+    for (let i = 0; i < 4; i++) {
+      w.pushAnim(channels[i], i === 3 ? 1 : 0)
+    }
+  }
+}
+
+let warnedGrainSecondColor = false
+let warnedStrandedGrain = false
+
+const inDev = (): boolean => typeof __DEV__ !== 'undefined' && __DEV__
+
+/// `<FilmGrain>` on a group. Mode 0 is one colour, 1 two, 2 the noise's own RGB.
+function writeGrain(w: SceneWriter, p: Record<string, unknown>): void {
+  const mode = p.color == null ? 2 : p.secondColor == null ? 0 : 1
+  if (
+    mode === 2 &&
+    p.secondColor != null &&
+    !warnedGrainSecondColor &&
+    inDev()
+  ) {
+    warnedGrainSecondColor = true
+    console.warn(
+      '[tgfx] <FilmGrain secondColor> with no `color`: the second colour is the other half of a two-colour grain, so on its own it is dropped and the grain keeps the noise own RGB. Name `color` too.'
+    )
+  }
+  w.push(mode)
+  w.pushAnim(p.size, 4)
+  w.pushAnim(p.density, 0.5)
+  w.pushAnim(p.seed, 0)
+  w.pushAnim(
+    isSharedValue(p.blendMode) ? p.blendMode : blendCode(p.blendMode),
+    3
+  )
+  if (mode === 2) {
+    w.pushAnim(p.opacity, 1)
+    return
+  }
+  writeGrainColor(w, p.color)
+  if (mode === 1) {
+    writeGrainColor(w, p.secondColor)
+  }
+}
+
 function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   const p = node.props
   const local = localPaint(w, node)
@@ -874,7 +945,8 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     opacity: layer ? 1 : alpha,
   }
   const picture = p.picture === true
-  const extended = clip != null || layer || picture
+  const grain = node.children.find((c) => c.type === NodeType.FilmGrain)
+  const extended = clip != null || layer || picture || grain != null
   pushKind(w, extended ? Kind.GroupLayer : Kind.Group, p)
   const opCountAt = w.reserve()
   w.patch(
@@ -882,7 +954,10 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     writeOps(w, (p.transform as Transform) ?? [], vec(p.origin))
   )
   const flags =
-    (clip != null ? 1 : 0) | (p.invertClip === true ? 2 : 0) | (layer ? 4 : 0)
+    (clip != null ? 1 : 0) |
+    (p.invertClip === true ? 2 : 0) |
+    (layer ? 4 : 0) |
+    (grain != null ? 16 : 0)
   let flagsAt = -1
   if (extended) {
     flagsAt = w.reserve()
@@ -891,6 +966,9 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     }
     if (layer) {
       w.pushAnim(alpha, 1)
+    }
+    if (grain != null) {
+      writeGrain(w, applyRef(w, grain).props)
     }
   }
   const childCountAt = w.reserve()

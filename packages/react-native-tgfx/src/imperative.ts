@@ -55,6 +55,11 @@ const SLOT_PROPS = [
   'splay',
   'lightAngle',
   'lightIntensity',
+  // The grain, for a handle on <FilmGrain>. `opacity` and `blendMode` are
+  // already slots above; `size` and `seed` are the grain's own.
+  'size',
+  'density',
+  'seed',
 ] as const
 
 /** Enum props: the slot carries the wire code, seeded from the written name. */

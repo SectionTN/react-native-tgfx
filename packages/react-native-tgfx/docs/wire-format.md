@@ -160,3 +160,13 @@ string array pushed with `setStringValues`.
   compiles to. The version word is the only protection here: a v28 reader drops
   colour kind 3 as unknown and then eats the threshold word as the image-filter
   kind, and on image kind 3 it desynchronises on the nested colour filter.
+- **30** — the group flags word gains bit 16: a `<FilmGrain>` block follows the
+  layer alpha. It is mode (0 mono, 1 duo, 2 multi), then **anim** size, density,
+  seed and blend mode. Mode 2 then takes an **anim** opacity; mode 0 takes one
+  packed colour and mode 1 takes two, each colour followed by a live flag and,
+  when that flag is set, its four **anim** channels. A grained group is recorded
+  into a picture and dusted with tgfx's `NoiseStyle` over its own pixels, so bit
+  16 puts a group on the same recording path as bit 8 without caching it. Its
+  slots also count as dynamic, so an ancestor `<Group picture>` stops recording
+  rather than freezing the grain at a recorder's identity matrix. An older
+  reader would take the mode word for the child count.

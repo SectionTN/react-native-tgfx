@@ -20,7 +20,9 @@ import {
   ColorShader,
   DropShadow,
   Fill,
+  FilmGrain,
   Glass,
+  Group,
   Image,
   Paint,
   Luma,
@@ -401,6 +403,83 @@ function LateFilters() {
   );
 }
 
+function Grain() {
+  const img = useImage(sample);
+  // A seed per frame is what makes grain crawl like film rather than sit still.
+  const seed = useSharedValue(0);
+
+  useEffect(() => {
+    seed.value = withRepeat(
+      withTiming(600, { duration: 10000, easing: Easing.linear }),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(seed);
+  }, [seed]);
+
+  return (
+    <View style={styles.section}>
+      <RNText style={styles.label}>{'<FilmGrain> mono · duo · multi'}</RNText>
+      <Canvas style={[styles.canvas, { height: 130 }]}>
+        <Fill color="#ffffff" />
+        {img != null && (
+          <>
+            <Group>
+              <Image
+                image={img}
+                x={4}
+                y={12}
+                width={112}
+                height={100}
+                fit="cover"
+              />
+              <FilmGrain
+                size={2}
+                density={0.5}
+                color="rgba(0,0,0,0.7)"
+                seed={seed}
+              />
+            </Group>
+            <Group>
+              <Image
+                image={img}
+                x={124}
+                y={12}
+                width={112}
+                height={100}
+                fit="cover"
+              />
+              <FilmGrain
+                size={2.5}
+                density={0.5}
+                color="white"
+                secondColor="black"
+                seed={seed}
+              />
+            </Group>
+            <Group>
+              <Image
+                image={img}
+                x={244}
+                y={12}
+                width={112}
+                height={100}
+                fit="cover"
+              />
+              <FilmGrain size={2} density={0.6} opacity={0.5} seed={seed} />
+            </Group>
+          </>
+        )}
+      </Canvas>
+      <RNText style={styles.caption}>
+        The same photo dusted three ways — one colour, two complementary
+        colours, then the noise's own RGB. The seed is a shared value, so the
+        grain crawls without a React render or a scene re-encode.
+      </RNText>
+    </View>
+  );
+}
+
 function Backdrops() {
   const img = useImage(sample);
   // The light sweeps right round the panel: a slot write per frame, no commit.
@@ -470,6 +549,7 @@ export function FilterSection() {
       <Backdrops />
       <BlendModes />
       <LateFilters />
+      <Grain />
       <Composition />
       <Masks />
       <ColorMatrices />

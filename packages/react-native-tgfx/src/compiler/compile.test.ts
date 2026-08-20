@@ -3,7 +3,7 @@ import { expect, mock, test } from 'bun:test'
 // createHandle reaches for runOnJS; this file has no other reanimated dependency.
 mock.module('react-native-reanimated', () => ({}))
 import { NodeType, type Node } from '../reconciler/types'
-import { createHandle } from '../imperative'
+import { createHandle, nodeInternals } from '../imperative'
 import { compileScene } from './compile'
 import { Kind, SCENE_VERSION, SceneWriter } from './writer'
 
@@ -1953,4 +1953,127 @@ test('a colour filter from a <Paint> or a group stays on the paint', () => {
   expect(Array.from(inherited.used.subarray(18, 24))).toEqual([
     3, 2, 0, 2, 2, 3,
   ])
+})
+
+test('film grain rides the group flags and picks its mode from the colours', () => {
+  const grained = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.FilmGrain, {
+        size: 2,
+        density: 0.3,
+        seed: 7,
+        color: '#ffffff',
+      }),
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  // kind | opCount | flags | mode size density seed blendMode | colour live | childCount
+  expect(Array.from(grained.used.subarray(4, 14))).toEqual([
+    13, 0, 16, 0, 2, 0.3, 7, 3, 0xffffffff, 0,
+  ])
+  // The grain is a style, not a child: only the rect is drawn.
+  expect(grained.used[14]).toBe(1)
+  expect(grained.used[15]).toBe(Kind.Rect)
+
+  const duo = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.FilmGrain, { color: '#ffffff', secondColor: '#000000' }),
+    ]),
+  ])
+  // mode 1, the defaults, then both colours.
+  expect(Array.from(duo.used.subarray(7, 15))).toEqual([
+    1, 4, 0.5, 0, 3, 0xffffffff, 0, 0xff000000,
+  ])
+
+  const multi = compile([
+    node(NodeType.Group, {}, [node(NodeType.FilmGrain, { opacity: 0.4 })]),
+  ])
+  // mode 2 takes an opacity where the colours would be.
+  expect(Array.from(multi.used.subarray(7, 13))).toEqual([2, 4, 0.5, 0, 3, 0.4])
+
+  // A group with no grain is unchanged: no flags word at all.
+  const plain = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+    ]),
+  ])
+  expect(plain.used[4]).toBe(Kind.Group)
+})
+
+test('a live grain channel becomes a value slot', () => {
+  const alpha = sharedValue(0.2)
+  const { used, values } = compile([
+    node(NodeType.Group, {}, [
+      node(NodeType.FilmGrain, {
+        density: sharedValue(0.8),
+        color: [1, 1, 1, alpha],
+      }),
+    ]),
+  ])
+  expect(values).toEqual([sharedValue(0.8), alpha])
+  // The live flag turns the packed word into four channels behind it.
+  expect(used[13]).toBe(1)
+  expect(Array.from(used.subarray(14, 18))).toEqual([1, 1, 1, 0.2])
+})
+
+test('a handle on the grain drives it through slots, not a re-encode', () => {
+  let recompiled = 0
+  const ref = createHandle()
+  ref.set({ seed: 12, density: 0.9 })
+  const writer = new SceneWriter()
+  const result = compileScene(
+    [
+      node(NodeType.Group, {}, [
+        node(NodeType.FilmGrain, {
+          size: 2,
+          density: 0.3,
+          seed: 1,
+          color: '#ffffff',
+          ref,
+        }),
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+    ],
+    writer
+  )
+  const used = new Float64Array(result.buffer).subarray(
+    0,
+    new Float64Array(result.buffer)[1]
+  )
+  // Every grain word the handle can reach is a slot, each seeded from the
+  // handle's write where it made one and from the element's props otherwise.
+  expect(result.values.length).toBe(3)
+  expect(Array.from(used.subarray(8, 11))).toEqual([2, 0.9, 12])
+
+  // And a later write goes to the slot rather than back through the compiler.
+  nodeInternals(ref).bind(
+    {
+      pushValues: () => {},
+      recompile: () => {
+        recompiled += 1
+      },
+    } as never,
+    writer
+  )
+  ref.set({ seed: 4, density: 0.1 })
+  expect(recompiled).toBe(0)
+  expect(result.values.map((v) => (v as { value: number }).value)).toEqual([
+    2, 0.1, 4,
+  ])
+})
+
+test('a grain handle is registered once, not once per paint walk', () => {
+  const ref = createHandle()
+  const writer = new SceneWriter()
+  const result = compileScene(
+    [
+      node(NodeType.Group, {}, [
+        node(NodeType.FilmGrain, { seed: 1, ref }),
+        node(NodeType.Rect, { x: 0, y: 0, width: 1, height: 1 }),
+      ]),
+    ],
+    writer
+  )
+  // A duplicate would trip Container's "one handle on more than one node" warning.
+  expect(result.refs.length).toBe(1)
 })
