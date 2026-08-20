@@ -287,7 +287,7 @@ function applyRef(w: SceneWriter, node: Node): Node {
     return node
   }
   w.refs.push(ref)
-  return nodeInternals(ref).apply(node, w.reseed)
+  return nodeInternals(ref).apply(node, w.reseed, w)
 }
 
 function extractGradient(
@@ -374,7 +374,7 @@ function extractGradient(
     let uniforms = declared ?? {}
     if (isNodeHandle(ref)) {
       w.refs.push(ref)
-      uniforms = nodeInternals(ref).applyUniforms(declared, w.reseed)
+      uniforms = nodeInternals(ref).applyUniforms(declared, w.reseed, w)
     }
     return {
       kind: 'runtime',
@@ -1008,7 +1008,7 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
     if (isNodeHandle(ref)) {
       w.refs.push(ref)
       w.refPaths.push({ path: [...w.pathStack, count], ref })
-      node = nodeInternals(ref).apply(node, w.reseed)
+      node = nodeInternals(ref).apply(node, w.reseed, w)
     }
     w.pathStack.push(count)
     if (kind === Kind.Mask) {

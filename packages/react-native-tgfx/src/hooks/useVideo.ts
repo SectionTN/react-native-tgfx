@@ -119,7 +119,11 @@ export interface VideoPlayer extends Video {
 export async function createVideoPlayer(
   source: number | string,
   options?: VideoOptions & {
-    /** Supply your own time slot so its identity predates the open. */
+    /**
+     * Supply your own time slot so its identity predates the open. Must be a
+     * Reanimated mutable (`makeMutable`/`useSharedValue`): the UI worklet
+     * captures a plain object as a clone, which would stay at 0 forever.
+     */
     currentTime?: SharedValueLike<number>
   }
 ): Promise<VideoPlayer> {
@@ -143,6 +147,17 @@ export async function createVideoPlayer(
     video
   ) as SharedValueLike<TgfxVideo | null>
   const posted = mod.makeMutable!(0) as SharedValueLike<number>
+  if (
+    typeof __DEV__ !== 'undefined' &&
+    __DEV__ &&
+    options?.currentTime != null &&
+    (options.currentTime as { _isReanimatedSharedValue?: boolean })
+      ._isReanimatedSharedValue !== true
+  ) {
+    console.warn(
+      '[tgfx] createVideoPlayer: the supplied currentTime is not a Reanimated mutable, so the UI worklet will capture a clone and never move it.'
+    )
+  }
   const currentTime = (options?.currentTime ??
     mod.makeMutable!(0)) as SharedValueLike<number>
   let currentFrame: ImageLike | null = null

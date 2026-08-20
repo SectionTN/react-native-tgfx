@@ -372,3 +372,99 @@ test('exporting a disposed scene rejects instead of reusing a stale program', as
     'disposed'
   )
 })
+
+test('a foreign export compile reads live handle state without resetting it', async () => {
+  const pushed: number[][] = []
+  const sceneTarget = {
+    setScene: () => {},
+    setValues: (v: number[]) => pushed.push(v.slice()),
+  }
+  const box = createHandle()
+  const node = rect({ ref: box, x: 0, y: 0, width: 4, height: 4 })
+  const live = Scene.from([node])
+  live.attach(sceneTarget)
+  live.flush()
+  box.set({ x: 120 })
+
+  // Raw-array export: a fresh writer, reseed=true — foreign to the live scene.
+  await renderToImage([node], { width: 8, height: 8 })
+  // The export itself reads the live value...
+  expect(calls[0]!.words[5]).toBe(120)
+  // ...and the live scene keeps it: a later write still patches from 120's
+  // slot (no clearOverrides), and a recompile bakes 120, not the factory 0.
+  box.set({ y: 7 })
+  const lastPush = pushed[pushed.length - 1]!
+  expect(lastPush).toContain(120)
+  live.add(circle({ cx: 1, cy: 1, r: 1 }))
+  live.flush()
+  const recompiled = live.compileForExport('test')
+  const words = new Float64Array(recompiled.buffer)
+  expect(words[5]).toBe(120)
+  live.dispose()
+})
+
+test('a foreign export leaves a bound shader uniform pool intact', async () => {
+  const pushed: number[][] = []
+  const sceneTarget = {
+    setScene: () => {},
+    setValues: (v: number[]) => pushed.push(v.slice()),
+  }
+  const fx = createHandle()
+  const node = rect({ x: 0, y: 0, width: 4, height: 4 }, [
+    // @ts-expect-error ref goes through props like every factory
+    {
+      type: 'tgfx_shader',
+      props: {
+        ref: fx,
+        source:
+          'uniform float uLevel;\nhalf4 main(float2 p) { return half4(uLevel, 0.0, 0.0, 1.0); }',
+        uniforms: { uLevel: 0.5 },
+      },
+      children: [],
+    },
+  ])
+  const live = Scene.from([node])
+  live.attach(sceneTarget)
+  live.flush()
+
+  await renderToImage([node], { width: 8, height: 8 })
+
+  fx.set({ uniforms: { uLevel: 0.9 } })
+  const lastPush = pushed[pushed.length - 1]!
+  expect(lastPush).toContain(0.9)
+  live.dispose()
+})
+
+test('a JSX export does not adopt handles bound to a live scene', async () => {
+  const pushed: number[][] = []
+  const sceneTarget = {
+    setScene: () => {},
+    setValues: (v: number[]) => pushed.push(v.slice()),
+  }
+  const box = createHandle()
+  const live = Scene.from([rect({ ref: box, x: 0, y: 0, width: 4, height: 4 })])
+  live.attach(sceneTarget)
+  live.flush()
+  box.set({ x: 120 })
+
+  // The reconciler path: a throwaway root compiles the same handle.
+  await renderToImage(
+    <Rect ref={box as never} x={0} y={0} width={4} height={4} />,
+    {
+      width: 8,
+      height: 8,
+    }
+  )
+  expect(calls[0]!.words[5]).toBe(120) // export reads the live value
+
+  // Ownership stayed with the live scene: a recompile-requiring write still
+  // lands (the muted export container would have swallowed it).
+  box.set({ y: 9 })
+  const lastPush = pushed[pushed.length - 1]!
+  expect(lastPush).toContain(120)
+  live.add(circle({ cx: 1, cy: 1, r: 1 }))
+  live.flush()
+  const words = new Float64Array(live.compileForExport('test').buffer)
+  expect(words[5]).toBe(120)
+  live.dispose()
+})

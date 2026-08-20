@@ -27,6 +27,9 @@ export function startUiFrameLoop(
       }
     ).requestAnimationFrame
     if (raf == null) {
+      console.warn(
+        `[tgfx] the UI runtime has no requestAnimationFrame, so ${what} never ticks.`
+      )
       return
     }
     const loop = (t: number) => {

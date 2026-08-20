@@ -23,6 +23,12 @@ export type CommitListener = (
 export class TgfxContainer implements NodeOwner {
   root: Node[] = []
   muted = false
+  /**
+   * Whether commits bind this container as the refs' owner. A throwaway export
+   * container turns it off: stealing ownership would strand the live scene's
+   * handles on a muted container and misclassify its next commit as foreign.
+   */
+  claimRefs = true
   onValues: ((values: number[]) => void) | null = null
   onStrings: ((indices: number[], values: string[]) => void) | null = null
   private readonly writer = new SceneWriter()
@@ -63,15 +69,17 @@ export class TgfxContainer implements NodeOwner {
     for (const entry of refPaths) {
       this.byPath.set(entry.path.join(','), entry.ref)
     }
-    for (let i = 0; i < refs.length; i++) {
-      const ref = refs[i]!
-      if (!warnedShared && refs.indexOf(ref) !== i) {
-        warnedShared = true
-        console.warn(
-          '[tgfx] one node handle is on more than one node: they share its value slots, so a write moves all of them together. Use one handle per node.'
-        )
+    if (this.claimRefs) {
+      for (let i = 0; i < refs.length; i++) {
+        const ref = refs[i]!
+        if (!warnedShared && refs.indexOf(ref) !== i) {
+          warnedShared = true
+          console.warn(
+            '[tgfx] one node handle is on more than one node: they share its value slots, so a write moves all of them together. Use one handle per node.'
+          )
+        }
+        nodeInternals(ref).bind(this, this.writer)
       }
-      nodeInternals(ref).bind(this, this.writer)
     }
     this.onCommit(buffer, strings, values, stringValues)
   }

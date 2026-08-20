@@ -58,11 +58,28 @@ type Factory<P> =
     : (props: ElementProps<P>, children?: SceneNode[]) => SceneNode
 
 const element = <P>(type: NodeTypeName): Factory<P> =>
-  ((props?: ElementProps<P>, children?: SceneNode[]): SceneNode => ({
-    type,
-    props: (props ?? {}) as Record<string, unknown>,
-    children: children ?? [],
-  })) as Factory<P>
+  ((props?: ElementProps<P>, children?: SceneNode[]): SceneNode => {
+    if (
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      props != null &&
+      typeof props !== 'object'
+    ) {
+      // Catches text('hi') — and plain-JS callers of the renamed font utility:
+      // textPath(text, style) is now textToPath; this textPath builds a node.
+      throw new Error(
+        `[tgfx] the ${type.slice(5)} factory takes a props object, got ${typeof props}.` +
+          (type === NodeType.TextPath
+            ? ' For SVG path data from text, call textToPath().'
+            : '')
+      )
+    }
+    return {
+      type,
+      props: (props ?? {}) as Record<string, unknown>,
+      children: children ?? [],
+    }
+  }) as Factory<P>
 
 /** Imperative `<Group>`: shared transform / opacity / inherited paint. */
 export const group = element<GroupProps>(NodeType.Group)

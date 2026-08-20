@@ -237,3 +237,24 @@ test('attach after dispose throws instead of registering on a muted scene', () =
   const { t } = target()
   expect(() => scene.attach(t)).toThrow('disposed')
 })
+
+test('an export-only recompile stays quiet: no re-send, no mapper restart', () => {
+  const { t, calls } = target()
+  const scene = Scene.create()
+  scene.attach(t)
+  const box = createHandle()
+  scene.add(rect({ ref: box, x: 0, y: 0, width: 4, height: 4 }))
+  scene.flush()
+  expect(calls.scenes.length).toBe(1)
+  const mapperBefore = nextMapper
+
+  const first = scene.compileForExport('test')
+  expect(new Float64Array(first.buffer)[3]).toBe(1)
+  expect(calls.scenes.length).toBe(1) // nothing re-sent to the target
+  expect(nextMapper).toBe(mapperBefore) // mapper untouched
+
+  // A genuinely dirty export is a real commit and does fan out.
+  scene.add(circle({ cx: 1, cy: 1, r: 1 }))
+  scene.compileForExport('test')
+  expect(calls.scenes.length).toBe(2)
+})

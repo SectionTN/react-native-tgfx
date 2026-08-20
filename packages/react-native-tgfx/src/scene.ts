@@ -45,6 +45,9 @@ export class Scene {
   /// Bumped by flush/dispose so a stale queued microtask commits nothing.
   private generation = 0
   private mapperId: number | null = null
+  /// True during an export-only recompile: targets already show this state, so
+  /// re-sending the program and restarting the mapper would be pure churn.
+  private quiet = false
   private lastValues: MaybeSharedValue<unknown>[] = []
   private lastStringValues: MaybeSharedValue<string>[] = []
 
@@ -54,6 +57,9 @@ export class Scene {
       this.last = { buffer, strings }
       this.lastValues = values
       this.lastStringValues = stringValues
+      if (this.quiet) {
+        return
+      }
       for (const t of this.targets) {
         t.target.setScene(buffer, packStringTable(t.sent, strings))
         t.sent = strings.slice()
@@ -174,7 +180,12 @@ export class Scene {
     if (this.dirty) {
       this.flush()
     } else if (this.compiled) {
-      this.container.recompile()
+      this.quiet = true
+      try {
+        this.container.recompile()
+      } finally {
+        this.quiet = false
+      }
     }
     if (this.last == null || this.container.root.length === 0) {
       throw new Error(`[tgfx] ${what}: the scene compiled to nothing`)

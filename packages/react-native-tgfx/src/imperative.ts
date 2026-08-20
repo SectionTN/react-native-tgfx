@@ -173,10 +173,11 @@ export interface NodeHandle {
 }
 
 interface Internals {
-  apply(node: Node, reseed: boolean): Node
+  apply(node: Node, reseed: boolean, w: SceneWriter): Node
   applyUniforms(
     uniforms: Record<string, UniformValue> | undefined,
-    reseed: boolean
+    reseed: boolean,
+    w: SceneWriter
   ): Record<string, UniformValue>
   bind(owner: NodeOwner, w: SceneWriter): void
 }
@@ -383,6 +384,8 @@ export function createHandle(): NodeHandle {
   const unslottable: Record<string, boolean> = {}
   let poolNext = 0
   let owner: NodeOwner | null = null
+  // The owner's writer, so a compile by anyone else is recognisably foreign.
+  let boundWriter: SceneWriter | null = null
   let dirty = false
   let boundVia: 'node' | 'shader' | null = null
   let nodeTakesOps: boolean | null = null
@@ -976,9 +979,14 @@ export function createHandle(): NodeHandle {
   Object.defineProperty(handle, 'current', { get: () => null, set: () => {} })
 
   internals.set(handle, {
-    apply(node: Node, reseed: boolean): Node {
+    apply(node: Node, reseed: boolean, w: SceneWriter): Node {
+      // A compile by anyone but the owner — an export writer rendering nodes
+      // that are also mounted somewhere — must read the live state, never
+      // reset it: clearing overrides or reseeding slots would visibly damage
+      // the scene that owns this handle.
+      const foreign = owner != null && w !== boundWriter
       // Here, not in the container: an unmounted node is in no compile, and its writes must not outlive the commit that brings it back.
-      if (reseed && owner != null) {
+      if (reseed && owner != null && !foreign) {
         clearOverrides()
       }
       const props: Record<string, unknown> = { ...node.props }
@@ -986,7 +994,7 @@ export function createHandle(): NodeHandle {
       // compile must seed them from the props whatever `reseed` says — that is
       // what lets a Scene's structural commits use reseed=false without
       // snapping already-written handles back to their factory-time props.
-      const seed = reseed || owner == null
+      const seed = (reseed && !foreign) || owner == null
       for (const key of SLOT_PROPS) {
         const value = props[key]
         if (typeof value !== 'number') {
@@ -1019,8 +1027,36 @@ export function createHandle(): NodeHandle {
     },
     applyUniforms(
       uniforms: Record<string, UniformValue> | undefined,
-      reseed: boolean
+      reseed: boolean,
+      w: SceneWriter
     ): Record<string, UniformValue> {
+      const foreign = owner != null && w !== boundWriter
+      if (foreign) {
+        // Read-only: existing runs stay live, everything else exports as its
+        // merged literal; the owner's pool layout is not touched.
+        const out: Record<string, UniformValue> = {}
+        const names = new Set([
+          ...Object.keys(uniforms ?? {}),
+          ...Object.keys(pendingUniforms),
+          ...Object.keys(pendingBases),
+        ])
+        for (const name of names) {
+          const existing = pendingBases[name]
+          if (existing !== undefined) {
+            const live: (number | MaybeSharedValue<number>)[] = []
+            for (let i = 0; i < existing.size; i++) {
+              live.push(uniformSlots[existing.at + i]!)
+            }
+            out[name] = live as UniformValue
+            continue
+          }
+          const merged = mergeUniform(pendingUniforms[name], uniforms?.[name])
+          if (merged !== undefined) {
+            out[name] = merged
+          }
+        }
+        return out
+      }
       boundVia = 'shader'
       nodeTakesOps = false
       if (reseed && owner != null) {
@@ -1087,6 +1123,7 @@ export function createHandle(): NodeHandle {
     },
     bind(nextOwner: NodeOwner, w: SceneWriter): void {
       owner = nextOwner
+      boundWriter = w
       const next: Record<string, boolean> = {}
       for (const key of SLOT_PROPS) {
         if (w.hasSlot(slots[key]!)) {

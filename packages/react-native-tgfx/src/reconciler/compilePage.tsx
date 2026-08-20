@@ -19,6 +19,9 @@ export function compilePage(
   const root = new TgfxRoot((buffer, strings) => {
     out.scene = { buffer, strings }
   })
+  // A page compile reads refs, it does not adopt them: the live scene keeps
+  // owning its handles, and this compile stays recognisably foreign to them.
+  root.container.claimRefs = false
   try {
     root.renderSync(<>{element}</>)
     // React swallows a throwing component, so an empty root is how that surfaces.

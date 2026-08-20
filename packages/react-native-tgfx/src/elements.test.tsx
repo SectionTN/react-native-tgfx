@@ -392,3 +392,17 @@ test('a ref on a factory node binds exactly as a JSX ref does', () => {
     Array.from(jsxWords.subarray(0, jsxWords[1]))
   )
 })
+
+test('a string where props belong throws in dev, naming textToPath', () => {
+  ;(globalThis as { __DEV__?: boolean }).__DEV__ = true
+  try {
+    expect(() =>
+      (e.textPath as unknown as (s: string) => unknown)('outlined')
+    ).toThrow(/textToPath/)
+    expect(() => (e.text as unknown as (s: string) => unknown)('hi')).toThrow(
+      /props object/
+    )
+  } finally {
+    delete (globalThis as { __DEV__?: boolean }).__DEV__
+  }
+})
