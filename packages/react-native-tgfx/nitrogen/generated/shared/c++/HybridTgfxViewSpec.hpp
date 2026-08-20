@@ -63,6 +63,7 @@ namespace margelo::nitro::tgfx {
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
       virtual void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) = 0;
+      virtual void setViewport(const std::vector<double>& viewport) = 0;
       virtual void setColorSpace(const std::string& colorSpace) = 0;
       virtual std::vector<double> hitTest(double x, double y, bool precise) = 0;
       virtual std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) = 0;

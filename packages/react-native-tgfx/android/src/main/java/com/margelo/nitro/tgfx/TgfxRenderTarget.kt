@@ -105,6 +105,17 @@ internal class TgfxRenderTarget {
     withPtr { TgfxNative.clearScene(it) }
   }
 
+  // Only on a real move, as the Metal view does: requestRender cancels the draw
+  // already queued, and a gesture that has stopped moving would otherwise keep
+  // re-queueing one on a render thread shared with every other canvas.
+  fun setViewport(zoom: Float, x: Float, y: Float) {
+    var moved = false
+    withPtr { moved = TgfxNative.setViewport(it, zoom, x, y) }
+    if (moved) {
+      requestRender()
+    }
+  }
+
   fun setColorSpace(displayP3: Boolean) {
     withPtr { TgfxNative.setColorSpace(it, displayP3) }
     requestRender()

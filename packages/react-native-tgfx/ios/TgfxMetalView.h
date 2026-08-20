@@ -27,6 +27,7 @@ FOUNDATION_EXPORT void TgfxSnapshotRelease(void* _Nullable token);
 - (void)setStringValues:(const double*)indices
                   count:(int32_t)count
                  values:(NSArray<NSString*>*)values;
+- (void)setViewportZoom:(float)zoom x:(float)x y:(float)y;
 - (void)setDisplayP3:(BOOL)displayP3;
 - (NSArray<NSNumber*>*)hitTestX:(float)x y:(float)y precise:(BOOL)precise;
 

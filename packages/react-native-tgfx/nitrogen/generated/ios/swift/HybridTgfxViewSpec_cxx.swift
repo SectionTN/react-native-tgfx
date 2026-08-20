@@ -189,6 +189,17 @@ open class HybridTgfxViewSpec_cxx {
   }
   
   @inline(__always)
+  public final func setViewport(viewport: bridge.std__vector_double_) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.setViewport(viewport: viewport.map({ __item in __item }))
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func setColorSpace(colorSpace: std.string) -> bridge.Result_void_ {
     do {
       try self.__implementation.setColorSpace(colorSpace: String(colorSpace))

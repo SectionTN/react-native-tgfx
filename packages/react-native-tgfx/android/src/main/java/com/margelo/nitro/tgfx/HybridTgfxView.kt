@@ -104,6 +104,13 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     target.requestRender()
   }
 
+  override fun setViewport(viewport: DoubleArray) {
+    if (viewport.size < 3) {
+      return
+    }
+    target.setViewport(viewport[0].toFloat(), viewport[1].toFloat(), viewport[2].toFloat())
+  }
+
   override fun setColorSpace(colorSpace: String) {
     target.setColorSpace(colorSpace == "display-p3")
   }

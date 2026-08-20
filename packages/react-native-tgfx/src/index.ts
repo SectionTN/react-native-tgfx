@@ -209,5 +209,6 @@ export type {
   TransformOp,
   UniformValue,
   Vector,
+  Viewport,
   AnimatedVector,
 } from './types'

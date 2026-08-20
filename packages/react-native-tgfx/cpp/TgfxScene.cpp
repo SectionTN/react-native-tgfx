@@ -1898,7 +1898,8 @@ bool SceneRenderer::usesBackdrop() const {
 std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
                                            std::span<const double> values,
                                            std::span<const std::string> stringValues,
-                                           std::span<const uint8_t> stringPushed) {
+                                           std::span<const uint8_t> stringPushed,
+                                           const tgfx::Matrix& root) {
   std::shared_ptr<const Program> program;
   {
     std::lock_guard<std::mutex> lock(programMutex_);
@@ -1909,7 +1910,7 @@ std::vector<double> SceneRenderer::hitTest(float x, float y, bool precise,
     return out;
   }
   std::vector<int32_t> path;
-  hitWalk(*program, tgfx::Matrix::I(), {x, y}, precise, values, stringValues,
+  hitWalk(*program, root, {x, y}, precise, values, stringValues,
           stringPushed, path, out);
   return out;
 }

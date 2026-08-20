@@ -44,6 +44,21 @@ const pan = Gesture.Pan().onUpdate((e) => {
 })
 ```
 
+A node handle writes a value slot, which is worklet-safe. The canvas
+[`viewport`](/docs/animation#zoom-and-pan) is not a slot — it sits above the
+draw program entirely — so `setViewport` is a plain JS call and a gesture
+driving it needs `runOnJS(true)`:
+
+```tsx
+const zoom = Gesture.Pinch()
+  .runOnJS(true)
+  .onChange((e) => canvas.current?.setViewport({ zoom: at.current.zoom * e.scaleChange }))
+```
+
+That is still one native write per tick with no React render and no scene
+re-encode; it is the JS thread being on the path that the slot writes above
+avoid.
+
 ## What has slots
 
 Geometry, group transform operands, paint values and enums, image handles and

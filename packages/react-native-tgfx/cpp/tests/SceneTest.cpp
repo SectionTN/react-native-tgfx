@@ -24,6 +24,7 @@
 #include "PdfExport.hpp"
 #include "SvgExport.hpp"
 #include "TgfxScene.hpp"
+#include "Viewport.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/EncodedFormat.h"
@@ -3409,6 +3410,71 @@ void hitTestReportsWhatIsUnderThePoint() {
   CHECK(exact[0] == 1 && exact[1] == 0);
 }
 
+/// The root viewport is the same matrix the renderer draws under, so the walk
+/// has to invert it too — otherwise a zoomed scene reports hits from where the
+/// nodes used to be.
+/// The composition order itself, which no pixel test off a device can catch: get
+/// preTranslate and preScale the wrong way round and the pan starts scaling with
+/// the zoom, which looks plausible until a scene is both zoomed and panned.
+void theRootMatrixPansInCanvasPointsAfterTheZoom() {
+  // p -> pixelRatio * (offset + zoom * p)
+  auto matrix = tgfxrn::rootMatrix(2, 3, 10, -4);
+  auto mapped = matrix.mapXY(5, 6);
+  CHECK(std::abs(mapped.x - 2 * (10 + 3 * 5)) < 1e-4f);
+  CHECK(std::abs(mapped.y - 2 * (-4 + 3 * 6)) < 1e-4f);
+
+  // The offset does not scale with the zoom: the origin lands on it exactly.
+  auto atOrigin = tgfxrn::rootMatrix(1, 4, 30, 40).mapXY(0, 0);
+  CHECK(std::abs(atOrigin.x - 30) < 1e-4f && std::abs(atOrigin.y - 40) < 1e-4f);
+
+  // The identity triple is the identity, so an unset viewport changes nothing.
+  auto identity = tgfxrn::rootMatrix(1, 1, 0, 0);
+  CHECK(identity.isIdentity());
+
+  // A focal-point pinch holds the scene point under the focus still.
+  float zoom = 1.5f;
+  float offset = 12;
+  float focus = 80;
+  float scene = (focus - offset) / zoom;
+  float next = 4;
+  auto pinched = tgfxrn::rootMatrix(1, next, focus - next * scene, 0);
+  CHECK(std::abs(pinched.mapXY(scene, 0).x - focus) < 1e-3f);
+}
+
+void hitTestFollowsTheViewport() {
+  Writer w;
+  w.push(1);
+  // One 32x32 rect at the origin.
+  w.push(1);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushPaint(0xff0000ff, false);
+
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+
+  // zoom 2 about the origin: the rect covers 0..64 on screen.
+  auto zoom = tgfx::Matrix::MakeScale(2, 2);
+  CHECK(!renderer.hitTest(60, 60, false, {}, {}, {}, zoom).empty());
+  CHECK(renderer.hitTest(60, 60, false, {}).empty());
+  // 20,20 is still inside at either scale, and 70,70 outside at both.
+  CHECK(!renderer.hitTest(20, 20, false, {}, {}, {}, zoom).empty());
+  CHECK(renderer.hitTest(70, 70, false, {}, {}, {}, zoom).empty());
+
+  // translate(offset) * scale(zoom): the pan is in canvas points, after the zoom.
+  auto panned = tgfx::Matrix::MakeTrans(100, 0);
+  panned.preScale(2, 2);
+  CHECK(!renderer.hitTest(110, 10, false, {}, {}, {}, panned).empty());
+  CHECK(renderer.hitTest(10, 10, false, {}, {}, {}, panned).empty());
+
+  // A degenerate root collapses the scene, so nothing is under any point.
+  CHECK(renderer.hitTest(10, 10, false, {}, {}, {},
+                         tgfx::Matrix::MakeScale(0, 0))
+            .empty());
+}
+
 /// A PDF page is vectors, not pixels: the file exists, is a PDF, and holds every page.
 void aPdfIsWrittenWithAPagePerScene() {
   Writer w;
@@ -4234,6 +4300,8 @@ int main() {
   aLiveHandleRefusesToBeDerivedFrom();
   aRecordedGroupReplaysWhatItDrew();
   hitTestReportsWhatIsUnderThePoint();
+  theRootMatrixPansInCanvasPointsAfterTheZoom();
+  hitTestFollowsTheViewport();
   aPdfIsWrittenWithAPagePerScene();
   aBackdropFrostsWhatIsBeneathIt();
   aBackdropAtAPixelRatioLeavesTheRestOfTheSceneAlone();

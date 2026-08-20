@@ -112,6 +112,15 @@ applies to the union rather than to each child:
 />
 ```
 
+## Viewport
+
+`<Canvas viewport={{ zoom, x, y }}>` is a zoom/pan the renderer applies above the
+whole scene, so moving it never re-encodes the draw program.
+[`CanvasHandle.setViewport`](/api/interfaces/CanvasHandle) is the imperative form
+and the one a gesture should use — see
+[Zoom and pan](/docs/animation#zoom-and-pan). `hitTest` inverts it, so the two
+stay in agreement at any zoom.
+
 ## Hit testing
 
 [`CanvasHandle.hitTest`](/api/interfaces/CanvasHandle) returns [`HitTestResult`](/api/interfaces/HitTestResult) topmost first.

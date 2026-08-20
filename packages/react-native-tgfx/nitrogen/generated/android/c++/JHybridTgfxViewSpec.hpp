@@ -61,6 +61,7 @@ namespace margelo::nitro::tgfx {
     void invalidate() override;
     void setValues(const std::vector<double>& values) override;
     void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) override;
+    void setViewport(const std::vector<double>& viewport) override;
     void setColorSpace(const std::string& colorSpace) override;
     std::vector<double> hitTest(double x, double y, bool precise) override;
     std::shared_ptr<Promise<NativeSnapshot>> snapshot(const NativeSnapshotOptions& options) override;

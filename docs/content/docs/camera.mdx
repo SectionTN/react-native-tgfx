@@ -129,6 +129,13 @@ orientation must continue to track.
 Not usable when the frame processor has JS work of its own — a per-frame
 detector, for instance.
 
+## Zooming
+
+A `<CameraFrame>` fits itself to the surface, not to scene coordinates, so the
+[`viewport`](/docs/animation#zoom-and-pan) does not move it: the frame stays put
+while overlays drawn above it zoom and pan. Wrap it in a `<Group transform>` if
+the frame should zoom with them.
+
 ## Shading a frame
 
 ```tsx

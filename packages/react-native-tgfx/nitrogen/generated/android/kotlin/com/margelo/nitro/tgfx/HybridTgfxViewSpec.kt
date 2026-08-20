@@ -59,6 +59,10 @@ abstract class HybridTgfxViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun setViewport(viewport: DoubleArray): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun setColorSpace(colorSpace: String): Unit
   
   @DoNotStrip

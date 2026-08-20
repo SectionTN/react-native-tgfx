@@ -9,6 +9,7 @@ import { nativeMocks } from '../testing/nativeMocks'
 // Scene word layout is [VERSION, wordCount, patchTableStart, rootNodeCount, ...].
 let scenes: number[][] = []
 let pushed: number[][] = []
+let viewports: [number, number, number][] = []
 let invalidated = 0
 
 function FakeView({ hybridRef }: { hybridRef: (ref: unknown) => void }): null {
@@ -19,6 +20,8 @@ function FakeView({ hybridRef }: { hybridRef: (ref: unknown) => void }): null {
         scenes.push(Array.from(words.subarray(0, words[1])))
       },
       setValues: (values: number[]) => pushed.push(values.slice()),
+      setViewport: (viewport: number[]) =>
+        viewports.push([viewport[0]!, viewport[1]!, viewport[2]!]),
       invalidate: () => invalidated++,
       snapshot: async (options: { scale: number }) => ({
         data: new ArrayBuffer(0),
@@ -83,6 +86,7 @@ async function render(
 beforeEach(() => {
   scenes = []
   pushed = []
+  viewports = []
   invalidated = 0
 })
 
@@ -836,4 +840,87 @@ test('a non-positive snapshot scale is rejected at the boundary', async () => {
   ).rejects.toThrow(/rect must have four finite numbers/)
   const snap = await handle.current!.snapshot({ scale: 2 })
   expect(snap.width).toBe(2)
+})
+
+// Unconditional on attach, identity included: a recycled native view resets its
+// viewport in clearScene(), which both platforms defer to detach, so this side
+// cannot know whether that has landed before the next canvas mounts.
+test('an unset viewport still claims the identity once on attach', async () => {
+  await render(SCENE)
+  expect(viewports).toEqual([[1, 0, 0]])
+})
+
+test('a commit that does not move the viewport leaves an imperative write alone', async () => {
+  const ref = React.createRef<import('../types').CanvasHandle>()
+  const scene = (width: number) => (
+    <Canvas ref={ref} viewport={{ zoom: 2, x: 4, y: 6 }}>
+      <Rect x={0} y={0} width={width} height={10} color="red" />
+    </Canvas>
+  )
+  const tree = await render(scene(10))
+  await act(async () => {
+    ref.current!.setViewport({ zoom: 3 })
+  })
+  // Re-rendered for a reason that has nothing to do with the viewport: folding
+  // the prop back in here would silently drop the zoom to 2 again.
+  await act(async () => {
+    tree.update(scene(20))
+  })
+  viewports = []
+  await act(async () => {
+    ref.current!.setViewport({ x: 10 })
+  })
+  expect(viewports).toEqual([[3, 10, 6]])
+})
+
+test('a static viewport is pushed once, and again only when it moves', async () => {
+  const scene = (zoom: number) => (
+    <Canvas viewport={{ zoom, x: -10, y: -20 }}>
+      <Rect x={0} y={0} width={10} height={10} color="red" />
+    </Canvas>
+  )
+  const tree = await render(scene(2))
+  expect(viewports).toEqual([[2, -10, -20]])
+  viewports = []
+  // A commit that leaves the viewport alone must not re-push it.
+  await act(async () => {
+    tree.update(scene(2))
+  })
+  expect(viewports).toEqual([])
+  await act(async () => {
+    tree.update(scene(3))
+  })
+  expect(viewports).toEqual([[3, -10, -20]])
+})
+
+test('a non-positive or non-finite field falls back rather than reaching native', async () => {
+  await render(
+    <Canvas viewport={{ zoom: 0, x: Number.NaN, y: 5 }}>
+      <Rect x={0} y={0} width={10} height={10} color="red" />
+    </Canvas>
+  )
+  // Native rejects a bad triple whole, which would strand y at 0 as well.
+  expect(viewports).toEqual([[1, 0, 5]])
+})
+
+test('setViewport merges with the fields it omits', async () => {
+  const ref = React.createRef<import('../types').CanvasHandle>()
+  await render(
+    <Canvas ref={ref} viewport={{ zoom: 2, x: 4, y: 6 }}>
+      <Rect x={0} y={0} width={10} height={10} color="red" />
+    </Canvas>
+  )
+  await act(async () => {
+    ref.current!.setViewport({ zoom: 3 })
+  })
+  expect(viewports).toEqual([
+    [2, 4, 6],
+    [3, 4, 6],
+  ])
+  // Writing the same triple again is not a bridge call.
+  viewports = []
+  await act(async () => {
+    ref.current!.setViewport({ zoom: 3 })
+  })
+  expect(viewports).toEqual([])
 })

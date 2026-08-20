@@ -534,6 +534,59 @@ export interface CanvasHandle {
    * to tell two anonymous hits apart.
    */
   hitTest(x: number, y: number, options?: HitTestOptions): HitTestResult[]
+
+  /**
+   * Move the root viewport — the zoom/pan the renderer owns.
+   *
+   * One native write and a redraw: no React render, no scene recommit, no wire
+   * traffic, because the transform sits above the whole draw program. That is
+   * the entire point of it over a `<Group transform>`, which re-encodes the
+   * scene on every tick.
+   *
+   * Omitted fields keep their current value, so `setViewport({ zoom: 2 })`
+   * pans nowhere. A non-finite `x`/`y` or a non-positive `zoom` is ignored as
+   * a whole rather than collapsing the scene.
+   *
+   * `hitTest` follows it: a hit at (10, 10) under `zoom: 2` reports the node at
+   * scene (5, 5), and `snapshot()` reads back the zoomed frame.
+   *
+   * The path a gesture should use: it costs one native write per tick, with no
+   * React render and no scene re-encode. The `viewport` prop is the same write
+   * driven from a commit instead.
+   */
+  setViewport(viewport: { zoom?: number; x?: number; y?: number }): void
+}
+
+/**
+ * A root zoom/pan applied above the whole scene.
+ *
+ * `zoom` scales about the scene origin and `x`/`y` translate in canvas points
+ * *after* it, the order a scroll view uses. To pinch about a focal point
+ * `(fx, fy)` — the gesture centroid, in canvas points — hold the scene point
+ * under it still:
+ *
+ * ```ts
+ * const sceneX = (fx - x) / zoom
+ * const sceneY = (fy - y) / zoom
+ * canvas.current.setViewport({
+ *   zoom: nextZoom,
+ *   x: fx - nextZoom * sceneX,
+ *   y: fy - nextZoom * sceneY,
+ * })
+ * ```
+ *
+ * Plain numbers, not SharedValues: moving the viewport is a native write that
+ * never re-encodes the scene, so a gesture drives it through
+ * {@link CanvasHandle.setViewport} from a JS-thread gesture callback
+ * (`Gesture.Pan().runOnJS(true)`) rather than through a value slot.
+ */
+export interface Viewport {
+  /** Scale about the scene origin. Defaults to 1; a non-positive value is ignored. */
+  zoom?: number
+  /** Canvas-point pan, applied after the zoom. Defaults to 0. */
+  x?: number
+  /** Canvas-point pan, applied after the zoom. Defaults to 0. */
+  y?: number
 }
 
 export interface CanvasProps {
@@ -579,6 +632,14 @@ export interface CanvasProps {
    * optimisation, and measure before enabling it for speed.
    */
   opaque?: boolean
+  /**
+   * A root zoom/pan the renderer owns — see {@link Viewport}.
+   *
+   * Applied above the whole draw program, so moving it never re-encodes the
+   * scene. Set from a commit; for a gesture, drive
+   * {@link CanvasHandle.setViewport} instead, which skips the React render too.
+   */
+  viewport?: Viewport
   /** Device-pixel debugging overlay hook (reserved). */
   debug?: boolean
 }

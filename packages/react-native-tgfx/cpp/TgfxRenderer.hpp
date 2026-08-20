@@ -57,6 +57,20 @@ class TgfxRenderer {
 
   void setPixelRatio(float ratio);
 
+  /// A root zoom/pan the renderer owns: a pinch costs one write and a redraw,
+  /// never a scene recommit. `zoom` is about the scene origin and `offsetX`/
+  /// `offsetY` are canvas points applied after it, so a focal-point pinch is
+  /// `offset = focus - zoom * scenePoint`. A non-finite or non-positive triple
+  /// is rejected whole, keeping the last good viewport rather than collapsing
+  /// the scene.
+  ///
+  /// Returns whether the viewport moved, so a caller driving this every frame
+  /// only wakes the render thread when there is something new to draw. A wake
+  /// per idle tick is not merely wasted: each one cancels the draw already
+  /// queued, and on a render thread shared by every canvas in the process that
+  /// starves this one to a blank surface.
+  bool setViewport(float zoom, float offsetX, float offsetY);
+
   /// Read when the window is built; a later change cannot move an existing window's space.
   void setColorSpace(bool displayP3);
 
@@ -127,6 +141,16 @@ class TgfxRenderer {
   uint64_t drawStringGen_ = 0;
   uint64_t valuesGen_ = 0;
   uint64_t drawValuesGen_ = 0;
+  /// Written with values_ under mutex_: the three move together, and a torn
+  /// triple shifts the focal point for a frame.
+  float viewportZoom_ = 1.0f;
+  float viewportX_ = 0.0f;
+  float viewportY_ = 0.0f;
+  /// The render thread's copy, taken with the frame's values so draw() and the
+  /// snapshot re-render share one viewport.
+  float drawZoom_ = 1.0f;
+  float drawViewportX_ = 0.0f;
+  float drawViewportY_ = 0.0f;
   std::vector<double> drawScene_;
   std::shared_ptr<const StringTable> drawStrings_;
   SceneRenderer scene_;

@@ -118,6 +118,15 @@ namespace margelo::nitro::tgfx {
       return __array;
     }(values));
   }
+  void JHybridTgfxViewSpec::setViewport(const std::vector<double>& viewport) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayDouble> /* viewport */)>("setViewport");
+    method(_javaPart, [&]() {
+      size_t __size = viewport.size();
+      jni::local_ref<jni::JArrayDouble> __array = jni::JArrayDouble::newArray(__size);
+      __array->setRegion(0, __size, viewport.data());
+      return __array;
+    }());
+  }
   void JHybridTgfxViewSpec::setColorSpace(const std::string& colorSpace) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* colorSpace */)>("setColorSpace");
     method(_javaPart, jni::make_jstring(colorSpace));

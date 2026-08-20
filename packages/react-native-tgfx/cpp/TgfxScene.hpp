@@ -405,11 +405,15 @@ class SceneRenderer {
    * as one array. `precise` tests the filled region rather than the bounds.
    * `stringValues`/`stringPushed` let a string-slotted path be tested against
    * what is drawn (re-parsed locally — `livePath` belongs to the render thread).
+   * `root` is the transform the renderer draws under (the viewport), which the
+   * walk inverts along with each group's — without it a zoomed scene reports
+   * hits from where the nodes used to be.
    */
   std::vector<double> hitTest(float x, float y, bool precise,
                               std::span<const double> values,
                               std::span<const std::string> stringValues = {},
-                              std::span<const uint8_t> stringPushed = {});
+                              std::span<const uint8_t> stringPushed = {},
+                              const tgfx::Matrix& root = tgfx::Matrix::I());
 
   void clearCaches();
 

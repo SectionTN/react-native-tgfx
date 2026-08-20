@@ -29,6 +29,12 @@ final class HybridTgfxView: HybridTgfxViewSpec {
     metalView.requestRender()
   }
 
+  func setViewport(viewport: [Double]) throws {
+    guard viewport.count >= 3 else { return }
+    metalView.setViewportZoom(Float(viewport[0]), x: Float(viewport[1]),
+                              y: Float(viewport[2]))
+  }
+
   func setColorSpace(colorSpace: String) throws {
     metalView.setDisplayP3(colorSpace == "display-p3")
   }

@@ -22,6 +22,7 @@ import type {
   Snapshot,
   SnapshotFormat,
   SnapshotOptions,
+  Viewport,
 } from '../types'
 import { TgfxNativeView, type TgfxViewRef } from '../views/TgfxNativeView'
 
@@ -78,6 +79,38 @@ function sameValueSet(
 
 const NO_VIEW_BACKGROUND = { backgroundColor: 'transparent' } as const
 
+/// Render-phase scratch, so resolving the prop allocates nothing per commit.
+const scratchViewport: [number, number, number] = [1, 0, 0]
+
+/** A finite number, or `fallback`. Plain numbers only: see {@link Viewport}. */
+function viewportNumber(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+/**
+ * `[zoom, x, y]` with the defaults filled in, written into `into` so a gesture
+ * costs no allocation. A non-positive or non-finite field falls back rather
+ * than reaching native, which would reject the whole triple and silently strand
+ * the other two.
+ */
+function resolveViewport(
+  viewport: Viewport | undefined,
+  into: [number, number, number]
+): [number, number, number] {
+  const zoom = viewportNumber(viewport?.zoom, 1)
+  into[0] = zoom > 0 ? zoom : 1
+  into[1] = viewportNumber(viewport?.x, 0)
+  into[2] = viewportNumber(viewport?.y, 0)
+  return into
+}
+
+function sameViewport(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number]
+): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2]
+}
+
 /**
  * The last `backgroundColor` in a possibly nested style, or undefined. Flattened
  * here rather than through `StyleSheet` so the component pulls in no runtime.
@@ -128,6 +161,7 @@ export function Canvas({
   composite = 'layer',
   opaque = false,
   colorSpace = 'srgb',
+  viewport,
   ref,
 }: CanvasProps): React.ReactElement {
   const [values, setValues] = useState<MaybeSharedValue<unknown>[]>([])
@@ -150,6 +184,13 @@ export function Canvas({
       viewRef.current = ref
       // Optional: a JS bundle newer than the native binary would otherwise throw here.
       ref.setColorSpace?.(colorSpaceRef.current)
+      // Unconditional: a recycled view resets its viewport in clearScene(), but
+      // both platforms defer that to detach to avoid a flash, so this side
+      // cannot know whether it has landed yet. Native ignores an unchanged
+      // triple, so the cost is one call on a frame the canvas is drawing anyway.
+      const [zoom, x, y] = viewportRef.current
+      sentViewport.current = [zoom, x, y]
+      ref.setViewport?.([zoom, x, y])
       sentStrings.current = []
       if (scene.current != null) {
         const strings = scene.current.strings
@@ -163,6 +204,19 @@ export function Canvas({
   }
   const hybrid = hybridRef.current
   // Read through a ref: the hybrid callback is created once and must see the latest.
+  // Three separate triples: `viewport` is what the canvas is at, `prop` is what
+  // the last commit asked for, `sent` is what native was told. Folding the prop
+  // into `viewport` on every render would revert an imperative write the moment
+  // anything else re-rendered, and the effect — keyed on the prop's fields —
+  // would not notice.
+  const viewportRef = useRef<[number, number, number]>([1, 0, 0])
+  const propViewport = useRef<[number, number, number]>([1, 0, 0])
+  const sentViewport = useRef<[number, number, number]>([1, 0, 0])
+  const nextProp = resolveViewport(viewport, scratchViewport)
+  if (!sameViewport(nextProp, propViewport.current)) {
+    propViewport.current = [nextProp[0], nextProp[1], nextProp[2]]
+    viewportRef.current = [nextProp[0], nextProp[1], nextProp[2]]
+  }
   const colorSpaceRef = useRef(colorSpace)
   const mountedColorSpace = useRef(colorSpace)
   colorSpaceRef.current = colorSpace
@@ -177,6 +231,16 @@ export function Canvas({
       )
     }
   }, [colorSpace])
+
+  // One native write, no scene re-encode: the transform sits above the program.
+  useEffect(() => {
+    const at = viewportRef.current
+    if (sameViewport(at, sentViewport.current)) {
+      return
+    }
+    sentViewport.current = [at[0], at[1], at[2]]
+    viewRef.current?.setViewport?.(at)
+  }, [view, viewport?.zoom, viewport?.x, viewport?.y])
 
   if (rootRef.current == null) {
     // Straight to the hybrid object: as a prop it would ride a React and a Fabric commit per frame.
@@ -224,6 +288,20 @@ export function Canvas({
       },
       redraw: (): void => {
         viewRef.current?.invalidate()
+      },
+      setViewport: (next: Viewport): void => {
+        // In place, into the triple the bridge reads: a gesture calls this every
+        // tick and AGENTS.md allows no per-frame allocation on that path.
+        const at = viewportRef.current
+        const zoom = viewportNumber(next.zoom, at[0])
+        at[0] = zoom > 0 ? zoom : at[0]
+        at[1] = viewportNumber(next.x, at[1])
+        at[2] = viewportNumber(next.y, at[2])
+        if (sameViewport(at, sentViewport.current)) {
+          return
+        }
+        sentViewport.current = [at[0], at[1], at[2]]
+        viewRef.current?.setViewport?.(at)
       },
       hitTest: (x, y, options): HitTestResult[] => {
         const view = viewRef.current

@@ -353,6 +353,16 @@ Java_com_margelo_nitro_tgfx_TgfxNative_hitTest(JNIEnv* env, jobject, jlong ptr, 
   return out;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_setViewport(JNIEnv*, jobject, jlong ptr,
+                                                  jfloat zoom, jfloat x, jfloat y) {
+  auto* view = asView(ptr);
+  if (view == nullptr) {
+    return JNI_FALSE;
+  }
+  return view->renderer.setViewport(zoom, x, y) ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setColorSpace(JNIEnv*, jobject, jlong ptr,
                                                     jboolean displayP3) {

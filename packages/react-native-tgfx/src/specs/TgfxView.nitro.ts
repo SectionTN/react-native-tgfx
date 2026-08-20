@@ -96,6 +96,26 @@ export interface TgfxViewMethods extends HybridViewMethods {
   setStringValues(indices: number[], values: string[]): void
 
   /**
+   * A root zoom/pan the renderer owns. A pinch tick is one native write and a
+   * redraw — no React render, no scene recommit, no wire traffic — because the
+   * transform sits above the whole draw program.
+   *
+   * `zoom` is about the scene origin; `x`/`y` are canvas points applied after
+   * it, so `scale(pixelRatio) * translate(x, y) * scale(zoom)` is the matrix.
+   * A focal-point pinch is therefore `x = focusX - zoom * sceneX`.
+   *
+   * `viewport` is `[zoom, x, y]`. One array argument rather than three scalars,
+   * matching {@link setValues}: a gesture calls this every tick, and an array
+   * the caller owns can be written in place and reused, where scalars would
+   * marshal three fresh values through the bridge each time.
+   *
+   * Fewer than three entries is ignored. A non-finite `x`/`y` or a non-positive
+   * `zoom` is rejected as a triple and the last good viewport stays, rather
+   * than collapsing the scene to a point.
+   */
+  setViewport(viewport: number[]): void
+
+  /**
    * The drawing surface's colour space. `'display-p3'` on a P3 screen keeps
    * wide-gamut image and gradient content instead of clamping it to sRGB.
    */

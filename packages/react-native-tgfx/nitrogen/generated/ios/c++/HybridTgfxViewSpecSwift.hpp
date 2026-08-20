@@ -112,6 +112,12 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void setViewport(const std::vector<double>& viewport) override {
+      auto __result = _swiftPart.setViewport(viewport);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline void setColorSpace(const std::string& colorSpace) override {
       auto __result = _swiftPart.setColorSpace(colorSpace);
       if (__result.hasError()) [[unlikely]] {

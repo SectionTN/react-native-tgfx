@@ -59,6 +59,92 @@ single alpha slot, so their product is frozen at the last commit. Animate one
 opacity per chain.
 ```
 
+## Zoom and pan
+
+A zoomable canvas built from a `<Group transform>` re-renders React, re-encodes
+the draw program and re-uploads the scene on every pinch tick — for a change
+that is one matrix. The viewport is that matrix, owned by the renderer and
+applied above the whole program, so moving it costs one native write and a
+redraw: no recommit, no wire traffic.
+
+```tsx
+import { useRef } from 'react'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
+import { Canvas, Circle, type CanvasHandle } from 'react-native-tgfx'
+
+function Map() {
+  const canvas = useRef<CanvasHandle>(null)
+  const at = useRef({ zoom: 1, x: 0, y: 0 })
+
+  // runOnJS: the handle is a JS object. One JS call per tick, and still no
+  // React render and no scene re-encode.
+  const pan = Gesture.Pan()
+    .runOnJS(true)
+    .onChange(e => {
+      at.current = {
+        ...at.current,
+        x: at.current.x + e.changeX,
+        y: at.current.y + e.changeY,
+      }
+      canvas.current?.setViewport(at.current)
+    })
+
+  return (
+    <GestureDetector gesture={pan}>
+      <View style={{ height: 200 }} collapsable={false}>
+        <Canvas ref={canvas} style={{ flex: 1 }}>
+          <Circle cx={100} cy={100} r={40} color="#d98a4a" />
+        </Canvas>
+      </View>
+    </GestureDetector>
+  )
+}
+```
+
+`zoom` scales about the scene origin and `x`/`y` pan in canvas points *after*
+it — `scale(pixelRatio) · translate(x, y) · scale(zoom)`, the order a scroll
+view uses. A pinch usually wants to zoom about the gesture centroid instead,
+which is that same matrix with the offset solved for: hold the scene point
+under the focus still.
+
+```tsx
+const pinch = Gesture.Pinch()
+  .runOnJS(true)
+  .onChange(e => {
+    const { zoom, x, y } = at.current
+    const next = Math.max(0.5, Math.min(8, zoom * e.scaleChange))
+    const sceneX = (e.focalX - x) / zoom
+    const sceneY = (e.focalY - y) / zoom
+    at.current = {
+      zoom: next,
+      x: e.focalX - next * sceneX,
+      y: e.focalY - next * sceneY,
+    }
+    canvas.current?.setViewport(at.current)
+  })
+```
+
+`hitTest` inverts the viewport along with each group's transform, so a tap
+reports the node actually under the finger at any zoom, and `snapshot()` reads
+back the frame as shown.
+
+`<CameraFrame>` is the exception: it fits itself to the surface rather than to
+scene coordinates, so the viewport does not move it — the frame stays put while
+everything drawn over it zooms. Put the frame in a `<Group transform>` if you
+want it to zoom with the rest.
+
+The `<Canvas viewport={{ zoom, x, y }}>` prop is the same write driven from a
+commit — convenient for a fixed zoom, but a gesture should use the handle so it
+does not re-render React per tick. Use one or the other: a `viewport` prop
+re-pushes on the next commit that moves it, overwriting an imperative write.
+
+`setViewport` takes plain numbers, not SharedValues. The viewport is not a
+value slot — it never touches the draw program — so there is nothing for the
+UI-thread driver to patch.
+
+A non-positive `zoom`, or a non-finite `x`/`y`, is ignored and the last good
+viewport stays — a bad value cannot collapse the scene.
+
 ## Without Reanimated
 
 [`useNode`](/api/functions/useNode) works from JavaScript event handlers without

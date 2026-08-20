@@ -9,6 +9,7 @@
 #include "FontRegistry.hpp"
 #include "SceneHash.hpp"
 #include "SceneStrings.hpp"
+#include "Viewport.hpp"
 #include "tgfx/core/Canvas.h"
 #include "tgfx/core/Image.h"
 #include "Trace.hpp"
@@ -113,6 +114,12 @@ void TgfxRenderer::clearScene() {
     scenePending_ = false;
     sceneHash_ = 0;
     cachesDirty_ = true;
+    // Only recycle calls this, and the next canvas on a recycled view has its
+    // own viewport — without the reset it would inherit wherever the last
+    // canvas's gesture left this one.
+    viewportZoom_ = 1.0f;
+    viewportX_ = 0.0f;
+    viewportY_ = 0.0f;
   }
   version_.fetch_add(1, std::memory_order_release);
 }
@@ -159,13 +166,42 @@ std::vector<double> TgfxRenderer::hitTest(float x, float y, bool precise) {
   std::vector<double> snapshot;
   std::vector<std::string> strings;
   std::vector<uint8_t> pushed;
+  float zoom = 1.0f;
+  float offsetX = 0.0f;
+  float offsetY = 0.0f;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot = values_;
     strings = stringValues_;
     pushed = stringPushed_;
+    zoom = viewportZoom_;
+    offsetX = viewportX_;
+    offsetY = viewportY_;
   }
-  return scene_.hitTest(x, y, precise, snapshot, strings, pushed);
+  // The staged viewport, matching values_ above: a hit test answers the scene as
+  // pushed, not as last drawn. No pixel ratio — the point arrives in canvas points.
+  return scene_.hitTest(x, y, precise, snapshot, strings, pushed,
+                        rootMatrix(1.0f, zoom, offsetX, offsetY));
+}
+
+bool TgfxRenderer::setViewport(float zoom, float offsetX, float offsetY) {
+  // Rejected whole rather than clamped: half a viewport is a wrong frame, and a
+  // zero or NaN zoom collapses every node in the scene to a point.
+  if (!std::isfinite(zoom) || zoom <= 0.0f || !std::isfinite(offsetX) ||
+      !std::isfinite(offsetY)) {
+    return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (viewportZoom_ == zoom && viewportX_ == offsetX && viewportY_ == offsetY) {
+      return false;
+    }
+    viewportZoom_ = zoom;
+    viewportX_ = offsetX;
+    viewportY_ = offsetY;
+  }
+  version_.fetch_add(1, std::memory_order_release);
+  return true;
 }
 
 void TgfxRenderer::setColorSpace(bool displayP3) {
@@ -214,6 +250,9 @@ bool TgfxRenderer::draw() {
       drawStringPushed_.assign(stringPushed_.begin(), stringPushed_.end());
       drawStringGen_ = stringGen_;
     }
+    drawZoom_ = viewportZoom_;
+    drawViewportX_ = viewportX_;
+    drawViewportY_ = viewportY_;
     dropCaches = cachesDirty_;
     cachesDirty_ = false;
     if (scenePending_) {
@@ -302,18 +341,22 @@ bool TgfxRenderer::draw() {
 #endif
     auto* canvas = target->getCanvas();
     canvas->clear(opaque_ ? tgfx::Color::Black() : tgfx::Color::Transparent());
-    // Scene coordinates are logical pixels, the surface physical. One load, or save/restore skews.
+    // Scene coordinates are logical pixels, the surface physical, and the
+    // viewport rides above both. One load, or save/restore skews.
     float pixelRatio = pixelRatio_.load(std::memory_order_relaxed);
-    if (pixelRatio != 1.0f) {
+    bool rooted = pixelRatio != 1.0f || drawZoom_ != 1.0f ||
+                  drawViewportX_ != 0.0f || drawViewportY_ != 0.0f;
+    if (rooted) {
       canvas->save();
-      canvas->concat(tgfx::Matrix::MakeScale(pixelRatio, pixelRatio));
+      canvas->concat(
+          rootMatrix(pixelRatio, drawZoom_, drawViewportX_, drawViewportY_));
     }
     {
       TGFXRN_TRACE("tgfx.render");
       scene_.render(canvas, drawValues_, drawStringValues_, drawStringGen_,
                     drawStringPushed_);
     }
-    if (pixelRatio != 1.0f) {
+    if (rooted) {
       canvas->restore();
     }
     if (target != surface_.get()) {
@@ -397,13 +440,17 @@ void TgfxRenderer::startSnapshots(tgfx::Context* context) {
   float ratio = pixelRatio_.load(std::memory_order_relaxed);
   auto* canvas = readable->getCanvas();
   canvas->clear(opaque_ ? tgfx::Color::Black() : tgfx::Color::Transparent());
-  if (ratio != 1.0f) {
+  // The frame's own viewport, so a readback matches what is on screen. The
+  // requested rect stays in canvas points, which the viewport does not move.
+  bool rooted = ratio != 1.0f || drawZoom_ != 1.0f || drawViewportX_ != 0.0f ||
+                drawViewportY_ != 0.0f;
+  if (rooted) {
     canvas->save();
-    canvas->concat(tgfx::Matrix::MakeScale(ratio, ratio));
+    canvas->concat(rootMatrix(ratio, drawZoom_, drawViewportX_, drawViewportY_));
   }
   scene_.render(canvas, drawValues_, drawStringValues_, drawStringGen_,
                 drawStringPushed_);
-  if (ratio != 1.0f) {
+  if (rooted) {
     canvas->restore();
   }
   for (auto& [request, callback] : staged) {

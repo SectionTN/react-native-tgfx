@@ -262,6 +262,14 @@ void TgfxSnapshotRelease(void* token) {
   [self wakeUp];
 }
 
+- (void)setViewportZoom:(float)zoom x:(float)x y:(float)y {
+  // Only on a real move: an idle tick would otherwise unpause the display link
+  // every frame for a scene that has not changed.
+  if (_renderer != nullptr && _renderer->setViewport(zoom, x, y)) {
+    [self wakeUp];
+  }
+}
+
 - (void)setDisplayP3:(BOOL)displayP3 {
   if (_renderer != nullptr) {
     _renderer->setColorSpace(displayP3 == YES);

@@ -4,7 +4,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { expect } from 'react-native-harness';
 import { screen, type ElementReference } from '@react-native-harness/ui';
-import { Canvas, type CanvasHandle } from 'react-native-tgfx';
+import { Canvas, type CanvasHandle, type Viewport } from 'react-native-tgfx';
 
 export const CANVAS_ID = 'tgfx-harness-canvas';
 
@@ -14,14 +14,23 @@ export const STAGE_SIZE = 200;
 export function Stage({
   children,
   canvasRef,
+  viewport,
 }: {
   children: React.ReactNode;
   /** Only the readback and hit-test suites need one. */
   canvasRef?: React.Ref<CanvasHandle>;
+  /** Only the viewport suite needs one. */
+  viewport?: Viewport;
 }) {
   return (
     <View testID={CANVAS_ID} style={{ width: STAGE_SIZE, height: STAGE_SIZE }}>
-      <Canvas ref={canvasRef} style={{ flex: 1 }} composite="texture" opaque>
+      <Canvas
+        ref={canvasRef}
+        style={{ flex: 1 }}
+        composite="texture"
+        opaque
+        viewport={viewport}
+      >
         {children}
       </Canvas>
     </View>
