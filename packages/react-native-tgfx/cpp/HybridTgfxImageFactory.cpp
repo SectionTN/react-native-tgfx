@@ -4,10 +4,13 @@
 #include <stdexcept>
 #include <utility>
 
+#include <algorithm>
+
 #include "Base64.hpp"
 #include "HybridTgfxImage.hpp"
 #include "ImageRegistry.hpp"
 #include "OffscreenRender.hpp"
+#include "Snapshot.hpp"
 #include "PdfExport.hpp"
 #include "PlatformAsset.hpp"
 #include "SvgExport.hpp"
@@ -396,6 +399,67 @@ std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImage::blurred(double blurX, doub
                      : sourceBytes(handle_.handle) + static_cast<size_t>(blurred->width()) *
                                                          static_cast<size_t>(blurred->height()) * 4;
   return registerDerived(std::move(blurred), "blurred", bytes);
+}
+
+namespace {
+
+/// Shared by encode and save: rasterize the handle, run the snapshot tail.
+tgfxrn::SnapshotRequest encodeRequest(const std::optional<std::string>& format,
+                                      std::optional<double> quality) {
+  tgfxrn::SnapshotRequest request;
+  request.format = format.value_or("png");
+  double q = quality.value_or(100);
+  // Clamped here: unlike snapshot(), there is no TS wrapper in front of this.
+  request.quality = static_cast<int>(std::min(100.0, std::max(1.0, std::isfinite(q) ? q : 100)));
+  return request;
+}
+
+std::shared_ptr<::tgfx::Data> encodeRegisteredImage(int32_t handle,
+                                                  const tgfxrn::SnapshotRequest& request) {
+  auto raster = tgfxrn::rasterizeRegisteredImage(handle);
+  std::shared_ptr<::tgfx::Data> out;
+  std::string error;
+  tgfxrn::finishSnapshot(raster.pixels, raster.info, request,
+                         [&](std::shared_ptr<::tgfx::Data> data, int, int, const std::string& err) {
+                           out = std::move(data);
+                           error = err;
+                         });
+  if (!error.empty()) {
+    throw std::runtime_error(error);
+  }
+  return out;
+}
+
+}  // namespace
+
+std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> HybridTgfxImage::encode(
+    const std::optional<std::string>& format, std::optional<double> quality) {
+  auto request = encodeRequest(format, quality);
+  int32_t handle = handle_.handle;
+  // Nitro's shared promise pool, like fromScene; it also runs every decode, so
+  // a burst of encodes queues behind them rather than growing threads.
+  return Promise<std::shared_ptr<ArrayBuffer>>::async([handle, request]() {
+    auto out = encodeRegisteredImage(handle, request);
+    if (out == nullptr) {
+      throw std::runtime_error("tgfx: encoding produced no bytes");
+    }
+    return ArrayBuffer::copy(static_cast<const uint8_t*>(out->data()), out->size());
+  });
+}
+
+std::shared_ptr<Promise<void>> HybridTgfxImage::save(const std::string& path,
+                                                     const std::optional<std::string>& format,
+                                                     std::optional<double> quality) {
+  auto request = encodeRequest(format, quality);
+  request.path = path;
+  if (path.empty()) {
+    throw std::runtime_error("tgfx: save needs a file path");
+  }
+  int32_t handle = handle_.handle;
+  return Promise<void>::async([handle, request]() {
+    // finishSnapshot writes the file itself; the bytes never enter JS.
+    encodeRegisteredImage(handle, request);
+  });
 }
 
 void HybridTgfxImage::setNativeBuffer(uint64_t buffer, PixelFormat format) {

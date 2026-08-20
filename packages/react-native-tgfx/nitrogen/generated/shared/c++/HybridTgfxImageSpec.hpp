@@ -28,6 +28,9 @@ namespace margelo::nitro::tgfx { enum class Orientation; }
 #include "ImageSampling.hpp"
 #include <optional>
 #include "Orientation.hpp"
+#include <NitroModules/ArrayBuffer.hpp>
+#include <NitroModules/Promise.hpp>
+#include <string>
 
 namespace margelo::nitro::tgfx {
 
@@ -67,6 +70,8 @@ namespace margelo::nitro::tgfx {
       virtual std::shared_ptr<HybridTgfxImageSpec> scaled(double width, double height, std::optional<ImageSampling> sampling) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> oriented(Orientation orientation) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> blurred(double blurX, double blurY) = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> encode(const std::optional<std::string>& format, std::optional<double> quality) = 0;
+      virtual std::shared_ptr<Promise<void>> save(const std::string& path, const std::optional<std::string>& format, std::optional<double> quality) = 0;
 
     protected:
       // Hybrid Setup

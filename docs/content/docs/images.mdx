@@ -124,6 +124,20 @@ naming where the stored top-left pixel belongs.
 const thumb = useDerivedImage(photo, { type: 'scaled', width: 200, height: 200 })
 ```
 
+## Encode and save
+
+Any image handle encodes to bytes or writes itself to disk — including a
+`renderToImage` result, which completes the headless flow:
+
+```ts
+const bytes = await image.encode('webp', 90)   // one ArrayBuffer, for upload
+await image.save(`${dir}/thumb.jpg`, 'jpeg', 85) // written natively; bytes never enter JS
+```
+
+`format` is `'png'` (default), `'jpeg'`, `'webp'`, or `'raw'` (straight-alpha
+RGBA rows). A derived image encodes what it draws. A disposed handle and a live
+camera or video frame reject — a stream has no still to encode.
+
 ## Native buffers
 
 [`imageFromNativeBuffer`](/api/functions/imageFromNativeBuffer) wraps a camera or

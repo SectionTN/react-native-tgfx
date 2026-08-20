@@ -22,6 +22,7 @@
 
 #include "OffscreenRender.hpp"
 #include "PdfExport.hpp"
+#include "Snapshot.hpp"
 #include "SvgExport.hpp"
 #include "TgfxScene.hpp"
 #include "Viewport.hpp"
@@ -5305,6 +5306,41 @@ void anImageShaderSlotSeededZeroStillGoesLive() {
   CHECK(pixelAt(lit, 32, 32)[1] == 0);
 }
 
+
+/// encode/save's rasterize path: any registry entry becomes CPU pixels finishSnapshot can eat.
+void aRegisteredImageRasterizesForEncoding() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto solid = registerSolid({250, 60, 90, 255}, 4, 4);
+  auto raster = tgfxrn::rasterizeRegisteredImage(solid.handle);
+  CHECK(raster.pixels != nullptr);
+  CHECK(raster.info.width() == 4);
+  CHECK(raster.info.height() == 4);
+
+  tgfxrn::SnapshotRequest request;
+  request.format = "raw";
+  bool called = false;
+  tgfxrn::finishSnapshot(
+      raster.pixels, raster.info, request,
+      [&](std::shared_ptr<tgfx::Data> data, int w, int h, const std::string& error) {
+        called = true;
+        CHECK(error.empty());
+        CHECK(w == 4 && h == 4);
+        CHECK(data != nullptr && data->size() == 4u * 4u * 4u);
+        const auto* px = static_cast<const uint8_t*>(data->data());
+        CHECK(px[0] == 250 && px[1] == 60 && px[2] == 90 && px[3] == 255);
+      });
+  CHECK(called);
+
+  registry.remove(solid.handle);
+  bool threw = false;
+  try {
+    tgfxrn::rasterizeRegisteredImage(solid.handle);
+  } catch (const std::exception&) {
+    threw = true;
+  }
+  CHECK(threw);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -5432,6 +5468,7 @@ int main() {
   theLayoutIsCachedByQuantisedSize();
   anEmojiFallsBackInsteadOfVanishing();
   textOnAPathFollowsTheCurve();
+  aRegisteredImageRasterizesForEncoding();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

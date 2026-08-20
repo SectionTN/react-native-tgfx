@@ -131,4 +131,42 @@ std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
   return tgfx::Image::MakeFrom(info, buffer.release());
 }
 
+RasterizedImage rasterizeRegisteredImage(int32_t handle) {
+  auto image = ImageRegistry::instance().sourceImage(handle);
+  if (image == nullptr) {
+    throw std::runtime_error(
+        "tgfx: this image is disposed, or is a live camera/video frame, which cannot be encoded");
+  }
+  int width = image->width();
+  int height = image->height();
+  if (width <= 0 || height <= 0) {
+    throw std::runtime_error("tgfx: this image has no pixels to encode");
+  }
+  if (width > kMaxDimension || height > kMaxDimension) {
+    throw std::runtime_error("tgfx: encode is capped at 8192 pixels on a side");
+  }
+
+  OffscreenContext locked;
+  auto* context = locked.get();
+  // The source's own space, carried through: an untagged surface would pass P3
+  // numbers through unconverted and the encode tail would then label them sRGB.
+  auto space = image->colorSpace();
+  auto surface = tgfx::Surface::Make(context, width, height, false, 1, false, 0, space);
+  if (surface == nullptr) {
+    throw std::runtime_error("tgfx: encode could not allocate a GPU surface");
+  }
+  auto* canvas = surface->getCanvas();
+  canvas->clear(tgfx::Color::Transparent());
+  canvas->drawImage(image, 0, 0);
+  context->flushAndSubmit(true);
+
+  auto info = tgfx::ImageInfo::Make(width, height, tgfx::ColorType::RGBA_8888,
+                                    tgfx::AlphaType::Premultiplied, 0, space);
+  tgfx::Buffer buffer(info.byteSize());
+  if (buffer.isEmpty() || !surface->readPixels(info, buffer.data())) {
+    throw std::runtime_error("tgfx: encode could not read the rasterized pixels back");
+  }
+  return {buffer.release(), info};
+}
+
 }  // namespace tgfxrn

@@ -22,6 +22,8 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("scaled", &HybridTgfxImageSpec::scaled);
       prototype.registerHybridMethod("oriented", &HybridTgfxImageSpec::oriented);
       prototype.registerHybridMethod("blurred", &HybridTgfxImageSpec::blurred);
+      prototype.registerHybridMethod("encode", &HybridTgfxImageSpec::encode);
+      prototype.registerHybridMethod("save", &HybridTgfxImageSpec::save);
     });
   }
 

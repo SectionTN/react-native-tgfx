@@ -44,6 +44,12 @@ class HybridTgfxImage : public HybridTgfxImageSpec {
   std::shared_ptr<HybridTgfxImageSpec> oriented(Orientation orientation) override;
   std::shared_ptr<HybridTgfxImageSpec> blurred(double blurX, double blurY) override;
 
+  std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> encode(
+      const std::optional<std::string>& format, std::optional<double> quality) override;
+  std::shared_ptr<Promise<void>> save(const std::string& path,
+                                      const std::optional<std::string>& format,
+                                      std::optional<double> quality) override;
+
   /// Hermes would otherwise see a few bytes of JS object for a multi-megabyte image.
   size_t getExternalMemorySize() noexcept override {
     return tgfxrn::ImageRegistry::instance().byteSize(handle_.handle);

@@ -51,6 +51,12 @@ const image = await renderToImage(
 )                                              // Promise<TgfxImage>
 ```
 
+`TgfxImage.encode(format?, quality?)` returns the encoded bytes as an `ArrayBuffer`;
+`TgfxImage.save(path, format?, quality?)` writes natively (bytes never enter
+JS). Formats: `png` (default) / `jpeg` / `webp` / `raw` (straight-alpha RGBA).
+Disposed handles and live camera/video frames reject. This closes the headless
+loop: `renderToImage(scene) → image.save(path)`.
+
 All three offscreen entry points also take `SceneNode[]` (element factories) or
 a `Scene` instead of JSX — those forms never construct a reconciler, and a
 `Scene`'s live handle writes are baked at their current values:

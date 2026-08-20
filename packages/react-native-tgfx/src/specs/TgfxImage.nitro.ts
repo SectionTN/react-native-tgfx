@@ -97,6 +97,26 @@ export interface TgfxImage extends HybridObject<{
    */
   blurred(blurX: number, blurY: number): TgfxImage
 
+  /**
+   * Encode to bytes — the missing half of the headless flow, where
+   * `renderToImage` produces a handle nothing could persist.
+   *
+   * `format` is `'png'` (default), `'jpeg'`, `'webp'`, or `'raw'`
+   * (straight-alpha RGBA rows, no container). `quality` is 1-100 and applies
+   * to the lossy formats. The bytes cross as one `ArrayBuffer`. Capped at 8192 pixels on a side.
+   *
+   * Rasterizes through the shared offscreen GPU context, so a derived image
+   * (`subset`/`scaled`/`blurred`) encodes what it draws. A disposed handle and
+   * a live camera/video frame reject — a stream has no still to encode.
+   */
+  encode(format?: string, quality?: number): Promise<ArrayBuffer>
+
+  /**
+   * {@link encode} written straight to `path`. The bytes never enter JS, which
+   * is the entire reason this is not `encode()` plus a file write.
+   */
+  save(path: string, format?: string, quality?: number): Promise<void>
+
   // `dispose()` comes from HybridObject and is overridden natively: it drops
   // the native image now instead of at the next GC. A scene still holding the
   // handle simply stops drawing it.

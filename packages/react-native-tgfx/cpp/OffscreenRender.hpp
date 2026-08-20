@@ -2,13 +2,17 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
+#include "tgfx/core/ImageInfo.h"
+
 namespace tgfx {
 class Context;
+class Data;
 class Device;
 class Image;
 }
@@ -53,5 +57,19 @@ std::shared_ptr<tgfx::Image> renderSceneOffscreen(std::span<const double> words,
                                                   const std::vector<std::string>& strings,
                                                   int width, int height, float pixelRatio,
                                                   bool opaque, bool displayP3, size_t& outBytes);
+
+struct RasterizedImage {
+  std::shared_ptr<tgfx::Data> pixels;  // premultiplied RGBA_8888
+  tgfx::ImageInfo info;
+};
+
+/**
+ * The registry image drawn at its native size and read back to CPU pixels —
+ * the input `finishSnapshot` encodes. One path for every kind of entry: even a
+ * `fromScene` result sits behind the registry as a `tgfx::Image`, and a
+ * derived image (subset/scaled/blurred) rasterizes what it draws. Throws for a
+ * disposed handle and for live camera/video frames, which have no still.
+ */
+RasterizedImage rasterizeRegisteredImage(int32_t handle);
 
 }  // namespace tgfxrn

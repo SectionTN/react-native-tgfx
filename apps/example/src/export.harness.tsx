@@ -10,6 +10,7 @@ import {
   renderToPdf,
   renderToSvg,
   renderToImage,
+  loadImage,
   Scene,
   createHandle,
   fill,
@@ -166,5 +167,54 @@ describe('tgfx scene-input export', () => {
     );
     expect(image.width).toBe(4);
     image.dispose();
+  });
+});
+
+describe('tgfx image encode and save', () => {
+  test('save writes a PNG loadImage can decode again', async () => {
+    const image = await renderToImage(
+      [rect({ x: 0, y: 0, width: 8, height: 8, color: '#ff2d55' })],
+      { width: 8, height: 8 },
+    );
+    const out = `${CACHE_DIR}/tgfx-harness-encode.png`;
+    await image.save(out);
+    const back = await loadImage(out);
+    expect(back.width).toBe(8);
+    expect(back.height).toBe(8);
+    image.dispose();
+    back.dispose();
+  });
+
+  test('encode returns bytes in the requested container', async () => {
+    const image = await renderToImage(
+      [rect({ x: 0, y: 0, width: 4, height: 4, color: '#0a84ff' })],
+      { width: 4, height: 4 },
+    );
+    const png = new Uint8Array(await image.encode('png'));
+    expect(png.length).toBeGreaterThan(8);
+    // PNG magic: 0x89 'P' 'N' 'G'
+    expect(png[0]).toBe(0x89);
+    expect(png[1]).toBe(0x50);
+    expect(png[2]).toBe(0x4e);
+    expect(png[3]).toBe(0x47);
+    const raw = new Uint8Array(await image.encode('raw'));
+    expect(raw.length).toBe(4 * 4 * 4);
+    expect(raw[0]).toBe(0x0a); // straight-alpha RGBA rows, r of #0a84ff
+    image.dispose();
+  });
+
+  test('encode after dispose rejects instead of hanging', async () => {
+    const image = await renderToImage(
+      [rect({ x: 0, y: 0, width: 2, height: 2, color: '#111' })],
+      { width: 2, height: 2 },
+    );
+    image.dispose();
+    let failed = false;
+    try {
+      await image.encode('png');
+    } catch {
+      failed = true;
+    }
+    expect(failed).toBe(true);
   });
 });
