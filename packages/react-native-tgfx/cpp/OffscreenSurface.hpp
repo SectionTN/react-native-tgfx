@@ -69,6 +69,9 @@ class OffscreenSurface : public std::enable_shared_from_this<OffscreenSurface> {
 
  private:
   void wake();
+  /// Compile a staged program into scene_ (CPU-only). Any thread; SceneRenderer
+  /// guards the swap with its own programMutex_.
+  void applyPendingScene();
   bool takeOutputs(std::vector<std::pair<SnapshotRequest, SnapshotCallback>>& saves,
                    std::vector<ImageCallback>& images);
   static void failOutputs(std::vector<std::pair<SnapshotRequest, SnapshotCallback>>& saves,
@@ -81,6 +84,12 @@ class OffscreenSurface : public std::enable_shared_from_this<OffscreenSurface> {
   const bool displayP3_;
 
   mutable std::mutex mutex_;
+  /// Serialises applyPendingScene's claim AND publish: with only mutex_ over
+  /// the claim, a stalled hit-test thread could publish an older program after
+  /// the worker published a newer one, and the hash dedup would then keep the
+  /// stale program until the content changed. Never held while mutex_ is (the
+  /// nesting is sceneApply -> mutex_, and mutex_ holders never take this).
+  mutable std::mutex sceneApplyMutex_;
   std::vector<double> pendingScene_;
   std::shared_ptr<const StringTable> pendingStrings_;
   std::shared_ptr<const StringTable> strings_ = std::make_shared<StringTable>();

@@ -61,9 +61,6 @@ HybridTgfxOffscreenSurface::toImage() {
 std::shared_ptr<Promise<void>> HybridTgfxOffscreenSurface::save(
     const std::string& path, const std::optional<std::string>& format,
     std::optional<double> quality) {
-  if (path.empty()) {
-    throw std::runtime_error("tgfx: save needs a file path");
-  }
   tgfxrn::SnapshotRequest request;
   request.format = format.value_or("png");
   double q = quality.value_or(100);
@@ -71,6 +68,12 @@ std::shared_ptr<Promise<void>> HybridTgfxOffscreenSurface::save(
       static_cast<int>(std::min(100.0, std::max(1.0, std::isfinite(q) ? q : 100)));
   request.path = path;
   auto promise = Promise<void>::create();
+  if (path.empty()) {
+    // Rejected, not thrown: every other save failure reaches the catch block.
+    promise->reject(std::make_exception_ptr(
+        std::runtime_error("tgfx: save needs a file path")));
+    return promise;
+  }
   surface_->requestSave(request, [promise](std::shared_ptr<::tgfx::Data>, int, int,
                                            const std::string& error) {
     if (!error.empty()) {

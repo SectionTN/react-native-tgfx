@@ -5430,6 +5430,69 @@ void anOffscreenSurfaceRendersSlotsAndViewport() {
   CHECK(waitFor(rejected));
 }
 
+
+/// The unpremultiply in the encode tail, at an alpha where it is not a no-op,
+/// and the two rejection branches encode must take.
+void encodingUnpremultipliesAndRejectsLiveFrames() {
+  // 50%-alpha red, premultiplied: channels store 128, straight alpha wants 255.
+  auto info = tgfx::ImageInfo::Make(2, 2, tgfx::ColorType::RGBA_8888,
+                                    tgfx::AlphaType::Premultiplied);
+  std::vector<uint8_t> premul(info.byteSize());
+  for (size_t i = 0; i < premul.size(); i += 4) {
+    premul[i] = 128;
+    premul[i + 1] = 0;
+    premul[i + 2] = 0;
+    premul[i + 3] = 128;
+  }
+  auto pixels = tgfx::Data::MakeWithCopy(premul.data(), premul.size());
+  tgfxrn::SnapshotRequest request;
+  request.format = "raw";
+  bool called = false;
+  tgfxrn::finishSnapshot(
+      pixels, info, request,
+      [&](std::shared_ptr<tgfx::Data> data, int w, int h, const std::string& error) {
+        called = true;
+        CHECK(error.empty());
+        CHECK(w == 2 && h == 2);
+        const auto* px = static_cast<const uint8_t*>(data->data());
+        CHECK(px[0] == 255 && px[1] == 0 && px[2] == 0 && px[3] == 128);
+      });
+  CHECK(called);
+
+  // A live producer entry has no still to encode.
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto solid = registerSolid({10, 20, 30, 255});
+  auto live = registry.addExternal(registry.sourceImage(solid.handle), 0, true);
+  CHECK(live.handle != 0);
+  bool threw = false;
+  try {
+    tgfxrn::rasterizeRegisteredImage(live.handle);
+  } catch (const std::exception&) {
+    threw = true;
+  }
+  CHECK(threw);
+  registry.remove(live.handle);
+  registry.remove(solid.handle);
+}
+
+/// setScene-then-hitTest must answer before the worker's first drain.
+void anOffscreenSurfaceHitTestsBeforeTheFirstDrain() {
+  auto surface = std::make_shared<tgfxrn::OffscreenSurface>(8, 8, 1.0f, true, false);
+  Writer w;
+  w.push(1);
+  w.push(1);  // Rect
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.pushAnim(4);
+  w.pushAnim(4);
+  w.pushPaint(0xffff2d55, false);
+  auto words = w.finish();
+  surface->setScene(words, {"0"});
+  auto hit = surface->hitTest(2.0f, 2.0f, true);
+  CHECK(hit.size() >= 2 && hit[0] == 1 && hit[1] == 0);
+  surface->dispose();
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -5559,6 +5622,8 @@ int main() {
   textOnAPathFollowsTheCurve();
   aRegisteredImageRasterizesForEncoding();
   anOffscreenSurfaceRendersSlotsAndViewport();
+  encodingUnpremultipliesAndRejectsLiveFrames();
+  anOffscreenSurfaceHitTestsBeforeTheFirstDrain();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

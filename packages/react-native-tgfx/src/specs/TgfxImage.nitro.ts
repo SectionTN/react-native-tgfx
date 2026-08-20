@@ -103,7 +103,8 @@ export interface TgfxImage extends HybridObject<{
    *
    * `format` is `'png'` (default), `'jpeg'`, `'webp'`, or `'raw'`
    * (straight-alpha RGBA rows, no container). `quality` is 1-100 and applies
-   * to the lossy formats. The bytes cross as one `ArrayBuffer`. Capped at 8192 pixels on a side.
+   * to the lossy formats. The bytes cross zero-copy, borrowing the
+   * encoded buffer. Capped at 8192 pixels on a side.
    *
    * Rasterizes through the shared offscreen GPU context, so a derived image
    * (`subset`/`scaled`/`blurred`) encodes what it draws. A disposed handle and

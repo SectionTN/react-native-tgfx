@@ -118,7 +118,7 @@ describe('tgfx offscreen surface', () => {
     ]);
     scene.attach(surface);
     scene.flush();
-    await sleep(50);
+    // No drain needed: hitTest compiles the staged scene itself.
     const hit = surface.hitTest(20, 20, true);
     expect(hit.length).toBeGreaterThanOrEqual(2);
     expect(hit[0]).toBe(1);
@@ -143,6 +143,18 @@ describe('tgfx offscreen surface', () => {
         : '/tmp/tgfx-harness-surface.png';
     await surface.save(out);
     scene.dispose();
+    surface.dispose();
+  });
+
+  test('save with an empty path rejects instead of throwing', async () => {
+    const surface = createOffscreenSurface({ width: 8, height: 8 });
+    let failed = false;
+    try {
+      await surface.save('');
+    } catch {
+      failed = true;
+    }
+    expect(failed).toBe(true);
     surface.dispose();
   });
 

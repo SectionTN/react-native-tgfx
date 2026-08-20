@@ -182,6 +182,15 @@ bool OffscreenSurface::setViewport(float zoom, float offsetX, float offsetY) {
 }
 
 std::vector<double> OffscreenSurface::hitTest(float x, float y, bool precise) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (dead_) {
+      return {};
+    }
+  }
+  // The staged program may not have drained yet; compile it here so a
+  // setScene-then-hitTest sequence answers instead of missing everything.
+  applyPendingScene();
   std::vector<double> snapshot;
   std::vector<std::string> strings;
   std::vector<uint8_t> pushed;
@@ -261,6 +270,26 @@ void OffscreenSurface::dispose() {
   OffscreenWorker::instance().enqueue(weak_from_this());
 }
 
+void OffscreenSurface::applyPendingScene() {
+  // One critical section for claim and publish; see sceneApplyMutex_.
+  std::lock_guard<std::mutex> apply(sceneApplyMutex_);
+  bool hasScene = false;
+  std::vector<double> sceneWords;
+  std::shared_ptr<const StringTable> sceneStrings;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (scenePending_) {
+      sceneWords.swap(pendingScene_);
+      sceneStrings = std::move(pendingStrings_);
+      scenePending_ = false;
+      hasScene = true;
+    }
+  }
+  if (hasScene) {
+    scene_.setScene(sceneWords, *sceneStrings);
+  }
+}
+
 void OffscreenSurface::wake() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -306,10 +335,7 @@ void OffscreenSurface::renderNow() {
   // Cleared before staging: a setter landing mid-drain re-queues a fresh pass.
   queued_.store(false, std::memory_order_release);
 
-  bool hasScene = false;
   bool dead = false;
-  std::vector<double> sceneWords;
-  std::shared_ptr<const StringTable> sceneStrings;
   float zoom = 1.0f;
   float offsetX = 0.0f;
   float offsetY = 0.0f;
@@ -328,12 +354,6 @@ void OffscreenSurface::renderNow() {
       zoom = viewportZoom_;
       offsetX = viewportX_;
       offsetY = viewportY_;
-      if (scenePending_) {
-        sceneWords.swap(pendingScene_);
-        sceneStrings = std::move(pendingStrings_);
-        scenePending_ = false;
-        hasScene = true;
-      }
       saves.swap(pendingSaves_);
       images.swap(pendingImages_);
     }
@@ -352,9 +372,7 @@ void OffscreenSurface::renderNow() {
   }
 
   // CPU-only, ahead of the GPU lock: a context failure must not eat the scene.
-  if (hasScene) {
-    scene_.setScene(sceneWords, *sceneStrings);
-  }
+  applyPendingScene();
 
   // Everything the callbacks need, produced under the context lock and
   // delivered after it: a callback may re-enter this surface or block.

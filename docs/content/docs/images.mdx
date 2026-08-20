@@ -130,7 +130,7 @@ Any image handle encodes to bytes or writes itself to disk — including a
 `renderToImage` result, which completes the headless flow:
 
 ```ts
-const bytes = await image.encode('webp', 90)   // one ArrayBuffer, for upload
+const bytes = await image.encode('webp', 90)   // zero-copy ArrayBuffer, for upload
 await image.save(`${dir}/thumb.jpg`, 'jpeg', 85) // written natively; bytes never enter JS
 ```
 

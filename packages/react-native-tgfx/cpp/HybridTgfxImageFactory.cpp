@@ -443,7 +443,10 @@ std::shared_ptr<Promise<std::shared_ptr<ArrayBuffer>>> HybridTgfxImage::encode(
     if (out == nullptr) {
       throw std::runtime_error("tgfx: encoding produced no bytes");
     }
-    return ArrayBuffer::copy(static_cast<const uint8_t*>(out->data()), out->size());
+    // Zero-copy: the buffer borrows the encoded Data, and the deleter's
+    // capture keeps it alive until the JS side lets go.
+    auto* bytes = const_cast<uint8_t*>(static_cast<const uint8_t*>(out->data()));
+    return ArrayBuffer::wrap(bytes, out->size(), [out]() {});
   });
 }
 
@@ -452,11 +455,12 @@ std::shared_ptr<Promise<void>> HybridTgfxImage::save(const std::string& path,
                                                      std::optional<double> quality) {
   auto request = encodeRequest(format, quality);
   request.path = path;
-  if (path.empty()) {
-    throw std::runtime_error("tgfx: save needs a file path");
-  }
   int32_t handle = handle_.handle;
   return Promise<void>::async([handle, request]() {
+    // Inside the async body so an empty path rejects like every other failure.
+    if (request.path.empty()) {
+      throw std::runtime_error("tgfx: save needs a file path");
+    }
     // finishSnapshot writes the file itself; the bytes never enter JS.
     encodeRegisteredImage(handle, request);
   });
