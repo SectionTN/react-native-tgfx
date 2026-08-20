@@ -200,6 +200,21 @@ test('Scene.from seeds the roots and commits on the microtask', async () => {
   expect(calls.scenes[0]!.words[3]).toBe(2)
 })
 
+test('handlesAt names the nodes behind a flat hit answer', () => {
+  const { t } = target()
+  const scene = Scene.create()
+  scene.attach(t)
+  const box = createHandle()
+  scene.add(rect({ ref: box, x: 0, y: 0, width: 4, height: 4 }))
+  scene.add(circle({ cx: 8, cy: 8, r: 2 }))
+  scene.flush()
+  // The wire shape view/surface hitTest returns: [depth, i0, ...] topmost first.
+  expect(scene.handlesAt([1, 0])).toEqual([box])
+  expect(scene.handlesAt([1, 1])).toEqual([null])
+  expect(scene.handlesAt([1, 1, 1, 0])).toEqual([null, box])
+  expect(scene.handlesAt([])).toEqual([])
+})
+
 test('a structural commit does not snap handle writes back to factory props', () => {
   const { t, calls } = target()
   const scene = Scene.create()

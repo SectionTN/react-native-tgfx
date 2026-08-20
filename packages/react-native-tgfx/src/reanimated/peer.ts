@@ -27,6 +27,7 @@ export interface Worklets {
     fn: (...a: A) => void,
     ...args: A
   ) => void
+  scheduleOnUI?: (worklet: () => void) => void
   createSynchronizable?: <T>(initial: T) => Synchronizable<T>
 }
 

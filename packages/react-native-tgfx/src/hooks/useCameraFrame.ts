@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { UInt64 } from 'react-native-nitro-modules'
-import { requireReanimated, worklets } from '../reanimated/peer'
+import {
+  requireReanimated,
+  worklets,
+  type Synchronizable,
+} from '../reanimated/peer'
 import type { PixelFormat, TgfxImage } from '../specs/TgfxImage.nitro'
 import { imageFromNativeBuffer } from './useImage'
 
@@ -88,6 +92,195 @@ const UPRIGHT: CameraFramePosture = Object.freeze({
   height: 0,
 })
 
+/// Everything the per-frame worklet needs; one definition shared verbatim by
+/// useCameraFrame (which recreates the closure when its deps move) and
+/// createCameraFrameSink (which captures once).
+interface FrameHandlerParts<F extends FrameLike> {
+  handle: { value: TgfxImage | null }
+  minted: Synchronizable<boolean>
+  imageAcked: { value: boolean }
+  postureAcked: { value: string }
+  onImage: (h: TgfxImage) => void
+  onPosture: (
+    rotation: number,
+    mirror: boolean,
+    width: number,
+    height: number
+  ) => void
+  onEachFrame?: (frame: F) => void
+  formatOf?: (frame: F) => PixelFormat
+  rotationOf?: (frame: F) => number
+  scheduleOnRN: <A extends unknown[]>(fn: (...a: A) => void, ...args: A) => void
+}
+
+function handleCameraFrame<F extends FrameLike>(
+  parts: FrameHandlerParts<F>,
+  frame: F
+): void {
+  'worklet'
+  const {
+    handle,
+    minted,
+    imageAcked,
+    postureAcked,
+    onImage,
+    onPosture,
+    onEachFrame,
+    formatOf,
+    rotationOf,
+    scheduleOnRN,
+  } = parts
+  // Acquired inside the try: a throw would skip the dispose() and stall the bounded pool.
+  let buffer: NativeBufferLike | null = null
+  try {
+    buffer = frame.getNativeBuffer()
+    // Read off the frame: `-full` imported as limited crushes the blacks.
+    const format: PixelFormat =
+      formatOf != null ? formatOf(frame) : defaultFormat(frame.pixelFormat)
+    // The local `img`, never a `handle.value` read-back: the guest write is
+    // asynchronous, so a read here can still be null after the mint.
+    let img = handle.value
+    if (img != null) {
+      img.setNativeBuffer(buffer.pointer, format)
+    } else if (!minted.getBlocking()) {
+      img = imageFromNativeBuffer(buffer.pointer, format)
+      minted.setBlocking(true)
+      handle.value = img
+    }
+    if (img != null && !imageAcked.value) {
+      scheduleOnRN(onImage, img)
+    }
+
+    const rotation =
+      rotationOf != null
+        ? rotationOf(frame)
+        : (ROTATION[frame.orientation] ?? 0)
+    const key = `${rotation}:${frame.isMirrored}:${frame.width}x${frame.height}`
+    if (postureAcked.value !== key) {
+      scheduleOnRN(
+        onPosture,
+        rotation,
+        frame.isMirrored,
+        frame.width,
+        frame.height
+      )
+    }
+
+    onEachFrame?.(frame)
+  } finally {
+    buffer?.release()
+    frame.dispose()
+  }
+}
+
+/** {@link createCameraFrameSink}'s result: the handle, the posture, the pump. */
+export interface CameraFrameSink<F extends FrameLike = FrameLike> {
+  /** `null` until the first frame mints the handle. */
+  readonly image: TgfxImage | null
+  readonly posture: CameraFramePosture
+  /** Feed a frame in — a worklet, callable from the producer's frame thread. */
+  push: (frame: F) => void
+  /** Dispose the minted handle; an external registry entry is never evicted. */
+  dispose(): void
+}
+
+export interface CameraFrameSinkOptions<
+  F extends FrameLike = FrameLike,
+> extends CameraFrameOptions<F> {
+  /** Your own per-frame worklet — a detector, say. Runs inside the same try. */
+  onEachFrame?: (frame: F) => void
+  /** Called on the JS thread when the handle mints. */
+  onImage?: (image: TgfxImage) => void
+  /** Called on the JS thread when the posture changes. */
+  onPosture?: (posture: CameraFramePosture) => void
+}
+
+/**
+ * {@link useCameraFrame} with no React: an analyze/record pipeline needs no
+ * on-screen canvas. The sink owns the buffer lifecycle exactly as the hook
+ * does — mint once, `setNativeBuffer` per frame, re-post until acked — and its
+ * `image`/`posture` fields update as frames arrive. Call `dispose()` when the
+ * stream ends. Everything in the hook's remarks about frame lifetime applies
+ * to `push` unchanged.
+ */
+export function createCameraFrameSink<F extends FrameLike = FrameLike>(
+  options?: CameraFrameSinkOptions<F>
+): CameraFrameSink<F> {
+  const mod = requireReanimated('createCameraFrameSink', ['makeMutable'])
+  const { scheduleOnRN, createSynchronizable } = worklets()
+  if (scheduleOnRN == null || createSynchronizable == null) {
+    throw new Error(
+      '[tgfx] react-native-worklets does not export scheduleOnRN/createSynchronizable, which createCameraFrameSink needs.'
+    )
+  }
+  const handle = mod.makeMutable!<TgfxImage | null>(null) as {
+    value: TgfxImage | null
+  }
+  const minted = createSynchronizable(false)
+  const imageAcked = mod.makeMutable!(false) as { value: boolean }
+  const postureAcked = mod.makeMutable!('') as { value: string }
+
+  const sink = {
+    image: null as TgfxImage | null,
+    posture: UPRIGHT,
+  }
+  let disposed = false
+  const onImage = (h: TgfxImage) => {
+    // An in-flight post can land after dispose; the handle it carries is dead.
+    if (disposed) {
+      return
+    }
+    imageAcked.value = true
+    sink.image = h
+    options?.onImage?.(h)
+  }
+  const onPosture = (
+    rotation: number,
+    mirror: boolean,
+    width: number,
+    height: number
+  ) => {
+    if (disposed) {
+      return
+    }
+    postureAcked.value = `${rotation}:${mirror}:${width}x${height}`
+    sink.posture = { rotation, mirror, width, height }
+    options?.onPosture?.(sink.posture)
+  }
+  const parts: FrameHandlerParts<F> = {
+    handle,
+    minted,
+    imageAcked,
+    postureAcked,
+    onImage,
+    onPosture,
+    onEachFrame: options?.onEachFrame,
+    formatOf: options?.format,
+    rotationOf: options?.rotation,
+    scheduleOnRN,
+  }
+  const push = (frame: F) => {
+    'worklet'
+    handleCameraFrame(parts, frame)
+  }
+  return {
+    get image() {
+      return sink.image
+    },
+    get posture() {
+      return sink.posture
+    },
+    push,
+    dispose() {
+      disposed = true
+      // An external entry is never evicted, so an undisposed handle leaks for the process's life.
+      handle.value?.dispose()
+      handle.value = null
+      sink.image = null
+    },
+  }
+}
+
 /**
  * Turn a stream of camera frames into a `<CameraFrame>` handle.
  *
@@ -149,7 +342,10 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
   const handle = mod.useSharedValue!<TgfxImage | null>(null)
   // Synchronous, unlike the shared value: a guest-runtime write to `handle`
   // lands asynchronously, so this flag is what proves the mint happened.
-  const minted = useMemo(() => createSynchronizable(false), [createSynchronizable])
+  const minted = useMemo(
+    () => createSynchronizable(false),
+    [createSynchronizable]
+  )
   // Written back from the React side: a cross-runtime post can be lost, and a
   // fire-once post that never lands is a permanently black canvas — so the
   // worklet keeps re-posting each frame until the matching ack arrives.
@@ -178,51 +374,21 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
     [postureAcked]
   )
 
-  const onFrame = useCallback(
-    (frame: F) => {
-      'worklet'
-      // Acquired inside the try: a throw would skip the dispose() and stall the bounded pool.
-      let buffer: NativeBufferLike | null = null
-      try {
-        buffer = frame.getNativeBuffer()
-        // Read off the frame: `-full` imported as limited crushes the blacks.
-        const format: PixelFormat =
-          formatOf != null ? formatOf(frame) : defaultFormat(frame.pixelFormat)
-        // The local `img`, never a `handle.value` read-back: the guest write is
-        // asynchronous, so a read here can still be null after the mint.
-        let img = handle.value
-        if (img != null) {
-          img.setNativeBuffer(buffer.pointer, format)
-        } else if (!minted.getBlocking()) {
-          img = imageFromNativeBuffer(buffer.pointer, format)
-          minted.setBlocking(true)
-          handle.value = img
-        }
-        if (img != null && !imageAcked.value) {
-          scheduleOnRN(onImage, img)
-        }
-
-        const rotation =
-          rotationOf != null
-            ? rotationOf(frame)
-            : (ROTATION[frame.orientation] ?? 0)
-        const key = `${rotation}:${frame.isMirrored}:${frame.width}x${frame.height}`
-        if (postureAcked.value !== key) {
-          scheduleOnRN(
-            onPosture,
-            rotation,
-            frame.isMirrored,
-            frame.width,
-            frame.height
-          )
-        }
-
-        onEachFrame?.(frame)
-      } finally {
-        buffer?.release()
-        frame.dispose()
-      }
-    },
+  // Memoised so the per-frame worklet allocates nothing, exactly as the old
+  // inline closure read captured values with zero per-frame work.
+  const parts = useMemo<FrameHandlerParts<F>>(
+    () => ({
+      handle,
+      minted,
+      imageAcked,
+      postureAcked,
+      onImage,
+      onPosture,
+      onEachFrame,
+      formatOf,
+      rotationOf,
+      scheduleOnRN,
+    }),
     [
       handle,
       minted,
@@ -235,6 +401,13 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
       rotationOf,
       scheduleOnRN,
     ]
+  )
+  const onFrame = useCallback(
+    (frame: F) => {
+      'worklet'
+      handleCameraFrame(parts, frame)
+    },
+    [parts]
   )
 
   useEffect(() => {

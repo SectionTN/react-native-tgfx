@@ -6,7 +6,10 @@ import type { VideoOptions, Video } from './useVideo'
 
 let tick: (() => void) | null = null
 
+let uiLoops: ((t: number) => void)[] = []
+
 mock.module('react-native-reanimated', () => ({
+  makeMutable: <T,>(initial: T) => ({ value: initial }),
   useSharedValue: <T,>(initial: T) => useState(() => ({ value: initial }))[0],
   useFrameCallback: (cb: () => void) => {
     tick = cb
@@ -15,6 +18,23 @@ mock.module('react-native-reanimated', () => ({
 mock.module('react-native-worklets', () => ({
   scheduleOnRN: <A extends unknown[]>(fn: (...a: A) => void, ...a: A) => {
     fn(...a)
+  },
+  scheduleOnUI: (worklet: () => void) => {
+    // The loop registers itself through requestAnimationFrame; capture the
+    // callback so tests can drive frames by hand.
+    const previous = (globalThis as { requestAnimationFrame?: unknown })
+      .requestAnimationFrame
+    ;(globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame =
+      (cb: (t: number) => void) => {
+        uiLoops.push(cb)
+      }
+    try {
+      worklet()
+    } finally {
+      ;(
+        globalThis as { requestAnimationFrame?: unknown }
+      ).requestAnimationFrame = previous
+    }
   },
 }))
 
@@ -206,4 +226,46 @@ test('a require()d asset is resolved to its uri', async () => {
   nativeMocks.assetSource = { uri: 'file:///bundled.mp4' }
   const video = await loadVideo(1 as unknown as number)
   expect(video).toBe(opened[0] as never)
+})
+
+test('createVideoPlayer opens, applies options, pumps, and disposes', async () => {
+  uiLoops = []
+  const { createVideoPlayer } =
+    require('./useVideo') as typeof import('./useVideo')
+  const player = await createVideoPlayer('file:///clip.mp4', {
+    looping: true,
+    volume: 0.5,
+    seek: 1500,
+  })
+  const video = opened[0]!
+  expect(video.paused).toBe(false)
+  expect(video.looping).toBe(true)
+  expect(video.volume).toBe(0.5)
+  expect(video.seeks).toEqual([1500])
+  expect(player.duration).toBe(5000)
+  expect(player.rotation).toBe(90)
+  expect(player.size).toEqual({ width: 640, height: 480 })
+  expect(player.currentFrame).toBeNull()
+
+  const frames: unknown[] = []
+  player.onFrame((f) => frames.push(f))
+  video.frames.push(7)
+  video.currentTime = 250
+  expect(uiLoops.length).toBe(1)
+  // Drive one UI frame by hand: the loop re-queues itself.
+  uiLoops[0]!(16)
+  expect(player.currentFrame).toEqual({ handle: 7, width: 640, height: 480 })
+  expect(frames.length).toBe(1)
+  expect(player.currentTime.value).toBe(250)
+
+  player.setOptions({ paused: true, seek: 900 })
+  expect(video.paused).toBe(true)
+  expect(video.seeks).toEqual([1500, 900])
+
+  player.dispose()
+  expect(video.released).toBe(true)
+  expect(player.duration).toBe(0)
+  // The stopped loop must go quiet, not throw.
+  const queued = uiLoops[uiLoops.length - 1]!
+  expect(() => queued(32)).not.toThrow()
 })

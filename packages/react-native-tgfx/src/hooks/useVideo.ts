@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Image as RNImage } from 'react-native'
 import { NitroModules } from 'react-native-nitro-modules'
 import type { SharedValueLike } from '../compiler/values'
+import { startUiFrameLoop } from '../reanimated/frameLoop'
 import { requireReanimated, worklets } from '../reanimated/peer'
 import type { TgfxVideo, TgfxVideoFactory } from '../specs/TgfxVideo.nitro'
 import type { ImageLike } from '../types'
@@ -64,6 +65,156 @@ export interface Video {
 }
 
 const EMPTY_SIZE = Object.freeze({ width: 0, height: 0 })
+
+/// One frame of the pump, shared verbatim by useVideo and createVideoPlayer.
+function pumpVideoFrame(
+  player: SharedValueLike<TgfxVideo | null>,
+  posted: SharedValueLike<number>,
+  currentTime: SharedValueLike<number>,
+  scheduleOnRN: (
+    fn: (handle: number, width: number, height: number) => void,
+    handle: number,
+    width: number,
+    height: number
+  ) => void,
+  onFirstFrame: (handle: number, width: number, height: number) => void
+): void {
+  'worklet'
+  const current = player.value
+  if (current == null) {
+    return
+  }
+  // 0 means "nothing decoded since the last call" — the frame stays as it is.
+  const handle = current.updateFrame()
+  // The id never changes, so React hears about it once rather than every frame.
+  if (handle !== 0 && posted.value !== handle) {
+    posted.value = handle
+    scheduleOnRN(onFirstFrame, handle, current.width, current.height)
+  }
+  currentTime.value = current.currentTime
+}
+
+/** {@link createVideoPlayer}'s result: a {@link Video} the caller drives and owns. */
+export interface VideoPlayer extends Video {
+  /** Change playback options after open. `seek` seeks again on every call. */
+  setOptions(options: VideoOptions): void
+  /**
+   * Hear about the first decoded frame; fires immediately if it has already
+   * landed. One listener — the last registered wins.
+   */
+  onFrame(listener: (frame: ImageLike) => void): void
+  /** Stop the pump and release the player and its frame. */
+  dispose(): void
+}
+
+/**
+ * {@link useVideo} with no React: opens the player, applies the options, and
+ * owns the UI-thread frame pump and its teardown. Resolves once the video is
+ * open. Call `dispose()` when done — a device has only a handful of hardware
+ * decoders.
+ *
+ * Needs react-native-reanimated and react-native-worklets, exactly as the hook
+ * does: frames are pulled on the UI thread.
+ */
+export async function createVideoPlayer(
+  source: number | string,
+  options?: VideoOptions & {
+    /** Supply your own time slot so its identity predates the open. */
+    currentTime?: SharedValueLike<number>
+  }
+): Promise<VideoPlayer> {
+  const mod = requireReanimated('createVideoPlayer', ['makeMutable'])
+  const scheduleOnRN = worklets().scheduleOnRN
+  if (scheduleOnRN == null) {
+    throw new Error(
+      '[tgfx] react-native-worklets does not export scheduleOnRN, which createVideoPlayer needs.'
+    )
+  }
+  const video = await videos().load(videoUri(source))
+  const { seek, paused = false, looping = false, volume = 0 } = options ?? {}
+  video.paused = paused
+  video.looping = looping
+  video.volume = volume
+  if (seek != null) {
+    video.seek(seek)
+  }
+
+  const player = mod.makeMutable!<TgfxVideo | null>(
+    video
+  ) as SharedValueLike<TgfxVideo | null>
+  const posted = mod.makeMutable!(0) as SharedValueLike<number>
+  const currentTime = (options?.currentTime ??
+    mod.makeMutable!(0)) as SharedValueLike<number>
+  let currentFrame: ImageLike | null = null
+  let listener: ((frame: ImageLike) => void) | null = null
+  const onFirstFrame = (handle: number, width: number, height: number) => {
+    // An in-flight post can land after dispose; the handle it carries is dead.
+    if (disposed) {
+      return
+    }
+    currentFrame = { handle, width, height }
+    listener?.(currentFrame)
+  }
+  let disposed = false
+  const stop = startUiFrameLoop('createVideoPlayer', () => {
+    'worklet'
+    pumpVideoFrame(player, posted, currentTime, scheduleOnRN, onFirstFrame)
+  })
+  return {
+    get currentFrame() {
+      return currentFrame
+    },
+    currentTime,
+    get duration() {
+      return disposed ? 0 : video.duration
+    },
+    get framerate() {
+      return disposed ? 0 : video.framerate
+    },
+    get rotation() {
+      return disposed ? 0 : video.rotation
+    },
+    get size() {
+      return disposed
+        ? EMPTY_SIZE
+        : { width: video.width, height: video.height }
+    },
+    setOptions(next: VideoOptions) {
+      if (disposed) {
+        return
+      }
+      if (next.paused != null) {
+        video.paused = next.paused
+      }
+      if (next.looping != null) {
+        video.looping = next.looping
+      }
+      if (next.volume != null) {
+        video.volume = next.volume
+      }
+      if (next.seek != null) {
+        video.seek(next.seek)
+      }
+    },
+    onFrame(cb: (frame: ImageLike) => void) {
+      listener = cb
+      if (currentFrame != null) {
+        cb(currentFrame)
+      }
+    },
+    dispose() {
+      if (disposed) {
+        return
+      }
+      disposed = true
+      stop()
+      player.value = null
+      posted.value = 0
+      // A player left to the GC keeps a hardware decoder, of which a device has a handful.
+      video.release()
+    },
+  }
+}
 
 /**
  * Play a video into a native image handle.
@@ -180,18 +331,7 @@ export function useVideo(
 
   const tick = useCallback(() => {
     'worklet'
-    const current = player.value
-    if (current == null) {
-      return
-    }
-    // 0 means "nothing decoded since the last call" — the frame stays as it is.
-    const handle = current.updateFrame()
-    // The id never changes, so React hears about it once rather than every frame.
-    if (handle !== 0 && posted.value !== handle) {
-      posted.value = handle
-      scheduleOnRN(onFirstFrame, handle, current.width, current.height)
-    }
-    currentTime.value = current.currentTime
+    pumpVideoFrame(player, posted, currentTime, scheduleOnRN, onFirstFrame)
   }, [player, posted, currentTime, onFirstFrame, scheduleOnRN])
 
   mod.useFrameCallback!(tick)

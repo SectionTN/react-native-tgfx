@@ -97,7 +97,11 @@ export interface SpriteBuffer {
   ): void
 }
 
-function makeSpriteBuffer(capacity: number): SpriteBuffer {
+/**
+ * {@link useSpriteBuffer} with no React: the shared float block and its
+ * worklet-safe writer, for atlas sprite pools driven from any runtime.
+ */
+export function createSpriteBuffer(capacity: number): SpriteBuffer {
   const created = createBuffer(capacity * SPRITE_FLOATS)
   const boxed = created?.boxed ?? null
   const fallback =
@@ -123,7 +127,7 @@ function makeSpriteBuffer(capacity: number): SpriteBuffer {
 export function useSpriteBuffer(capacity: number): SpriteBuffer {
   const ref = useRef<SpriteBuffer | null>(null)
   if (ref.current == null) {
-    ref.current = makeSpriteBuffer(capacity)
+    ref.current = createSpriteBuffer(capacity)
   }
   return ref.current
 }
@@ -221,7 +225,11 @@ export function meshViews(buffer: VertexBuffer): MeshViews {
   return sections
 }
 
-function makeVertexBuffer(options: VertexBufferOptions): VertexBuffer {
+/**
+ * {@link useVertexBuffer} with no React: one shared allocation sectioned into
+ * positions/textures/colors/indices, written directly or via `meshViews`.
+ */
+export function createVertexBuffer(options: VertexBufferOptions): VertexBuffer {
   const maxVertices = Math.max(0, Math.trunc(options.maxVertices))
   const maxIndices = Math.max(0, Math.trunc(options.maxIndices ?? 0))
   const hasTextures = options.textures === true
@@ -251,7 +259,7 @@ function makeVertexBuffer(options: VertexBufferOptions): VertexBuffer {
 export function useVertexBuffer(options: VertexBufferOptions): VertexBuffer {
   const ref = useRef<VertexBuffer | null>(null)
   if (ref.current == null) {
-    ref.current = makeVertexBuffer(options)
+    ref.current = createVertexBuffer(options)
   }
   return ref.current
 }

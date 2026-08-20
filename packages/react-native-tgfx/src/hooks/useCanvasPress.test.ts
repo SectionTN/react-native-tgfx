@@ -5,7 +5,7 @@ import type { CanvasHandle, HitTestResult } from '../types'
 // createHandle reaches for runOnJS; the hook itself needs no React at all.
 mock.module('react-native-reanimated', () => ({}))
 
-const { useCanvasPress } = await import('./useCanvasPress')
+const { useCanvasPress, dispatchPress } = await import('./useCanvasPress')
 
 function canvasReturning(hits: HitTestResult[]) {
   const calls: { x: number; y: number; precise?: boolean }[] = []
@@ -79,4 +79,19 @@ test('passes precise through and survives an unmounted canvas', () => {
 
   const empty = { current: null }
   expect(() => useCanvasPress(empty, [])(press(0, 0))).not.toThrow()
+})
+
+test('dispatchPress alone: topmost wins, nulls are skipped, misses report false', () => {
+  const top = createHandle()
+  const under = createHandle()
+  const fired: string[] = []
+  const handlers: [ReturnType<typeof createHandle>, () => void][] = [
+    [top, () => fired.push('top')],
+    [under, () => fired.push('under')],
+  ]
+  expect(dispatchPress([null, top, under], handlers)).toBe(true)
+  expect(fired).toEqual(['top'])
+  expect(dispatchPress([null, null], handlers)).toBe(false)
+  expect(dispatchPress([], handlers)).toBe(false)
+  expect(fired).toEqual(['top'])
 })

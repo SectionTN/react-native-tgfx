@@ -1,0 +1,123 @@
+---
+title: Headless
+description: Build, mutate, render and export scenes with no React and no view.
+icon: Server
+---
+
+Everything on this page runs with **zero React imports**: thumbnails, chart
+images, share cards, atlas baking, PDF reports, background tasks. The
+imperative layer is the floor the declarative layer stands on — components are
+sugar over the same nodes, so the two forms compile byte-for-byte the same
+program.
+
+## Build and export
+
+```ts
+import { Scene, circle, image, rect, renderToImage } from "react-native-tgfx";
+
+const scene = Scene.create();
+scene.add(rect({ x: 0, y: 0, width: 200, height: 200, color: "tomato" }));
+scene.add(circle({ cx: 100, cy: 100, r: 40, color: "#0A84FF" }));
+
+const still = await renderToImage(scene, { width: 200, height: 200 });
+await still.save(`${dir}/card.png`); // written natively; bytes never enter JS
+```
+
+Every component has a factory (`rect`, `text`, `linearGradient`, `mask`, …) —
+see [Imperative](/docs/imperative). `renderToSvg` and `renderToPdf` take the
+same inputs; PDF pages mix `element` (JSX) and `scene` freely.
+
+## Mutate without re-encoding
+
+Structural mutations (`add` / `insert` / `remove` / `replaceChildren`) batch
+into one compile per microtask. Value mutation goes through handles — the slot
+path, no re-encode:
+
+```ts
+const counter = createHandle();
+scene.add(text({ ref: counter, x: 16, y: 40, text: "Day 1", fontSize: 18 }));
+
+for (const n of [1, 2, 3]) {
+  counter.set({ text: `Day ${n}` });
+  const img = await renderToImage(scene, { width: 400, height: 400 });
+  await img.save(`${dir}/day-${n}.png`);
+  img.dispose();
+}
+```
+
+Handles are for tens of live nodes, not thousands: a handle promotes every
+numeric prop to a slot, so 400 handled nodes are thousands of slots walked per
+frame. Pools go through buffers — `atlas` + [`createSpriteBuffer`](/api/functions/createSpriteBuffer)
+or `vertices` + [`createVertexBuffer`](/api/functions/createVertexBuffer)
+scale to 10³–10⁵ where handles stop at 10¹–10².
+
+## Repeated renders: the retained surface
+
+```ts
+const surface = createOffscreenSurface({ width: 1024, height: 1024 });
+scene.attach(surface); // a surface is a target, like a view
+for (let f = 0; f < 120; f++) {
+  t.set({ x: f * 4 }); // slot write
+  surface.flush(); // render on the offscreen worker
+  if (f % 30 === 0) await surface.save(`${dir}/frame-${f}.png`);
+}
+surface.dispose();
+```
+
+See [Export](/docs/snapshots) for the surface's full contract —
+`setViewport`, headless `hitTest`, `toImage`.
+
+## Presses without a canvas
+
+```ts
+import { dispatchPress } from "react-native-tgfx";
+
+dispatchPress(scene.handlesAt(surface.hitTest(x, y, false)), [
+  [box, () => select(box)],
+]);
+```
+
+Topmost wins, exactly as `useCanvasPress` dispatches on a canvas.
+
+## Clocks, video and camera, callable
+
+Each hook-only API now has a callable form the hook wraps:
+
+```ts
+const clock = createClock(); // seconds on the UI thread; clock.value → a uniform
+clock.stop();
+
+const player = await createVideoPlayer(require("./clip.mp4"), {
+  looping: true,
+});
+// currentFrame is null until the first decode and is read once at add time —
+// build the node when the frame exists:
+player.onFrame((frame) =>
+  scene.add(image({ image: frame, x: 0, y: 0, width: 1280, height: 720 })),
+);
+player.setOptions({ paused: true });
+player.dispose();
+
+const sink = createCameraFrameSink({ onImage: (img) => attachToScene(img) });
+// VisionCamera side: useFrameProcessor((f) => { 'worklet'; sink.push(f) }, [sink])
+sink.dispose();
+```
+
+## Worklets
+
+A `Scene` attached to any target drives value slots from the UI thread by
+itself when Reanimated is installed — `handle.set()` and `SharedValue` props
+repaint with no driver component. A surface is a Nitro object, so
+`NitroModules.box()` hands it to any worklet runtime; box the object and call
+methods on the unboxed instance — never destructure them.
+
+Construction stays on the JS thread: node trees hold strings and handles,
+which a worklet capture would deep-copy. Mutation (slots) and `flush()` are
+the worklet-facing operations.
+
+## Without Reanimated
+
+Factories, `Scene`, every export, `encode`/`save` and the offscreen surface
+work with Reanimated absent — pushes come from the JS thread. `createClock`,
+`createVideoPlayer` and `createCameraFrameSink` throw without it: their pumps
+live on the UI runtime.

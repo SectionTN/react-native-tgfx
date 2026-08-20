@@ -48,3 +48,36 @@ test('the clock reads the frame time and keeps one callback identity', async () 
   expect(seen).toHaveLength(2)
   expect(seen[1]).toBe(seen[0])
 })
+
+test('createClock ticks seconds on the UI loop and stops cleanly', async () => {
+  const loops: ((t: number) => void)[] = []
+  mock.module('react-native-reanimated', () => ({
+    makeMutable: <T>(initial: T) => ({ value: initial }),
+  }))
+  mock.module('react-native-worklets', () => ({
+    scheduleOnUI: (worklet: () => void) => {
+      const g = globalThis as { requestAnimationFrame?: unknown }
+      const previous = g.requestAnimationFrame
+      g.requestAnimationFrame = (cb: (t: number) => void) => {
+        loops.push(cb)
+      }
+      try {
+        worklet()
+      } finally {
+        g.requestAnimationFrame = previous
+      }
+    },
+  }))
+  const { createClock } =
+    (await import('./useClock?create')) as typeof import('./useClock')
+  const clock = createClock()
+  expect(loops.length).toBe(1)
+  loops[0]!(1000)
+  expect(clock.value.value).toBe(0) // first frame defines t=0
+  loops[1]!(3500)
+  expect(clock.value.value).toBe(2.5)
+  clock.stop()
+  const queued = loops[loops.length - 1]!
+  queued(9000)
+  expect(clock.value.value).toBe(2.5) // stopped: no further writes
+})

@@ -30,6 +30,19 @@ Structural mutation = one re-encode per batched commit; value mutation goes
 through `createHandle()` exactly as with JSX. Factories and JSX compile
 byte-identically — components are sugar over the same nodes.
 
+## Callable forms of the hook-only APIs
+
+Every hook wraps a callable (React-free) form: `createClock()` →
+`{value, stop()}`; `createVideoPlayer(source, opts?)` → Promise of a player
+with `setOptions`/`onFrame`/`dispose`; `createCameraFrameSink(opts?)` →
+`{image, posture, push(frame), dispose}` (VisionCamera adapter =
+`sink.push(frame)` in a frame processor); `createSpriteBuffer(capacity)` /
+`createVertexBuffer(options)`; `dispatchPress(nodes, handlers)` with
+`scene.handlesAt(surface.hitTest(x, y, precise))` for headless taps. The
+clock/video/camera callables need Reanimated (UI-thread pumps); the rest work
+without it. There is no separate `bindSharedValues`: an attached `Scene` runs
+the driver mapper itself.
+
 ## The model
 
 A scene commit compiles the React tree into a binary draw program. Animated

@@ -5,6 +5,7 @@ export { Group } from './components/Group'
 export { Mask } from './components/Mask'
 export {
   useCanvasPress,
+  dispatchPress,
   type CanvasPress,
   type CanvasPressOptions,
 } from './hooks/useCanvasPress'
@@ -121,15 +122,18 @@ export { createOffscreenSurface } from './offscreenSurface'
 export type { OffscreenSurfaceOptions } from './offscreenSurface'
 export type { TgfxOffscreenSurface } from './specs/TgfxOffscreenSurface.nitro'
 
-export { useCameraFrame } from './hooks/useCameraFrame'
+export { useCameraFrame, createCameraFrameSink } from './hooks/useCameraFrame'
 export type {
   CameraFrameOptions,
   CameraFramePosture,
+  CameraFrameSink,
+  CameraFrameSinkOptions,
   CameraFrameSource,
   FrameLike,
   NativeBufferLike,
 } from './hooks/useCameraFrame'
-export { useClock } from './hooks/useClock'
+export { useClock, createClock } from './hooks/useClock'
+export type { Clock } from './hooks/useClock'
 export {
   loadFont,
   loadFonts,
@@ -170,13 +174,15 @@ export {
   useImageState,
 } from './hooks/useImage'
 export type { ImageState } from './hooks/useImage'
-export { loadVideo, useVideo } from './hooks/useVideo'
-export type { Video, VideoOptions } from './hooks/useVideo'
+export { loadVideo, useVideo, createVideoPlayer } from './hooks/useVideo'
+export type { Video, VideoOptions, VideoPlayer } from './hooks/useVideo'
 export {
   SPRITE_FLOATS,
   meshViews,
   useSpriteBuffer,
   useVertexBuffer,
+  createSpriteBuffer,
+  createVertexBuffer,
 } from './hooks/useBuffers'
 export type {
   MeshViews,

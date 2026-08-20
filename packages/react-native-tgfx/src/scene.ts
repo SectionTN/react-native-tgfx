@@ -3,6 +3,7 @@
 // to any number of render targets with a per-target delta string table.
 import type { MaybeSharedValue } from './compiler/values'
 import { packStringTable } from './compiler/writer'
+import type { NodeHandle } from './imperative'
 import { reanimated } from './reanimated/peer'
 import { TgfxContainer } from './reconciler/Container'
 import type { SceneNode } from './elements'
@@ -179,6 +180,23 @@ export class Scene {
       throw new Error(`[tgfx] ${what}: the scene compiled to nothing`)
     }
     return this.last
+  }
+
+  /**
+   * Name the nodes behind a flat hit-test answer — what `surface.hitTest` and
+   * `view.hitTest` return raw. Topmost first, `null` for a node with no
+   * handle; feed the result to `dispatchPress`.
+   */
+  handlesAt(flat: number[]): (NodeHandle | null)[] {
+    const named = this.container.byPath
+    const out: (NodeHandle | null)[] = []
+    for (let i = 0; i < flat.length; ) {
+      const depth = flat[i]!
+      const path = flat.slice(i + 1, i + 1 + depth)
+      i += 1 + depth
+      out.push(named.get(path.join(',')) ?? null)
+    }
+    return out
   }
 
   /** Detach every target and stop committing. Targets keep their last frame. */

@@ -36,6 +36,7 @@ let asyncHandles: AsyncMutable<unknown>[] = []
 
 // A real SharedValue is stable per hook instance; a fresh object would hide the identity bugs.
 mock.module('react-native-reanimated', () => ({
+  makeMutable: <T,>(initial: T) => ({ value: initial }),
   useSharedValue: <T,>(initial: T) =>
     useState(() => {
       if (asyncHandleWrites && initial === null) {
@@ -351,4 +352,46 @@ test('a delayed handle write still delivers the minted image, exactly once', asy
   await probe.push()
   expect(made.length).toBe(1)
   expect(made[0]!.buffers.length).toBe(1)
+})
+
+test('createCameraFrameSink mints once, swaps buffers, and disposes', () => {
+  const { createCameraFrameSink } =
+    require('./useCameraFrame') as typeof import('./useCameraFrame')
+  const postures: unknown[] = []
+  const sink = createCameraFrameSink({
+    onPosture: (p) => postures.push(p),
+  })
+  expect(sink.image).toBeNull()
+
+  sink.push(frame())
+  expect(made.length).toBe(1)
+  expect(sink.image).toBe(made[0]! as never)
+  expect(released).toBe(1)
+  expect(disposed).toBe(1)
+
+  sink.push(frame({ orientation: 'left', isMirrored: true }))
+  // Second frame swaps the buffer behind the same handle — no second mint.
+  expect(made.length).toBe(1)
+  expect(made[0]!.buffers.length).toBe(1)
+  expect(released).toBe(2)
+  expect(postures.length).toBe(2)
+  expect((postures[1] as { rotation: number }).rotation).toBe(90)
+
+  sink.dispose()
+  expect(sink.image).toBeNull()
+  expect(made[0]!.disposed).toBe(true)
+})
+
+test('createCameraFrameSink releases the buffer when onEachFrame throws', () => {
+  const { createCameraFrameSink } =
+    require('./useCameraFrame') as typeof import('./useCameraFrame')
+  const sink = createCameraFrameSink({
+    onEachFrame: () => {
+      throw new Error('detector exploded')
+    },
+  })
+  expect(() => sink.push(frame())).toThrow('detector exploded')
+  expect(released).toBe(1)
+  expect(disposed).toBe(1)
+  sink.dispose()
 })
