@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.2-alpha.7](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.6...react-native-tgfx%400.0.2-alpha.7) (2026-08-20)
+
+### Features
+
+* **canvas:** a SharedValue viewport, driven from the UI thread ([#235](https://github.com/riteshshukla04/react-native-tgfx/issues/235)) ([756b0fa](https://github.com/riteshshukla04/react-native-tgfx/commit/756b0fa43aa0a751d42248207e8438df21d889d4)), references [#234](https://github.com/riteshshukla04/react-native-tgfx/issues/234)
+* **effects:** film grain over a group, from tgfx's NoiseStyle ([#229](https://github.com/riteshshukla04/react-native-tgfx/issues/229)) ([45506d2](https://github.com/riteshshukla04/react-native-tgfx/commit/45506d27d59d62288ec465603e431cc72bc4f4b9))
+* **filters:** an alpha threshold, and a colour filter that can follow an image filter ([#228](https://github.com/riteshshukla04/react-native-tgfx/issues/228)) ([1eb2016](https://github.com/riteshshukla04/react-native-tgfx/commit/1eb20160b6cbd46284e9a8cd27d7891e95a39fcf))
+* **glass:** expose the light, and make the whole material animate ([#225](https://github.com/riteshshukla04/react-native-tgfx/issues/225)) ([b7aa8c7](https://github.com/riteshshukla04/react-native-tgfx/commit/b7aa8c7a0221f5ff2a3785560e8b33c5a4d5c297))
+* **svg:** draw whole SVG documents, from a file or from markup ([#223](https://github.com/riteshshukla04/react-native-tgfx/issues/223)) ([718dffe](https://github.com/riteshshukla04/react-native-tgfx/commit/718dffe1e2580b071a9b56cf4fb1a2c480c06fda))
+* **text:** a caret from a coordinate, and the boxes a range occupies ([#231](https://github.com/riteshshukla04/react-native-tgfx/issues/231)) ([8a6db33](https://github.com/riteshshukla04/react-native-tgfx/commit/8a6db33963549275b910f728f93fa6521c2a05fe))
+* **text:** bidi reordering and complex-script shaping through HarfBuzz ([#232](https://github.com/riteshshukla04/react-native-tgfx/issues/232)) ([9bb16f5](https://github.com/riteshshukla04/react-native-tgfx/commit/9bb16f573db1329cc7f878f69536879da440e11c))
+* **viewport:** a root zoom/pan the renderer owns, so a pinch costs no recommit ([#221](https://github.com/riteshshukla04/react-native-tgfx/issues/221)) ([0066a7a](https://github.com/riteshshukla04/react-native-tgfx/commit/0066a7ae3b2d3ba239fc177a06536a8f4993fb52))
+
+### Bug Fixes
+
+* **color:** colour-manage every surface, not just the window ([#222](https://github.com/riteshshukla04/react-native-tgfx/issues/222)) ([e981034](https://github.com/riteshshukla04/react-native-tgfx/commit/e981034b5d0114609f17a50b84078c00c9ffe1fc))
+
 ## [0.0.2-alpha.6](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.4...react-native-tgfx%400.0.2-alpha.6) (2026-08-19)
 
 ### Features
