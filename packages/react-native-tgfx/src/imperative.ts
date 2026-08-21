@@ -184,8 +184,14 @@ interface Internals {
   bind(owner: NodeOwner, w: SceneWriter): void
 }
 
-// Off the handle itself: a worklet clones every own enumerable property, and these hold the graph.
-const internals = new WeakMap<NodeHandle, Internals>()
+// Off the handle itself: a worklet clones every own enumerable property, and
+// these hold the graph. Lazily and behind a holder: a WeakMap crosses a worklet
+// capture as `undefined`, so each runtime builds its own on first use.
+const internalsCache = { map: null as WeakMap<NodeHandle, Internals> | null }
+const internalsMap = (): WeakMap<NodeHandle, Internals> => {
+  'worklet'
+  return (internalsCache.map ??= new WeakMap<NodeHandle, Internals>())
+}
 
 // Properties, not module `let`s: a worklet body assigning a captured `let`
 // compiles to an assignment to a `const` and fails to parse on the UI runtime.
@@ -256,7 +262,7 @@ export function isNodeHandle(value: unknown): value is NodeHandle {
 }
 
 export function nodeInternals(handle: NodeHandle): Internals {
-  return internals.get(handle)!
+  return internalsMap().get(handle)!
 }
 
 function slotOfOp(op: Record<string, unknown>): TransformSlot | null {
@@ -984,7 +990,7 @@ export function createHandle(): NodeHandle {
   // React assigns the host instance here; swallowed, or a worklet would clone a node tree.
   Object.defineProperty(handle, 'current', { get: () => null, set: () => {} })
 
-  internals.set(handle, {
+  internalsMap().set(handle, {
     apply(node: Node, reseed: boolean, w: SceneWriter): Node {
       // A compile by anyone but the owner — an export writer rendering nodes
       // that are also mounted somewhere — must read the live state, never

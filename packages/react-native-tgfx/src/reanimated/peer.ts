@@ -39,14 +39,20 @@ export interface Worklets {
  * React Native itself behind it — into the graph of anything that only wants to
  * build a scene. The module object itself is not cached: `require` already is.
  *
- * A worklet, and one that writes no module state: a worklet body assigning a
- * captured `let` compiles to an assignment to a `const` and fails to parse.
+ * A worklet. The absence cache is a const-object property, not a module `let`:
+ * a worklet body assigning a captured `let` compiles to an assignment to a
+ * `const` and fails to parse.
  */
+const cache = { absent: null as boolean | null }
+
 export function reanimated(): Reanimated {
   'worklet'
   // A worklet runtime has no `require`: report Reanimated absent rather than
   // crashing, so callers degrade the same way they do without the install.
   if (typeof require !== 'function') {
+    return {}
+  }
+  if (cache.absent === true) {
     return {}
   }
   try {
@@ -56,26 +62,25 @@ export function reanimated(): Reanimated {
     if (!isModuleNotFound(e, 'react-native-reanimated')) {
       throw e
     }
+    cache.absent = true
     return {}
   }
 }
 
-let absent: boolean | null = null
-
 /** True when react-native-reanimated resolves at all, whatever it exports. */
 export function reanimatedInstalled(): boolean {
-  if (absent == null) {
+  if (cache.absent == null) {
     try {
       require('react-native-reanimated')
-      absent = false
+      cache.absent = false
     } catch (e) {
       if (!isModuleNotFound(e, 'react-native-reanimated')) {
         throw e
       }
-      absent = true
+      cache.absent = true
     }
   }
-  return !absent
+  return !cache.absent
 }
 
 /**

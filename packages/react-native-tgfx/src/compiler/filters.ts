@@ -134,14 +134,6 @@ export function hasFilters(
   )
 }
 
-/**
- * Write the paint's filter block: blend mode, colour filter, image filter.
- * Only written when {@link hasFilters} says so — the flag bit tells the reader.
- *
- * Parameters travel through `pushAnim`, so a live one becomes a value slot. A
- * filter with no live parameter is still built once at setScene; only one that
- * actually animates is rebuilt per frame, and only that filter.
- */
 function writeColorFilter(
   w: SceneWriter,
   colorFilter: ColorFilterInput | undefined
@@ -237,6 +229,14 @@ function writeImageFilter(
   w.push(tileCode(imageFilter.tileMode, 'decal'))
 }
 
+/**
+ * Write the paint's filter block: blend mode, colour filter, image filter.
+ * Only written when {@link hasFilters} says so — the flag bit tells the reader.
+ *
+ * Parameters travel through `pushAnim`, so a live one becomes a value slot. A
+ * filter with no live parameter is still built once at setScene; only one that
+ * actually animates is rebuilt per frame, and only that filter.
+ */
 export function writeFilters(
   w: SceneWriter,
   blendMode: unknown,

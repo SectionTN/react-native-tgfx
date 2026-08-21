@@ -302,16 +302,22 @@ const CACHE_LIMIT = 512
 
 const WARNED = new Set<string>()
 
+/// Behind the hooks so no method names the hooks object: a worklet factory
+/// captures the binding at its own declaration, still uninitialized there.
+const parseCount = { value: 0 }
+
 /** Test hooks, so tests can assert the cache caches and retains. */
 export const colorCacheTestHooks = {
-  parses: 0,
   reset(): void {
     CACHE.clear()
     WARNED.clear()
-    colorCacheTestHooks.parses = 0
+    parseCount.value = 0
   },
   // Plain methods, not getters: the worklets babel plugin cannot workletize a
   // getter in a top-level object of a 'worklet'-directive file.
+  parses(): number {
+    return parseCount.value
+  },
   size(): number {
     return CACHE.size
   },
@@ -400,7 +406,7 @@ function fromColorFunc(str: string): number | undefined {
 }
 
 function parseColor(str: string): number {
-  colorCacheTestHooks.parses += 1
+  parseCount.value += 1
   let value: number | undefined
   if (str.startsWith('#')) {
     value = fromHex(str)

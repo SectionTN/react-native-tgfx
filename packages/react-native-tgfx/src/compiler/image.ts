@@ -68,8 +68,10 @@ export function tileCode(tile: unknown, fallback: TileMode = 'clamp'): number {
   return TILE_CODE[tile as TileMode] ?? TILE_CODE[fallback]
 }
 
-// `.handle` is a JSI getter read once per image node per commit, so the id is remembered here.
-const handles = new WeakMap<object, number>()
+// `.handle` is a JSI getter read once per image node per commit, so the id is
+// remembered here. Lazily and behind a holder: a WeakMap crosses a worklet
+// capture as `undefined`, so each runtime builds its own on first use.
+const cache = { handles: null as WeakMap<object, number> | null }
 
 /**
  * The registry id the native engine resolves the image by, or 0 for "nothing to
@@ -80,6 +82,7 @@ export function imageHandle(image: unknown): number {
   if (image == null || typeof image !== 'object') {
     return 0
   }
+  const handles = (cache.handles ??= new WeakMap<object, number>())
   const cached = handles.get(image)
   if (cached !== undefined) {
     return cached

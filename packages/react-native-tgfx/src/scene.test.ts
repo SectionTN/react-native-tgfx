@@ -390,15 +390,17 @@ test('createScene and sceneFrom mirror the statics, worklet-callably', () => {
   expect(calls3.scenes.length).toBe(1)
 })
 
-test('exports refuse to run on a worklet runtime, by name', async () => {
+test('exports refuse to run on a worklet runtime, each by its own name', () => {
   const scene = createScene({ width: 10, height: 10 })
   scene.add(rect({ x: 0, y: 0, width: 10, height: 10 }))
   ;(globalThis as { _WORKLET?: boolean })._WORKLET = true
   try {
     expect(() => scene.toSvg()).toThrow('scene.toSvg')
     expect(() => scene.toSvg()).toThrow('JS thread')
+    expect(() => scene.toImage()).toThrow('scene.toImage')
+    expect(() => scene.toPdf('/tmp/x.pdf')).toThrow('scene.toPdf')
+    expect(scene.save('/tmp/x.png')).rejects.toThrow('scene.save')
   } finally {
     delete (globalThis as { _WORKLET?: boolean })._WORKLET
   }
-  await scene.toSvg().catch(() => null)
 })

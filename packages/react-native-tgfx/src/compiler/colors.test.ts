@@ -5,9 +5,9 @@ import { colorCacheTestHooks, resolveColor } from './colors'
 ;(globalThis as { __DEV__?: boolean }).__DEV__ = true
 
 const parsesDuring = (fn: () => void): number => {
-  const before = colorCacheTestHooks.parses
+  const before = colorCacheTestHooks.parses()
   fn()
-  return colorCacheTestHooks.parses - before
+  return colorCacheTestHooks.parses() - before
 }
 
 const warningsDuring = (fn: () => void): string[] => {

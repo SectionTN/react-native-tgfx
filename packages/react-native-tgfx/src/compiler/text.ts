@@ -39,16 +39,6 @@ export function writeFont(w: SceneWriter, p: Record<string, unknown>): void {
   w.push(resolveNumber(p.letterSpacing, 0))
 }
 
-/**
- * The run list, read by SceneRenderer::readTextRuns: a count, then per run its
- * string and what it overrides of the paragraph's face. A `<Text>` with no
- * `<Span>` children writes exactly one run that overrides nothing, so a plain
- * label costs one extra word plus a zeroed style block.
- *
- * A run's own `fontSize` is deliberately not animated: the layout is memoised
- * against the paragraph's size, and a second moving size would miss that memo on
- * every frame. 0 means "the paragraph's size", which is the animated one.
- */
 function writeRun(
   w: SceneWriter,
   text: unknown,
@@ -68,7 +58,16 @@ function writeRun(
   w.push(hasColor ? resolveColor(resolveValue(p.color) as never) : 0)
 }
 
-/** The style block for `measureText`, defaulted the same way the writer does. */
+/**
+ * The run list, read by SceneRenderer::readTextRuns: a count, then per run its
+ * string and what it overrides of the paragraph's face. A `<Text>` with no
+ * `<Span>` children writes exactly one run that overrides nothing, so a plain
+ * label costs one extra word plus a zeroed style block.
+ *
+ * A run's own `fontSize` is deliberately not animated: the layout is memoised
+ * against the paragraph's size, and a second moving size would miss that memo on
+ * every frame. 0 means "the paragraph's size", which is the animated one.
+ */
 export function writeTextRuns(
   w: SceneWriter,
   node: Node,
@@ -86,6 +85,7 @@ export function writeTextRuns(
   }
 }
 
+/** The style block for `measureText`, defaulted the same way the writer does. */
 export function fontStyleOf(
   props: Omit<FontProps, 'fontSize'> &
     ParagraphProps & { fontSize?: number } = {}

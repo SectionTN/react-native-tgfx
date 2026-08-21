@@ -246,6 +246,7 @@ export class Scene {
    * given. Resolves once the file is on disk; the bytes never enter JS.
    */
   async save(path: string, options?: SceneStillOptions): Promise<void> {
+    this.assertJsThread('scene.save')
     const image = await this.toImage(options)
     try {
       const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
@@ -294,15 +295,19 @@ export class Scene {
     return renderToPdf(path, [{ width, height, scene: this }])
   }
 
-  private sizeFor(
-    what: string,
-    options?: { width?: number; height?: number }
-  ): { width: number; height: number } {
+  private assertJsThread(what: string): void {
     if ((globalThis as { _WORKLET?: boolean })._WORKLET === true) {
       throw new Error(
         `[tgfx] ${what}: exports run on the JS thread only. From a worklet, attach an offscreen surface and use surface.save/toImage.`
       )
     }
+  }
+
+  private sizeFor(
+    what: string,
+    options?: { width?: number; height?: number }
+  ): { width: number; height: number } {
+    this.assertJsThread(what)
     const width = options?.width ?? this.options?.width
     const height = options?.height ?? this.options?.height
     if (width != null && height != null) {
@@ -349,8 +354,10 @@ export class Scene {
   // per-commit mapper churn only matters if structural commits are per-frame,
   // which the slot path exists to avoid.
   private syncMapper(): void {
-    // On a worklet runtime the scene already lives where values change; pushes
-    // are synchronous and there is no Reanimated module to start a mapper on.
+    // On a worklet runtime there is no Reanimated module to start a mapper on,
+    // and none is owed: a worklet scene is structural nodes and literal props —
+    // value slots land at flush(), and per-frame motion drives the surface's
+    // setValues directly.
     if ((globalThis as { _WORKLET?: boolean })._WORKLET === true) {
       return
     }

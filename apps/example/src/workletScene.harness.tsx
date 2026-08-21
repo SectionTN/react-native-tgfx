@@ -14,7 +14,10 @@ import {
   createOffscreenSurface,
   createScene,
   fill,
+  image,
+  loadImage,
   rect,
+  shader,
 } from 'react-native-tgfx';
 import { sleep } from './testSupport';
 
@@ -96,6 +99,12 @@ describe('scenes built on worklet runtimes', () => {
     const corner = (1 * 16 + 13) * 4;
     expect(after[corner]).toBe(0xff); // yellow landed top-right
     expect(after[corner + 1]).toBe(0xd6);
+    scheduleOnUI(() => {
+      'worklet';
+      const g = globalThis as { __workletSceneTest?: Scene };
+      g.__workletSceneTest?.dispose();
+      delete g.__workletSceneTest;
+    });
     twin.dispose();
     expected.dispose();
     surface.dispose();
@@ -131,6 +140,7 @@ describe('scenes built on worklet runtimes', () => {
     });
     await sleep(500);
     const got = await raw(surface);
+    expect(got.length).toBe(wanted.length);
     let diff = 0;
     for (let i = 0; i < got.length; i++) {
       if (got[i] !== wanted[i]) diff++;
@@ -139,5 +149,61 @@ describe('scenes built on worklet runtimes', () => {
     twin.dispose();
     expected.dispose();
     surface.dispose();
+  });
+
+  test('an image and a runtime shader render from a worklet-built scene', async () => {
+    // A 4x4 red-to-blue gradient, base64 so the test needs no network.
+    const photo = await loadImage(
+      'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAEEAIAAAB2A9VqAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRP///////wlY99wAAAAHdElNRQfqCBUIMDtM4vBHAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTA4LTIxVDA4OjQ4OjU5KzAwOjAwKe2LDQAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0wOC0yMVQwODo0ODo1OSswMDowMFiwM7EAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMDgtMjFUMDg6NDg6NTkrMDA6MDAPpRJuAAAAH0lEQVQI12P8/58BK2BZvZqBITSUBAlGBgYGBmzGAQDcqAgHsld5ygAAAABJRU5ErkJggg==',
+    );
+    const source = `
+uniform float2 uSize;
+half4 main(float2 pos) {
+  float2 uv = pos / uSize;
+  return half4(uv.x, uv.y, 0.6, 1.0);
+}
+`;
+    const expected = createOffscreenSurface({
+      width: 16,
+      height: 16,
+      opaque: true,
+    });
+    const twin = Scene.create();
+    twin.add(fill({}, [shader({ source, uniforms: { uSize: [16, 16] } })]));
+    twin.add(image({ image: photo, x: 4, y: 4, width: 8, height: 8 }));
+    twin.attach(expected);
+    twin.flush();
+    const wanted = await raw(expected);
+
+    const surface = createOffscreenSurface({
+      width: 16,
+      height: 16,
+      opaque: true,
+    });
+    const boxed = NitroModules.box(surface);
+    const boxedPhoto = NitroModules.box(photo);
+    scheduleOnUI(() => {
+      'worklet';
+      const scene = createScene();
+      scene.add(fill({}, [shader({ source, uniforms: { uSize: [16, 16] } })]));
+      scene.add(
+        image({ image: boxedPhoto.unbox(), x: 4, y: 4, width: 8, height: 8 }),
+      );
+      scene.attach(boxed.unbox());
+      scene.flush();
+      boxed.unbox().flush();
+    });
+    await sleep(400);
+    const got = await raw(surface);
+    expect(got.length).toBe(wanted.length);
+    let diff = 0;
+    for (let i = 0; i < got.length; i++) {
+      if (got[i] !== wanted[i]) diff++;
+    }
+    expect(diff).toBe(0);
+    twin.dispose();
+    expected.dispose();
+    surface.dispose();
+    photo.dispose();
   });
 });
