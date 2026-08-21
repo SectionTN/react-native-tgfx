@@ -1,3 +1,5 @@
+'worklet'
+
 import type { TgfxImage } from '../specs/TgfxImage.nitro'
 import type { SharedValueLike } from './values'
 import type { SceneWriter } from './writer'

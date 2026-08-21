@@ -18,7 +18,6 @@ import {
   Text,
   useImage,
   type Fit,
-  type TgfxImage,
 } from 'react-native-tgfx';
 
 const sample = require('./assets/sample.png');
@@ -49,7 +48,9 @@ export function FitModes() {
   const img = useImage(sample);
   return (
     <View style={styles.section}>
-      <RNText style={styles.label}>{'<TgfxImage fit> — the full Skia set'}</RNText>
+      <RNText style={styles.label}>
+        {'<TgfxImage fit> — the full Skia set'}
+      </RNText>
       <Canvas style={[styles.canvas, { height: 160 }]}>
         <Fill color="#f2f2f7" />
         {img != null &&
@@ -166,13 +167,11 @@ export function AtlasField() {
           scale: 0.3 + (i % 5) * 0.12,
         };
       }),
-    []
+    [],
   );
   return (
     <View style={styles.section}>
-      <RNText style={styles.label}>
-        {'<Atlas> — 120 sprites, one node'}
-      </RNText>
+      <RNText style={styles.label}>{'<Atlas> — 120 sprites, one node'}</RNText>
       <Canvas style={[styles.canvas, { height: 140 }]}>
         <Fill color="#f2f2f7" />
         {sheet != null && (
@@ -206,7 +205,14 @@ export function VerticesMeshes() {
     for (let row = 0; row < size; row++) {
       for (let col = 0; col < size; col++) {
         const at = row * (size + 1) + col;
-        indices.push(at, at + 1, at + size + 1, at + 1, at + size + 1, at + size + 2);
+        indices.push(
+          at,
+          at + 1,
+          at + size + 1,
+          at + 1,
+          at + size + 1,
+          at + size + 2,
+        );
       }
     }
     return { points, coords, colors, indices };
@@ -260,7 +266,7 @@ export function OffscreenRender() {
           />
         ))}
       </>,
-      { width: 160, height: 100, pixelRatio: 2 }
+      { width: 160, height: 100, pixelRatio: 2 },
     )
       .then(image => {
         if (live) {
@@ -329,7 +335,7 @@ export function DerivedHandles() {
       derived?.turned.dispose();
       derived?.soft.dispose();
     },
-    [derived]
+    [derived],
   );
 
   return (
@@ -341,11 +347,35 @@ export function DerivedHandles() {
         <Fill color="#f2f2f7" />
         {derived != null && (
           <>
-            <TgfxImage image={derived.thumb} x={8} y={10} width={80} height={80} />
-            <TgfxImage image={derived.crop} x={96} y={10} width={80} height={80} />
-            <TgfxImage image={derived.turned} x={184} y={10} width={80} height={80} />
+            <TgfxImage
+              image={derived.thumb}
+              x={8}
+              y={10}
+              width={80}
+              height={80}
+            />
+            <TgfxImage
+              image={derived.crop}
+              x={96}
+              y={10}
+              width={80}
+              height={80}
+            />
+            <TgfxImage
+              image={derived.turned}
+              x={184}
+              y={10}
+              width={80}
+              height={80}
+            />
             {/* Inset by the blur margin: the filtered result is larger than the source. */}
-            <TgfxImage image={derived.soft} x={264} y={2} width={96} height={96} />
+            <TgfxImage
+              image={derived.soft}
+              x={264}
+              y={2}
+              width={96}
+              height={96}
+            />
           </>
         )}
       </Canvas>

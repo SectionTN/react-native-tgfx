@@ -1,3 +1,5 @@
+'worklet'
+
 import type { TgfxSlots, TgfxSlotsFactory } from '../specs/TgfxSlots.nitro'
 
 /** A boxed `TgfxSlots`, the form that survives a hop to another runtime. */

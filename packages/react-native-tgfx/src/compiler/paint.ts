@@ -1,3 +1,5 @@
+'worklet'
+
 import {
   colorChannels,
   isColorComponents,
@@ -352,9 +354,7 @@ export function writePaint(
       (liveStyle || liveAA ? 32 : 0)
   )
   if (liveStyle || liveAA) {
-    w.pushAnim(
-      liveStyle ? style : forceStroke || styleNow === 'stroke' ? 1 : 0
-    )
+    w.pushAnim(liveStyle ? style : forceStroke || styleNow === 'stroke' ? 1 : 0)
     w.pushAnim(liveAA ? antiAlias : aaNow !== false ? 1 : 0)
   }
   if (channels != null) {
@@ -367,9 +367,7 @@ export function writePaint(
     isSharedValue(cap) ? cap : CAPS[(cap as keyof typeof CAPS) ?? 'butt']
   )
   w.pushAnim(
-    isSharedValue(join)
-      ? join
-      : JOINS[(join as keyof typeof JOINS) ?? 'miter']
+    isSharedValue(join) ? join : JOINS[(join as keyof typeof JOINS) ?? 'miter']
   )
   if (miter !== undefined) {
     w.pushAnim(miter, 4)

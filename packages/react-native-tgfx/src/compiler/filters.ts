@@ -1,3 +1,5 @@
+'worklet'
+
 import { isColorComponents, resolveColor, type Color } from './colors'
 import { tileCode, type TileMode } from './image'
 import { isSharedValue, resolveValue, type MaybeSharedValue } from './values'
@@ -140,17 +142,6 @@ export function hasFilters(
  * filter with no live parameter is still built once at setScene; only one that
  * actually animates is rebuilt per frame, and only that filter.
  */
-export function writeFilters(
-  w: SceneWriter,
-  blendMode: unknown,
-  colorFilter: ColorFilterInput | undefined,
-  imageFilter: ImageFilterInput | undefined
-): void {
-  w.pushAnim(isSharedValue(blendMode) ? blendMode : blendCode(blendMode), 3)
-  writeColorFilter(w, colorFilter)
-  writeImageFilter(w, imageFilter)
-}
-
 function writeColorFilter(
   w: SceneWriter,
   colorFilter: ColorFilterInput | undefined
@@ -244,4 +235,15 @@ function writeImageFilter(
   w.pushAnim(blurX)
   w.pushAnim(blurY)
   w.push(tileCode(imageFilter.tileMode, 'decal'))
+}
+
+export function writeFilters(
+  w: SceneWriter,
+  blendMode: unknown,
+  colorFilter: ColorFilterInput | undefined,
+  imageFilter: ImageFilterInput | undefined
+): void {
+  w.pushAnim(isSharedValue(blendMode) ? blendMode : blendCode(blendMode), 3)
+  writeColorFilter(w, colorFilter)
+  writeImageFilter(w, imageFilter)
 }

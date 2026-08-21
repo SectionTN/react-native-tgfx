@@ -1,3 +1,5 @@
+'worklet'
+
 import { NodeType, type Node } from '../reconciler/types'
 import type { FontProps, ParagraphProps } from '../types'
 import { resolveColor } from './colors'
@@ -47,23 +49,6 @@ export function writeFont(w: SceneWriter, p: Record<string, unknown>): void {
  * against the paragraph's size, and a second moving size would miss that memo on
  * every frame. 0 means "the paragraph's size", which is the animated one.
  */
-export function writeTextRuns(
-  w: SceneWriter,
-  node: Node,
-  props: Record<string, unknown>
-): void {
-  const spans = node.children.filter((child) => child.type === NodeType.Span)
-  if (spans.length === 0) {
-    w.push(1)
-    writeRun(w, props.text, {})
-    return
-  }
-  w.push(spans.length)
-  for (const span of spans) {
-    writeRun(w, span.props.text, span.props)
-  }
-}
-
 function writeRun(
   w: SceneWriter,
   text: unknown,
@@ -84,6 +69,23 @@ function writeRun(
 }
 
 /** The style block for `measureText`, defaulted the same way the writer does. */
+export function writeTextRuns(
+  w: SceneWriter,
+  node: Node,
+  props: Record<string, unknown>
+): void {
+  const spans = node.children.filter((child) => child.type === NodeType.Span)
+  if (spans.length === 0) {
+    w.push(1)
+    writeRun(w, props.text, {})
+    return
+  }
+  w.push(spans.length)
+  for (const span of spans) {
+    writeRun(w, span.props.text, span.props)
+  }
+}
+
 export function fontStyleOf(
   props: Omit<FontProps, 'fontSize'> &
     ParagraphProps & { fontSize?: number } = {}

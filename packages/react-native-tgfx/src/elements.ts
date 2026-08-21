@@ -1,3 +1,5 @@
+'worklet'
+
 // Element factories: the imperative constructors behind every JSX component.
 // Each returns the same plain host node the reconciler would produce, with no
 // normalization of its own — the compiler is the single normalizer — so a

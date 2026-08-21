@@ -1,3 +1,5 @@
+'worklet'
+
 // Every colour input is normalized to a packed 0xAARRGGBB integer; an unparseable one is black.
 import { resolveNumber, type SharedValueLike } from './values'
 
@@ -308,10 +310,12 @@ export const colorCacheTestHooks = {
     WARNED.clear()
     colorCacheTestHooks.parses = 0
   },
-  get size(): number {
+  // Plain methods, not getters: the worklets babel plugin cannot workletize a
+  // getter in a top-level object of a 'worklet'-directive file.
+  size(): number {
     return CACHE.size
   },
-  get limit(): number {
+  limit(): number {
     return CACHE_LIMIT
   },
 }
@@ -339,6 +343,31 @@ function warnUnparseable(str: string): void {
  * sRGB word per colour. On a P3 surface that clamps the extra gamut, which is
  * the honest behaviour until the program can carry a colour space.
  */
+function clamp255(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)))
+}
+
+/// Linearise, apply the P3-to-sRGB matrix, re-encode. Out-of-gamut clips.
+function p3ToSrgb(
+  r: number,
+  g: number,
+  b: number
+): readonly [number, number, number] {
+  const lin = (c: number) =>
+    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  // Clamped first: an out-of-gamut channel goes negative, and Math.pow of that is NaN.
+  const enc = (raw: number) => {
+    const c = Math.max(0, Math.min(1, raw))
+    return c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
+  }
+  const [lr, lg, lb] = [lin(r), lin(g), lin(b)]
+  return [
+    enc(1.2249401 * lr - 0.2249404 * lg + 0.0 * lb),
+    enc(-0.0420569 * lr + 1.0420571 * lg + 0.0 * lb),
+    enc(-0.0196376 * lr - 0.0786361 * lg + 1.0982735 * lb),
+  ] as const
+}
+
 function fromColorFunc(str: string): number | undefined {
   const open = str.indexOf('(')
   const close = str.lastIndexOf(')')
@@ -368,31 +397,6 @@ function fromColorFunc(str: string): number | undefined {
       clamp255(rgb[2] * 255)) >>>
     0
   )
-}
-
-function clamp255(value: number): number {
-  return Math.max(0, Math.min(255, Math.round(value)))
-}
-
-/// Linearise, apply the P3-to-sRGB matrix, re-encode. Out-of-gamut clips.
-function p3ToSrgb(
-  r: number,
-  g: number,
-  b: number
-): readonly [number, number, number] {
-  const lin = (c: number) =>
-    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
-  // Clamped first: an out-of-gamut channel goes negative, and Math.pow of that is NaN.
-  const enc = (raw: number) => {
-    const c = Math.max(0, Math.min(1, raw))
-    return c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
-  }
-  const [lr, lg, lb] = [lin(r), lin(g), lin(b)]
-  return [
-    enc(1.2249401 * lr - 0.2249404 * lg + 0.0 * lb),
-    enc(-0.0420569 * lr + 1.0420571 * lg + 0.0 * lb),
-    enc(-0.0196376 * lr - 0.0786361 * lg + 1.0982735 * lb),
-  ] as const
 }
 
 function parseColor(str: string): number {

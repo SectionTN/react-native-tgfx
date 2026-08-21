@@ -1,3 +1,5 @@
+'worklet'
+
 /**
  * Reanimated value interop used by the compiler.
  *

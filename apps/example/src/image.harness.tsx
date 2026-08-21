@@ -20,7 +20,6 @@ import {
   loadImage,
   renderToImage,
   type Fit,
-  type TgfxImage,
 } from 'react-native-tgfx';
 import {
   BACKGROUND,
@@ -374,8 +373,20 @@ describe('tgfx image rendering', () => {
       <>
         <TgfxImage image={derived.thumb} x={8} y={8} width={88} height={88} />
         <TgfxImage image={derived.crop} x={104} y={8} width={88} height={88} />
-        <TgfxImage image={derived.turned} x={8} y={104} width={88} height={88} />
-        <TgfxImage image={derived.soft} x={104} y={104} width={88} height={88} />
+        <TgfxImage
+          image={derived.turned}
+          x={8}
+          y={104}
+          width={88}
+          height={88}
+        />
+        <TgfxImage
+          image={derived.soft}
+          x={104}
+          y={104}
+          width={88}
+          height={88}
+        />
       </>,
     );
   });

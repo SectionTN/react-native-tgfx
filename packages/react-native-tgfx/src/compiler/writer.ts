@@ -1,3 +1,5 @@
+'worklet'
+
 import type { NodeHandle } from '../imperative'
 import {
   isSharedValue,

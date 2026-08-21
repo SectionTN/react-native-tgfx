@@ -1,3 +1,5 @@
+'worklet'
+
 // React-Native-style transform arrays of single-key objects, composed left to right natively.
 
 export type TransformNumber = number | { value: number }

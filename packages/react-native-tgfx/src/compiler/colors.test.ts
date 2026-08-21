@@ -22,7 +22,7 @@ const warningsDuring = (fn: () => void): string[] => {
 
 // Must exceed CACHE_LIMIT, or the retention path is never exercised.
 const overflow = (): void => {
-  for (let i = 0; i < colorCacheTestHooks.limit * 2; i += 1) {
+  for (let i = 0; i < colorCacheTestHooks.limit() * 2; i += 1) {
     resolveColor(`rgb(${i}, ${i}, ${i})`)
   }
 }
@@ -39,7 +39,7 @@ describe('resolveColor', () => {
 
   it('fills the cache to its limit and stops there', () => {
     overflow()
-    expect(colorCacheTestHooks.size).toBe(colorCacheTestHooks.limit)
+    expect(colorCacheTestHooks.size()).toBe(colorCacheTestHooks.limit())
   })
 
   it('keeps an early color resident after the cache overflows', () => {
@@ -196,28 +196,32 @@ describe('resolveColor', () => {
 
 describe('color()', () => {
   it('parses CSS Color 4 color() in srgb and display-p3', () => {
-  // srgb components are 0..1, so this is plain red.
-  expect(resolveColor('color(srgb 1 0 0)')).toBe(0xffff0000)
-  expect(resolveColor('color(srgb 0 0 0 / 0.5)')).toBe(0x80000000)
+    // srgb components are 0..1, so this is plain red.
+    expect(resolveColor('color(srgb 1 0 0)')).toBe(0xffff0000)
+    expect(resolveColor('color(srgb 0 0 0 / 0.5)')).toBe(0x80000000)
 
-  // P3 red is outside sRGB, so it clips to the nearest in-gamut red.
-  expect(resolveColor('color(display-p3 1 0 0)')).toBe(0xffff0000)
-  // A mid grey is gamut-independent, so it survives the round trip.
-  const grey = resolveColor('color(display-p3 0.5 0.5 0.5)')
-  const [gr, gg, gb] = [(grey >>> 16) & 0xff, (grey >>> 8) & 0xff, grey & 0xff]
-  // Neutral in both spaces, so it survives the round trip to within a rounding step.
-  expect(Math.abs(gr - gg)).toBeLessThanOrEqual(1)
-  expect(Math.abs(gb - gg)).toBeLessThanOrEqual(1)
-  expect(Math.abs(gg - 128)).toBeLessThanOrEqual(2)
+    // P3 red is outside sRGB, so it clips to the nearest in-gamut red.
+    expect(resolveColor('color(display-p3 1 0 0)')).toBe(0xffff0000)
+    // A mid grey is gamut-independent, so it survives the round trip.
+    const grey = resolveColor('color(display-p3 0.5 0.5 0.5)')
+    const [gr, gg, gb] = [
+      (grey >>> 16) & 0xff,
+      (grey >>> 8) & 0xff,
+      grey & 0xff,
+    ]
+    // Neutral in both spaces, so it survives the round trip to within a rounding step.
+    expect(Math.abs(gr - gg)).toBeLessThanOrEqual(1)
+    expect(Math.abs(gb - gg)).toBeLessThanOrEqual(1)
+    expect(Math.abs(gg - 128)).toBeLessThanOrEqual(2)
 
-  // A P3 green is more saturated than sRGB can hold, so red clips to zero.
-  expect(resolveColor('color(display-p3 0 1 0)') & 0x00ff0000).toBe(0)
-})
+    // A P3 green is more saturated than sRGB can hold, so red clips to zero.
+    expect(resolveColor('color(display-p3 0 1 0)') & 0x00ff0000).toBe(0)
+  })
 
   it('rejects an unknown colour space and malformed components', () => {
-  // Falls back to opaque black, like any other unparseable colour.
-  expect(resolveColor('color(rec2020 1 0 0)')).toBe(0xff000000)
-  expect(resolveColor('color(display-p3 1 0)')).toBe(0xff000000)
-  expect(resolveColor('color(display-p3 a b c)')).toBe(0xff000000)
+    // Falls back to opaque black, like any other unparseable colour.
+    expect(resolveColor('color(rec2020 1 0 0)')).toBe(0xff000000)
+    expect(resolveColor('color(display-p3 1 0)')).toBe(0xff000000)
+    expect(resolveColor('color(display-p3 a b c)')).toBe(0xff000000)
   })
 })

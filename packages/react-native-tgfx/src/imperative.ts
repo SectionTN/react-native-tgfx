@@ -1,3 +1,5 @@
+'worklet'
+
 import { colorChannels, resolveColor, type Color } from './compiler/colors'
 import { BLEND_MODES, blendCode } from './compiler/filters'
 import { imageHandle } from './compiler/image'

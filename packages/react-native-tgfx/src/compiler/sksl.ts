@@ -1,3 +1,5 @@
+'worklet'
+
 /** Cached and shared between callers, so every field is read-only. */
 export interface TranspiledShader {
   readonly body: string
@@ -120,19 +122,6 @@ function declaredName(chunk: string): string {
 
 const CACHE = new Map<string, TranspiledShader>()
 
-export function transpileShader(source: string): TranspiledShader {
-  const hit = CACHE.get(source)
-  if (hit !== undefined) {
-    return hit
-  }
-  const result = transpile(source)
-  if (CACHE.size >= 64) {
-    CACHE.clear()
-  }
-  CACHE.set(source, result)
-  return result
-}
-
 function transpile(source: string): TranspiledShader {
   const uniformNames: string[] = []
   const uniformSizes: Record<string, number> = {}
@@ -216,4 +205,17 @@ function transpile(source: string): TranspiledShader {
     uniformSizes,
     childNames,
   }
+}
+
+export function transpileShader(source: string): TranspiledShader {
+  const hit = CACHE.get(source)
+  if (hit !== undefined) {
+    return hit
+  }
+  const result = transpile(source)
+  if (CACHE.size >= 64) {
+    CACHE.clear()
+  }
+  CACHE.set(source, result)
+  return result
 }

@@ -1,3 +1,5 @@
+'worklet'
+
 /**
  * Host element type tags understood by the tgfx reconciler. Each declarative
  * component (`<Rect>`, `<Circle>`, ...) creates a host element with one of these

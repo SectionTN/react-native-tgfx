@@ -1,3 +1,5 @@
+'worklet'
+
 import { isNodeHandle, nodeInternals, type NodeHandle } from '../imperative'
 import { NodeType, type Node } from '../reconciler/types'
 import { isColorComponents, resolveColor, type Color } from './colors'
@@ -531,6 +533,11 @@ function addPaintSource(
   Object.assign(paint, next)
 }
 
+let warnedGrainSecondColor = false
+let warnedStrandedGrain = false
+
+const inDev = (): boolean => typeof __DEV__ !== 'undefined' && __DEV__
+
 function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
   let paint: PaintInput | null = null
   for (const child of node.children) {
@@ -577,6 +584,54 @@ function localPaint(w: SceneWriter, node: Node): PaintInput {
     paint.gradient = ownGradient
   }
   return paint
+}
+
+/// Flags word, then whatever each effect needs; trim and phase travel as value slots.
+function writePathEffects(
+  w: SceneWriter,
+  node: Node,
+  p: Record<string, unknown>
+): void {
+  let dash: Node | undefined
+  let corner: Node | undefined
+  for (const child of node.children) {
+    if (child.type === NodeType.DashPathEffect) {
+      dash = child
+    } else if (child.type === NodeType.CornerPathEffect) {
+      corner = child
+    }
+  }
+  const trimmed = p.start !== undefined || p.end !== undefined
+  w.push(
+    (trimmed ? 1 : 0) |
+      (dash != null ? 2 : 0) |
+      (corner != null ? 4 : 0) |
+      (p.fillType === 'evenOdd' ? 8 : 0)
+  )
+  if (trimmed) {
+    w.pushAnim(p.start, 0)
+    w.pushAnim(p.end, 1)
+  }
+  if (dash != null) {
+    const intervals = (dash.props.intervals as number[] | undefined) ?? []
+    if (
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      intervals.length % 2 !== 0
+    ) {
+      console.warn(
+        `[tgfx] <DashPathEffect intervals> needs an even count of at least two, got ${intervals.length}. The dash is skipped and the path draws solid.`
+      )
+    }
+    w.push(intervals.length)
+    for (const interval of intervals) {
+      w.push(resolveNumber(interval, 0))
+    }
+    w.pushAnim(dash.props.phase, 0)
+  }
+  if (corner != null) {
+    w.push(resolveNumber(corner.props.r, 0))
+  }
 }
 
 function writeDrawing(
@@ -712,54 +767,6 @@ function writeDrawing(
   }
 }
 
-/// Flags word, then whatever each effect needs; trim and phase travel as value slots.
-function writePathEffects(
-  w: SceneWriter,
-  node: Node,
-  p: Record<string, unknown>
-): void {
-  let dash: Node | undefined
-  let corner: Node | undefined
-  for (const child of node.children) {
-    if (child.type === NodeType.DashPathEffect) {
-      dash = child
-    } else if (child.type === NodeType.CornerPathEffect) {
-      corner = child
-    }
-  }
-  const trimmed = p.start !== undefined || p.end !== undefined
-  w.push(
-    (trimmed ? 1 : 0) |
-      (dash != null ? 2 : 0) |
-      (corner != null ? 4 : 0) |
-      (p.fillType === 'evenOdd' ? 8 : 0)
-  )
-  if (trimmed) {
-    w.pushAnim(p.start, 0)
-    w.pushAnim(p.end, 1)
-  }
-  if (dash != null) {
-    const intervals = (dash.props.intervals as number[] | undefined) ?? []
-    if (
-      typeof __DEV__ !== 'undefined' &&
-      __DEV__ &&
-      intervals.length % 2 !== 0
-    ) {
-      console.warn(
-        `[tgfx] <DashPathEffect intervals> needs an even count of at least two, got ${intervals.length}. The dash is skipped and the path draws solid.`
-      )
-    }
-    w.push(intervals.length)
-    for (const interval of intervals) {
-      w.push(resolveNumber(interval, 0))
-    }
-    w.pushAnim(dash.props.phase, 0)
-  }
-  if (corner != null) {
-    w.push(resolveNumber(corner.props.r, 0))
-  }
-}
-
 function angle(w: SceneWriter, v: unknown): void {
   if (isSharedValue(v)) {
     w.pushAnim(v)
@@ -857,8 +864,19 @@ function writeClip(w: SceneWriter, clip: ClipRect | string): void {
   }
 }
 
+const ROOT_CTX: CompileCtx = { paint: {}, opacity: 1 }
+
+/// The recursive edge is a parameter, not a closure: the worklet factories
+/// evaluate in file order, so a container writer cannot capture writeNodes.
+type WriteNodes = (w: SceneWriter, nodes: Node[], ctx: CompileCtx) => number
+
 /// A mask node: its mode, then the mask child list, then the content list.
-function writeMask(w: SceneWriter, node: Node, ctx: CompileCtx): void {
+function writeMask(
+  w: SceneWriter,
+  node: Node,
+  ctx: CompileCtx,
+  recurse: WriteNodes
+): void {
   const source = node.children.find((c) => c.type === NodeType.MaskSource)
   const content = node.children.filter(
     (c) => c.type !== NodeType.MaskSource && KIND_OF[c.type] !== undefined
@@ -874,10 +892,10 @@ function writeMask(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   // The mask is a matte, not part of the picture: it inherits neither paint nor opacity.
   // Under -1 so a handle in the source cannot collide with the content child at the same index.
   w.pathStack.push(-1)
-  w.patch(maskCountAt, writeNodes(w, source?.children ?? [], ROOT_CTX))
+  w.patch(maskCountAt, recurse(w, source?.children ?? [], ROOT_CTX))
   w.pathStack.pop()
   const contentCountAt = w.reserve()
-  w.patch(contentCountAt, writeNodes(w, content, contentCtx))
+  w.patch(contentCountAt, recurse(w, content, contentCtx))
 }
 
 /**
@@ -895,12 +913,6 @@ function writeGrainColor(w: SceneWriter, color: unknown): void {
     }
   }
 }
-
-let warnedGrainSecondColor = false
-let warnedStrandedGrain = false
-
-const inDev = (): boolean => typeof __DEV__ !== 'undefined' && __DEV__
-
 /// `<FilmGrain>` on a group. Mode 0 is one colour, 1 two, 2 the noise's own RGB.
 function writeGrain(w: SceneWriter, p: Record<string, unknown>): void {
   const mode = p.color == null ? 2 : p.secondColor == null ? 0 : 1
@@ -933,7 +945,12 @@ function writeGrain(w: SceneWriter, p: Record<string, unknown>): void {
   }
 }
 
-function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
+function writeGroup(
+  w: SceneWriter,
+  node: Node,
+  ctx: CompileCtx,
+  recurse: WriteNodes
+): void {
   const p = node.props
   const local = localPaint(w, node)
   const clip = p.clip as ClipRect | string | undefined
@@ -972,7 +989,7 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
     }
   }
   const childCountAt = w.reserve()
-  w.patch(childCountAt, writeNodes(w, node.children, childCtx))
+  w.patch(childCountAt, recurse(w, node.children, childCtx))
   if (flagsAt >= 0) {
     // Intent only. Whether it is safe to record is the reader's call: a value slot the writer
     // deduped, a video handle and a pending decode all look static from here.
@@ -980,7 +997,12 @@ function writeGroup(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   }
 }
 
-function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
+function writeCameraFrame(
+  w: SceneWriter,
+  node: Node,
+  ctx: CompileCtx,
+  recurse: WriteNodes
+): void {
   const p = node.props
   const local = localPaint(w, node)
   const paint = mergePaint(ctx.paint, local)
@@ -993,7 +1015,7 @@ function writeCameraFrame(w: SceneWriter, node: Node, ctx: CompileCtx): void {
   w.push(p.mirror === true ? 1 : 0)
   writePaint(w, NO_PAINT_PROPS, paint, alpha, false)
   const childCountAt = w.reserve()
-  w.patch(childCountAt, writeNodes(w, node.children, { paint, opacity: alpha }))
+  w.patch(childCountAt, recurse(w, node.children, { paint, opacity: alpha }))
 }
 
 function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
@@ -1012,11 +1034,11 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
     }
     w.pathStack.push(count)
     if (kind === Kind.Mask) {
-      writeMask(w, node, ctx)
+      writeMask(w, node, ctx, writeNodes)
     } else if (kind === Kind.Group) {
-      writeGroup(w, node, ctx)
+      writeGroup(w, node, ctx, writeNodes)
     } else if (kind === Kind.CameraFrame) {
-      writeCameraFrame(w, node, ctx)
+      writeCameraFrame(w, node, ctx, writeNodes)
     } else {
       writeDrawing(w, node, ctx, kind)
     }
@@ -1025,8 +1047,6 @@ function writeNodes(w: SceneWriter, nodes: Node[], ctx: CompileCtx): number {
   }
   return count
 }
-
-const ROOT_CTX: CompileCtx = { paint: {}, opacity: 1 }
 
 /**
  * Compile a list of root nodes into the binary draw program plus the ordered

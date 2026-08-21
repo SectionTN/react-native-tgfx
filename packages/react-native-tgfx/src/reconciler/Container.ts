@@ -1,3 +1,5 @@
+'worklet'
+
 import type { NodeHandle } from '../imperative'
 import { compileScene } from '../compiler/compile'
 import type { MaybeSharedValue } from '../compiler/values'
