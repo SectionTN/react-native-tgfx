@@ -19,18 +19,18 @@ interface Nitro {
   }
 }
 
-let cached: Nitro | null = null
+const cache = { nitro: null as Nitro | null }
 
 function nitro(): Nitro {
-  if (cached == null) {
+  if (cache.nitro == null) {
     try {
       // A require inside a try is what keeps this optional to Metro.
-      cached = require('react-native-nitro-modules') as Nitro
+      cache.nitro = require('react-native-nitro-modules') as Nitro
     } catch {
-      cached = {}
+      cache.nitro = {}
     }
   }
-  return cached
+  return cache.nitro
 }
 
 /**

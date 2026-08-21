@@ -61,6 +61,10 @@ type Factory<P> =
 
 const element = <P>(type: NodeTypeName): Factory<P> =>
   ((props?: ElementProps<P>, children?: SceneNode[]): SceneNode => {
+    // Its own directive: the file-level one covers `element`, not the arrows
+    // it returns — without this, `rect` crosses to a worklet as a remote
+    // function and the first call there throws.
+    'worklet'
     if (
       typeof __DEV__ !== 'undefined' &&
       __DEV__ &&

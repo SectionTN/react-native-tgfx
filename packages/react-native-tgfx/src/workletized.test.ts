@@ -22,6 +22,7 @@ const WORKLETIZED = [
   'reconciler/types.ts',
   'reconciler/Container.ts',
   'reanimated/slotFlags.ts',
+  'scene.ts',
 ]
 
 describe('workletized compile graph', () => {

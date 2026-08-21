@@ -124,7 +124,7 @@ export {
   mask,
 } from './elements'
 export type { SceneNode, MaskElementProps } from './elements'
-export { Scene } from './scene'
+export { Scene, createScene, sceneFrom } from './scene'
 export type {
   SceneTarget,
   SceneOptions,

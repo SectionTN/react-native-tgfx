@@ -31,8 +31,6 @@ export interface Worklets {
   createSynchronizable?: <T>(initial: T) => Synchronizable<T>
 }
 
-let absent = false
-
 /**
  * Reanimated, if it is installed, resolved on use.
  *
@@ -40,9 +38,15 @@ let absent = false
  * compiler, and the compiler must not drag an optional peer dependency — and
  * React Native itself behind it — into the graph of anything that only wants to
  * build a scene. The module object itself is not cached: `require` already is.
+ *
+ * A worklet, and one that writes no module state: a worklet body assigning a
+ * captured `let` compiles to an assignment to a `const` and fails to parse.
  */
 export function reanimated(): Reanimated {
-  if (absent) {
+  'worklet'
+  // A worklet runtime has no `require`: report Reanimated absent rather than
+  // crashing, so callers degrade the same way they do without the install.
+  if (typeof require !== 'function') {
     return {}
   }
   try {
@@ -52,14 +56,25 @@ export function reanimated(): Reanimated {
     if (!isModuleNotFound(e, 'react-native-reanimated')) {
       throw e
     }
-    absent = true
     return {}
   }
 }
 
+let absent: boolean | null = null
+
 /** True when react-native-reanimated resolves at all, whatever it exports. */
 export function reanimatedInstalled(): boolean {
-  reanimated()
+  if (absent == null) {
+    try {
+      require('react-native-reanimated')
+      absent = false
+    } catch (e) {
+      if (!isModuleNotFound(e, 'react-native-reanimated')) {
+        throw e
+      }
+      absent = true
+    }
+  }
   return !absent
 }
 
@@ -73,7 +88,7 @@ export function requireReanimated(
   names: (keyof Reanimated)[]
 ): Reanimated {
   const mod = reanimated()
-  if (absent) {
+  if (!reanimatedInstalled()) {
     throw new Error(
       `[tgfx] ${feature} needs react-native-reanimated, which is not installed.`
     )

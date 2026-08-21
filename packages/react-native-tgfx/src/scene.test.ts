@@ -17,7 +17,7 @@ mock.module('react-native-reanimated', () => ({
 import { beforeEach } from 'bun:test'
 import { circle, rect, text } from './elements'
 import { createHandle } from './imperative'
-import { Scene, type SceneTarget } from './scene'
+import { Scene, createScene, sceneFrom, type SceneTarget } from './scene'
 
 beforeEach(() => {
   mappers.clear()
@@ -372,4 +372,33 @@ test('scene.toSvg and scene.toPdf carry the size through', async () => {
   expect(native.svg).toEqual([{ width: 595, height: 842 }])
   await scene.toPdf('/tmp/report.pdf')
   expect(native.pdf).toEqual([{ path: '/tmp/report.pdf', sizes: [595, 842] }])
+})
+
+test('createScene and sceneFrom mirror the statics, worklet-callably', () => {
+  const { t, calls } = target()
+  const viaFactory = createScene({ width: 40, height: 20 })
+  viaFactory.add(rect({ x: 0, y: 0, width: 40, height: 20, color: '#123456' }))
+  viaFactory.attach(t)
+  const { t: t2, calls: calls2 } = target()
+  const viaStatic = Scene.create({ width: 40, height: 20 })
+  viaStatic.add(rect({ x: 0, y: 0, width: 40, height: 20, color: '#123456' }))
+  viaStatic.attach(t2)
+  expect(calls.scenes).toEqual(calls2.scenes)
+
+  const { t: t3, calls: calls3 } = target()
+  sceneFrom([circle({ cx: 5, cy: 5, r: 2 })]).attach(t3)
+  expect(calls3.scenes.length).toBe(1)
+})
+
+test('exports refuse to run on a worklet runtime, by name', async () => {
+  const scene = createScene({ width: 10, height: 10 })
+  scene.add(rect({ x: 0, y: 0, width: 10, height: 10 }))
+  ;(globalThis as { _WORKLET?: boolean })._WORKLET = true
+  try {
+    expect(() => scene.toSvg()).toThrow('scene.toSvg')
+    expect(() => scene.toSvg()).toThrow('JS thread')
+  } finally {
+    delete (globalThis as { _WORKLET?: boolean })._WORKLET
+  }
+  await scene.toSvg().catch(() => null)
 })

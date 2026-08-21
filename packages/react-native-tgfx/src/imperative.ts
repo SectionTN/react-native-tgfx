@@ -187,57 +187,61 @@ interface Internals {
 // Off the handle itself: a worklet clones every own enumerable property, and these hold the graph.
 const internals = new WeakMap<NodeHandle, Internals>()
 
-let warnedOpOnNonGroup = false
-let warnedFullPool = false
-let warnedNonUniformOnShader = false
-let warnedUniformsOnNode = false
-let warnedUniformNeverLands = false
+// Properties, not module `let`s: a worklet body assigning a captured `let`
+// compiles to an assignment to a `const` and fails to parse on the UI runtime.
+const warned = {
+  opOnNonGroup: false,
+  fullPool: false,
+  nonUniformOnShader: false,
+  uniformsOnNode: false,
+  uniformNeverLands: false,
+}
 
 function warnOpOnNonGroup(key: string): void {
-  if (warnedOpOnNonGroup) {
+  if (warned.opOnNonGroup) {
     return
   }
-  warnedOpOnNonGroup = true
+  warned.opOnNonGroup = true
   console.warn(
     `[tgfx] '${key}' was written to a handle on a node that is not a <Group>: only a group carries a transform, so the write is dropped. Wrap the node in a <Group> and put the handle on that.`
   )
 }
 
 function warnNonUniformOnShader(key: string): void {
-  if (warnedNonUniformOnShader) {
+  if (warned.nonUniformOnShader) {
     return
   }
-  warnedNonUniformOnShader = true
+  warned.nonUniformOnShader = true
   console.warn(
     `[tgfx] '${key}' was written to a handle on a <Shader>, which is reached only through its uniforms — the write is dropped. Put the handle on the drawing node if you meant to change the node.`
   )
 }
 
 function warnUniformsOnNode(): void {
-  if (warnedUniformsOnNode) {
+  if (warned.uniformsOnNode) {
     return
   }
-  warnedUniformsOnNode = true
+  warned.uniformsOnNode = true
   console.warn(
     '[tgfx] `uniforms` was written to a handle on a drawing node, which carries none — the write is dropped. Put the handle on the <Shader> itself.'
   )
 }
 
 function warnUniformNeverLands(name: string): void {
-  if (warnedUniformNeverLands) {
+  if (warned.uniformNeverLands) {
     return
   }
-  warnedUniformNeverLands = true
+  warned.uniformNeverLands = true
   console.warn(
     `[tgfx] uniform '${name}' is not one the compiled program carries — the shader source does not declare it, or nothing draws the paint holding it. Writes to it are dropped.`
   )
 }
 
 function warnFullPool(name: string): void {
-  if (warnedFullPool) {
+  if (warned.fullPool) {
     return
   }
-  warnedFullPool = true
+  warned.fullPool = true
   console.warn(
     `[tgfx] uniform '${name}' is past the ${UNIFORM_SLOTS}-float pool one node handle keeps, so it gets no value slot and every write to it re-encodes the scene. Split the shader across two handles, or pack fewer uniforms into this one.`
   )

@@ -7,7 +7,7 @@ import { SceneWriter } from '../compiler/writer'
 import { nodeInternals, type NodeOwner } from '../imperative'
 import type { Node } from './types'
 
-let warnedShared = false
+const warned = { shared: false }
 
 /** Called on each committed change with the draw program and its animated values. */
 export type CommitListener = (
@@ -74,8 +74,8 @@ export class TgfxContainer implements NodeOwner {
     if (this.claimRefs) {
       for (let i = 0; i < refs.length; i++) {
         const ref = refs[i]!
-        if (!warnedShared && refs.indexOf(ref) !== i) {
-          warnedShared = true
+        if (!warned.shared && refs.indexOf(ref) !== i) {
+          warned.shared = true
           console.warn(
             '[tgfx] one node handle is on more than one node: they share its value slots, so a write moves all of them together. Use one handle per node.'
           )

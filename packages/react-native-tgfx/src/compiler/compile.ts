@@ -67,7 +67,9 @@ interface CompileCtx {
   opacity: Opacity
 }
 
-let warnedFrozenOpacity = false
+// Properties, not module `let`s: a worklet body assigning a captured `let`
+// compiles to an assignment to a `const` and fails to parse on the UI runtime.
+const warned = { frozenOpacity: false }
 
 function mulOpacity(inherited: Opacity, own: unknown): Opacity {
   if (own === undefined) {
@@ -84,8 +86,8 @@ function mulOpacity(inherited: Opacity, own: unknown): Opacity {
   } else if (!ownLive && resolveNumber(own, 1) === 1) {
     return inherited
   }
-  if (!warnedFrozenOpacity) {
-    warnedFrozenOpacity = true
+  if (!warned.frozenOpacity) {
+    warned.frozenOpacity = true
     console.warn(
       '[tgfx] two opacities in one chain, at least one animated: a draw command has a single alpha slot, so their product is frozen at the last commit. Animate one opacity per chain.'
     )
@@ -533,8 +535,7 @@ function addPaintSource(
   Object.assign(paint, next)
 }
 
-let warnedGrainSecondColor = false
-let warnedStrandedGrain = false
+const warnedGrain = { secondColor: false, stranded: false }
 
 const inDev = (): boolean => typeof __DEV__ !== 'undefined' && __DEV__
 
@@ -546,8 +547,8 @@ function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
       // routes its ref itself — walking it here would register the handle
       // twice. Reaching it here at all means it is not a group's direct child,
       // which is the only place it draws anything.
-      if (!warnedStrandedGrain && inDev()) {
-        warnedStrandedGrain = true
+      if (!warnedGrain.stranded && inDev()) {
+        warnedGrain.stranded = true
         console.warn(
           '[tgfx] <FilmGrain> applies only as a direct child of a <Group>: it dusts what that group drew. Anywhere else it draws nothing.'
         )
@@ -919,10 +920,10 @@ function writeGrain(w: SceneWriter, p: Record<string, unknown>): void {
   if (
     mode === 2 &&
     p.secondColor != null &&
-    !warnedGrainSecondColor &&
+    !warnedGrain.secondColor &&
     inDev()
   ) {
-    warnedGrainSecondColor = true
+    warnedGrain.secondColor = true
     console.warn(
       '[tgfx] <FilmGrain secondColor> with no `color`: the second colour is the other half of a two-colour grain, so on its own it is dropped and the grain keeps the noise own RGB. Name `color` too.'
     )

@@ -1,3 +1,5 @@
+'worklet'
+
 // The React-free scene container: holds factory-built nodes, compiles them
 // through the same TgfxContainer the reconciler uses, and fans the program out
 // to any number of render targets with a per-target delta string table.
@@ -296,6 +298,11 @@ export class Scene {
     what: string,
     options?: { width?: number; height?: number }
   ): { width: number; height: number } {
+    if ((globalThis as { _WORKLET?: boolean })._WORKLET === true) {
+      throw new Error(
+        `[tgfx] ${what}: exports run on the JS thread only. From a worklet, attach an offscreen surface and use surface.save/toImage.`
+      )
+    }
     const width = options?.width ?? this.options?.width
     const height = options?.height ?? this.options?.height
     if (width != null && height != null) {
@@ -342,6 +349,11 @@ export class Scene {
   // per-commit mapper churn only matters if structural commits are per-frame,
   // which the slot path exists to avoid.
   private syncMapper(): void {
+    // On a worklet runtime the scene already lives where values change; pushes
+    // are synchronous and there is no Reanimated module to start a mapper on.
+    if ((globalThis as { _WORKLET?: boolean })._WORKLET === true) {
+      return
+    }
     const { startMapper, stopMapper } = reanimated()
     if (startMapper == null || stopMapper == null) {
       return
@@ -410,4 +422,25 @@ export class Scene {
       }
     })
   }
+}
+
+/**
+ * `Scene.create`, as a plain function. Inside a worklet this is the only form
+ * that works: a class captured across modules crosses as a host reference, so
+ * `Scene.create` is not callable there — `createScene()` is.
+ */
+export function createScene(options?: SceneOptions): Scene {
+  // The casts step around `private`: this factory IS the constructor's public
+  // face, split out of the class because statics cannot cross into a worklet.
+  const scene = new (Scene as unknown as new () => Scene)()
+  ;(scene as unknown as { options: SceneOptions | null }).options =
+    options ?? null
+  return scene
+}
+
+/** `Scene.from`, as a plain function — the worklet-callable form. */
+export function sceneFrom(roots: SceneNode[], options?: SceneOptions): Scene {
+  const scene = createScene(options)
+  scene.replaceChildren(roots)
+  return scene
 }
