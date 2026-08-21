@@ -61,17 +61,17 @@ after the canvas scrolls back in picks them up. A canvas that never comes back
 costs nothing per frame. Snapshots still render while hidden — `snapshot()` and
 `save()` force the frame they need.
 
-## Vulkan backend (Android, experimental)
+## Vulkan backend (Android)
 
-The Android renderer normally runs on OpenGL ES. An experimental Vulkan backend
-can be enabled per app with a Gradle property:
+The Android renderer runs on Vulkan by default; OpenGL ES remains one Gradle
+property away:
 
 ```properties
 # android/gradle.properties
-TgfxVulkan=ON
+TgfxVulkan=OFF
 ```
 
-The flag links the Vulkan prebuilt (`android/libs-vulkan`, shipped alongside
+When Vulkan is on, the build links the Vulkan prebuilt (`android/libs-vulkan`, shipped alongside
 the GL one; absent prebuilts fall back to compiling the vendored tgfx with
 `TGFX_USE_VULKAN`), swaps the window glue to `VulkanWindow` / `VulkanDevice`,
 and routes video frames through an `AImageReader` — a SurfaceTexture cannot

@@ -309,7 +309,7 @@ back in picks them up. `snapshot()` / `save()` still force the frame they need.
 ### Vulkan backend (Android)
 
 ```properties title="android/gradle.properties"
-TgfxVulkan=ON
+TgfxVulkan=OFF   # Vulkan is the default; this falls back to GL
 ```
 
 Links the Vulkan prebuilt, swaps the window glue to `VulkanWindow`/

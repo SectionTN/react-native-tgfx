@@ -14,7 +14,7 @@ set(TGFX_DIR "${CMAKE_SOURCE_DIR}/../cpp/third_party/tgfx")
 # Vulkan backend switch. Each backend has its own prebuilt archive directory
 # (build-tgfx-android.sh writes both); missing prebuilts fall back to a source
 # build of the vendored tgfx.
-option(TGFX_RN_VULKAN "Use the Vulkan backend instead of OpenGL ES" OFF)
+option(TGFX_RN_VULKAN "Use the Vulkan backend instead of OpenGL ES" ON)
 
 if (TGFX_RN_VULKAN)
   set(TGFX_LIB "${CMAKE_SOURCE_DIR}/libs-vulkan/${ANDROID_ABI}/libtgfx.a")

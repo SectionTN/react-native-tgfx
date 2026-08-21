@@ -152,7 +152,7 @@ JavaScript per frame — no worklet, no re-render, no re-encode. A prop with no
 slot re-encodes the scene instead.
 
 Backends: Metal on iOS, OpenGL ES by default on Android, Vulkan opt-in
-(`TgfxVulkan=ON` in `android/gradle.properties`, 15–30% more presented FPS).
+(the default; `TgfxVulkan=OFF` in `android/gradle.properties` falls back to GL, Vulkan gives 15–30% more presented FPS).
 
 ## Read this first, then load one reference
 

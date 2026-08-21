@@ -52,7 +52,7 @@ android {
       cmake {
         cppFlags "-frtti -fexceptions -Wall -Wextra -fstack-protector-all"
         arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
-                  "-DTGFX_RN_VULKAN=${project.findProperty('TgfxVulkan') ?: 'OFF'}"
+                  "-DTGFX_RN_VULKAN=${project.findProperty('TgfxVulkan') ?: 'ON'}"
         abiFilters (*reactNativeArchitectures())
 
         buildTypes {
