@@ -13,19 +13,38 @@ program.
 ## Build and export
 
 ```ts
-import { Scene, circle, image, rect, renderToImage } from "react-native-tgfx";
+import { Scene, image, loadImage, rect } from "react-native-tgfx";
 
-const scene = Scene.create();
-scene.add(rect({ x: 0, y: 0, width: 200, height: 200, color: "tomato" }));
-scene.add(circle({ cx: 100, cy: 100, r: 40, color: "#0A84FF" }));
+const photo = await loadImage("https://picsum.photos/id/237/300/200");
 
-const still = await renderToImage(scene, { width: 200, height: 200 });
-await still.save(`${dir}/card.png`); // written natively; bytes never enter JS
+const scene = Scene.create({ width: 320, height: 420 });
+scene.add(rect({ x: 0, y: 0, width: 320, height: 420, color: "#101725" }));
+scene.add(rect({ x: 10, y: 10, width: 300, height: 60, color: "#ff2d55" }));
+scene.add(
+  image({ image: photo, x: 10, y: 90, width: 300, height: 200, fit: "cover" })
+);
+
+await scene.save(`${dir}/card.png`, { pixelRatio: 2 });
+// written natively; bytes never enter JS
 ```
 
 Every component has a factory (`rect`, `text`, `linearGradient`, `mask`, …) —
-see [Imperative](/docs/imperative). `renderToSvg` and `renderToPdf` take the
-same inputs; PDF pages mix `element` (JSX) and `scene` freely.
+see [Imperative](/docs/imperative). `scene.save` picks the format from the
+extension (`.png`, `.jpg`, `.webp`) unless `format` overrides it; `toImage`
+returns the [`TgfxImage`](/docs/images) instead, and `toSvg` / `toPdf` are the
+vector twins:
+
+```ts
+const still = await scene.toImage(); // draw it back, encode it, share it
+const markup = await scene.toSvg();
+await scene.toPdf(`${dir}/card.pdf`);
+```
+
+The render size comes from the call's `width`/`height`, else the size
+`Scene.create` was given, else a lone attached surface — with none of the
+three, the call throws. The `renderToImage` / `renderToSvg` / `renderToPdf`
+functions still take a `Scene`, `SceneNode[]` or JSX; PDF pages mix `element`
+(JSX) and `scene` freely.
 
 ## Mutate without re-encoding
 
@@ -93,7 +112,7 @@ const player = await createVideoPlayer(require("./clip.mp4"), {
 // currentFrame is null until the first decode and is read once at add time —
 // build the node when the frame exists:
 player.onFrame((frame) =>
-  scene.add(image({ image: frame, x: 0, y: 0, width: 1280, height: 720 })),
+  scene.add(image({ image: frame, x: 0, y: 0, width: 1280, height: 720 }))
 );
 player.setOptions({ paused: true });
 player.dispose();

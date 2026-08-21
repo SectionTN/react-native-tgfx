@@ -258,3 +258,118 @@ test('an export-only recompile stays quiet: no re-send, no mapper restart', () =
   scene.compileForExport('test')
   expect(calls.scenes.length).toBe(2)
 })
+
+// ---- export sugar ----------------------------------------------------------
+
+import { nativeMocks } from './testing/nativeMocks'
+
+function fakeImageFactory() {
+  const state = {
+    fromScene: [] as { width: number; height: number; ratio: number }[],
+    saved: [] as { path: string; format?: string; quality?: number }[],
+    svg: [] as { width: number; height: number }[],
+    pdf: [] as { path: string; sizes: number[] }[],
+    disposed: 0,
+  }
+  nativeMocks.hybridObject = () => ({
+    fromScene: (
+      _words: ArrayBuffer,
+      _strings: string[],
+      width: number,
+      height: number,
+      ratio: number
+    ) => {
+      state.fromScene.push({ width, height, ratio })
+      return Promise.resolve({
+        handle: 7,
+        width,
+        height,
+        save: (path: string, format?: string, quality?: number) => {
+          state.saved.push({ path, format, quality })
+          return Promise.resolve()
+        },
+        dispose: () => {
+          state.disposed++
+        },
+      })
+    },
+    toSvg: (
+      _words: ArrayBuffer,
+      _strings: string[],
+      width: number,
+      height: number
+    ) => {
+      state.svg.push({ width, height })
+      return Promise.resolve('<svg/>')
+    },
+    savePdf: (
+      path: string,
+      _pages: ArrayBuffer[],
+      _strings: string[],
+      _counts: number[],
+      sizes: number[]
+    ) => {
+      state.pdf.push({ path, sizes })
+      return Promise.resolve()
+    },
+  })
+  return state
+}
+
+test('scene.save renders, writes with the extension format, and disposes', async () => {
+  const native = fakeImageFactory()
+  const scene = Scene.from(
+    [rect({ x: 0, y: 0, width: 300, height: 140, color: '#101725' })],
+    { width: 300, height: 140 }
+  )
+  await scene.save('/tmp/card.webp', { quality: 90 })
+  expect(native.fromScene).toEqual([{ width: 300, height: 140, ratio: 1 }])
+  expect(native.saved).toEqual([
+    { path: '/tmp/card.webp', format: 'webp', quality: 90 },
+  ])
+  expect(native.disposed).toBe(1)
+  await scene.save('/tmp/card.png')
+  expect(native.saved[1]).toEqual({
+    path: '/tmp/card.png',
+    format: 'png',
+    quality: undefined,
+  })
+})
+
+test('the export size falls back: options, then create, then a surface', async () => {
+  const native = fakeImageFactory()
+  const sized = Scene.from([rect({ x: 0, y: 0, width: 1, height: 1 })], {
+    width: 64,
+    height: 32,
+  })
+  await sized.save('/tmp/a.png', { width: 10, height: 20 })
+  expect(native.fromScene[0]).toEqual({ width: 10, height: 20, ratio: 1 })
+  await sized.save('/tmp/b.png')
+  expect(native.fromScene[1]).toEqual({ width: 64, height: 32, ratio: 1 })
+
+  const unsized = Scene.from([rect({ x: 0, y: 0, width: 1, height: 1 })])
+  await expect(unsized.save('/tmp/c.png')).rejects.toThrow('no size')
+
+  const surface = {
+    width: 200,
+    height: 100,
+    setScene: () => {},
+    setValues: () => {},
+  }
+  unsized.attach(surface)
+  unsized.flush()
+  await unsized.save('/tmp/d.png')
+  expect(native.fromScene[2]).toEqual({ width: 200, height: 100, ratio: 1 })
+})
+
+test('scene.toSvg and scene.toPdf carry the size through', async () => {
+  const native = fakeImageFactory()
+  const scene = Scene.from([rect({ x: 0, y: 0, width: 1, height: 1 })], {
+    width: 595,
+    height: 842,
+  })
+  await expect(scene.toSvg()).resolves.toBe('<svg/>')
+  expect(native.svg).toEqual([{ width: 595, height: 842 }])
+  await scene.toPdf('/tmp/report.pdf')
+  expect(native.pdf).toEqual([{ path: '/tmp/report.pdf', sizes: [595, 842] }])
+})

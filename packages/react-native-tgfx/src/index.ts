@@ -125,7 +125,12 @@ export {
 } from './elements'
 export type { SceneNode, MaskElementProps } from './elements'
 export { Scene } from './scene'
-export type { SceneTarget } from './scene'
+export type {
+  SceneTarget,
+  SceneOptions,
+  SceneStillOptions,
+  SceneVectorOptions,
+} from './scene'
 export { createOffscreenSurface } from './offscreenSurface'
 export type { OffscreenSurfaceOptions } from './offscreenSurface'
 export type { TgfxOffscreenSurface } from './specs/TgfxOffscreenSurface.nitro'

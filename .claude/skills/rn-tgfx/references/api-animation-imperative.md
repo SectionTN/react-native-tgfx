@@ -22,6 +22,10 @@ const scene = Scene.create()            // or Scene.from(nodes)
 scene.add(node); scene.insert(node, 0); scene.remove(node)
 scene.replaceChildren(nodes); scene.clear()
 scene.flush()                           // commit now (else once per microtask)
+await scene.save(path); scene.toImage(); scene.toSvg(); scene.toPdf(path)
+                                        // export sugar; size from call options
+                                        // ?? Scene.create({width,height}) ?? a
+                                        // lone attached surface
 const detach = scene.attach(viewRef)    // TgfxViewRef; several targets fan out
 scene.dispose()
 ```

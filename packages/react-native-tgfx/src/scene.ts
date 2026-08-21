@@ -7,6 +7,30 @@ import type { NodeHandle } from './imperative'
 import { reanimated } from './reanimated/peer'
 import { TgfxContainer } from './reconciler/Container'
 import type { SceneNode } from './elements'
+import type { TgfxImage as TgfxImageHandle } from './specs/TgfxImage.nitro'
+import type { ColorSpace } from './types'
+
+/** A default render size, so the export sugar needs no per-call one. */
+export interface SceneOptions {
+  width?: number
+  height?: number
+}
+
+export interface SceneStillOptions extends SceneOptions {
+  /** Pixels per point. Defaults to 1. */
+  pixelRatio?: number
+  opaque?: boolean
+  colorSpace?: ColorSpace
+  /** For `save`: defaults from the file extension, else png. */
+  format?: 'png' | 'jpeg' | 'webp'
+  /** 1-100, for the lossy formats. */
+  quality?: number
+}
+
+export interface SceneVectorOptions extends SceneOptions {
+  /** For `toSvg`: write glyphs as path outlines. */
+  textAsPaths?: boolean
+}
 
 /**
  * Anything a {@link Scene} can drive: a mounted canvas (`TgfxViewRef`) or an
@@ -45,6 +69,7 @@ export class Scene {
   /// Bumped by flush/dispose so a stale queued microtask commits nothing.
   private generation = 0
   private mapperId: number | null = null
+  private options: SceneOptions | null = null
   /// True during an export-only recompile: targets already show this state, so
   /// re-sending the program and restarting the mapper would be pure churn.
   private quiet = false
@@ -81,12 +106,14 @@ export class Scene {
     }
   }
 
-  static create(): Scene {
-    return new Scene()
+  static create(options?: SceneOptions): Scene {
+    const scene = new Scene()
+    scene.options = options ?? null
+    return scene
   }
 
-  static from(roots: SceneNode[]): Scene {
-    const scene = new Scene()
+  static from(roots: SceneNode[], options?: SceneOptions): Scene {
+    const scene = Scene.create(options)
     scene.replaceChildren(roots)
     return scene
   }
@@ -208,6 +235,88 @@ export class Scene {
       out.push(named.get(path.join(',')) ?? null)
     }
     return out
+  }
+
+  /**
+   * Render this scene and write the still to `path` — the full headless loop
+   * in one call. Size comes from `options`, then `Scene.create`'s options,
+   * then an attached offscreen surface. Format from the file extension unless
+   * given. Resolves once the file is on disk; the bytes never enter JS.
+   */
+  async save(path: string, options?: SceneStillOptions): Promise<void> {
+    const image = await this.toImage(options)
+    try {
+      const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+      const format =
+        options?.format ??
+        (extension === 'jpg' || extension === 'jpeg' || extension === 'webp'
+          ? extension
+          : 'png')
+      await image.save(path, format, options?.quality)
+    } finally {
+      image.dispose()
+    }
+  }
+
+  /** Render this scene to a registered image handle. Caller disposes it. */
+  toImage(options?: SceneStillOptions): Promise<TgfxImageHandle> {
+    const { width, height } = this.sizeFor('scene.toImage', options)
+    const { renderToImage } =
+      require('./offscreen') as typeof import('./offscreen')
+    return renderToImage(this, {
+      width,
+      height,
+      pixelRatio: options?.pixelRatio,
+      opaque: options?.opaque,
+      colorSpace: options?.colorSpace,
+    })
+  }
+
+  /** Render this scene to SVG markup. Vectors stay vectors. */
+  toSvg(options?: SceneVectorOptions): Promise<string> {
+    const { width, height } = this.sizeFor('scene.toSvg', options)
+    const { renderToSvg } =
+      require('./offscreen') as typeof import('./offscreen')
+    return renderToSvg(this, {
+      width,
+      height,
+      textAsPaths: options?.textAsPaths,
+    })
+  }
+
+  /** Write this scene as a one-page vector PDF. Size in points; A4 by naming it. */
+  toPdf(path: string, options?: SceneVectorOptions): Promise<void> {
+    const { width, height } = this.sizeFor('scene.toPdf', options)
+    const { renderToPdf } =
+      require('./offscreen') as typeof import('./offscreen')
+    return renderToPdf(path, [{ width, height, scene: this }])
+  }
+
+  private sizeFor(
+    what: string,
+    options?: { width?: number; height?: number }
+  ): { width: number; height: number } {
+    const width = options?.width ?? this.options?.width
+    const height = options?.height ?? this.options?.height
+    if (width != null && height != null) {
+      return { width, height }
+    }
+    // A surface knows its size; a lone one can stand in for the scene's.
+    if (this.targets.length === 1) {
+      const target = this.targets[0]!.target as {
+        width?: unknown
+        height?: unknown
+      }
+      if (
+        typeof target.width === 'number' &&
+        typeof target.height === 'number'
+      ) {
+        return { width: target.width, height: target.height }
+      }
+    }
+    throw new Error(
+      `[tgfx] ${what}: no size to render at — pass { width, height }, create the scene with one (Scene.create({ width, height })), or attach an offscreen surface.`
+    )
   }
 
   /** Detach every target and stop committing. Targets keep their last frame. */
