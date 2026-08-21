@@ -124,15 +124,47 @@ sink.dispose();
 
 ## Worklets
 
-A `Scene` attached to any target drives value slots from the UI thread by
-itself when Reanimated is installed — `handle.set()` and `SharedValue` props
-repaint with no driver component. A surface is a Nitro object, so
-`NitroModules.box()` hands it to any worklet runtime; box the object and call
-methods on the unboxed instance — never destructure them.
+Scenes are built on worklet runtimes too. `createScene()` and `sceneFrom()`
+are the worklet-callable forms — a class's statics do not cross runtimes, so
+`Scene.create` is not. The whole compile graph is workletized: factories,
+`add`/`remove`, `attach` and `flush` all run where the worklet runs, and the
+program a worklet compiles is byte-identical to the JS thread's.
 
-Construction stays on the JS thread: node trees hold strings and handles,
-which a worklet capture would deep-copy. Mutation (slots) and `flush()` are
-the worklet-facing operations.
+```ts
+const surface = createOffscreenSurface({ width: 1024, height: 1024 });
+const boxed = NitroModules.box(surface);
+
+scheduleOnUI(() => {
+  "worklet";
+  const scene = createScene();
+  scene.add(rect({ x: 0, y: 0, width: 512, height: 512, color: "#101725" }));
+  scene.attach(boxed.unbox());
+  scene.flush();
+  boxed.unbox().flush();
+  // The runtime that made the scene owns it; its global keeps it alive
+  // across worklet invocations. A SharedValue would clone it instead.
+  globalThis.myScene = scene;
+});
+```
+
+What differs from the JS thread:
+
+- `createScene()` / `sceneFrom()`, never the statics.
+- Call `scene.flush()` yourself after structural changes — commit batching is
+  a microtask affair, and explicit flush is the predictable form inside a
+  frame callback.
+- The exports (`save`, `toImage`, `toSvg`, `toPdf`) throw by name: render
+  into an attached offscreen surface and call `surface.save` / `surface.toImage`
+  from the JS thread instead.
+- Handles (`createHandle`) and mapper-driven animation stay on the JS thread:
+  a worklet scene is structural nodes and literal props, and per-frame motion
+  drives `surface.setValues` directly.
+
+A `Scene` attached on the JS thread still drives value slots from the UI
+thread by itself when Reanimated is installed — `handle.set()` and
+`SharedValue` props repaint with no driver component. A surface is a Nitro
+object, so `NitroModules.box()` hands it to any worklet runtime; box the
+object and call methods on the unboxed instance — never destructure them.
 
 ## Without Reanimated
 

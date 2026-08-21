@@ -170,6 +170,10 @@ gets the full program on attach and deltas after.
 `ref` props, `SharedValue` props and worklet writes behave identically to their
 JSX equivalents — the factories produce the very nodes the reconciler would.
 
+The whole scene can also be built *inside* a worklet — `createScene()` is
+`Scene.create` as a plain function, which is the form that crosses runtimes —
+see [Worklets](/docs/headless#worklets) for the rules.
+
 ## Buffers
 
 [`useSpriteBuffer`](/api/functions/useSpriteBuffer) and

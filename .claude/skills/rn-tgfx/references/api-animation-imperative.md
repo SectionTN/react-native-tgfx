@@ -34,6 +34,15 @@ Structural mutation = one re-encode per batched commit; value mutation goes
 through `createHandle()` exactly as with JSX. Factories and JSX compile
 byte-identically — components are sugar over the same nodes.
 
+Worklet runtimes build scenes too: the compile graph is workletized
+(file-level `'worklet'` directives; `workletized.test.ts` pins them). Inside a
+worklet use `createScene()` / `sceneFrom()` — statics cross as remote
+functions — keep the scene on that runtime's `globalThis`, flush explicitly,
+and render through an attached boxed offscreen surface. Exports throw on a
+worklet; handles/mappers stay JS-side. Plugin gotchas that shaped this: no
+getters in top-level objects, no assignments to captured module `let`s, and a
+factory-returned arrow needs its own `'worklet'` directive.
+
 ## Callable forms of the hook-only APIs
 
 Every hook wraps a callable (React-free) form: `createClock()` →
