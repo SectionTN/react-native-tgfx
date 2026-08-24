@@ -99,7 +99,7 @@ transparent at the pinned tgfx. Nothing here exposes one.
 
 ## How it reaches tgfx's C++
 
-`react-native-tgfx` exports exactly one header, `cpp/TgfxFrameSink.hpp`:
+`react-native-tgfx` exports exactly one header, `cpp/Render/TgfxFrameSink.hpp`:
 
 ```cpp
 namespace tgfxrn {

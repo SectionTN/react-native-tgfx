@@ -44,7 +44,7 @@ export const SCENE_VERSION = 30
  * byte-identical across commits, so re-sending them costs a Nitro marshal, a
  * UTF-8 conversion and a full hash scan per commit for nothing. Images are not
  * among them: they travel as an integer handle.
- * Decoded by applyStringTable() in cpp/SceneStrings.hpp.
+ * Decoded by applyStringTable() in cpp/Scene/SceneStrings.hpp.
  */
 export function packStringTable(prev: string[], next: string[]): string[] {
   let kept = 0

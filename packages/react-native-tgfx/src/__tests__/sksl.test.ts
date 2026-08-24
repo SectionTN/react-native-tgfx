@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { transpileShader } from './sksl'
+import { transpileShader } from '../compiler/sksl'
 
 const PLAIN = `
 uniform float2 uSize;

@@ -2,7 +2,7 @@ import { afterAll, beforeEach, expect, mock, test } from 'bun:test'
 import React, { useState } from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
 import { nativeMocks } from '../testing/nativeMocks'
-import type { VideoOptions, Video } from './useVideo'
+import type { VideoOptions, Video } from '../hooks/useVideo'
 
 let tick: (() => void) | null = null
 
@@ -88,7 +88,7 @@ beforeEach(() => {
 })
 
 const { useVideo, loadVideo } =
-  require('./useVideo') as typeof import('./useVideo')
+  require('../hooks/useVideo') as typeof import('../hooks/useVideo')
 
 async function mount(
   source: number | string = 'file:///clip.mp4',
@@ -231,7 +231,7 @@ test('a require()d asset is resolved to its uri', async () => {
 test('createVideoPlayer opens, applies options, pumps, and disposes', async () => {
   uiLoops = []
   const { createVideoPlayer } =
-    require('./useVideo') as typeof import('./useVideo')
+    require('../hooks/useVideo') as typeof import('../hooks/useVideo')
   const player = await createVideoPlayer('file:///clip.mp4', {
     looping: true,
     volume: 0.5,

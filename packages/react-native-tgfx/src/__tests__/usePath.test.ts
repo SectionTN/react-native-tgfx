@@ -30,7 +30,7 @@ const {
   pathPointAtLength,
   pathSegment,
   pathTransform,
-} = await import('./usePath')
+} = await import('../hooks/usePath')
 
 beforeEach(() => {
   calls.length = 0

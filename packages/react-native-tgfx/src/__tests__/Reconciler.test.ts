@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { shallowEqualProps } from './Reconciler'
+import { shallowEqualProps } from '../reconciler/Reconciler'
 
 test('equal when the same keys hold the same values', () => {
   expect(shallowEqualProps({ x: 1, y: 2 }, { x: 1, y: 2 })).toBe(true)

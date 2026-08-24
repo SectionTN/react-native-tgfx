@@ -90,7 +90,7 @@ set(TGFX_USE_METAL OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_WEBGPU OFF CACHE BOOL "" FORCE)
 set(TGFX_USE_QT OFF CACHE BOOL "" FORCE)
 set(TGFX_BUILD_LAYERS ON CACHE BOOL "" FORCE)
-# On for SVGDOM (cpp/SvgImage.cpp); pulls in the vendored expat, and forces
+# On for SVGDOM (cpp/Image/SvgImage.cpp); pulls in the vendored expat, and forces
 # TGFX_USE_PNG_ENCODE/TGFX_USE_JPEG_DECODE, which are already on below.
 # +545 KB of stripped arm64 libNitroTgfx, measured (4.89 MB -> 5.45 MB).
 set(TGFX_BUILD_SVG ON CACHE BOOL "" FORCE)
@@ -145,25 +145,25 @@ add_library(${PACKAGE_NAME} SHARED
         src/main/cpp/TgfxAndroid.cpp
         src/main/cpp/TgfxVideoStream.cpp
         src/main/cpp/PlatformAssetAndroid.cpp
-        ../cpp/TgfxScene.cpp
-        ../cpp/SvgPath.cpp
-        ../cpp/SvgImage.cpp
-        ../cpp/TgfxRenderer.cpp
-        ../cpp/OffscreenRender.cpp
-        ../cpp/OffscreenSurface.cpp
-        ../cpp/HybridTgfxOffscreenSurface.cpp
-        ../cpp/PdfExport.cpp
-        ../cpp/SvgExport.cpp
-        ../cpp/ImageRegistry.cpp
-        ../cpp/TgfxFrameSink.cpp
-        ../cpp/HybridTgfxImageFactory.cpp
-        ../cpp/FontRegistry.cpp
-        ../cpp/TextLayout.cpp
-        ../cpp/TextShaping.cpp
-        ../cpp/HybridTgfxFonts.cpp
-        ../cpp/PathOps.cpp
-        ../cpp/HybridTgfxPath.cpp
-        ../cpp/BufferRegistry.cpp
+        ../cpp/Scene/TgfxScene.cpp
+        ../cpp/Path/SvgPath.cpp
+        ../cpp/Image/SvgImage.cpp
+        ../cpp/Render/TgfxRenderer.cpp
+        ../cpp/Offscreen/OffscreenRender.cpp
+        ../cpp/Offscreen/OffscreenSurface.cpp
+        ../cpp/Offscreen/HybridTgfxOffscreenSurface.cpp
+        ../cpp/Export/PdfExport.cpp
+        ../cpp/Export/SvgExport.cpp
+        ../cpp/Image/ImageRegistry.cpp
+        ../cpp/Render/TgfxFrameSink.cpp
+        ../cpp/Image/HybridTgfxImageFactory.cpp
+        ../cpp/TextLayout/FontRegistry.cpp
+        ../cpp/TextLayout/TextLayout.cpp
+        ../cpp/TextLayout/TextShaping.cpp
+        ../cpp/TextLayout/HybridTgfxFonts.cpp
+        ../cpp/Path/PathOps.cpp
+        ../cpp/Path/HybridTgfxPath.cpp
+        ../cpp/Buffers/BufferRegistry.cpp
 )
 
 if (TGFX_RN_VULKAN)
@@ -180,6 +180,15 @@ include(${CMAKE_SOURCE_DIR}/../nitrogen/generated/android/NitroTgfx+autolinking.
 target_include_directories(${PACKAGE_NAME} PRIVATE
         "src/main/cpp"
         "../cpp"
+        "../cpp/Buffers"
+        "../cpp/Core"
+        "../cpp/Export"
+        "../cpp/Image"
+        "../cpp/Offscreen"
+        "../cpp/Path"
+        "../cpp/Render"
+        "../cpp/Scene"
+        "../cpp/TextLayout"
         # HarfBuzz's public headers only. It is already compiled into the tgfx
         # archive this links against, so these declare what is there rather than
         # adding a dependency — see cpp/third_party/harfbuzz/README.md.

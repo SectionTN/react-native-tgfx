@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isModuleNotFound } from './moduleNotFound'
+import { isModuleNotFound } from '../reanimated/moduleNotFound'
 
 const NAME = 'react-native-reanimated'
 const withCode = (message: string) =>

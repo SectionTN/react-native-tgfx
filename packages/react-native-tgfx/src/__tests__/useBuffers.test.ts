@@ -10,7 +10,7 @@ nativeMocks.hybridObject = () => {
 }
 
 const { createSpriteBuffer, createVertexBuffer, SPRITE_FLOATS } =
-  await import('./useBuffers')
+  await import('../hooks/useBuffers')
 
 test('createSpriteBuffer works with no React and no natives', () => {
   const sprites = createSpriteBuffer(4)

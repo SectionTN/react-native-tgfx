@@ -5,7 +5,12 @@ mock.module('react-native-reanimated', () => ({}))
 import { NodeType, type Node } from '../reconciler/types'
 import { compileScene } from '../compiler/compile'
 import { SceneWriter } from '../compiler/writer'
-import { BackdropBlur, Glass, TgfxImage, ImageSVG } from './drawings'
+import {
+  BackdropBlur,
+  Glass,
+  TgfxImage,
+  ImageSVG,
+} from '../components/drawings'
 
 const panel = { x: 0, y: 0, width: 10, height: 10 }
 

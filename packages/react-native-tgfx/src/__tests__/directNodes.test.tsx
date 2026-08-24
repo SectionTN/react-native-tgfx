@@ -5,9 +5,9 @@ import { SceneWriter } from '../compiler/writer'
 import { Circle, Path, Rect } from '../components/drawings'
 import { Group } from '../components/Group'
 import { Paint } from '../components/Paint'
-import { directNodes } from './directNodes'
-import { TgfxRoot } from './Reconciler'
-import type { Node } from './types'
+import { directNodes } from '../reconciler/directNodes'
+import { TgfxRoot } from '../reconciler/Reconciler'
+import type { Node } from '../reconciler/types'
 
 const encode = (roots: Node[]) => {
   const { buffer, strings, values } = compileScene(roots, new SceneWriter())

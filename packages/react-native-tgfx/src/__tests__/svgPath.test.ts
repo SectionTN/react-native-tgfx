@@ -129,7 +129,7 @@ int main() {
 function parseAll(): string[] {
   return runCppHarness('tgfx-svg-path', PROGRAM, {
     headers: { 'tgfx/core/Path.h': STUB },
-    sources: ['SvgPath.cpp'],
+    sources: ['Path/SvgPath.cpp'],
   })
     .stdout.split('\n')
     .slice(0, CASES.length)

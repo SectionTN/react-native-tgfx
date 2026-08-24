@@ -1,5 +1,11 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -43,6 +49,15 @@ const SPAWN = {
   maxBuffer: MAX_OUTPUT_BYTES,
 } as const
 
+/** Read, not hardcoded: a new cpp/ folder must not silently drop off the include path. */
+function featureDirs(cpp: string): string[] {
+  return readdirSync(cpp, { withFileTypes: true })
+    .filter(
+      (e) => e.isDirectory() && e.name !== 'third_party' && e.name !== 'tests'
+    )
+    .map((e) => e.name)
+}
+
 /** Compiles and runs `program`. Requires a C++20 `c++` on PATH, as CI has. */
 export function runCppHarness(
   name: string,
@@ -68,6 +83,9 @@ export function runCppHarness(
         dir,
         '-I',
         cpp,
+        // Each feature folder: the engine's own includes stay unqualified
+        // because nitrogen's generated code includes the Hybrid* headers that way.
+        ...featureDirs(cpp).flatMap((folder) => ['-I', join(cpp, folder)]),
         source,
         ...sources.map((file) => join(cpp, file)),
         '-o',

@@ -34,7 +34,7 @@ export interface SrcRect {
   height: number | SharedValueLike<number>
 }
 
-// Mirrored by the Fit enum and samplingOf()/tileModeOf() in cpp/TgfxScene.cpp.
+// Mirrored by the Fit enum and samplingOf()/tileModeOf() in cpp/Scene/TgfxScene.cpp.
 const FIT_CODE: Record<Fit, number> = {
   fill: 0,
   contain: 1,

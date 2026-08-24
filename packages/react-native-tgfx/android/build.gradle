@@ -100,7 +100,7 @@ android {
     prefab true
     // Publishes libNitroTgfx.so plus the headers copied by `prepareHeaders`
     // below, so another native package can link the *same* ImageRegistry
-    // instead of compiling a second copy of it. See cpp/TgfxFrameSink.hpp.
+    // instead of compiling a second copy of it. See cpp/Render/TgfxFrameSink.hpp.
     prefabPublishing true
   }
 
@@ -165,7 +165,7 @@ dependencies {
 // default visibility either way), but because a header nobody can reach is a
 // header nobody depends on.
 tasks.register('prepareHeaders', Copy) {
-  from file('../cpp/TgfxFrameSink.hpp')
+  from file('../cpp/Render/TgfxFrameSink.hpp')
   into "${project.buildDir}/headers/nitrotgfx/NitroTgfx/"
 }
 

@@ -22,13 +22,21 @@ Pod::Spec.new do |s|
     "ios/**/*.{swift}",
     # Objective-C(++) view + bridging header
     "ios/**/*.{h,m,mm}",
-    # Shared C++ engine (top-level cpp/ only)
-    "cpp/*.{hpp,cpp}",
+    # Shared C++ engine (feature folders only — NOT cpp/tests or cpp/third_party)
+    "cpp/Buffers/*.{hpp,cpp}",
+    "cpp/Core/*.{hpp,cpp}",
+    "cpp/Export/*.{hpp,cpp}",
+    "cpp/Image/*.{hpp,cpp}",
+    "cpp/Offscreen/*.{hpp,cpp}",
+    "cpp/Path/*.{hpp,cpp}",
+    "cpp/Render/*.{hpp,cpp}",
+    "cpp/Scene/*.{hpp,cpp}",
+    "cpp/TextLayout/*.{hpp,cpp}",
   ]
 
   tgfx_dir = "$(PODS_TARGET_SRCROOT)/cpp/third_party/tgfx"
 
-  # Export contract for other native packages (see cpp/TgfxFrameSink.hpp): a pod
+  # Export contract for other native packages (see cpp/Render/TgfxFrameSink.hpp): a pod
   # that declares `s.dependency "NitroTgfx"` links this pod's objects into the
   # same binary, so `tgfxrn::setFrame` resolves and there is exactly one
   # ImageRegistry. The header reaches it as <NitroTgfx/TgfxFrameSink.hpp> from
@@ -48,6 +56,15 @@ Pod::Spec.new do |s|
     "HEADER_SEARCH_PATHS" => [
       "\"#{tgfx_dir}/include\"",
       "\"$(PODS_TARGET_SRCROOT)/cpp\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Buffers\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Core\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Export\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Image\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Offscreen\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Path\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Render\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/Scene\"",
+      "\"$(PODS_TARGET_SRCROOT)/cpp/TextLayout\"",
       # HarfBuzz's public headers only; the code is already inside the prebuilt
       # tgfx archive below. See cpp/third_party/harfbuzz/README.md.
       "\"$(PODS_TARGET_SRCROOT)/cpp/third_party/harfbuzz\"",

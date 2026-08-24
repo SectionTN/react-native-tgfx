@@ -1,6 +1,6 @@
 import { beforeEach, expect, mock, test } from 'bun:test'
 import React from 'react'
-import { nativeMocks } from './testing/nativeMocks'
+import { nativeMocks } from '../testing/nativeMocks'
 
 // createHandle reaches for runOnJS; nothing else here touches reanimated.
 mock.module('react-native-reanimated', () => ({}))
@@ -94,8 +94,8 @@ beforeEach(() => {
   })
 })
 
-const { renderToImage, renderToPdf, renderToSvg } = await import('./offscreen')
-const { Rect, Path } = await import('./components/drawings')
+const { renderToImage, renderToPdf, renderToSvg } = await import('../offscreen')
+const { Rect, Path } = await import('../components/drawings')
 
 test('renderToImage compiles the tree and hands over the options', async () => {
   await renderToImage(
@@ -260,9 +260,9 @@ test('renderToPdf takes a memoised page list without recompiling per call', asyn
   expect(pdfCalls[1]!.pages).toBe(1)
 })
 
-const { rect, circle, path: pathNode } = await import('./elements')
-const { Scene } = await import('./scene')
-const { createHandle } = await import('./imperative')
+const { rect, circle, path: pathNode } = await import('../elements')
+const { Scene } = await import('../scene')
+const { createHandle } = await import('../imperative')
 
 test('a factory-node scene compiles byte-identically to the JSX input', async () => {
   await renderToImage(

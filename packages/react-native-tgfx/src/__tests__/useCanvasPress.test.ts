@@ -5,7 +5,8 @@ import type { CanvasHandle, HitTestResult } from '../types'
 // createHandle reaches for runOnJS; the hook itself needs no React at all.
 mock.module('react-native-reanimated', () => ({}))
 
-const { useCanvasPress, dispatchPress } = await import('./useCanvasPress')
+const { useCanvasPress, dispatchPress } =
+  await import('../hooks/useCanvasPress')
 
 function canvasReturning(hits: HitTestResult[]) {
   const calls: { x: number; y: number; precise?: boolean }[] = []

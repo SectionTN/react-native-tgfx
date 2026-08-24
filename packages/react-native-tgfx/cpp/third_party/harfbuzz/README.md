@@ -14,7 +14,7 @@ thousand-odd other entry points already exported from both.
 What is *not* shipped is a way to declare them. tgfx's own `third_party/` is
 fetched by depsync and gitignored, and the npm tarball carries only
 `cpp/third_party/tgfx/include` — tgfx's public headers, not its dependencies'.
-So `cpp/TextShaping.cpp` had no way to call code that was already linked in.
+So `cpp/TextLayout/TextShaping.cpp` had no way to call code that was already linked in.
 
 Copying the headers is what closes that: no new dependency, no new object code,
 no second copy of the library. They are a declaration of what the archive

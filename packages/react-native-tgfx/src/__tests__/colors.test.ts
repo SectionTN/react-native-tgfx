@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { colorCacheTestHooks, resolveColor } from './colors'
+import { colorCacheTestHooks, resolveColor } from '../compiler/colors'
 
 // The warning is __DEV__-gated, so the flag Metro injects has to exist here.
 ;(globalThis as { __DEV__?: boolean }).__DEV__ = true

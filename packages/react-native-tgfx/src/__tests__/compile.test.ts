@@ -4,8 +4,8 @@ import { expect, mock, test } from 'bun:test'
 mock.module('react-native-reanimated', () => ({}))
 import { NodeType, type Node } from '../reconciler/types'
 import { createHandle, nodeInternals } from '../imperative'
-import { compileScene } from './compile'
-import { Kind, SCENE_VERSION, SceneWriter } from './writer'
+import { compileScene } from '../compiler/compile'
+import { Kind, SCENE_VERSION, SceneWriter } from '../compiler/writer'
 
 const node = (type: unknown, props: object, children: Node[] = []): Node =>
   ({ type, props, children }) as Node
@@ -543,7 +543,7 @@ test('a <CameraFrame> child inherits its opacity, like a group', () => {
   expect(used[28]).toBeCloseTo(0.5)
 })
 
-// Strings are indices, so the words alone cannot tell a content change apart. See cpp/SceneHash.hpp.
+// Strings are indices, so the words alone cannot tell a content change apart. See cpp/Scene/SceneHash.hpp.
 test('a text-only change leaves the word buffer byte-identical', () => {
   const usedBytes = (buffer: ArrayBuffer) =>
     new Uint8Array(buffer).slice(0, new Float64Array(buffer)[1]! * 8)
@@ -885,7 +885,7 @@ test('a uniform vector may mix animated and static components', () => {
 // A one-sided bump is green here and a blank canvas on device, so the two constants are compared.
 test('the native wire version matches SCENE_VERSION', async () => {
   const hpp = await Bun.file(
-    new URL('../../cpp/TgfxScene.hpp', import.meta.url)
+    new URL('../../cpp/Scene/TgfxScene.hpp', import.meta.url)
   ).text()
   const found = hpp.match(/kSceneVersion = (\d+);/)?.[1]
   expect(found).toBe(String(SCENE_VERSION))

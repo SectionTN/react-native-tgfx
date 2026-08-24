@@ -15,9 +15,9 @@ mock.module('react-native-reanimated', () => ({
   },
 }))
 import { beforeEach } from 'bun:test'
-import { circle, rect, text } from './elements'
-import { createHandle } from './imperative'
-import { Scene, createScene, sceneFrom, type SceneTarget } from './scene'
+import { circle, rect, text } from '../elements'
+import { createHandle } from '../imperative'
+import { Scene, createScene, sceneFrom, type SceneTarget } from '../scene'
 
 beforeEach(() => {
   mappers.clear()
@@ -261,7 +261,7 @@ test('an export-only recompile stays quiet: no re-send, no mapper restart', () =
 
 // ---- export sugar ----------------------------------------------------------
 
-import { nativeMocks } from './testing/nativeMocks'
+import { nativeMocks } from '../testing/nativeMocks'
 
 function fakeImageFactory() {
   const state = {

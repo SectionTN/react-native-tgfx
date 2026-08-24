@@ -40,7 +40,7 @@ nativeMocks.hybridObject = () => ({
 })
 
 const { useImageState, loadImage } =
-  require('./useImage') as typeof import('./useImage')
+  require('../hooks/useImage') as typeof import('../hooks/useImage')
 
 beforeEach(() => {
   made = []

@@ -3,13 +3,13 @@ import { expect, mock, test } from 'bun:test'
 // createHandle reaches for runOnJS; this file has no other reanimated dependency.
 mock.module('react-native-reanimated', () => ({}))
 import React, { type ReactNode } from 'react'
-import { compileScene } from './compiler/compile'
-import { SceneWriter } from './compiler/writer'
-import { directNodes } from './reconciler/directNodes'
-import { TgfxRoot } from './reconciler/Reconciler'
-import type { Node } from './reconciler/types'
-import { Group } from './components/Group'
-import { Mask } from './components/Mask'
+import { compileScene } from '../compiler/compile'
+import { SceneWriter } from '../compiler/writer'
+import { directNodes } from '../reconciler/directNodes'
+import { TgfxRoot } from '../reconciler/Reconciler'
+import type { Node } from '../reconciler/types'
+import { Group } from '../components/Group'
+import { Mask } from '../components/Mask'
 import {
   Atlas,
   BackdropBlur,
@@ -29,7 +29,7 @@ import {
   Text,
   TextPath,
   Vertices,
-} from './components/drawings'
+} from '../components/drawings'
 import {
   AlphaThreshold,
   Blend,
@@ -51,9 +51,9 @@ import {
   Shader,
   SweepGradient,
   Turbulence,
-} from './components/Paint'
-import * as e from './elements'
-import { createHandle } from './imperative'
+} from '../components/Paint'
+import * as e from '../elements'
+import { createHandle } from '../imperative'
 
 const img = { handle: 7, width: 32, height: 16 }
 

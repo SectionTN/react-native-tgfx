@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { HARNESS_TIMEOUT_MS, runCppHarness } from '../testing/cppHarness'
-import { packStringTable } from './writer'
+import { packStringTable } from '../compiler/writer'
 
 // packStringTable and applyStringTable are one wire format: a mismatch misindexes rather than errors.
 const PAYLOAD = `data:image/png;base64,${'QUJDREVGR0g='.repeat(400)}`

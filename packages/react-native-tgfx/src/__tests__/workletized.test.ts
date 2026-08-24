@@ -111,7 +111,7 @@ function topLevel(ast: Ast): {
 
 describe('workletized compile graph', () => {
   for (const file of WORKLETIZED) {
-    const source = readFileSync(join(import.meta.dir, file), 'utf8')
+    const source = readFileSync(join(import.meta.dir, '..', file), 'utf8')
 
     it(`${file} keeps the file-level 'worklet' directive`, () => {
       expect(source.startsWith("'worklet'")).toBe(true)

@@ -1,6 +1,6 @@
 # Draw-program wire format
 
-The binary program `src/compiler/writer.ts` writes and `cpp/TgfxScene.cpp` reads.
+The binary program `src/compiler/writer.ts` writes and `cpp/Scene/TgfxScene.cpp` reads.
 `SCENE_VERSION` in the writer is the current version; the reader rejects anything
 else outright, so every entry below is a break rather than a negotiation.
 

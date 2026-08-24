@@ -45,9 +45,10 @@ mock.module('react-native-reanimated', () => ({
 nativeMocks.hostComponent = FakeView as never
 
 // Synchronous: a top-level await lets another test file's mock.module land first.
-const { Canvas } = require('./Canvas') as typeof import('./Canvas')
+const { Canvas } =
+  require('../components/Canvas') as typeof import('../components/Canvas')
 const { Rect, Path, Text } =
-  require('./drawings') as typeof import('./drawings')
+  require('../components/drawings') as typeof import('../components/drawings')
 
 function Star(): React.ReactElement {
   return <Path path="M0 0L1 1" color="gold" />
@@ -464,9 +465,12 @@ test('a write made before the first compile survives it', async () => {
   expect(scenes.at(-1)!).toContain(4278255360)
 })
 
-const { Group } = require('./Group') as typeof import('./Group')
-const { Fill } = require('./drawings') as typeof import('./drawings')
-const { Shader } = require('./Paint') as typeof import('./Paint')
+const { Group } =
+  require('../components/Group') as typeof import('../components/Group')
+const { Fill } =
+  require('../components/drawings') as typeof import('../components/drawings')
+const { Shader } =
+  require('../components/Paint') as typeof import('../components/Paint')
 
 function Spun(): React.ReactElement {
   box = useNode()
@@ -1041,7 +1045,8 @@ test('Image loads its source and draws once the decode lands', async () => {
     fromFile: () => decoding,
   })
   try {
-    const { Image } = require('./Image') as typeof import('./Image')
+    const { Image } =
+      require('../components/Image') as typeof import('../components/Image')
     await render(
       <Canvas>
         <Image source="file:///cat.png" x={0} y={0} width={10} height={10} />
@@ -1070,7 +1075,8 @@ test('Image with a failing source warns and stays empty', async () => {
     fromFile: () => Promise.reject(new Error('404')),
   })
   try {
-    const { Image } = require('./Image') as typeof import('./Image')
+    const { Image } =
+      require('../components/Image') as typeof import('../components/Image')
     await render(
       <Canvas>
         <Image

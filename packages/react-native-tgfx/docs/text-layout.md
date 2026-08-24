@@ -1,6 +1,6 @@
 # Text layout
 
-`cpp/TextLayout.hpp` lays `<Text>` and `<TextPath>` out into a single
+`cpp/TextLayout/TextLayout.hpp` lays `<Text>` and `<TextPath>` out into a single
 `tgfx::TextBlob` holding every line and every fallback run, positioned relative
 to the first baseline at (0, 0), memoised on the command against a
 quarter-pixel-quantised size.

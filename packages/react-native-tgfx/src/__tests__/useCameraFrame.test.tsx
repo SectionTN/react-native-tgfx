@@ -9,7 +9,7 @@ import type {
   CameraFrameOptions,
   CameraFrameSource,
   FrameLike,
-} from './useCameraFrame'
+} from '../hooks/useCameraFrame'
 
 // On a guest runtime a shared-value write lands asynchronously; `land()` makes
 // that hazard drivable from a test instead of a matter of thread timing.
@@ -109,7 +109,7 @@ beforeEach(() => {
 })
 
 const { useCameraFrame } =
-  require('./useCameraFrame') as typeof import('./useCameraFrame')
+  require('../hooks/useCameraFrame') as typeof import('../hooks/useCameraFrame')
 
 function frame(over: Partial<FrameLike> = {}): FrameLike {
   return {
@@ -356,7 +356,7 @@ test('a delayed handle write still delivers the minted image, exactly once', asy
 
 test('createCameraFrameSink mints once, swaps buffers, and disposes', () => {
   const { createCameraFrameSink } =
-    require('./useCameraFrame') as typeof import('./useCameraFrame')
+    require('../hooks/useCameraFrame') as typeof import('../hooks/useCameraFrame')
   const postures: unknown[] = []
   const sink = createCameraFrameSink({
     onPosture: (p) => postures.push(p),
@@ -384,7 +384,7 @@ test('createCameraFrameSink mints once, swaps buffers, and disposes', () => {
 
 test('createCameraFrameSink releases the buffer when onEachFrame throws', () => {
   const { createCameraFrameSink } =
-    require('./useCameraFrame') as typeof import('./useCameraFrame')
+    require('../hooks/useCameraFrame') as typeof import('../hooks/useCameraFrame')
   const sink = createCameraFrameSink({
     onEachFrame: () => {
       throw new Error('detector exploded')

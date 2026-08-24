@@ -26,7 +26,7 @@ mock.module('react-native-nitro-modules', () => ({
   },
 }))
 
-const { useTgfxCameraSink } = await import('./index')
+const { useTgfxCameraSink } = await import('../index')
 
 function Host({ id }: { id: number }): null {
   const sink = useTgfxCameraSink()

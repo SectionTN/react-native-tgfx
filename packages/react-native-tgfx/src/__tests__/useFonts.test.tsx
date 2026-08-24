@@ -40,7 +40,7 @@ const {
   useFonts,
   useFontsState,
   registeredFontFamilies,
-} = require('./useFonts') as typeof import('./useFonts')
+} = require('../hooks/useFonts') as typeof import('../hooks/useFonts')
 
 beforeEach(() => {
   registered = []

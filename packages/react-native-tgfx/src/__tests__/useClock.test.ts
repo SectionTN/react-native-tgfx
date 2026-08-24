@@ -5,7 +5,7 @@ import type * as TestRenderer from 'react-test-renderer'
 test('Reanimated present but missing an export throws when the hook runs', async () => {
   mock.module('react-native-reanimated', () => ({ useSharedValue: () => {} }))
   const { useClock } =
-    (await import('./useClock?broken')) as typeof import('./useClock')
+    (await import('../hooks/useClock?broken')) as typeof import('../hooks/useClock')
   expect(() => useClock()).toThrow(/does not export useFrameCallback/)
 })
 
@@ -23,7 +23,7 @@ test('the clock reads the frame time and keeps one callback identity', async () 
       seen.push(cb)
     },
   }))
-  const { useClock } = await import('./useClock?live')
+  const { useClock } = await import('../hooks/useClock?live')
   const React = await import('react')
   const TestRenderer = await import('react-test-renderer')
 
@@ -69,7 +69,7 @@ test('createClock ticks seconds on the UI loop and stops cleanly', async () => {
     },
   }))
   const { createClock } =
-    (await import('./useClock?create')) as typeof import('./useClock')
+    (await import('../hooks/useClock?create')) as typeof import('../hooks/useClock')
   const clock = createClock()
   expect(loops.length).toBe(1)
   loops[0]!(1000)
