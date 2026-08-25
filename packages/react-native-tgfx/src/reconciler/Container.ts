@@ -36,6 +36,9 @@ export class TgfxContainer implements NodeOwner {
   private readonly writer = new SceneWriter()
   /// Rebuilt each commit: hit results come back as index paths and need naming.
   refPaths: { path: number[]; ref: NodeHandle }[] = []
+  /// One per bound handle: the SharedValues a worklet-side set() bumps, which is
+  /// all a mapper can listen to now that slot values live in shared block bytes.
+  gens: MaybeSharedValue<unknown>[] = []
   /// Keyed for hit results, which arrive as paths and would otherwise rescan the list.
   readonly byPath = new Map<string, NodeHandle>()
   private readonly onCommit: CommitListener
@@ -72,6 +75,7 @@ export class TgfxContainer implements NodeOwner {
       this.byPath.set(entry.path.join(','), entry.ref)
     }
     if (this.claimRefs) {
+      this.gens = []
       for (let i = 0; i < refs.length; i++) {
         const ref = refs[i]!
         if (!warned.shared && refs.indexOf(ref) !== i) {
@@ -80,7 +84,11 @@ export class TgfxContainer implements NodeOwner {
             '[tgfx] one node handle is on more than one node: they share its value slots, so a write moves all of them together. Use one handle per node.'
           )
         }
-        nodeInternals(ref).bind(this, this.writer)
+        const internals = nodeInternals(ref)
+        internals.bind(this, this.writer)
+        if (refs.indexOf(ref) === i) {
+          this.gens.push(internals.gen)
+        }
       }
     }
     this.onCommit(buffer, strings, values, stringValues)

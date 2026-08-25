@@ -16,6 +16,7 @@
 
 
 #include <NitroModules/ArrayBuffer.hpp>
+#include <string>
 
 namespace margelo::nitro::tgfx {
 
@@ -45,10 +46,12 @@ namespace margelo::nitro::tgfx {
     public:
       // Properties
       virtual std::shared_ptr<ArrayBuffer> getFlags() = 0;
+      virtual std::shared_ptr<ArrayBuffer> getValues() = 0;
 
     public:
       // Methods
-      
+      virtual std::string getString(double at) = 0;
+      virtual void setString(double at, const std::string& value) = 0;
 
     protected:
       // Hybrid Setup

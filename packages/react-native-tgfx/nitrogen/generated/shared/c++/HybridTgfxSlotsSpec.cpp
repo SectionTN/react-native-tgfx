@@ -15,6 +15,9 @@ namespace margelo::nitro::tgfx {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridGetter("flags", &HybridTgfxSlotsSpec::getFlags);
+      prototype.registerHybridGetter("values", &HybridTgfxSlotsSpec::getValues);
+      prototype.registerHybridMethod("getString", &HybridTgfxSlotsSpec::getString);
+      prototype.registerHybridMethod("setString", &HybridTgfxSlotsSpec::setString);
     });
   }
 

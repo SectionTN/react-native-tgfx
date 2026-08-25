@@ -1,11 +1,133 @@
 import type { MaybeSharedValue } from '../compiler/values'
 import { reanimated, type Reanimated } from './peer'
+import {
+  slotsOf,
+  valuesOf,
+  type BoxedSlots,
+  type FlagBlock,
+} from './slotFlags'
 
 /** A value slot this package created, rather than one the caller animates. */
 export type LiveValue = MaybeSharedValue<number>
 
 // A set, not a property: `makeMutable` returns Reanimated's object, and branding it mutates a foreign one.
 const LIVE = new WeakSet<object>()
+
+/**
+ * A live slot backed by the handle's native block instead of a Reanimated
+ * SharedValue. A SharedValue written from the JS thread serializes a fresh
+ * worklet per write; at the write rates an imperative handle exists for
+ * (`set()` on a timer or per gesture frame) that garbage outruns the GC —
+ * measured ~170 KB/s of native heap on an idle demo screen — because its
+ * native weight is invisible to the JS heaps. A block slot write is one
+ * aligned 8-byte store into memory every runtime shares: no serialization, no
+ * allocation, nothing for a GC to chase.
+ *
+ * On the runtime that created it, `value` is a real accessor over the block,
+ * so every existing `.value` read and write — the compiler snapshot, seeding,
+ * `applyOnJS` — works unchanged. A worklet capture clones it, which freezes
+ * `value` into a stale plain number; worklet-side code must go through
+ * {@link readLiveNumber}/{@link writeLiveNumber}, which reach the live bytes
+ * through the boxed hybrid that survives the capture.
+ */
+interface BlockSlot extends MaybeSharedValue<number> {
+  __tgfxBoxed: BoxedSlots
+  __tgfxAt: number
+}
+
+interface BlockStringSlot extends MaybeSharedValue<string> {
+  __tgfxBoxed: BoxedSlots
+  __tgfxStrAt: number
+}
+
+export function liveFromBlock(block: FlagBlock, at: number, initial: number): LiveValue {
+  block.values[at] = initial
+  const slot: BlockSlot = {
+    _isReanimatedSharedValue: true,
+    __tgfxBoxed: block.boxed,
+    __tgfxAt: at,
+    get value(): number {
+      return block.values[at]!
+    },
+    set value(v: number) {
+      block.values[at] = v
+    },
+  }
+  LIVE.add(slot)
+  return slot
+}
+
+export function liveStringFromBlock(block: FlagBlock, at: number, initial: string): LiveString {
+  if (initial !== '') {
+    block.slots.setString(at, initial)
+  }
+  const slot: BlockStringSlot = {
+    _isReanimatedSharedValue: true,
+    __tgfxBoxed: block.boxed,
+    __tgfxStrAt: at,
+    get value(): string {
+      return block.slots.getString(at)
+    },
+    set value(v: string) {
+      block.slots.setString(at, v)
+    },
+  }
+  LIVE.add(slot)
+  return slot
+}
+
+/** Read a live number wherever it is — block slot (cloned or not) or SharedValue. */
+export function readLiveNumber(v: MaybeSharedValue<unknown>): number {
+  'worklet'
+  const at = (v as Partial<BlockSlot>).__tgfxAt
+  if (at !== undefined) {
+    return valuesOf((v as BlockSlot).__tgfxBoxed)[at]!
+  }
+  return Number(v.value)
+}
+
+/** Write a live number wherever it is; worklet-side block writes land in the shared bytes. */
+export function writeLiveNumber(v: MaybeSharedValue<unknown>, x: number): void {
+  'worklet'
+  const at = (v as Partial<BlockSlot>).__tgfxAt
+  if (at !== undefined) {
+    valuesOf((v as BlockSlot).__tgfxBoxed)[at] = x
+    return
+  }
+  ;(v as MaybeSharedValue<number>).value = x
+}
+
+/** Read a live string — block slot (cloned or not) or SharedValue. */
+export function readLiveString(v: MaybeSharedValue<unknown>): string {
+  'worklet'
+  const at = (v as Partial<BlockStringSlot>).__tgfxStrAt
+  if (at !== undefined) {
+    return slotsOf((v as BlockStringSlot).__tgfxBoxed).getString(at)
+  }
+  return String(v.value ?? '')
+}
+
+/** Write a live string; worklet-side block writes go through the boxed hybrid. */
+export function writeLiveString(v: MaybeSharedValue<unknown>, s: string): void {
+  'worklet'
+  const at = (v as Partial<BlockStringSlot>).__tgfxStrAt
+  if (at !== undefined) {
+    slotsOf((v as BlockStringSlot).__tgfxBoxed).setString(at, s)
+    return
+  }
+  ;(v as MaybeSharedValue<string>).value = s
+}
+
+/** True for a block-backed slot, which a Reanimated mapper cannot listen to. */
+export function isBlockSlot(v: unknown): boolean {
+  'worklet'
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    ((v as Partial<BlockSlot>).__tgfxAt !== undefined ||
+      (v as Partial<BlockStringSlot>).__tgfxStrAt !== undefined)
+  )
+}
 
 /**
  * A value the compiled program can patch in place: it is written as a value slot

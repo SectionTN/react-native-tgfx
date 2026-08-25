@@ -217,12 +217,14 @@ export function Canvas({
   const [stringValues, setStringValues] = useState<MaybeSharedValue<string>[]>(
     []
   )
+  const [gens, setGens] = useState<MaybeSharedValue<unknown>[]>([])
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
   const viewRef = useRef<TgfxViewRef | null>(null)
   const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
   const prevStringValues = useRef<MaybeSharedValue<string>[]>([])
+  const prevGens = useRef<MaybeSharedValue<unknown>[]>([])
   const sentStrings = useRef<string[]>([])
   const hybridRef = useRef<ReturnType<
     typeof callback<(ref: TgfxViewRef) => void>
@@ -319,6 +321,11 @@ export function Canvas({
       if (!sameValueSet(prevStringValues.current, stringVals)) {
         prevStringValues.current = stringVals.slice()
         setStringValues(prevStringValues.current)
+      }
+      const nextGens = rootRef.current?.container.gens ?? []
+      if (!sameValueSet(prevGens.current, nextGens)) {
+        prevGens.current = nextGens.slice()
+        setGens(prevGens.current)
       }
     })
     rootRef.current.container.onValues = (vals) =>
@@ -453,7 +460,12 @@ export function Canvas({
       {AnimationDriver != null &&
       view != null &&
       (values.length > 0 || stringValues.length > 0) ? (
-        <AnimationDriver view={view} values={values} strings={stringValues} />
+        <AnimationDriver
+          view={view}
+          values={values}
+          strings={stringValues}
+          gens={gens}
+        />
       ) : null}
       {ViewportDriver != null && view != null && liveViewport != null ? (
         <ViewportDriver view={view} viewport={liveViewport} />

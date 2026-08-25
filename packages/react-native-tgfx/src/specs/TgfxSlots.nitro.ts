@@ -35,12 +35,29 @@ export interface TgfxSlots extends HybridObject<{
    * memory, so each runtime should take it once and keep it.
    */
   readonly flags: ArrayBuffer
+  /**
+   * The value slots, `Float64` bytes over the same kind of shared native
+   * allocation as {@link flags}. An aligned 8-byte store is indivisible on the
+   * platforms this runs on, so a write from one runtime is a plain store and a
+   * read from another is a plain load — no serialization, no allocation, no
+   * lock. This is what lets a handle write from the JS thread without paying
+   * the per-write worklet-serialization cost that a `SharedValue` write there
+   * costs (native heap garbage the runtime's GC has no pressure to collect).
+   */
+  readonly values: ArrayBuffer
+  /** String slot `at`, empty until first written. */
+  getString(at: number): string
+  /** Write string slot `at`; the previous value is freed on replacement. */
+  setString(at: number, value: string): void
 }
 
 export interface TgfxSlotsFactory extends HybridObject<{
   ios: 'c++'
   android: 'c++'
 }> {
-  /** A zeroed block of `size` flag bytes, owned by the returned object. */
-  create(size: number): TgfxSlots
+  /**
+   * A zeroed block of `size` flag bytes, `valueCount` doubles and
+   * `stringCount` string slots, owned by the returned object.
+   */
+  create(size: number, valueCount: number, stringCount: number): TgfxSlots
 }

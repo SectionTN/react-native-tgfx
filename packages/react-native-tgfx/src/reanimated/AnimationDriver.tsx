@@ -1,15 +1,18 @@
 import { useEffect } from 'react'
 import type { MaybeSharedValue } from '../compiler/values'
 import type { TgfxViewRef } from '../views/TgfxNativeView'
+import { isBlockSlot, readLiveNumber, readLiveString } from './liveValue'
 import { reanimatedInstalled, requireReanimated } from './peer'
 
 interface DriverProps {
   view: TgfxViewRef
   values: MaybeSharedValue<unknown>[]
   strings: MaybeSharedValue<string>[]
+  /** Per-handle wake values: block slots have no listeners, these do. */
+  gens: MaybeSharedValue<unknown>[]
 }
 
-function Driver({ view, values, strings }: DriverProps): null {
+function Driver({ view, values, strings, gens }: DriverProps): null {
   const mod = requireReanimated('the animation driver', [
     'startMapper',
     'stopMapper',
@@ -20,35 +23,40 @@ function Driver({ view, values, strings }: DriverProps): null {
     const slots = new Array<number>(values.length)
     // Last pushed per string slot: only changes cross, so an idle frame is free.
     const sent = new Array<string | null>(strings.length).fill(null)
-    const mapperId = start(
-      () => {
-        'worklet'
-        for (let i = 0; i < values.length; i++) {
-          slots[i] = Number(values[i]!.value)
-        }
-        view.setValues(slots)
-        if (strings.length > 0) {
-          let indices: number[] | null = null
-          let out: string[] | null = null
-          for (let i = 0; i < strings.length; i++) {
-            const now = String(strings[i]!.value ?? '')
-            if (now === sent[i]) {
-              continue
-            }
-            sent[i] = now
-            ;(indices ??= []).push(i)
-            ;(out ??= []).push(now)
+    // A block slot cannot be a mapper input; the handle's gen stands in for it.
+    const listenable = [...values, ...strings].filter((v) => !isBlockSlot(v))
+    for (const gen of gens) {
+      listenable.push(gen)
+    }
+    if (listenable.length === 0) {
+      return
+    }
+    const mapperId = start(() => {
+      'worklet'
+      for (let i = 0; i < values.length; i++) {
+        slots[i] = readLiveNumber(values[i]!)
+      }
+      view.setValues(slots)
+      if (strings.length > 0) {
+        let indices: number[] | null = null
+        let out: string[] | null = null
+        for (let i = 0; i < strings.length; i++) {
+          const now = readLiveString(strings[i]!)
+          if (now === sent[i]) {
+            continue
           }
-          if (indices != null && out != null) {
-            // Optional: a JS bundle newer than the native binary lacks the method.
-            view.setStringValues?.(indices, out)
-          }
+          sent[i] = now
+          ;(indices ??= []).push(i)
+          ;(out ??= []).push(now)
         }
-      },
-      strings.length > 0 ? [...values, ...strings] : values
-    )
+        if (indices != null && out != null) {
+          // Optional: a JS bundle newer than the native binary lacks the method.
+          view.setStringValues?.(indices, out)
+        }
+      }
+    }, listenable)
     return () => stop(mapperId)
-  }, [view, values, strings, start, stop])
+  }, [view, values, strings, gens, start, stop])
   return null
 }
 

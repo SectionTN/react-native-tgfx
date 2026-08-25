@@ -50,7 +50,7 @@ namespace margelo::nitro::tgfx {
 
     public:
       // Methods
-      virtual std::shared_ptr<HybridTgfxSlotsSpec> create(double size) = 0;
+      virtual std::shared_ptr<HybridTgfxSlotsSpec> create(double size, double valueCount, double stringCount) = 0;
 
     protected:
       // Hybrid Setup

@@ -9,9 +9,13 @@ import { isSharedValue, type MaybeSharedValue } from './compiler/values'
 import type { SceneWriter } from './compiler/writer'
 import {
   getRunOnJS,
+  liveFromBlock,
+  liveStringFromBlock,
   makeLive,
   makeLiveString,
   makeShared,
+  writeLiveNumber,
+  writeLiveString,
   type LiveString,
   type LiveValue,
 } from './reanimated/liveValue'
@@ -121,6 +125,18 @@ const FLAG_BYTES = Object.keys(KEY_INDEX).length
 
 const UNIFORM_SLOTS = 32
 
+// Fixed value-block layout, so a lazily created pool still lands on the same
+// indices every runtime's view agrees on.
+const OFF_EXTRA = SLOT_PROPS.length + TRANSFORM_SLOTS.length
+const N_EXTRA = ENUM_SLOTS.length + VECTOR_SLOTS.length * 2 + 5
+const OFF_COLOR = OFF_EXTRA + N_EXTRA
+const OFF_UNIFORM = OFF_COLOR + 4
+const OFF_MATRIX = OFF_UNIFORM + UNIFORM_SLOTS
+const OFF_POSITIONS = OFF_MATRIX + 20
+const OFF_STOP_COLORS = OFF_POSITIONS + MAX_STOPS
+const VALUE_COUNT = OFF_STOP_COLORS + MAX_STOPS * 4
+const STRING_COUNT = 2
+
 interface UniformRun {
   at: number
   size: number
@@ -175,6 +191,8 @@ export interface NodeHandle {
 }
 
 interface Internals {
+  /** Bumped by a worklet-side set(): the mapper listens to it, block slots have no listeners. */
+  gen: MaybeSharedValue<number>
   apply(node: Node, reseed: boolean, w: SceneWriter): Node
   applyUniforms(
     uniforms: Record<string, UniformValue> | undefined,
@@ -303,48 +321,65 @@ function isOpSlot(key: string): key is TransformSlot {
 export function createHandle(): NodeHandle {
   // Resolved now, or the worklet would capture a remote handle instead of the function.
   const runOnJS = getRunOnJS()
+  // One native block per handle: flag bytes, every numeric slot as shared
+  // Float64 bytes, and the two string slots. Slot writes are plain stores into
+  // memory all runtimes share — a SharedValue written from the JS thread
+  // serializes a fresh worklet per write, and at set()-per-frame rates that
+  // garbage grows the native heap faster than any GC reclaims it (issue #254).
+  const flagBlock = makeFlagBlock(FLAG_BYTES, VALUE_COUNT, STRING_COUNT)
+  const boxedFlags = flagBlock?.boxed ?? null
+  const flagBytes = flagBlock?.bytes ?? null
+  const live = (at: number, initial: number): LiveValue =>
+    flagBlock != null ? liveFromBlock(flagBlock, at, initial) : makeLive(initial)
+  const liveString = (at: number, initial: string): LiveString =>
+    flagBlock != null
+      ? liveStringFromBlock(flagBlock, at, initial)
+      : makeLiveString(initial)
   const slots: Record<string, LiveValue> = {}
+  let slotAt = 0
   for (const name of SLOT_PROPS) {
-    slots[name] = makeLive(name === 'visible' ? 1 : 0)
+    slots[name] = live(slotAt++, name === 'visible' ? 1 : 0)
   }
   for (const name of TRANSFORM_SLOTS) {
-    slots[name] = makeLive(name.startsWith('scale') ? 1 : 0)
+    slots[name] = live(slotAt++, name.startsWith('scale') ? 1 : 0)
   }
   // Enum codes, vector axes, the image handle and the source rect are lazy,
   // like the matrix and stop pools: most handles never touch them, and a
   // worklet that captured them as null defers to the JS thread, which still
-  // lands the write as a slot patch.
+  // lands the write as a slot patch. Their block indices are fixed by layout,
+  // so laziness only defers the descriptor objects.
   let extra: Record<string, LiveValue> | null = null
   const ensureExtras = (): Record<string, LiveValue> => {
     if (extra == null) {
       extra = {}
+      let at = OFF_EXTRA
       for (const name of ENUM_SLOTS) {
-        extra[name] = makeLive(0)
+        extra[name] = live(at++, 0)
       }
       for (const name of VECTOR_SLOTS) {
-        extra[`${name}X`] = makeLive(0)
-        extra[`${name}Y`] = makeLive(0)
+        extra[`${name}X`] = live(at++, 0)
+        extra[`${name}Y`] = live(at++, 0)
       }
-      extra.image = makeLive(0)
-      extra.rectX = makeLive(0)
-      extra.rectY = makeLive(0)
-      extra.rectW = makeLive(0)
-      extra.rectH = makeLive(0)
+      extra.image = live(at++, 0)
+      extra.rectX = live(at++, 0)
+      extra.rectY = live(at++, 0)
+      extra.rectW = live(at++, 0)
+      extra.rectH = live(at++, 0)
     }
     return extra
   }
   const colorSlots: LiveValue[] = []
   for (let i = 0; i < 4; i++) {
-    colorSlots.push(makeLive(i === 3 ? 1 : 0))
+    colorSlots.push(live(OFF_COLOR + i, i === 3 ? 1 : 0))
   }
   const uniformSlots: LiveValue[] = []
   for (let i = 0; i < UNIFORM_SLOTS; i++) {
-    uniformSlots.push(makeLive(0))
+    uniformSlots.push(live(OFF_UNIFORM + i, 0))
   }
   // Live string content, for `text` and `path`: a write re-shapes or re-parses
   // on the render thread with no re-encode. Live from the first write.
-  const textShared: LiveString = makeLiveString('')
-  const pathShared: LiveString = makeLiveString('')
+  const textShared: LiveString = liveString(0, '')
+  const pathShared: LiveString = liveString(1, '')
   // Big pools stay lazy: 20 matrix values and 16 stops x 5 would double every
   // handle's cost for props most nodes never carry. Created when first needed
   // on the JS thread; a worklet that captured them as null defers, which still
@@ -361,7 +396,7 @@ export function createHandle(): NodeHandle {
     if (matrixSlots == null) {
       matrixSlots = []
       for (let i = 0; i < 20; i++) {
-        matrixSlots.push(makeLive(i % 6 === 0 ? 1 : 0))
+        matrixSlots.push(live(OFF_MATRIX + i, i % 6 === 0 ? 1 : 0))
       }
     }
     return matrixSlots
@@ -370,21 +405,23 @@ export function createHandle(): NodeHandle {
     if (positionSlots == null) {
       positionSlots = []
       for (let i = 0; i < MAX_STOPS; i++) {
-        positionSlots.push(makeLive(0))
+        positionSlots.push(live(OFF_POSITIONS + i, 0))
       }
     }
     if (stopColorSlots == null) {
       stopColorSlots = []
       for (let i = 0; i < MAX_STOPS * 4; i++) {
-        stopColorSlots.push(makeLive(i % 4 === 3 ? 1 : 0))
+        stopColorSlots.push(live(OFF_STOP_COLORS + i, i % 4 === 3 ? 1 : 0))
       }
     }
     return { pos: positionSlots, col: stopColorSlots }
   }
   const patchable: MaybeSharedValue<Record<string, boolean>> = makeShared({})
-  const flagBlock = makeFlagBlock(FLAG_BYTES)
-  const boxedFlags = flagBlock?.boxed ?? null
-  const flagBytes = flagBlock?.bytes ?? null
+  // The one SharedValue a worklet-side set() still writes: block writes fire no
+  // listener, so this is what wakes the scene's mapper. On the UI runtime the
+  // write is host-side and free; a worker runtime pays one scheduled message
+  // per set() call, the same wake its writes had to buy before.
+  const gen = makeShared(0)
   const uniformBase: MaybeSharedValue<Record<string, UniformRun>> = makeShared(
     {}
   )
@@ -660,8 +697,9 @@ export function createHandle(): NodeHandle {
     }
     if (recompile) {
       owner.recompile()
-    } else if (touched && runOnJS == null) {
-      // Without Reanimated this is the only push; with it the driver's mapper pushes on the UI thread.
+    } else if (touched) {
+      // A block write fires no SharedValue listener, so a JS-thread write pushes
+      // itself — one direct Nitro call, nothing serialized across runtimes.
       owner.pushValues()
     }
   }
@@ -697,6 +735,7 @@ export function createHandle(): NodeHandle {
     let live: Record<string, boolean> | null = null
     let bases: Record<string, UniformRun> | null = null
     let deferred = false
+    let servedAny = false
     const served: Record<string, boolean> = {}
     for (const key in props) {
       const value = props[key]
@@ -710,14 +749,14 @@ export function createHandle(): NodeHandle {
           deferred = true
         } else if (typeof value === 'number') {
           const packed = value >>> 0
-          colorSlots[0]!.value = ((packed >>> 16) & 0xff) / 255
-          colorSlots[1]!.value = ((packed >>> 8) & 0xff) / 255
-          colorSlots[2]!.value = (packed & 0xff) / 255
-          colorSlots[3]!.value = ((packed >>> 24) & 0xff) / 255
+          writeLiveNumber(colorSlots[0]!, ((packed >>> 16) & 0xff) / 255)
+          writeLiveNumber(colorSlots[1]!, ((packed >>> 8) & 0xff) / 255)
+          writeLiveNumber(colorSlots[2]!, (packed & 0xff) / 255)
+          writeLiveNumber(colorSlots[3]!, ((packed >>> 24) & 0xff) / 255)
           served.color = true
         } else if (Array.isArray(value) && value.length === 4) {
           for (let i = 0; i < 4; i++) {
-            colorSlots[i]!.value = num(value[i])
+            writeLiveNumber(colorSlots[i]!, num(value[i]))
           }
           served.color = true
         } else {
@@ -736,7 +775,7 @@ export function createHandle(): NodeHandle {
             continue
           }
           for (let i = 0; i < wrote.length; i++) {
-            uniformSlots[run.at + i]!.value = wrote[i]!
+            writeLiveNumber(uniformSlots[run.at + i]!, wrote[i]!)
           }
         }
         if (!deferred) {
@@ -755,14 +794,14 @@ export function createHandle(): NodeHandle {
         if (key === 'text' || key === 'path') {
           if (flagged(key) && typeof value === 'string') {
             const shared = key === 'text' ? textShared : pathShared
-            shared.value = value
+            writeLiveString(shared, value)
             served[key] = true
           } else {
             deferred = true
           }
         } else if (key === 'image') {
           if (flagged('image') && extra != null && typeof value === 'number') {
-            extra.image!.value = value
+            writeLiveNumber(extra.image!, value)
             served[key] = true
           } else {
             deferred = true
@@ -775,10 +814,10 @@ export function createHandle(): NodeHandle {
             r != null &&
             typeof r === 'object'
           ) {
-            extra.rectX!.value = num(r.x)
-            extra.rectY!.value = num(r.y)
-            extra.rectW!.value = num(r.width)
-            extra.rectH!.value = num(r.height)
+            writeLiveNumber(extra.rectX!, num(r.x))
+            writeLiveNumber(extra.rectY!, num(r.y))
+            writeLiveNumber(extra.rectW!, num(r.width))
+            writeLiveNumber(extra.rectH!, num(r.height))
             served[key] = true
           } else {
             deferred = true
@@ -790,7 +829,7 @@ export function createHandle(): NodeHandle {
             Array.isArray(value)
           ) {
             for (let i = 0; i < 20; i++) {
-              matrixSlots[i]!.value = num(value[i])
+              writeLiveNumber(matrixSlots[i]!, num(value[i]))
             }
             served[key] = true
           } else {
@@ -805,7 +844,7 @@ export function createHandle(): NodeHandle {
           ) {
             const n = Math.min(value.length, positionSlots.length)
             for (let i = 0; i < n; i++) {
-              positionSlots[i]!.value = num(value[i])
+              writeLiveNumber(positionSlots[i]!, num(value[i]))
             }
             served[key] = true
           } else {
@@ -830,16 +869,27 @@ export function createHandle(): NodeHandle {
                 const entry = list[i]
                 if (typeof entry === 'number') {
                   const packed = entry >>> 0
-                  stopColorSlots![i * 4]!.value = ((packed >>> 16) & 0xff) / 255
-                  stopColorSlots![i * 4 + 1]!.value =
+                  writeLiveNumber(
+                    stopColorSlots![i * 4]!,
+                    ((packed >>> 16) & 0xff) / 255
+                  )
+                  writeLiveNumber(
+                    stopColorSlots![i * 4 + 1]!,
                     ((packed >>> 8) & 0xff) / 255
-                  stopColorSlots![i * 4 + 2]!.value = (packed & 0xff) / 255
-                  stopColorSlots![i * 4 + 3]!.value =
+                  )
+                  writeLiveNumber(
+                    stopColorSlots![i * 4 + 2]!,
+                    (packed & 0xff) / 255
+                  )
+                  writeLiveNumber(
+                    stopColorSlots![i * 4 + 3]!,
                     ((packed >>> 24) & 0xff) / 255
+                  )
                 } else {
                   for (let c = 0; c < 4; c++) {
-                    stopColorSlots![i * 4 + c]!.value = num(
-                      (entry as unknown[])[c]
+                    writeLiveNumber(
+                      stopColorSlots![i * 4 + c]!,
+                      num((entry as unknown[])[c])
                     )
                   }
                 }
@@ -858,8 +908,8 @@ export function createHandle(): NodeHandle {
         ) {
           const v = value as { x?: unknown; y?: unknown }
           if (flagged(key) && extra != null) {
-            extra[`${key}X`]!.value = num(v.x)
-            extra[`${key}Y`]!.value = num(v.y)
+            writeLiveNumber(extra[`${key}X`]!, num(v.x))
+            writeLiveNumber(extra[`${key}Y`]!, num(v.y))
             served[key] = true
           } else {
             deferred = true
@@ -867,7 +917,7 @@ export function createHandle(): NodeHandle {
         } else if (key === 'start' || key === 'end') {
           const name = key === 'start' ? 'startAngle' : 'endAngle'
           if (flagged(name) && typeof value === 'number') {
-            slots[name]!.value = value
+            writeLiveNumber(slots[name]!, value)
             served[key] = true
           } else {
             deferred = true
@@ -899,25 +949,34 @@ export function createHandle(): NodeHandle {
             }
           }
           if (code != null && flagged(key) && extra != null) {
-            extra[key]!.value = code
+            writeLiveNumber(extra[key]!, code)
             served[key] = true
           } else {
             deferred = true
           }
         } else if (key === 'visible' && typeof value === 'boolean') {
           if (flagged('visible')) {
-            slots.visible!.value = value ? 1 : 0
+            writeLiveNumber(slots.visible!, value ? 1 : 0)
             served[key] = true
           } else {
             deferred = true
           }
         } else if (typeof value === 'number' && flagged(key)) {
-          slots[key]!.value = value
+          writeLiveNumber(slots[key]!, value)
           served[key] = true
         } else {
           deferred = true
         }
       }
+      if (served[key] === true) {
+        servedAny = true
+      }
+    }
+    if (servedAny) {
+      // Block writes fire no listener; one gen write is what wakes the mapper.
+      const scope = globalThis as { __tgfxGenTick?: number }
+      scope.__tgfxGenTick = ((scope.__tgfxGenTick ?? 0) + 1) % 0x40000000
+      gen.value = scope.__tgfxGenTick
     }
     if (deferred) {
       // Only the unservable keys travel: the whole snapshot would undo what this runtime moved past.
@@ -991,6 +1050,7 @@ export function createHandle(): NodeHandle {
   Object.defineProperty(handle, 'current', { get: () => null, set: () => {} })
 
   internalsMap().set(handle, {
+    gen,
     apply(node: Node, reseed: boolean, w: SceneWriter): Node {
       // A compile by anyone but the owner — an export writer rendering nodes
       // that are also mounted somewhere — must read the live state, never

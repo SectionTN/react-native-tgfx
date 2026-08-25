@@ -9,6 +9,8 @@ export interface BoxedSlots {
 
 export interface FlagBlock {
   bytes: Uint8Array
+  values: Float64Array
+  slots: TgfxSlots
   boxed: BoxedSlots
 }
 
@@ -34,10 +36,15 @@ function nitro(): Nitro {
 }
 
 /**
- * `size` flag bytes, or null when the native module is unavailable — a test
- * runner, or a build without the native side linked.
+ * `size` flag bytes plus `valueCount` value slots and `stringCount` string
+ * slots, or null when the native module is unavailable — a test runner, or a
+ * build without the native side linked.
  */
-export function makeFlagBlock(size: number): FlagBlock | null {
+export function makeFlagBlock(
+  size: number,
+  valueCount = 0,
+  stringCount = 0
+): FlagBlock | null {
   const modules = nitro().NitroModules
   if (modules?.createHybridObject == null || modules.box == null) {
     return null
@@ -45,9 +52,11 @@ export function makeFlagBlock(size: number): FlagBlock | null {
   try {
     const factory =
       modules.createHybridObject<TgfxSlotsFactory>('TgfxSlotsFactory')
-    const slots = factory.create(size)
+    const slots = factory.create(size, valueCount, stringCount)
     return {
       bytes: new Uint8Array(slots.flags),
+      values: new Float64Array(slots.values),
+      slots,
       boxed: modules.box(slots),
     }
   } catch {
@@ -72,4 +81,42 @@ export function flagsOf(boxed: BoxedSlots): Uint8Array {
     views.set(boxed, view)
   }
   return view
+}
+
+/** This runtime's `Float64` view of the block's value slots, cached like {@link flagsOf}. */
+export function valuesOf(boxed: BoxedSlots): Float64Array {
+  'worklet'
+  const scope = globalThis as {
+    __tgfxValueViews?: WeakMap<BoxedSlots, Float64Array>
+  }
+  let views = scope.__tgfxValueViews
+  if (views === undefined) {
+    views = new WeakMap<BoxedSlots, Float64Array>()
+    scope.__tgfxValueViews = views
+  }
+  let view = views.get(boxed)
+  if (view === undefined) {
+    view = new Float64Array(boxed.unbox().values)
+    views.set(boxed, view)
+  }
+  return view
+}
+
+/** This runtime's unboxed slots object, for the string get/set methods. */
+export function slotsOf(boxed: BoxedSlots): TgfxSlots {
+  'worklet'
+  const scope = globalThis as {
+    __tgfxSlotObjs?: WeakMap<BoxedSlots, TgfxSlots>
+  }
+  let objs = scope.__tgfxSlotObjs
+  if (objs === undefined) {
+    objs = new WeakMap<BoxedSlots, TgfxSlots>()
+    scope.__tgfxSlotObjs = objs
+  }
+  let obj = objs.get(boxed)
+  if (obj === undefined) {
+    obj = boxed.unbox()
+    objs.set(boxed, obj)
+  }
+  return obj
 }

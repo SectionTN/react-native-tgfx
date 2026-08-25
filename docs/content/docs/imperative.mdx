@@ -170,6 +170,20 @@ gets the full program on attach and deltas after.
 `ref` props, `SharedValue` props and worklet writes behave identically to their
 JSX equivalents — the factories produce the very nodes the reconciler would.
 
+## Where slot writes go
+
+A handle's value slots live in one native memory block per handle, mapped into
+every runtime — the same mechanism as its patchability flags. A `set()` write
+is a plain store into that shared memory: nothing is serialized across
+runtimes, so writing from the JS thread on a timer or per gesture frame
+allocates nothing per write. (Routing these writes through Reanimated
+SharedValues serialized a fresh worklet closure per write on the JS thread —
+native heap the JS GCs never felt pressure to reclaim, growing ~10 MB/min at
+60 Hz write rates.) A JS-thread write pushes the patched slots to the canvas
+itself; a worklet-side write bumps the handle's wake value so the UI-thread
+driver pushes on the next mapper run. Semantics are unchanged: last write wins,
+and the next React commit is still the truth.
+
 The whole scene can also be built *inside* a worklet — `createScene()` is
 `Scene.create` as a plain function, which is the form that crosses runtimes —
 see [Worklets](/docs/headless#worklets) for the rules.

@@ -6,6 +6,11 @@
 import type { MaybeSharedValue } from './compiler/values'
 import { packStringTable } from './compiler/writer'
 import type { NodeHandle } from './imperative'
+import {
+  isBlockSlot,
+  readLiveNumber,
+  readLiveString,
+} from './reanimated/liveValue'
 import { reanimated } from './reanimated/peer'
 import { TgfxContainer } from './reconciler/Container'
 import type { SceneNode } from './elements'
@@ -385,11 +390,22 @@ export class Scene {
     const views = this.targets.map((t) => t.target)
     const slots = new Array<number>(values.length)
     const sent = new Array<string | null>(stringValues.length).fill(null)
+    // Block slots have no listeners, so they cannot be mapper inputs; the
+    // handles' gen values — bumped once per worklet-side set() — stand in.
+    const listenable = [...values, ...stringValues].filter(
+      (v) => !isBlockSlot(v)
+    )
+    for (const gen of this.container.gens) {
+      listenable.push(gen)
+    }
+    if (listenable.length === 0) {
+      return
+    }
     this.mapperId = startMapper(
       () => {
         'worklet'
         for (let i = 0; i < values.length; i++) {
-          slots[i] = Number(values[i]!.value)
+          slots[i] = readLiveNumber(values[i]!)
         }
         for (const view of views) {
           view.setValues(slots)
@@ -398,7 +414,7 @@ export class Scene {
           let indices: number[] | null = null
           let out: string[] | null = null
           for (let i = 0; i < stringValues.length; i++) {
-            const now = String(stringValues[i]!.value ?? '')
+            const now = readLiveString(stringValues[i]!)
             if (now === sent[i]) {
               continue
             }
@@ -413,7 +429,7 @@ export class Scene {
           }
         }
       },
-      stringValues.length > 0 ? [...values, ...stringValues] : values
+      listenable
     )
   }
 
