@@ -2,7 +2,7 @@ import NitroModules
 import UIKit
 
 /** iOS `TgfxView`: a thin Swift shell over the Objective-C++ `TgfxMetalView`. */
-final class HybridTgfxView: HybridTgfxViewSpec {
+final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   private let metalView = TgfxMetalView()
 
   var view: UIView { metalView }
