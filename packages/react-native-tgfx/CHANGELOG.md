@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.0.2-alpha.8](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.7...react-native-tgfx%400.0.2-alpha.8) (2026-08-28)
+
+### ⚠ BREAKING CHANGES
+
+* **image:** Image takes a source; TgfxImage is the handle-taking host tag (#245)
+* **android:** Vulkan is the default backend; TgfxVulkan=OFF falls back to GL (#252)
+
+### Features
+
+* **android:** Vulkan is the default backend; TgfxVulkan=OFF falls back to GL ([#252](https://github.com/riteshshukla04/react-native-tgfx/issues/252)) ([73b94a4](https://github.com/riteshshukla04/react-native-tgfx/commit/73b94a467a6232a53cc89d1b714a89a376abedab))
+* **canvas:** a fonts prop that registers faces and gates children ([#244](https://github.com/riteshshukla04/react-native-tgfx/issues/244)) ([2987433](https://github.com/riteshshukla04/react-native-tgfx/commit/29874330efcb56ce3a30f5aede40da88ec5af5d2))
+* **compiler:** workletize the compile graph ([#246](https://github.com/riteshshukla04/react-native-tgfx/issues/246)) ([8aa90b7](https://github.com/riteshshukla04/react-native-tgfx/commit/8aa90b745b8cfaf70184b4104fbef841ec76a6ff))
+* **headless:** callable forms for the clock, video pump, camera sink, buffers and press dispatch ([#241](https://github.com/riteshshukla04/react-native-tgfx/issues/241)) ([ea2f53e](https://github.com/riteshshukla04/react-native-tgfx/commit/ea2f53ec82adf4afb6cc656ff49cd007cd514af0))
+* **image:** encode to bytes and save to disk from any image handle ([#239](https://github.com/riteshshukla04/react-native-tgfx/issues/239)) ([8e9285c](https://github.com/riteshshukla04/react-native-tgfx/commit/8e9285c9ea7962f01226ac3b2f34bcadc2742cfd))
+* **image:** Image takes a source; TgfxImage is the handle-taking host tag ([#245](https://github.com/riteshshukla04/react-native-tgfx/issues/245)) ([0f9bb59](https://github.com/riteshshukla04/react-native-tgfx/commit/0f9bb59c3f46767121a3e8910e973d8d2b7468c8))
+* **offscreen:** a retained GPU surface with the view's scene contract ([#240](https://github.com/riteshshukla04/react-native-tgfx/issues/240)) ([327fcd4](https://github.com/riteshshukla04/react-native-tgfx/commit/327fcd49337a105cc5b9821a2d8f23cc5af0cc3b))
+* **offscreen:** scene inputs for export, and a React-free module split ([#238](https://github.com/riteshshukla04/react-native-tgfx/issues/238)) ([1e14b7f](https://github.com/riteshshukla04/react-native-tgfx/commit/1e14b7f6ee11f44f1cd51f20cc4ae201f9cac841))
+* **scene:** element factories and a React-free Scene container ([#237](https://github.com/riteshshukla04/react-native-tgfx/issues/237)) ([f9b0248](https://github.com/riteshshukla04/react-native-tgfx/commit/f9b024889c6776c75c6123fb55d745eb6e446ed3))
+* **scene:** save, toImage, toSvg and toPdf straight off the scene ([5945184](https://github.com/riteshshukla04/react-native-tgfx/commit/59451842f40c71d01eff7c7eaf697d153a7141e5))
+* **scene:** scenes built and mutated on worklet runtimes ([#247](https://github.com/riteshshukla04/react-native-tgfx/issues/247)) ([f9bd05f](https://github.com/riteshshukla04/react-native-tgfx/commit/f9bd05f454931afc5009f4dda71a9aa2d270fb22))
+
+### Bug Fixes
+
+* **ios:** HybridTgfxView adopts RecyclableView so prepareForRecycle() fires ([#255](https://github.com/riteshshukla04/react-native-tgfx/issues/255)) ([#257](https://github.com/riteshshukla04/react-native-tgfx/issues/257)) ([f2828bb](https://github.com/riteshshukla04/react-native-tgfx/commit/f2828bbb1ba4590ea9a4684e245dac8fa505adeb))
+* native heap growth — slot-write serialization churn and the nitro CxxPart JNI cycle ([#254](https://github.com/riteshshukla04/react-native-tgfx/issues/254)) ([#256](https://github.com/riteshshukla04/react-native-tgfx/issues/256)) ([64c1ab9](https://github.com/riteshshukla04/react-native-tgfx/commit/64c1ab9ab3c53e385b00568b667fa25d2974f06a))
+* **offscreen:** pre-drain hit tests, empty-path rejection, zero-copy encode ([#243](https://github.com/riteshshukla04/react-native-tgfx/issues/243)) ([9768a36](https://github.com/riteshshukla04/react-native-tgfx/commit/9768a3666aa9f45f3fa8bfa3daebbc1e3b5a2a87))
+* **scene:** ownership-aware reseed and quiet exports ([#242](https://github.com/riteshshukla04/react-native-tgfx/issues/242)) ([e3740bb](https://github.com/riteshshukla04/react-native-tgfx/commit/e3740bb9caea69cd138859862c95728911818897))
+* **worklet:** review follow-ups across colours, guards and the invariant test ([#251](https://github.com/riteshshukla04/react-native-tgfx/issues/251)) ([bdd65b2](https://github.com/riteshshukla04/react-native-tgfx/commit/bdd65b274a4abaa4b92750b434ecc03b3d67130b))
+
 ## [0.0.2-alpha.7](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.6...react-native-tgfx%400.0.2-alpha.7) (2026-08-20)
 
 ### Features
