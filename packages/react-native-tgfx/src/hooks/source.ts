@@ -49,6 +49,11 @@ export async function loadSource<T>(
   api: SourceReader<T>,
   signal?: AbortSignal
 ): Promise<T> {
+  if (!source) {
+    throw new Error(
+      `tgfx: no image source was given (received ${JSON.stringify(source)})`
+    )
+  }
   let uri: string
   // A bundled asset may be a bare path; a caller's own string never is (JPEG base64 starts "/9j/").
   let bareIsPath = false
