@@ -23,6 +23,7 @@ namespace margelo::nitro::tgfx { enum class PixelFormat; }
 #include <NitroModules/Promise.hpp>
 #include <string>
 #include <NitroModules/ArrayBuffer.hpp>
+#include <optional>
 #include "PixelFormat.hpp"
 #include <vector>
 
@@ -59,6 +60,7 @@ namespace margelo::nitro::tgfx {
       // Methods
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromFile(const std::string& path) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromBytes(const std::shared_ptr<ArrayBuffer>& bytes) = 0;
+      virtual std::shared_ptr<HybridTgfxImageSpec> fromPixels(const std::shared_ptr<ArrayBuffer>& pixels, double width, double height, std::optional<double> rowBytes) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromBase64(const std::string& data) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromSvg(const std::string& markup) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> fromNativeBuffer(uint64_t buffer, PixelFormat format) = 0;

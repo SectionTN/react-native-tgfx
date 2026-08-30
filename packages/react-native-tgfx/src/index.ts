@@ -181,6 +181,7 @@ export type {
 } from './hooks/useFonts'
 export {
   imageFromNativeBuffer,
+  imageFromPixels,
   loadImage,
   setImageCacheLimit,
   useImage,

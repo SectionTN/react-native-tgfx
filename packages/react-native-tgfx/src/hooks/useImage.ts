@@ -69,6 +69,19 @@ export function imageFromNativeBuffer(
   ).fromNativeBuffer(buffer, format)
 }
 
+/** Wrap decoded premultiplied RGBA pixels as a handle. `rowBytes` is the stride, tightly packed when omitted. tgfx samples the buffer directly, so do not write into it afterwards. */
+export function imageFromPixels(
+  pixels: ArrayBuffer,
+  width: number,
+  height: number,
+  rowBytes?: number
+): TgfxImage {
+  'worklet'
+  return NitroModules.createHybridObject<TgfxImageFactory>(
+    'TgfxImageFactory'
+  ).fromPixels(pixels, width, height, rowBytes)
+}
+
 /**
  * Load an image source into a native handle, outside React.
  *

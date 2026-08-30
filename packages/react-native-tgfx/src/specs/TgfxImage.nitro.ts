@@ -67,6 +67,14 @@ export interface TgfxImage extends HybridObject<{
    */
   setNativeBuffer(buffer: UInt64, format: PixelFormat): void
 
+  /** Point this handle at different pixels, keeping its id. The per-frame path, avoiding a handle minted and disposed per frame. Only valid on a handle created from pixels. */
+  setPixels(
+    pixels: ArrayBuffer,
+    width: number,
+    height: number,
+    rowBytes?: number
+  ): void
+
   /**
    * A crop of this image, sharing its decode. Lazy: no pixels are copied and no
    * bytes are charged, so a sprite sheet cut into handles costs one decode.
@@ -146,6 +154,14 @@ export interface TgfxImageFactory extends HybridObject<{
    * boundary. Which one it is comes from the bytes, not from a file extension.
    */
   fromBytes(bytes: ArrayBuffer): Promise<TgfxImage>
+
+  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride, tightly packed when omitted. Borrowed when `pixels` owns its memory, copied otherwise; either way do not write into it while the handle points at it. */
+  fromPixels(
+    pixels: ArrayBuffer,
+    width: number,
+    height: number,
+    rowBytes?: number
+  ): TgfxImage
 
   /** Base64-encoded bytes, for `data:` URIs and raw base64 sources. */
   fromBase64(data: string): Promise<TgfxImage>
