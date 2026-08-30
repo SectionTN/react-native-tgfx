@@ -86,6 +86,10 @@ describe('fromPixels', () => {
     expect(() => imageFromPixels(RED, SIZE, SIZE, 2 ** 61)).toThrow();
   });
 
+  test('rejects a rowBytes that is not whole pixels', () => {
+    expect(() => imageFromPixels(RED, SIZE, SIZE, SIZE * 4 + 2)).toThrow();
+  });
+
   test('draws the pixels it was given', async () => {
     const image = keep(imageFromPixels(RED, SIZE, SIZE));
     await drawnSnapshot(

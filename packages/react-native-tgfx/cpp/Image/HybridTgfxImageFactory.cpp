@@ -295,9 +295,10 @@ static std::shared_ptr<::tgfx::Image> imageFromPixelBytes(
     throw std::runtime_error("tgfx: fromPixels needs a width and height between 1 and 65536");
   }
   const double stride = rowBytes.value_or(0);
-  // Bounded before the cast: an unchecked stride wraps byteSize() and defeats the size check.
-  if (!std::isfinite(stride) || stride < 0 || stride > static_cast<double>(1u << 30)) {
-    throw std::runtime_error("tgfx: fromPixels was given an unusable rowBytes");
+  // Bounded (unchecked it wraps byteSize()) and in whole pixels: GPU uploads take rows of pixels.
+  if (!std::isfinite(stride) || stride < 0 || stride > static_cast<double>(1u << 30) ||
+      std::fmod(stride, 4) != 0) {
+    throw std::runtime_error("tgfx: fromPixels needs a rowBytes that is a multiple of 4, below 1 GiB");
   }
   const auto w = static_cast<int>(width);
   const auto h = static_cast<int>(height);

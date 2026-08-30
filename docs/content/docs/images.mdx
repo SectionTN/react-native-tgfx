@@ -257,7 +257,7 @@ try {
 
 [`imageFromPixels`](/api/functions/imageFromPixels) wraps premultiplied RGBA a
 producer computed rather than loaded, e.g. an ML model's output. `rowBytes` is
-the stride, tightly packed when omitted.
+the stride in bytes, a multiple of 4, tightly packed when omitted.
 
 ```tsx
 const image = imageFromPixels(pixels, width, height)

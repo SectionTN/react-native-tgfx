@@ -155,7 +155,7 @@ export interface TgfxImageFactory extends HybridObject<{
    */
   fromBytes(bytes: ArrayBuffer): Promise<TgfxImage>
 
-  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride, tightly packed when omitted. A buffer a native module owns is borrowed — do not write into it while the handle points at it; a JS-constructed `ArrayBuffer` is copied. A per-frame handle like a camera frame: it cannot be derived from (`subset`, `scaled`, ...) or encoded. */
+  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride in bytes (a multiple of 4), tightly packed when omitted. A buffer a native module owns is borrowed — do not write into it while the handle points at it; a JS-constructed `ArrayBuffer` is copied. A per-frame handle like a camera frame: it cannot be derived from (`subset`, `scaled`, ...) or encoded. */
   fromPixels(
     pixels: ArrayBuffer,
     width: number,
