@@ -160,6 +160,24 @@ describe('tgfx image decoding', () => {
     // The native object is gone, so a second call throws rather than crashing.
     expect(() => throwaway.dispose()).toThrow();
   });
+
+  for (const [label, source, received] of [
+    ['undefined', undefined, 'undefined'],
+    ['null', null, 'null'],
+    ['an empty string', '', '""'],
+  ] as const) {
+    test(`rejects ${label} by name`, async () => {
+      let message = '';
+      try {
+        await loadImage(source as string);
+        throw new Error('loadImage resolved, expected it to reject');
+      } catch (e: unknown) {
+        message = e instanceof Error ? e.message : String(e);
+      }
+      expect(message).toContain('no image source was given');
+      expect(message).toContain(`(received ${received})`);
+    });
+  }
 });
 
 describe('tgfx image rendering', () => {
