@@ -56,7 +56,9 @@ class ImageRegistry {
    */
   std::shared_ptr<tgfx::Image> sourceImage(int32_t handle);
 
-  bool replaceExternal(int32_t handle, std::shared_ptr<tgfx::Image> image);
+  /// Swap an external entry's image; refused for streams, whose frames come from produce().
+  bool replaceExternal(int32_t handle, std::shared_ptr<tgfx::Image> image,
+                       size_t ownedBytes = 0);
 
   /**
    * Register a source that produces its current image on demand, for a video

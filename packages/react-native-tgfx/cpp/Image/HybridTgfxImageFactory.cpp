@@ -286,15 +286,24 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromScene(
 
 static std::shared_ptr<::tgfx::Image> imageFromPixelBytes(
     const std::shared_ptr<ArrayBuffer>& pixels, double width, double height,
-    std::optional<double> rowBytes) {
-  const auto w = static_cast<int>(width);
-  const auto h = static_cast<int>(height);
-  const auto stride = static_cast<size_t>(rowBytes.value_or(0));
+    std::optional<double> rowBytes, size_t& outBytes) {
   if (pixels == nullptr || pixels->size() == 0) {
     throw std::runtime_error("tgfx: fromPixels was given an empty buffer");
   }
+  if (!std::isfinite(width) || !std::isfinite(height) || width < 1 || height < 1 ||
+      width > 65536 || height > 65536) {
+    throw std::runtime_error("tgfx: fromPixels needs a width and height between 1 and 65536");
+  }
+  const double stride = rowBytes.value_or(0);
+  // Bounded before the cast: an unchecked stride wraps byteSize() and defeats the size check.
+  if (!std::isfinite(stride) || stride < 0 || stride > static_cast<double>(1u << 30)) {
+    throw std::runtime_error("tgfx: fromPixels was given an unusable rowBytes");
+  }
+  const auto w = static_cast<int>(width);
+  const auto h = static_cast<int>(height);
   auto info = ::tgfx::ImageInfo::Make(w, h, ::tgfx::ColorType::RGBA_8888,
-                                      ::tgfx::AlphaType::Premultiplied, stride);
+                                      ::tgfx::AlphaType::Premultiplied,
+                                      static_cast<size_t>(stride));
   if (info.isEmpty()) {
     throw std::runtime_error("tgfx: fromPixels was given a size no image can have");
   }
@@ -324,21 +333,25 @@ static std::shared_ptr<::tgfx::Image> imageFromPixelBytes(
   if (image == nullptr) {
     throw std::runtime_error("tgfx: could not build an image from those pixels");
   }
+  outBytes = info.byteSize();
   return image;
 }
 
 std::shared_ptr<HybridTgfxImageSpec> HybridTgfxImageFactory::fromPixels(
     const std::shared_ptr<ArrayBuffer>& pixels, double width, double height,
     std::optional<double> rowBytes) {
-  auto image = imageFromPixelBytes(pixels, width, height, rowBytes);
-  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image), 0, true);
+  size_t bytes = 0;
+  auto image = imageFromPixelBytes(pixels, width, height, rowBytes, bytes);
+  // The handle pins the pixels either way — its copy, or the borrowed buffer it retains.
+  auto handle = tgfxrn::ImageRegistry::instance().addExternal(std::move(image), bytes, true);
   return std::make_shared<HybridTgfxImage>(handle);
 }
 
 void HybridTgfxImage::setPixels(const std::shared_ptr<ArrayBuffer>& pixels, double width,
                                 double height, std::optional<double> rowBytes) {
-  auto image = imageFromPixelBytes(pixels, width, height, rowBytes);
-  if (!tgfxrn::ImageRegistry::instance().replaceExternal(handle_.handle, image)) {
+  size_t bytes = 0;
+  auto image = imageFromPixelBytes(pixels, width, height, rowBytes, bytes);
+  if (!tgfxrn::ImageRegistry::instance().replaceExternal(handle_.handle, image, bytes)) {
     TGFXRN_LOGW("setPixels on image %d ignored: not an external handle", handle_.handle);
     return;
   }

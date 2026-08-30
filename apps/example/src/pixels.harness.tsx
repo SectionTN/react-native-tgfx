@@ -74,6 +74,18 @@ describe('fromPixels', () => {
     expect(() => imageFromPixels(new ArrayBuffer(0), SIZE, SIZE)).toThrow();
   });
 
+  test('rejects a non-finite size', () => {
+    expect(() => imageFromPixels(RED, Number.NaN, SIZE)).toThrow();
+  });
+
+  test('rejects a negative rowBytes', () => {
+    expect(() => imageFromPixels(RED, SIZE, SIZE, -4)).toThrow();
+  });
+
+  test('rejects a rowBytes large enough to overflow the byte size', () => {
+    expect(() => imageFromPixels(RED, SIZE, SIZE, 2 ** 61)).toThrow();
+  });
+
   test('draws the pixels it was given', async () => {
     const image = keep(imageFromPixels(RED, SIZE, SIZE));
     await drawnSnapshot(

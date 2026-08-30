@@ -256,17 +256,21 @@ try {
 ## Decoded pixels
 
 [`imageFromPixels`](/api/functions/imageFromPixels) wraps premultiplied RGBA a
-producer computed rather than loaded eg an ML model's output. `rowBytes` is the
-stride, tightly packed when omitted.
+producer computed rather than loaded, e.g. an ML model's output. `rowBytes` is
+the stride, tightly packed when omitted.
 
 ```tsx
 const image = imageFromPixels(pixels, width, height)
 ```
 
-The pixels are borrowed rather than copied when `pixels` owns its memory, and
-the handle keeps that memory alive; a JavaScript-owned `ArrayBuffer` can be
-detached or collected, so those are copied. Either way tgfx samples the buffer
-directly, so do not write into it while the handle still points at it.
+A buffer another native module produced and owns is borrowed rather than
+copied, and the handle keeps that memory alive — so do not write into it while
+the handle still points at it. An `ArrayBuffer` constructed in JavaScript is
+always copied: JS owns that memory and can detach or collect it at any time.
+
+Like a camera frame, such a handle is a surface to draw, not a source to
+derive from: `subset`, `scaled`, `oriented`, `blurred`, `encode` and `save`
+throw on it.
 
 For a stream, mint once and re-point that handle with
 [`setPixels`](/api/interfaces/TgfxImage#setpixels) rather than creating one per
@@ -279,7 +283,6 @@ if (image != null) {
   image = imageFromPixels(pixels, width, height)
 }
 ```
-
 
 ## Cache
 

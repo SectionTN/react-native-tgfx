@@ -67,7 +67,7 @@ export interface TgfxImage extends HybridObject<{
    */
   setNativeBuffer(buffer: UInt64, format: PixelFormat): void
 
-  /** Point this handle at different pixels, keeping its id. The per-frame path, avoiding a handle minted and disposed per frame. Only valid on a handle created from pixels. */
+  /** Point this handle at different pixels, keeping its id. The per-frame path, avoiding a handle minted and disposed per frame. Only valid on a handle created from pixels or a native buffer, never on a decoded or stream handle. */
   setPixels(
     pixels: ArrayBuffer,
     width: number,
@@ -155,7 +155,7 @@ export interface TgfxImageFactory extends HybridObject<{
    */
   fromBytes(bytes: ArrayBuffer): Promise<TgfxImage>
 
-  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride, tightly packed when omitted. Borrowed when `pixels` owns its memory, copied otherwise; either way do not write into it while the handle points at it. */
+  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride, tightly packed when omitted. A buffer a native module owns is borrowed — do not write into it while the handle points at it; a JS-constructed `ArrayBuffer` is copied. A per-frame handle like a camera frame: it cannot be derived from (`subset`, `scaled`, ...) or encoded. */
   fromPixels(
     pixels: ArrayBuffer,
     width: number,

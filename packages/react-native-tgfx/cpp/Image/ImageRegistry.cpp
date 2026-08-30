@@ -107,8 +107,8 @@ void ImageRegistry::invalidate() {
   bumpEpoch();
 }
 
-bool ImageRegistry::replaceExternal(int32_t handle,
-                                    std::shared_ptr<tgfx::Image> image) {
+bool ImageRegistry::replaceExternal(int32_t handle, std::shared_ptr<tgfx::Image> image,
+                                    size_t ownedBytes) {
   if (image == nullptr) {
     return false;
   }
@@ -117,11 +117,12 @@ bool ImageRegistry::replaceExternal(int32_t handle,
   {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = entries_.find(handle);
-    if (it == entries_.end() || !it->second.external()) {
+    if (it == entries_.end() || !it->second.external() || it->second.produce != nullptr) {
       return false;
     }
     it->second.width = image->width();
     it->second.height = image->height();
+    it->second.bytes = ownedBytes;
     previous = std::move(it->second.decoded);
     it->second.decoded = std::move(image);
   }
