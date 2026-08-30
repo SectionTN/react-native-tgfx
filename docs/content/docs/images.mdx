@@ -253,6 +253,37 @@ try {
 // Draw with frameImage, then dispose it when the stream ends.
 ```
 
+## Decoded pixels
+
+[`imageFromPixels`](/api/functions/imageFromPixels) wraps premultiplied RGBA a
+producer computed rather than loaded, e.g. an ML model's output. `rowBytes` is
+the stride in bytes, a multiple of 4, tightly packed when omitted.
+
+```tsx
+const image = imageFromPixels(pixels, width, height)
+```
+
+A buffer another native module produced and owns is borrowed rather than
+copied, and the handle keeps that memory alive — so do not write into it while
+the handle still points at it. An `ArrayBuffer` constructed in JavaScript is
+always copied: JS owns that memory and can detach or collect it at any time.
+
+Like a camera frame, such a handle is a surface to draw, not a source to
+derive from: `subset`, `scaled`, `oriented`, `blurred`, `encode` and `save`
+throw on it.
+
+For a stream, mint once and re-point that handle with
+[`setPixels`](/api/interfaces/TgfxImage#setpixels) rather than creating one per
+frame - the same shape as `setNativeBuffer`:
+
+```tsx
+if (image != null) {
+  image.setPixels(pixels, width, height)
+} else {
+  image = imageFromPixels(pixels, width, height)
+}
+```
+
 ## Cache
 
 ```tsx

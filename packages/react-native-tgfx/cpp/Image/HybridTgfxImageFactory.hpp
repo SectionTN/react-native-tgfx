@@ -20,6 +20,9 @@ class HybridTgfxImageFactory : public HybridTgfxImageFactorySpec {
       const std::string& data) override;
   std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromSvg(
       const std::string& markup) override;
+  std::shared_ptr<HybridTgfxImageSpec> fromPixels(const std::shared_ptr<ArrayBuffer>& pixels,
+                                                  double width, double height,
+                                                  std::optional<double> rowBytes) override;
   std::shared_ptr<HybridTgfxImageSpec> fromNativeBuffer(uint64_t buffer,
                                                         PixelFormat format) override;
   std::shared_ptr<Promise<std::string>> toSvg(const std::shared_ptr<ArrayBuffer>& words,

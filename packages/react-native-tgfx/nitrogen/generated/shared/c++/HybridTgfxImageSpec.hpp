@@ -23,12 +23,12 @@ namespace margelo::nitro::tgfx { enum class ImageSampling; }
 namespace margelo::nitro::tgfx { enum class Orientation; }
 
 #include "PixelFormat.hpp"
+#include <NitroModules/ArrayBuffer.hpp>
+#include <optional>
 #include <memory>
 #include "HybridTgfxImageSpec.hpp"
 #include "ImageSampling.hpp"
-#include <optional>
 #include "Orientation.hpp"
-#include <NitroModules/ArrayBuffer.hpp>
 #include <NitroModules/Promise.hpp>
 #include <string>
 
@@ -66,6 +66,7 @@ namespace margelo::nitro::tgfx {
     public:
       // Methods
       virtual void setNativeBuffer(uint64_t buffer, PixelFormat format) = 0;
+      virtual void setPixels(const std::shared_ptr<ArrayBuffer>& pixels, double width, double height, std::optional<double> rowBytes) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> subset(double x, double y, double width, double height) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> scaled(double width, double height, std::optional<ImageSampling> sampling) = 0;
       virtual std::shared_ptr<HybridTgfxImageSpec> oriented(Orientation orientation) = 0;

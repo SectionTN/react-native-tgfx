@@ -36,6 +36,8 @@ class HybridTgfxImage : public HybridTgfxImageSpec {
   }
 
   void setNativeBuffer(uint64_t buffer, PixelFormat format) override;
+  void setPixels(const std::shared_ptr<ArrayBuffer>& pixels, double width, double height,
+                 std::optional<double> rowBytes) override;
 
   std::shared_ptr<HybridTgfxImageSpec> subset(double x, double y, double width,
                                               double height) override;

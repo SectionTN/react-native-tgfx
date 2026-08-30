@@ -1775,6 +1775,27 @@ void anExternalHandleIsReplacedInPlaceAndNotBudgeted() {
   registry.remove(external.handle);
 }
 
+void aStreamHandleRefusesReplaceExternalAndBytesFollowTheSwap() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  auto source = registerSolid(cellColor(11), 32, 32);
+  auto frame = registry.acquire(source.handle);
+  CHECK(frame != nullptr);
+
+  // A stream's frames come from produce(); a swapped-in image would never be drawn.
+  auto stream = registry.addStream([frame]() { return frame; }, 32, 32);
+  CHECK(stream.handle != 0);
+  CHECK(!registry.replaceExternal(stream.handle, frame));
+
+  auto external = registry.addExternal(frame, 1024, true);
+  CHECK(registry.byteSize(external.handle) == 1024);
+  CHECK(registry.replaceExternal(external.handle, frame, 4096));
+  CHECK(registry.byteSize(external.handle) == 4096);
+
+  registry.remove(stream.handle);
+  registry.remove(external.handle);
+  registry.remove(source.handle);
+}
+
 void anExternalHandleAlsoDrivesAnImageShaderPerFrame() {
   auto& registry = tgfxrn::ImageRegistry::instance();
   auto first = registerSolid(cellColor(13), 32, 32);
@@ -5570,6 +5591,7 @@ int main() {
   aSourceRectPicksOneSprite();
   anImageShaderTilesAcrossAShape();
   anExternalHandleIsReplacedInPlaceAndNotBudgeted();
+  aStreamHandleRefusesReplaceExternalAndBytesFollowTheSwap();
   anExternalHandleAlsoDrivesAnImageShaderPerFrame();
   anExternalHandleDrivesAChildShaderPerFrame();
   aCameraFrameCoversTheCanvasAndItsChildrenRideItsTransform();

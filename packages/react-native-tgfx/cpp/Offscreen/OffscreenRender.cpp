@@ -135,7 +135,8 @@ RasterizedImage rasterizeRegisteredImage(int32_t handle) {
   auto image = ImageRegistry::instance().sourceImage(handle);
   if (image == nullptr) {
     throw std::runtime_error(
-        "tgfx: this image is disposed, or is a live camera/video frame, which cannot be encoded");
+        "tgfx: this image is disposed, or is a live per-frame image (camera, video, fromPixels), "
+        "which cannot be encoded");
   }
   int width = image->width();
   int height = image->height();
