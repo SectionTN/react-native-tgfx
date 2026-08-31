@@ -12,6 +12,18 @@ thread. Changing ordinary JSX props through React recompiles and uploads the
 scene. An unslotted handle write also recompiles, but skips the React and Fabric
 commits.
 
+## Batching is automatic — and order-aware
+
+The GPU merges only *adjacent* compatible draws into one batch, so a sibling
+list that interleaves shape kinds (`<Rect>`, `<Circle>`, `<Rect>`, ...) would
+flush a pipeline batch at nearly every node. At scene commit, siblings whose
+painted bounds provably don't overlap are re-clustered by batch class — once,
+off the hot path, with pixel-identical output (overlapping draws are never
+reordered, so paint order still wins where it can be seen). At 20k interleaved
+nodes this cuts ~13k GPU batches a frame to ~1k and roughly quadruples the
+presented frame rate. You still get the best batches by grouping same-kind
+shapes yourself; the pass just stops interleaving from being a cliff.
+
 ## Keep children primitive
 
 The reconciler recognises the exported drawings directly. A wrapper function

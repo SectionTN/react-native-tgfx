@@ -1148,6 +1148,167 @@ void SceneRenderer::readPaint(SceneReader& r, PaintCmd& paint) {
   applyPaint(paint, {}, paint.cached);
 }
 
+/// One GPU batch per draw-op class run: tgfx's OpsCompositor merges only
+/// *adjacent* compatible draws, so a sibling list that interleaves classes
+/// (rect, circle, rect, ...) flushes a batch at nearly every node — at 20k
+/// nodes that is ~13k pipeline binds a frame, and the render thread dies on
+/// per-batch bookkeeping. Draws whose padded bounds are disjoint commute under
+/// any blend mode, so static siblings may be clustered by batch class at
+/// commit time — once, zero per-frame cost, identical pixels.
+struct BatchCluster {
+  uint64_t key = 0;
+  /// Anything unprovable: never hopped over, never merged into.
+  bool barrier = false;
+  /// Per member, not a union: a cluster's bounding box quickly spans the whole
+  /// canvas on a grid, which would read as "overlaps everything" and stop all
+  /// clustering right when it matters most.
+  std::vector<tgfx::Rect> memberBounds;
+  std::vector<size_t> members;
+};
+
+/// 0 = tgfx's rect op, 1 = its round-rect op (oval and circle land there too),
+/// 2 = its image op, which additionally batches per texture.
+int batchClassOf(const DrawCmd& cmd) {
+  switch (cmd.kind) {
+    case DrawCmd::Rect: return 0;
+    case DrawCmd::RRect:
+    case DrawCmd::Oval:
+    case DrawCmd::Circle: return 1;
+    case DrawCmd::Image: return 2;
+    default: return -1;
+  }
+}
+
+/// The node's literal painted bounds, padded for the AA fringe; false when the
+/// geometry can change per frame, which makes the node an immovable barrier.
+bool literalShapeBounds(const DrawCmd& cmd, tgfx::Rect* out) {
+  if (cmd.kind == DrawCmd::Circle) {
+    if (cmd.cx.slot >= 0 || cmd.cy.slot >= 0 || cmd.r.slot >= 0) {
+      return false;
+    }
+    float r = cmd.r.literal;
+    *out = tgfx::Rect::MakeXYWH(cmd.cx.literal - r, cmd.cy.literal - r, r * 2, r * 2);
+  } else {
+    if (cmd.x.slot >= 0 || cmd.y.slot >= 0 || cmd.w.slot >= 0 || cmd.h.slot >= 0) {
+      return false;
+    }
+    *out = tgfx::Rect::MakeXYWH(cmd.x.literal, cmd.y.literal, cmd.w.literal, cmd.h.literal);
+  }
+  // A draw touches exactly the pixels whose centers sit within half a pixel of
+  // its geometry (the AA fringe), so half a pixel is the disjointness margin —
+  // a full pixel would glue every 1px-gap grid into one immovable blob.
+  out->outset(0.5f, 0.5f);
+  return true;
+}
+
+bool clusterable(const DrawCmd& cmd, uint64_t* key, tgfx::Rect* bounds) {
+  int opClass = batchClassOf(cmd);
+  if (opClass < 0) {
+    return false;
+  }
+  if (cmd.visible.slot >= 0 || cmd.visible.literal < 0.5f) {
+    return false;
+  }
+  // Solid literal fills only. A stroke, shader, or filter changes both the
+  // painted bounds and the batch identity; colour differences batch fine.
+  const PaintCmd& p = cmd.paint;
+  if (p.animated() || p.stroke || p.shader != nullptr || p.colorFilter != nullptr ||
+      p.imageFilter != nullptr || p.layer != nullptr) {
+    return false;
+  }
+  if (!literalShapeBounds(cmd, bounds)) {
+    return false;
+  }
+  // Key layout: bits 0-1 op class, bit 2 antiAlias, bits 8-15 blend mode,
+  // bits 16-47 image handle, bits 48-53 sampling (two 2-bit filter modes and a
+  // 2-bit mipmap mode). Colour stays out: tgfx batches it per vertex.
+  *key = static_cast<uint64_t>(opClass) | (p.antiAlias ? 4u : 0u) |
+         (static_cast<uint64_t>(p.blend) << 8);
+  if (cmd.kind == DrawCmd::Image) {
+    // An image batch is per texture and per sampling; interleaving two handles
+    // splits batches exactly the way interleaving rects and circles does.
+    if (cmd.imageWord.slot >= 0 || cmd.animSrcRect) {
+      return false;
+    }
+    *key |= static_cast<uint64_t>(static_cast<uint32_t>(cmd.imageWord.resolveInt({}))) << 16 |
+            static_cast<uint64_t>(cmd.sampling.minFilterMode) << 48 |
+            static_cast<uint64_t>(cmd.sampling.magFilterMode) << 50 |
+            static_cast<uint64_t>(cmd.sampling.mipmapMode) << 52;
+  }
+  return true;
+}
+
+/// Reorders `children` so same-class disjoint draws sit together. A node may
+/// only hop over clusters whose united bounds it provably does not touch, so
+/// every move is between draws that commute; hit-test results cannot change
+/// either, since a point can hit at most one of any pair this separates.
+void clusterBatchableChildren(std::vector<DrawCmd>& children) {
+  // Too few nodes to fragment into batches worth saving.
+  if (children.size() < 8) {
+    return;
+  }
+  std::vector<BatchCluster> clusters;
+  clusters.reserve(children.size() / 2);
+  // Bounds the exact pairwise checks per node, so a pathological list stops
+  // paying instead of going quadratic. At 20k nodes this still cuts ~13k
+  // batches to a few hundred.
+  constexpr int kTestBudget = 1024;
+  bool moved = false;
+  for (size_t i = 0; i < children.size(); i++) {
+    uint64_t key = 0;
+    tgfx::Rect bounds = tgfx::Rect::MakeEmpty();
+    if (!clusterable(children[i], &key, &bounds)) {
+      clusters.push_back({0, true, {}, {i}});
+      continue;
+    }
+    int target = -1;
+    int budget = kTestBudget;
+    for (int j = static_cast<int>(clusters.size()) - 1; j >= 0 && budget > 0; j--) {
+      auto& cluster = clusters[static_cast<size_t>(j)];
+      if (!cluster.barrier && cluster.key == key) {
+        target = j;
+        break;
+      }
+      if (cluster.barrier) {
+        break;
+      }
+      bool blocked = false;
+      for (const auto& member : cluster.memberBounds) {
+        if (--budget < 0) {
+          blocked = true;
+          break;
+        }
+        if (tgfx::Rect::Intersects(member, bounds)) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) {
+        break;
+      }
+    }
+    if (target >= 0) {
+      auto& cluster = clusters[static_cast<size_t>(target)];
+      moved = moved || target != static_cast<int>(clusters.size()) - 1;
+      cluster.memberBounds.push_back(bounds);
+      cluster.members.push_back(i);
+    } else {
+      clusters.push_back({key, false, {bounds}, {i}});
+    }
+  }
+  if (!moved) {
+    return;
+  }
+  std::vector<DrawCmd> ordered;
+  ordered.reserve(children.size());
+  for (auto& cluster : clusters) {
+    for (size_t index : cluster.members) {
+      ordered.push_back(std::move(children[index]));
+    }
+  }
+  children = std::move(ordered);
+}
+
 /// Out of line: its four vectors would otherwise sit in every readNode frame, 256 deep.
 [[gnu::noinline]] void readMesh(SceneReader& r, DrawCmd& cmd) {
   auto topology = r.nextInt() == 1 ? tgfx::MeshTopology::TriangleStrip
@@ -1318,6 +1479,9 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         TGFXRN_LOGW("<Group picture> holds something that resolves per frame, so it is drawn "
                     "directly; a recording would freeze it");
         cmd.cachePicture = false;
+      }
+      if (r.ok) {
+        clusterBatchableChildren(cmd.children);
       }
       return r.ok;
     }
@@ -1800,6 +1964,9 @@ void SceneRenderer::setScene(std::span<const double> words,
         reader.at, reader.words.size(), reader.patchAt, reader.patches.size(),
         reader.stringPatchAt, reader.stringPatches.size());
   }
+
+  // Top-level siblings batch the same way a group's children do.
+  clusterBatchableChildren(*program);
 
   bool images = false;
   bool text = false;

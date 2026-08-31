@@ -5496,6 +5496,83 @@ void encodingUnpremultipliesAndRejectsLiveFrames() {
   registry.remove(solid.handle);
 }
 
+/// The commit-time batch clustering may regroup disjoint siblings by op class,
+/// but an overlap must keep its paint order. Pixels prove both: the regrouped
+/// interleave draws exactly what a hand-grouped list draws, and flipping the
+/// overlapping pair still changes the picture — order survived where it shows.
+void batchClusteringKeepsOverlapOrderAndPixels() {
+  auto pushFillerRect = [](Writer& w, int i) {
+    w.push(1);  // Rect
+    w.pushAnim(i * 7 + 1);
+    w.pushAnim(50);
+    w.pushAnim(4);
+    w.pushAnim(4);
+    w.pushPaint(0xff00cc44, false);
+  };
+  auto pushFillerCircle = [](Writer& w, int i) {
+    w.push(4);  // Circle
+    w.pushAnim(i * 7 + 3);
+    w.pushAnim(59);
+    w.pushAnim(2);
+    w.pushPaint(0xff8844cc, false);
+  };
+  auto pushOverlap = [](Writer& w, bool circleLast) {
+    auto rect = [&] {
+      w.push(1);
+      w.pushAnim(10);
+      w.pushAnim(10);
+      w.pushAnim(30);
+      w.pushAnim(30);
+      w.pushPaint(0xffff2d55, false);
+    };
+    auto circle = [&] {
+      w.push(4);
+      w.pushAnim(25);
+      w.pushAnim(25);
+      w.pushAnim(10);
+      w.pushPaint(0xff007aff, false);
+    };
+    if (circleLast) {
+      rect();
+      circle();
+    } else {
+      circle();
+      rect();
+    }
+  };
+
+  Writer interleaved;
+  interleaved.push(10);
+  for (int i = 0; i < 8; i++) {
+    i % 2 == 0 ? pushFillerRect(interleaved, i) : pushFillerCircle(interleaved, i);
+  }
+  pushOverlap(interleaved, true);
+
+  // The same nodes with the fillers already grouped by kind: the reference the
+  // clustering pass is supposed to be equivalent to.
+  Writer grouped;
+  grouped.push(10);
+  for (int i = 0; i < 8; i += 2) {
+    pushFillerRect(grouped, i);
+  }
+  for (int i = 1; i < 8; i += 2) {
+    pushFillerCircle(grouped, i);
+  }
+  pushOverlap(grouped, true);
+
+  Writer flipped;
+  flipped.push(10);
+  for (int i = 0; i < 8; i++) {
+    i % 2 == 0 ? pushFillerRect(flipped, i) : pushFillerCircle(flipped, i);
+  }
+  pushOverlap(flipped, false);
+
+  auto a = render(interleaved.finish(), {}, {});
+  CHECK(anyPixelSet(a));
+  CHECK(a == render(grouped.finish(), {}, {}));
+  CHECK(a != render(flipped.finish(), {}, {}));
+}
+
 /// setScene-then-hitTest must answer before the worker's first drain.
 void anOffscreenSurfaceHitTestsBeforeTheFirstDrain() {
   auto surface = std::make_shared<tgfxrn::OffscreenSurface>(8, 8, 1.0f, true, false);
@@ -5646,6 +5723,7 @@ int main() {
   anOffscreenSurfaceRendersSlotsAndViewport();
   encodingUnpremultipliesAndRejectsLiveFrames();
   anOffscreenSurfaceHitTestsBeforeTheFirstDrain();
+  batchClusteringKeepsOverlapOrderAndPixels();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;
