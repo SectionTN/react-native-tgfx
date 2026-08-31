@@ -257,4 +257,29 @@ export interface TgfxImageFactory extends HybridObject<{
 
   /** Bytes currently held by decoded pixel buffers. */
   readonly cachedBytes: number
+
+  /** A point-in-time snapshot of every tgfx cache; see the exported `getCacheInfo`. */
+  getCacheInfo(): CacheInfo
+
+  /** Drop every tgfx cache now; see the exported `purgeCaches`. */
+  purgeCaches(): void
+}
+
+/** What tgfx is caching right now, in bytes. */
+export interface CacheInfo {
+  /** Decoded CPU pixels resident in the image cache. */
+  imageBytes: number
+  /** The budget those pixels are evicted against (`setImageCacheLimit`). */
+  imageLimit: number
+  /**
+   * GPU resources across the live canvas contexts, as of each canvas's last
+   * frame — a canvas publishes the number when it draws, so right after a
+   * purge this reads pre-purge until the canvases have drawn a frame.
+   */
+  gpuBytes: number
+  /**
+   * GPU resources held by the shared offscreen context (`renderToImage`,
+   * `renderToSvg`/`renderToPdf` rasterization, `encode`).
+   */
+  offscreenGpuBytes: number
 }

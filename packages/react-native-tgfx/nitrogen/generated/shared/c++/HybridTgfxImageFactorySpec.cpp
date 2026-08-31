@@ -25,6 +25,8 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("savePdf", &HybridTgfxImageFactorySpec::savePdf);
       prototype.registerHybridMethod("fromScene", &HybridTgfxImageFactorySpec::fromScene);
       prototype.registerHybridMethod("setCacheLimit", &HybridTgfxImageFactorySpec::setCacheLimit);
+      prototype.registerHybridMethod("getCacheInfo", &HybridTgfxImageFactorySpec::getCacheInfo);
+      prototype.registerHybridMethod("purgeCaches", &HybridTgfxImageFactorySpec::purgeCaches);
     });
   }
 

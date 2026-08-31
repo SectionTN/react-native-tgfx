@@ -72,4 +72,10 @@ struct RasterizedImage {
  */
 RasterizedImage rasterizeRegisteredImage(int32_t handle);
 
+/// GPU bytes the shared offscreen context holds; 0 when it was never created.
+size_t offscreenGpuBytes();
+
+/// Drop the shared offscreen context's unlocked GPU resources now. Never creates it.
+void purgeOffscreenGpu();
+
 }  // namespace tgfxrn

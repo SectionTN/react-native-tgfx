@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { NitroModules, type UInt64 } from 'react-native-nitro-modules'
 import type {
+  CacheInfo,
   PixelFormat,
   TgfxImage,
   TgfxImageFactory,
 } from '../specs/TgfxImage.nitro'
+
+export type { CacheInfo } from '../specs/TgfxImage.nitro'
 import { loadSource, looksLikeSvgMarkup } from './source'
 
 let factory: TgfxImageFactory | null = null
@@ -21,6 +24,25 @@ function images(): TgfxImageFactory {
  */
 export function setImageCacheLimit(bytes: number): void {
   images().setCacheLimit(bytes)
+}
+
+/**
+ * What tgfx is caching right now, in bytes: resident decoded pixels and their
+ * budget, GPU resources across the live canvases (as of each canvas's last
+ * frame), and the shared offscreen context's GPU resources.
+ */
+export function getCacheInfo(): CacheInfo {
+  return images().getCacheInfo()
+}
+
+/**
+ * Drop every tgfx cache now. Decoded CPU pixels are freed before this returns;
+ * each live canvas drops its GPU resource cache on its next frame, which this
+ * schedules — so process memory falls within a frame, without waiting for any
+ * budget eviction. What is still on screen re-decodes and re-uploads lazily.
+ */
+export function purgeCaches(): void {
+  images().purgeCaches()
 }
 
 /**

@@ -28,8 +28,22 @@ namespace tgfxrn {
 
 class TgfxRenderer {
  public:
-  TgfxRenderer() = default;
+  TgfxRenderer();
   ~TgfxRenderer();
+
+  /**
+   * Ask every live canvas to drop its GPU resource cache. Any thread. The purge
+   * itself runs on each canvas's next frame — the render thread owns the
+   * context — so pair this with a wake (ImageRegistry::wakeAll()).
+   */
+  static void requestPurge();
+
+  /**
+   * GPU bytes held across the live canvas contexts, as published by each
+   * canvas's last frame. A canvas that has not drawn since a change reports
+   * its previous frame's number.
+   */
+  static size_t liveGpuBytes();
 
   TgfxRenderer(const TgfxRenderer&) = delete;
   TgfxRenderer& operator=(const TgfxRenderer&) = delete;
@@ -171,6 +185,10 @@ class TgfxRenderer {
   std::atomic<bool> usesImages_{true};
   std::atomic<bool> usesText_{true};
   uint64_t wakeToken_ = 0;
+  /// What this canvas's context held after its last flush, for liveGpuBytes().
+  std::atomic<size_t> gpuBytes_{0};
+  /// The purge generation this canvas has honoured; behind the global = purge pending.
+  std::atomic<uint64_t> purgedGen_{0};
   std::vector<std::pair<SnapshotRequest, SnapshotCallback>> pendingSnapshots_;
   std::vector<InFlightSnapshot> inFlightSnapshots_;
   std::atomic<bool> displayP3_{false};

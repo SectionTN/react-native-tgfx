@@ -96,6 +96,14 @@ class ImageRegistry {
 
   size_t decodeCount() const;
 
+  /**
+   * Evict every resident decodable entry now, freeing its CPU pixels. Handles
+   * stay valid: an on-screen image re-decodes lazily, exactly as after a
+   * budget eviction. External and stream entries are untouched — their pixels
+   * are someone else's and cannot be rebuilt.
+   */
+  void purgeResident();
+
   void clear();
 
   void waitForDecodes();

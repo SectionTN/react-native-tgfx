@@ -312,6 +312,29 @@ void ImageRegistry::evictLocked() {
   }
 }
 
+void ImageRegistry::purgeResident() {
+  // The pixels die outside the lock; a decode worker touching the registry in
+  // an Image destructor path must not find it held.
+  std::vector<std::shared_ptr<tgfx::Image>> dropped;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (int32_t handle : lru_) {
+      auto it = entries_.find(handle);
+      if (it == entries_.end()) {
+        continue;
+      }
+      cachedBytes_ -= it->second.bytes;
+      dropped.push_back(std::move(it->second.decoded));
+      dropped.push_back(std::move(it->second.lazy));
+      it->second.resident = false;
+    }
+    lru_.clear();
+  }
+  dropped.clear();
+  // Canvases redraw and re-decode what is actually on screen.
+  bumpEpoch();
+}
+
 void ImageRegistry::setCacheLimit(size_t bytes) {
   {
     std::lock_guard<std::mutex> lock(mutex_);

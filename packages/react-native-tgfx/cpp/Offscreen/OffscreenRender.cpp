@@ -1,5 +1,6 @@
 #include "OffscreenRender.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <mutex>
 #include <stdexcept>
@@ -47,19 +48,47 @@ std::shared_ptr<tgfx::Device> makeDevice() {
  * The mutex guards only the pointer. `lockContext` is the real serialisation
  * point, so probing it under this lock would make every caller queue twice.
  */
+std::mutex offscreenDeviceMutex;
+std::shared_ptr<tgfx::Device> offscreenDeviceShared;
+
 std::shared_ptr<tgfx::Device> offscreenDevice(bool replace) {
-  static std::mutex mutex;
-  static std::shared_ptr<tgfx::Device> shared;
-  std::lock_guard<std::mutex> guard(mutex);
-  if (shared == nullptr || replace) {
-    shared = makeDevice();
+  std::lock_guard<std::mutex> guard(offscreenDeviceMutex);
+  if (offscreenDeviceShared == nullptr || replace) {
+    offscreenDeviceShared = makeDevice();
   }
-  return shared;
+  return offscreenDeviceShared;
+}
+
+/// The shared device if one was ever made — a cache probe must not create a GPU context.
+std::shared_ptr<tgfx::Device> peekOffscreenDevice() {
+  std::lock_guard<std::mutex> guard(offscreenDeviceMutex);
+  return offscreenDeviceShared;
 }
 
 constexpr int kMaxDimension = 8192;
 
 }  // namespace
+
+size_t offscreenGpuBytes() {
+  auto device = peekOffscreenDevice();
+  auto* context = device == nullptr ? nullptr : device->lockContext();
+  if (context == nullptr) {
+    return 0;
+  }
+  size_t bytes = context->memoryUsage();
+  device->unlock();
+  return bytes;
+}
+
+void purgeOffscreenGpu() {
+  auto device = peekOffscreenDevice();
+  auto* context = device == nullptr ? nullptr : device->lockContext();
+  if (context == nullptr) {
+    return;
+  }
+  context->purgeResourcesNotUsedSince(std::chrono::steady_clock::now());
+  device->unlock();
+}
 
 OffscreenContext::OffscreenContext() {
   device_ = offscreenDevice(false);

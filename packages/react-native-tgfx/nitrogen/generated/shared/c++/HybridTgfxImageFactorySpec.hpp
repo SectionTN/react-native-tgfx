@@ -17,6 +17,8 @@
 namespace margelo::nitro::tgfx { class HybridTgfxImageSpec; }
 // Forward declaration of `PixelFormat` to properly resolve imports.
 namespace margelo::nitro::tgfx { enum class PixelFormat; }
+// Forward declaration of `CacheInfo` to properly resolve imports.
+namespace margelo::nitro::tgfx { struct CacheInfo; }
 
 #include <memory>
 #include "HybridTgfxImageSpec.hpp"
@@ -26,6 +28,7 @@ namespace margelo::nitro::tgfx { enum class PixelFormat; }
 #include <optional>
 #include "PixelFormat.hpp"
 #include <vector>
+#include "CacheInfo.hpp"
 
 namespace margelo::nitro::tgfx {
 
@@ -68,6 +71,8 @@ namespace margelo::nitro::tgfx {
       virtual std::shared_ptr<Promise<void>> savePdf(const std::string& path, const std::vector<std::shared_ptr<ArrayBuffer>>& pages, const std::vector<std::string>& strings, const std::vector<double>& stringCounts, const std::vector<double>& sizes, const std::vector<std::string>& metadata) = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridTgfxImageSpec>>> fromScene(const std::shared_ptr<ArrayBuffer>& words, const std::vector<std::string>& strings, double width, double height, double pixelRatio, bool opaque, const std::string& colorSpace) = 0;
       virtual void setCacheLimit(double bytes) = 0;
+      virtual CacheInfo getCacheInfo() = 0;
+      virtual void purgeCaches() = 0;
 
     protected:
       // Hybrid Setup

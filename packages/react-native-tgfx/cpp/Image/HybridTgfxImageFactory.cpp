@@ -17,6 +17,7 @@
 #include "Log.hpp"
 #include "SvgImage.hpp"
 #include "TgfxFrameSink.hpp"
+#include "TgfxRenderer.hpp"
 #include "tgfx/core/Data.h"
 #include "tgfx/core/Image.h"
 #include "tgfx/core/ImageCodec.h"
@@ -562,6 +563,24 @@ void HybridTgfxImageFactory::setCacheLimit(double bytes) {
 
 double HybridTgfxImageFactory::getCachedBytes() {
   return static_cast<double>(tgfxrn::ImageRegistry::instance().cachedBytes());
+}
+
+CacheInfo HybridTgfxImageFactory::getCacheInfo() {
+  auto& registry = tgfxrn::ImageRegistry::instance();
+  return CacheInfo(static_cast<double>(registry.cachedBytes()),
+                   static_cast<double>(registry.cacheLimit()),
+                   static_cast<double>(tgfxrn::TgfxRenderer::liveGpuBytes()),
+                   static_cast<double>(tgfxrn::offscreenGpuBytes()));
+}
+
+void HybridTgfxImageFactory::purgeCaches() {
+  // Generation first, so every canvas the wake below reaches sees the purge.
+  tgfxrn::TgfxRenderer::requestPurge();
+  // Frees the decoded CPU pixels on this thread. Its epoch bump wakes every
+  // canvas — the wake listener also fires on a pending purge, image-free
+  // canvases included — and each drops its GPU cache on that frame.
+  tgfxrn::ImageRegistry::instance().purgeResident();
+  tgfxrn::purgeOffscreenGpu();
 }
 
 }  // namespace margelo::nitro::tgfx

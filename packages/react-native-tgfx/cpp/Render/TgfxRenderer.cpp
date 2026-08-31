@@ -1,6 +1,7 @@
 #include "TgfxRenderer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -25,7 +26,40 @@
 
 namespace tgfxrn {
 
+namespace {
+/// Every live renderer, so a process-wide purge and byte count can reach them.
+std::mutex renderersMutex;
+std::vector<TgfxRenderer*> renderers;
+std::atomic<uint64_t> purgeGeneration{1};
+}  // namespace
+
+TgfxRenderer::TgfxRenderer() {
+  purgedGen_.store(purgeGeneration.load(std::memory_order_acquire),
+                   std::memory_order_relaxed);
+  std::lock_guard<std::mutex> lock(renderersMutex);
+  renderers.push_back(this);
+}
+
+void TgfxRenderer::requestPurge() {
+  purgeGeneration.fetch_add(1, std::memory_order_release);
+}
+
+size_t TgfxRenderer::liveGpuBytes() {
+  std::lock_guard<std::mutex> lock(renderersMutex);
+  size_t total = 0;
+  for (auto* renderer : renderers) {
+    total += renderer->gpuBytes_.load(std::memory_order_relaxed);
+  }
+  return total;
+}
+
 TgfxRenderer::~TgfxRenderer() {
+  // First, so a purge or byte count can never reach a dying renderer.
+  {
+    std::lock_guard<std::mutex> lock(renderersMutex);
+    renderers.erase(std::remove(renderers.begin(), renderers.end(), this),
+                    renderers.end());
+  }
   // Before the window: a wake landing mid-teardown would draw into a dying view.
   setWakeCallback(nullptr);
   releaseWindow();
@@ -42,7 +76,9 @@ void TgfxRenderer::setWakeCallback(std::function<void()> wake) {
     // would only reach draw()'s early-out, having cost a post and a JNI hop on
     // a render thread that is already the busiest one here.
     wakeToken_ = registry.addWakeListener([this, wake = std::move(wake)] {
-      if (usesImages_.load(std::memory_order_acquire)) {
+      if (usesImages_.load(std::memory_order_acquire) ||
+          purgedGen_.load(std::memory_order_acquire) !=
+              purgeGeneration.load(std::memory_order_acquire)) {
         wake();
       }
     });
@@ -230,8 +266,10 @@ bool TgfxRenderer::draw() {
   uint64_t imageMark =
       usesImages_.load(std::memory_order_acquire) ? ImageRegistry::instance().epoch() : 0;
   uint64_t fontMark = usesText_.load(std::memory_order_acquire) ? fontEpoch : 0;
+  uint64_t purgeGen = purgeGeneration.load(std::memory_order_acquire);
+  bool purgePending = purgedGen_.load(std::memory_order_relaxed) != purgeGen;
   if (version == drawnVersion_ && imageMark == drawnImageMark_ &&
-      fontMark == drawnFontMark_ && !snapshotPending()) {
+      fontMark == drawnFontMark_ && !snapshotPending() && !purgePending) {
     return false;
   }
   std::shared_ptr<tgfx::Window> window;
@@ -293,6 +331,11 @@ bool TgfxRenderer::draw() {
   if (context == nullptr) {
     failSnapshots(window, "[tgfx] snapshot: the GPU context could not be locked");
     return false;
+  }
+  if (purgePending) {
+    // Everything unlocked goes; this frame recreates what the scene still needs.
+    context->purgeResourcesNotUsedSince(std::chrono::steady_clock::now());
+    purgedGen_.store(purgeGen, std::memory_order_release);
   }
   // A decoded image is resident twice, CPU and GPU, so both follow setImageCacheLimit().
   size_t cacheLimit = ImageRegistry::instance().cacheLimit();
@@ -378,6 +421,7 @@ bool TgfxRenderer::draw() {
     }
     rendered = true;
   }
+  gpuBytes_.store(context->memoryUsage(), std::memory_order_relaxed);
   device->unlock();
   if (!orphaned.empty()) {
     failSnapshots(std::move(orphaned),
@@ -604,6 +648,7 @@ std::shared_ptr<tgfx::Window> TgfxRenderer::detachWindow() {
     window_ = nullptr;
     cacheLimitApplied_ = false;
   }
+  gpuBytes_.store(0, std::memory_order_relaxed);
   // No releaseGpuObjects: the window's context dies with it, orphaned surfaces included.
   failSnapshots(std::move(orphaned),
                 "[tgfx] snapshot: the canvas was unmounted before the frame landed");
@@ -623,6 +668,7 @@ void TgfxRenderer::releaseWindow() {
     window_ = nullptr;
     cacheLimitApplied_ = false;
   }
+  gpuBytes_.store(0, std::memory_order_relaxed);
   failSnapshots(std::move(orphaned),
                 "[tgfx] snapshot: the canvas was unmounted before the frame landed");
 }

@@ -37,6 +37,10 @@ component falls back to the slower path.
   [`useSpriteBuffer`](/api/functions/useSpriteBuffer) or
   [`useVertexBuffer`](/api/functions/useVertexBuffer).
 - One animated opacity per chain — see [Animation](/docs/animation).
+- Under memory pressure, [`purgeCaches`](/api/functions/purgeCaches) drops the
+  decoded-pixel and GPU caches immediately;
+  [`getCacheInfo`](/api/functions/getCacheInfo) reports what they hold — see
+  [Images § Cache](/docs/images#cache).
 
 ## Redraws are scoped to what a canvas actually reads
 

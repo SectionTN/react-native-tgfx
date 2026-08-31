@@ -293,6 +293,24 @@ setImageCacheLimit(32 * 1024 * 1024)
 The default decoded-image budget is 64 MB. The limit is applied to both the
 decoded-pixel cache and the tgfx GPU resource cache.
 
+[`getCacheInfo`](/api/functions/getCacheInfo) reports what tgfx is holding, and
+[`purgeCaches`](/api/functions/purgeCaches) drops it all now — for a
+memory-pressure handler or a screen that just navigated away from image-heavy
+content:
+
+```tsx
+const { imageBytes, imageLimit, gpuBytes, offscreenGpuBytes } = getCacheInfo()
+
+purgeCaches()
+```
+
+A purge frees the decoded CPU pixels before it returns and schedules a frame on
+every live canvas, where each drops its GPU resource cache — so process memory
+falls within a frame rather than waiting for budget evictions. Handles stay
+valid: whatever is still on screen re-decodes and re-uploads lazily, exactly as
+after an eviction. `gpuBytes` is published by each canvas's last frame, so read
+it a frame after purging, not in the same tick.
+
 ## Video
 
 [`useVideo`](/api/functions/useVideo) gives a [`Video`](/api/interfaces/Video)

@@ -180,14 +180,16 @@ export type {
   TextStyle,
 } from './hooks/useFonts'
 export {
+  getCacheInfo,
   imageFromNativeBuffer,
   imageFromPixels,
   loadImage,
+  purgeCaches,
   setImageCacheLimit,
   useImage,
   useImageState,
 } from './hooks/useImage'
-export type { ImageState } from './hooks/useImage'
+export type { CacheInfo, ImageState } from './hooks/useImage'
 export { loadVideo, useVideo, createVideoPlayer } from './hooks/useVideo'
 export type { Video, VideoOptions, VideoPlayer } from './hooks/useVideo'
 export {

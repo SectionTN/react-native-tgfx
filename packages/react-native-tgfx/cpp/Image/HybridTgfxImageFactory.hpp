@@ -42,6 +42,8 @@ class HybridTgfxImageFactory : public HybridTgfxImageFactorySpec {
 
   void setCacheLimit(double bytes) override;
   double getCachedBytes() override;
+  CacheInfo getCacheInfo() override;
+  void purgeCaches() override;
 };
 
 }  // namespace margelo::nitro::tgfx
