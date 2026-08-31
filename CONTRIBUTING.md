@@ -84,6 +84,31 @@ Run the image suites on a real phone. On the `Pixel_8_API_35` AVD's software
 renderer every image-backed scene comes back blank, so those tests fail there
 by design rather than writing an empty baseline.
 
+## The memory-leak gate
+
+`scripts/leak-check.mjs` drives `apps/example/src/leakSoak.harness.tsx` — ~100s
+of image, scene, and canvas-surface churn on the connected device — while
+sampling `adb shell dumpsys meminfo` from the host every two seconds. The
+verdict compares the median `TOTAL PSS` of the soak's last third against its
+first third (after a warmup cut); growth past `--threshold-mb` (default 30)
+fails the run with exit code 1 (2 means the run itself broke, so a broken soak
+can never pass as "no leak"). All measurement is OS accounting read over adb —
+nothing in-app reports its own memory, deliberately: in-process numbers are the
+flaky kind.
+
+```sh
+node scripts/leak-check.mjs        # device from rn-harness.config.mjs, debug build installed
+```
+
+The soak is excluded from the default `bun run harness` run
+(`testPathIgnorePatterns` in `jest.harness.config.mjs`); the script re-enables
+it. In CI, the `leak` job in `ci.yml` runs the same script on a hosted
+emulator via `--runner ci-emu` — dispatch-only,
+because it costs an emulator hour. It catches allocation-path leaks (the
+registries, the scene, the JSI boundary); GPU-side growth needs the real
+device, since the hosted emulator's software renderer draws image scenes
+blank.
+
 ## Imperative APIs first
 
 A lesson learned the hard way (see
