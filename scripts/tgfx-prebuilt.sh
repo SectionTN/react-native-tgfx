@@ -36,7 +36,7 @@ PATHS=(
 )
 
 wrangler() {
-  if command -v wrangler >/dev/null; then command wrangler "$@"; else npx --yes wrangler@4 "$@"; fi
+  npx  wrangler@4 "$@"
 }
 
 if [ "${1:-download}" = upload ]; then
