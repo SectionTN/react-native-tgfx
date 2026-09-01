@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.2-alpha.9](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.8...react-native-tgfx%400.0.2-alpha.9) (2026-09-01)
+
+### Features
+
+* fromPixels and setPixels for decoded RGBA ([738a0d8](https://github.com/riteshshukla04/react-native-tgfx/commit/738a0d83386e436ee806cee02960d4f907508bfb))
+* getCacheInfo and purgeCaches — cache introspection and an immediate purge ([#259](https://github.com/riteshshukla04/react-native-tgfx/issues/259)) ([8800cb4](https://github.com/riteshshukla04/react-native-tgfx/commit/8800cb4de8dc3ef4a6f1a843ea5e33bfef73eafa))
+
+### Bug Fixes
+
+* reject a missing image source by name ([8b0d3eb](https://github.com/riteshshukla04/react-native-tgfx/commit/8b0d3eb5c18eef4b549db281cafb8d7ca7fa09da))
+* reject a rowBytes that is not whole pixels, which the GPU row-length uploads would shear ([f630d33](https://github.com/riteshshukla04/react-native-tgfx/commit/f630d33b311fc42984ec43170ef0e65bbff15adb))
+* validate fromPixels geometry, refuse stream handles in replaceExternal, report pixel bytes to the GC ([ae79c3a](https://github.com/riteshshukla04/react-native-tgfx/commit/ae79c3af40120ebb964decd9196d03cf3204bd24))
+
+### Performance Improvements
+
+* commit-time batch clustering — 20k interleaved shapes from 8fps to 53fps ([#260](https://github.com/riteshshukla04/react-native-tgfx/issues/260)) ([088cd8e](https://github.com/riteshshukla04/react-native-tgfx/commit/088cd8e45070e01c4e7e95d3ccf08cad6c948236))
+
 ## [0.0.2-alpha.8](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.7...react-native-tgfx%400.0.2-alpha.8) (2026-08-28)
 
 ### ⚠ BREAKING CHANGES
