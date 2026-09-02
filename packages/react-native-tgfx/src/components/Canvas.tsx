@@ -17,6 +17,7 @@ import { Fill } from './drawings'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { ViewportDriver } from '../reanimated/ViewportDriver'
 import { isLive } from '../reanimated/liveValue'
+import type { BoxedSlots } from '../reanimated/slotFlags'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import { directNodes } from '../reconciler/directNodes'
 import { createNode, NodeType } from '../reconciler/types'
@@ -218,10 +219,15 @@ export function Canvas({
     []
   )
   const [gens, setGens] = useState<MaybeSharedValue<unknown>[]>([])
+  const [mirror, setMirror] = useState<BoxedSlots | null>(null)
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
   const viewRef = useRef<TgfxViewRef | null>(null)
-  const scene = useRef<{ buffer: ArrayBuffer; strings: string[] } | null>(null)
+  const scene = useRef<{
+    buffer: ArrayBuffer
+    strings: string[]
+    awaitValues: boolean
+  } | null>(null)
   const prevValues = useRef<MaybeSharedValue<unknown>[]>([])
   const prevStringValues = useRef<MaybeSharedValue<string>[]>([])
   const prevGens = useRef<MaybeSharedValue<unknown>[]>([])
@@ -245,7 +251,11 @@ export function Canvas({
       sentStrings.current = []
       if (scene.current != null) {
         const strings = scene.current.strings
-        ref.setScene(scene.current.buffer, packStringTable([], strings))
+        ref.setScene(
+          scene.current.buffer,
+          packStringTable([], strings),
+          scene.current.awaitValues
+        )
         sentStrings.current = strings.slice()
         // A write before the view existed only moved its slot; the program carries the literals.
         rootRef.current?.container.pushValues()
@@ -306,17 +316,20 @@ export function Canvas({
   if (rootRef.current == null) {
     // Straight to the hybrid object: as a prop it would ride a React and a Fabric commit per frame.
     rootRef.current = new TgfxRoot((buffer, strings, vals, stringVals) => {
-      scene.current = { buffer, strings }
+      const awaitValues = rootRef.current?.container.unresolved ?? false
+      scene.current = { buffer, strings, awaitValues }
       if (viewRef.current != null) {
         viewRef.current.setScene(
           buffer,
-          packStringTable(sentStrings.current, strings)
+          packStringTable(sentStrings.current, strings),
+          awaitValues
         )
         sentStrings.current = strings.slice()
       }
       if (!sameValueSet(prevValues.current, vals)) {
         prevValues.current = vals.slice()
         setValues(prevValues.current)
+        setMirror(rootRef.current?.container.mirror?.block.boxed ?? null)
       }
       if (!sameValueSet(prevStringValues.current, stringVals)) {
         prevStringValues.current = stringVals.slice()
@@ -328,6 +341,8 @@ export function Canvas({
         setGens(prevGens.current)
       }
     })
+    // With a driver to push them, a commit never reads animating values across runtimes.
+    rootRef.current.container.deferReads = AnimationDriver != null
     rootRef.current.container.onValues = (vals) =>
       viewRef.current?.setValues(vals)
     rootRef.current.container.onStrings = (indices, vals) =>
@@ -465,6 +480,7 @@ export function Canvas({
           values={values}
           strings={stringValues}
           gens={gens}
+          mirror={mirror}
         />
       ) : null}
       {ViewportDriver != null && view != null && liveViewport != null ? (

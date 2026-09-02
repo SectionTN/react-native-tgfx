@@ -56,7 +56,7 @@ const SHOWCASE_EFFECT = showcaseEffect;
 const CARD_PATH = 'M0 40 C 30 0, 90 0, 120 40 S 210 80, 240 40';
 
 type Lib = 'tgfx' | 'skia' | 'thor';
-type Workload = 'leaves' | 'group' | 'mixed' | 'idle' | 'rects' | 'rrects' | 'strokes' | 'showcase';
+type Workload = 'leaves' | 'churn' | 'group' | 'mixed' | 'idle' | 'rects' | 'rrects' | 'strokes' | 'showcase';
 
 const FULL_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
   { wl: 'leaves', counts: [100, 600, 1500], runs: 4 },
@@ -73,6 +73,17 @@ const PROBE_PLAN: { wl: Workload; counts: number[]; runs: number }[] = [
   { wl: 'strokes', counts: [600], runs: 3 },
 ];
 
+// tgfx-only before/after sweeps: per-object slots, mixed kinds, one big group, composite.
+const PERF_PLAN: typeof FULL_PLAN = [
+  { wl: 'leaves', counts: [600, 1500], runs: 3 },
+  // leaves plus a node toggled every 500 ms: each toggle is a full scene recommit
+  // while every slot is animating on the UI thread.
+  { wl: 'churn', counts: [1500, 3000], runs: 2 },
+  { wl: 'mixed', counts: [600, 1500], runs: 3 },
+  { wl: 'group', counts: [6000, 20000], runs: 3 },
+  { wl: 'showcase', counts: [900], runs: 3 },
+];
+
 const WARMUP_MS = 2500;
 const WINDOW_MS = 6000;
 const SETTLE_MS = 3500;
@@ -80,13 +91,14 @@ const BASELINE_MS = 4000;
 
 type Config = { lib: Lib; wl: Workload; n: number; run: number; preroll?: boolean };
 
-function buildConfigs(plan: typeof FULL_PLAN): Config[] {
+function buildConfigs(plan: typeof FULL_PLAN, libs: Lib[]): Config[] {
   // Pre-roll on `mixed`, so every draw kind's first shader compile is absorbed.
-  const out: Config[] = [
+  const prerolls: Config[] = [
     { lib: 'tgfx', wl: 'mixed', n: 300, run: 0, preroll: true },
     { lib: 'skia', wl: 'mixed', n: 300, run: 0, preroll: true },
     { lib: 'thor', wl: 'leaves', n: 300, run: 0, preroll: true },
   ];
+  const out = prerolls.filter((c) => libs.includes(c.lib));
   const pairs: { wl: Workload; n: number; runs: number; wi: number; ci: number }[] = [];
   plan.forEach((p, wi) =>
     p.counts.forEach((n, ci) => pairs.push({ wl: p.wl, n, runs: p.runs, wi, ci }))
@@ -100,7 +112,12 @@ function buildConfigs(plan: typeof FULL_PLAN): Config[] {
         continue;
       }
       // Thor's scene only implements circles, so it is compared on `leaves` alone.
-      const engines: Lib[] = p.wl === 'leaves' ? ['tgfx', 'skia', 'thor'] : ['tgfx', 'skia'];
+      const engines: Lib[] = (
+        p.wl === 'leaves' ? (['tgfx', 'skia', 'thor'] as Lib[]) : (['tgfx', 'skia'] as Lib[])
+      ).filter((l) => libs.includes(l));
+      if (engines.length === 0) {
+        continue;
+      }
       const k = (run + p.ci + p.wi) % engines.length;
       const order: Lib[] = [...engines.slice(k), ...engines.slice(0, k)];
       for (const lib of order) {
@@ -111,7 +128,7 @@ function buildConfigs(plan: typeof FULL_PLAN): Config[] {
   return out;
 }
 
-const MAX_N = 1500;
+const MAX_N = 6000;
 
 const POOL = {
   cxs: Array.from({ length: MAX_N }, () => makeMutable(0)),
@@ -223,15 +240,16 @@ function Driver({
   return null;
 }
 
-function TgfxScene({ wl, n, w, h }: { wl: Workload; n: number; w: number; h: number }) {
+function TgfxScene({ wl, n, w, h, churn }: { wl: Workload; n: number; w: number; h: number; churn: number }) {
   const { bx, by, colors, r, sx, sy } = useLayout(n, w, h);
   const { cxs, cys, angle } = POOL;
-  if (wl === 'leaves') {
+  if (wl === 'leaves' || wl === 'churn') {
     return (
       <>
         {colors.map((c, i) => (
           <TgfxCircle key={i} cx={cxs[i]} cy={cys[i]} r={r} color={c} />
         ))}
+        {churn % 2 === 1 ? <TgfxCircle key="churn" cx={w / 2} cy={h / 2} r={r * 2} color="#fff" /> : null}
       </>
     );
   }
@@ -548,12 +566,14 @@ const Scene = memo(function Scene({
   n,
   w,
   h,
+  churn,
 }: {
   lib: Lib;
   wl: Workload;
   n: number;
   w: number;
   h: number;
+  churn: number;
 }) {
   const { bx, by, amp, r, colors } = useLayout(n, w, h);
   const style = { width: w, height: h };
@@ -570,34 +590,68 @@ const Scene = memo(function Scene({
         </SkiaCanvas>
       ) : (
         <TgfxCanvas style={style}>
-          <TgfxScene wl={wl} n={n} w={w} h={h} />
+          <TgfxScene wl={wl} n={n} w={w} h={h} churn={churn} />
         </TgfxCanvas>
       )}
     </>
   );
 });
 
-export function Bench({ plan }: { plan?: string }) {
+export function Bench({
+  plan,
+  libs,
+  wl,
+  n,
+  window,
+}: {
+  plan?: string;
+  libs?: string;
+  /** With `n`: hold one config for `window` ms (profiling), instead of a plan. */
+  wl?: string;
+  n?: string;
+  window?: string;
+}) {
   const { width, height } = useWindowDimensions();
   const w = Math.floor(width);
   const h = Math.floor(Math.min(520, height * 0.62));
   const CONFIGS = useMemo(
-    () => buildConfigs(plan === 'probe' ? PROBE_PLAN : FULL_PLAN),
-    [plan]
+    () =>
+      buildConfigs(
+        wl != null && n != null
+          ? [{ wl: wl as Workload, counts: [Number(n)], runs: 1 }]
+          : plan === 'probe'
+            ? PROBE_PLAN
+            : plan === 'perf'
+              ? PERF_PLAN
+              : FULL_PLAN,
+        (libs ?? 'tgfx,skia,thor').split(',') as Lib[]
+      ),
+    [plan, libs, wl, n]
   );
+  const windowMs = window != null ? Number(window) : WINDOW_MS;
 
   const [idx, setIdx] = useState(-1);
   const [mounted, setMounted] = useState(false);
+  const [churn, setChurn] = useState(0);
   const [liveFps, setLiveFps] = useState({ ui: 0, js: 0 });
   const jsFrames = useRef(0);
   const jsCounting = useRef(false);
+  // Longest gap between two JS-thread frames in the window: a recommit that
+  // blocks the JS thread shows up here, not in the average.
+  const jsLast = useRef(0);
+  const jsMaxMs = useRef(0);
 
   useEffect(() => {
     let raf = 0;
-    const tick = () => {
+    const tick = (t: number) => {
       if (jsCounting.current) {
         jsFrames.current += 1;
+        const gap = t - jsLast.current;
+        if (gap > jsMaxMs.current) {
+          jsMaxMs.current = gap;
+        }
       }
+      jsLast.current = t;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -629,6 +683,14 @@ export function Bench({ plan }: { plan?: string }) {
   const cfg = CONFIGS[Math.min(Math.max(idx, 0), CONFIGS.length - 1)];
 
   useEffect(() => {
+    if (!mounted || cfg.wl !== 'churn') {
+      return;
+    }
+    const id = setInterval(() => setChurn((c) => c + 1), 500);
+    return () => clearInterval(id);
+  }, [mounted, cfg.wl]);
+
+  useEffect(() => {
     if (idx < 0) {
       return;
     }
@@ -654,6 +716,7 @@ export function Bench({ plan }: { plan?: string }) {
         uiJank.value = 0;
         uiMaxMs.value = 0;
         jsFrames.current = 0;
+        jsMaxMs.current = 0;
         jsCounting.current = true;
         measuring.value = 1;
         const t0 = Date.now();
@@ -671,7 +734,7 @@ export function Bench({ plan }: { plan?: string }) {
               `BENCH_END lib=${lib} wl=${wl} n=${n} run=${run} ` +
                 `uiFps=${(uf / secs).toFixed(2)} jsFps=${(jf / secs).toFixed(2)} ` +
                 `uiFrames=${uf} jsFrames=${jf} uiJank=${uiJank.value} ` +
-                `uiMaxMs=${uiMaxMs.value.toFixed(1)} secs=${secs.toFixed(2)}`
+                `uiMaxMs=${uiMaxMs.value.toFixed(1)} jsMaxMs=${jsMaxMs.current.toFixed(1)} secs=${secs.toFixed(2)}`
             );
             timers.push(
               setTimeout(() => {
@@ -681,7 +744,7 @@ export function Bench({ plan }: { plan?: string }) {
               }, 800)
             );
             timers.push(setTimeout(() => !cancelled && setIdx((i) => i + 1), SETTLE_MS));
-          }, WINDOW_MS)
+          }, windowMs)
         );
       }, WARMUP_MS)
     );
@@ -711,7 +774,7 @@ export function Bench({ plan }: { plan?: string }) {
       </View>
       <View style={[st.canvasWrap, { width: w, height: h }]}>
         {idx >= 0 && !done && mounted && (
-          <Scene key={idx} lib={cfg.lib} wl={cfg.wl} n={cfg.n} w={w} h={h} />
+          <Scene key={idx} lib={cfg.lib} wl={cfg.wl} n={cfg.n} w={w} h={h} churn={churn} />
         )}
       </View>
     </View>

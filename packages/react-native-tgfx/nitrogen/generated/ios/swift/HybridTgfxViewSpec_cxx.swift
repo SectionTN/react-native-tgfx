@@ -145,9 +145,16 @@ open class HybridTgfxViewSpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func setScene(scene: ArrayBuffer, strings: bridge.std__vector_std__string_) -> bridge.Result_void_ {
+  public final func setScene(scene: ArrayBuffer, strings: bridge.std__vector_std__string_, awaitValues: bridge.std__optional_bool_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.setScene(scene: scene, strings: strings.map({ __item in String(__item) }))
+      try self.__implementation.setScene(scene: scene, strings: strings.map({ __item in String(__item) }), awaitValues: { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(awaitValues) {
+          let __unwrapped = bridge.get_std__optional_bool_(awaitValues)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }())
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

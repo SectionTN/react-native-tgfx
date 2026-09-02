@@ -3,6 +3,7 @@ import type { MaybeSharedValue } from '../compiler/values'
 import type { TgfxViewRef } from '../views/TgfxNativeView'
 import { isBlockSlot, readLiveNumber, readLiveString } from './liveValue'
 import { reanimatedInstalled, requireReanimated } from './peer'
+import { flagsOf, valuesOf, type BoxedSlots } from './slotFlags'
 
 interface DriverProps {
   view: TgfxViewRef
@@ -10,9 +11,11 @@ interface DriverProps {
   strings: MaybeSharedValue<string>[]
   /** Per-handle wake values: block slots have no listeners, these do. */
   gens: MaybeSharedValue<unknown>[]
+  /** Where each push is mirrored for the next commit; see TgfxContainer.mirror. */
+  mirror: BoxedSlots | null
 }
 
-function Driver({ view, values, strings, gens }: DriverProps): null {
+function Driver({ view, values, strings, gens, mirror }: DriverProps): null {
   const mod = requireReanimated('the animation driver', [
     'startMapper',
     'stopMapper',
@@ -33,8 +36,16 @@ function Driver({ view, values, strings, gens }: DriverProps): null {
     }
     const mapperId = start(() => {
       'worklet'
+      const mirrored = mirror != null ? valuesOf(mirror) : null
       for (let i = 0; i < values.length; i++) {
-        slots[i] = readLiveNumber(values[i]!)
+        const v = readLiveNumber(values[i]!)
+        slots[i] = v
+        if (mirrored != null) {
+          mirrored[i] = v
+        }
+      }
+      if (mirror != null) {
+        flagsOf(mirror)[0] = 1
       }
       view.setValues(slots)
       if (strings.length > 0) {
@@ -56,7 +67,7 @@ function Driver({ view, values, strings, gens }: DriverProps): null {
       }
     }, listenable)
     return () => stop(mapperId)
-  }, [view, values, strings, gens, start, stop])
+  }, [view, values, strings, gens, mirror, start, stop])
   return null
 }
 

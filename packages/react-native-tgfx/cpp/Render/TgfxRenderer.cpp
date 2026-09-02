@@ -103,7 +103,8 @@ void TgfxRenderer::setWindow(std::shared_ptr<tgfx::Window> window) {
 }
 
 void TgfxRenderer::setScene(std::span<const double> words,
-                            const std::vector<std::string>& packedStrings) {
+                            const std::vector<std::string>& packedStrings,
+                            bool awaitValues) {
   {
     // Ahead of the word checks: the delta carries no resync, so a dropped one desyncs it.
     std::lock_guard<std::mutex> lock(mutex_);
@@ -134,6 +135,8 @@ void TgfxRenderer::setScene(std::span<const double> words,
     pendingScene_.assign(words.begin(), words.end());
     pendingStrings_ = strings_;
     scenePending_ = true;
+    sceneAwaitsValues_ = awaitValues;
+    sceneAwaitGen_ = valuesGen_;
     // A re-encode bakes current values as literals and may reassign slot
     // indices, so stale pushes must not outrank the new program's words.
     std::fill(stringPushed_.begin(), stringPushed_.end(), 0);
@@ -148,6 +151,7 @@ void TgfxRenderer::clearScene() {
     pendingScene_.clear();
     pendingStrings_.reset();
     scenePending_ = false;
+    sceneAwaitsValues_ = false;
     sceneHash_ = 0;
     cachesDirty_ = true;
     // Only recycle calls this, and the next canvas on a recycled view has its
@@ -293,10 +297,12 @@ bool TgfxRenderer::draw() {
     drawViewportY_ = viewportY_;
     dropCaches = cachesDirty_;
     cachesDirty_ = false;
-    if (scenePending_) {
+    // A held program keeps the previous one on screen until its values land.
+    if (scenePending_ && !(sceneAwaitsValues_ && valuesGen_ == sceneAwaitGen_)) {
       drawScene_.swap(pendingScene_);
       drawStrings_ = std::move(pendingStrings_);
       scenePending_ = false;
+      sceneAwaitsValues_ = false;
       hasScene = true;
     }
   }

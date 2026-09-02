@@ -43,7 +43,7 @@ abstract class HybridTgfxViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun setScene(scene: ArrayBuffer, strings: Array<String>): Unit
+  abstract fun setScene(scene: ArrayBuffer, strings: Array<String>, awaitValues: Boolean?): Unit
   
   @DoNotStrip
   @Keep

@@ -98,6 +98,16 @@ export class SceneWriter {
   /// Where each handled node sits in the drawn tree, so a native hit can be named.
   readonly refPaths: { path: number[]; ref: NodeHandle }[] = []
   readonly pathStack: number[] = []
+  /// Slot values the driver last pushed, by SharedValue: a commit snapshots an
+  /// animating value from here instead of reading it across runtimes.
+  known: Map<object, number> | null = null
+  /// The literal written for each resolved slot, so the next commit can reuse it.
+  readonly literals: number[] = []
+  /// Set when a UI-thread driver pushes every slot right after this commit: a
+  /// mutable with no known value then keeps its fallback instead of a read that
+  /// may hop to the UI runtime, and `unresolved` says the view must wait.
+  deferUnknown = false
+  unresolved = false
   reseed = true
   private readonly slots = new Map<object, number>()
   private readonly stringSlots = new Map<object, number>()
@@ -109,6 +119,8 @@ export class SceneWriter {
     this.strings.length = 0
     this.stringIds.clear()
     this.values.length = 0
+    this.literals.length = 0
+    this.unresolved = false
     this.stringValues.length = 0
     this.refs.length = 0
     this.refPaths.length = 0
@@ -128,9 +140,26 @@ export class SceneWriter {
 
   pushAnim(value: unknown, fallback = 0): void {
     if (isSharedValue(value)) {
-      this.patches.push(this.n, this.slot(value))
+      const slot = this.slot(value)
+      this.patches.push(this.n, slot)
+      const known = this.known?.get(value as object)
+      if (known !== undefined) {
+        this.literals[slot] ??= known
+        this.push(known)
+        return
+      }
+      if (
+        this.deferUnknown &&
+        typeof (value as { modify?: unknown }).modify === 'function'
+      ) {
+        this.unresolved = true
+        this.push(fallback)
+        return
+      }
       // The literal is what native resolves against until the first setValues.
-      this.push(resolveNumber(value, fallback))
+      const literal = resolveNumber(value, fallback)
+      this.literals[slot] ??= literal
+      this.push(literal)
       return
     }
     const n = Number(value ?? fallback)

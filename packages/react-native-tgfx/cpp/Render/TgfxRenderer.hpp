@@ -51,8 +51,11 @@ class TgfxRenderer {
   void setWindow(std::shared_ptr<tgfx::Window> window);
 
   /// Stage a draw program. `words` is copied; `packedStrings` is a delta, see SceneStrings.hpp.
+  /// With `awaitValues` the program is not drawn until a setValues lands after it: its slot
+  /// literals are placeholders that the driver's first push completes.
   void setScene(std::span<const double> words,
-                const std::vector<std::string>& packedStrings);
+                const std::vector<std::string>& packedStrings,
+                bool awaitValues = false);
 
   void clearScene();
 
@@ -140,6 +143,9 @@ class TgfxRenderer {
   std::shared_ptr<const StringTable> strings_ = std::make_shared<StringTable>();
   uint64_t stringsHash_ = hashStrings({});
   bool scenePending_ = false;
+  /// The staged program waits for a push newer than valuesGen_ was at setScene.
+  bool sceneAwaitsValues_ = false;
+  uint64_t sceneAwaitGen_ = 0;
   bool cachesDirty_ = false;
   uint64_t sceneHash_ = 0;
   /// The FontRegistry epoch this command list was compiled against; a later face forces a recompile.

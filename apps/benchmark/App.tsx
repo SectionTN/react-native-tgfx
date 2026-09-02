@@ -1,15 +1,16 @@
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SkiaOnly } from './src/SkiaOnly';
 
-export default function App({
-  mode,
-  plan,
-  step,
-}: {
+export default function App(props: {
   mode?: string;
   plan?: string;
+  libs?: string;
   step?: string;
+  wl?: string;
+  n?: string;
+  window?: string;
 }) {
+  const { mode, step } = props;
   // Required lazily: `skiaonly` exists precisely to run without reanimated.
   if (mode === 'skiaonly') {
     const n = Number(step ?? 0);
@@ -31,7 +32,7 @@ export default function App({
   const { Bench } = require('./src/Bench');
   return (
     <SafeAreaProvider>
-      <Bench plan={plan} />
+      <Bench {...props} />
     </SafeAreaProvider>
   );
 }

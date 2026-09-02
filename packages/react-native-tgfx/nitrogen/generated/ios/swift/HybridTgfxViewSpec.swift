@@ -14,7 +14,7 @@ public protocol HybridTgfxViewSpec_protocol: HybridObject, HybridView {
   var opaque: Bool { get set }
 
   // Methods
-  func setScene(scene: ArrayBuffer, strings: [String]) throws -> Void
+  func setScene(scene: ArrayBuffer, strings: [String], awaitValues: Bool?) throws -> Void
   func invalidate() throws -> Void
   func setValues(values: [Double]) throws -> Void
   func setStringValues(indices: [Double], values: [String]) throws -> Void

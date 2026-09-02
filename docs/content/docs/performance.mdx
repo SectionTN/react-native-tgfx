@@ -12,6 +12,24 @@ thread. Changing ordinary JSX props through React recompiles and uploads the
 scene. An unslotted handle write also recompiles, but skips the React and Fabric
 commits.
 
+## Recommits snapshot animating values from shared memory
+
+Every commit snapshots each `SharedValue` prop into the program, so the scene
+draws correctly before the first UI-thread push. Reanimated 4 keeps a mutable's
+value on the UI runtime and flags it dirty on every UI-side write, which makes
+a JS-thread `.value` read of an animating value a synchronous hop to that
+runtime, queued behind whatever frame the UI thread is in. A recommit of a
+scene with N animating slots would be N such hops. Instead, the UI-thread
+driver mirrors every value it pushes into shared memory, and a recommit whose
+slots are already animating snapshots them from there with plain loads; a
+recommit that lands before the driver's first push reuses the literals native
+is already drawing. A value the commit has never seen is not read at all: the
+program ships with placeholder literals and the view holds it until the
+driver's first push lands, one UI frame later, so program and values draw
+together. The same mirror backs a JS-thread `NodeHandle.set`. Without
+Reanimated a commit reads each value directly, where a read is a plain
+property.
+
 ## Batching is automatic — and order-aware
 
 The GPU merges only *adjacent* compatible draws into one batch, so a sibling

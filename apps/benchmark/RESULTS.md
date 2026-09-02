@@ -793,3 +793,88 @@ the offscreen worker and renders at slot-patch cost, like a view — the export
 numbers above are the *worst case* for the retained surface, and it still
 wins everywhere measured. Verdict: `renderToImage` for one-shots,
 `createOffscreenSurface` as soon as the same scene renders twice.
+
+## Iteration 13 — recommits of an animating scene no longer read every SharedValue across runtimes
+
+Harness additions: a tgfx-only `perf` plan (`PLAN=perf LIBS=tgfx`), a hold mode
+for one config (`WL=leaves N=6000 WINDOW=6000`), a `churn` workload (`leaves`
+plus one static node toggled every 500 ms, so every toggle is a full scene
+recommit while all slots animate on the UI thread), and `jsMaxMs` in
+`BENCH_END`: the longest gap between two JS-thread frames in the window.
+
+Root cause: Reanimated 4 keeps a mutable's value on the UI runtime and marks it
+dirty on every UI write, so a JS-thread `.value` read of an animating value is a
+`runOnUISync` hop, queued behind whatever frame the UI thread is in. The tgfx
+compiler read `.value` once per SharedValue prop at every commit — N hops per
+recommit, each waiting for a gap in a busy UI thread. A `leaves@6000` mount
+(12k dirty slots, UI thread saturated by the harness's own writes) took 405 s.
+
+Fix (JS only): the UI-thread driver mirrors every value it pushes into a shared
+`TgfxSlots` block; a commit snapshots animating mutables from the mirror, and a
+commit that lands before the driver's first push reuses the previous program's
+literals (what native is drawing anyway). Only the first commit of a value the
+UI thread was already writing still reads it across runtimes.
+
+Tested and reverted on the way: batching all reads into one
+`runOnUISync(worklet, mutables)`. It deadlocks inside react-native-worklets —
+`runOnUISync` runs the worklet on the calling thread under the UI-runtime lock
+and initialises each shareable argument under that shareable's own mutex, while
+the UI thread initialises the same shareables in the opposite order (bugreport
+stacks: JS in `Shareable::toJSValue → mutex::lock` inside `runSync`, main in
+`Synchronizable::toJSValue → AroundLock`). Hit on roughly every second launch.
+
+Interleaved A/B on the same two APKs (native libraries byte-identical, only
+the JS bundle differs): one fresh launch per run, before/after alternating
+order each rep, 3 reps per config, SM-E146B at 30–33 °C, Vulkan, 90 Hz.
+Median `[min–max]`; `jsMaxMs` is the longest JS-thread frame gap in the 6 s
+window.
+
+| wl | N | | uiFps | jsFps | jsMaxMs | prsFps | cpu% |
+|:---|---:|:--|---:|---:|---:|---:|---:|
+| churn | 1500 | before | 89.0 [87–90] | **6.9 [7–21]** | **2031 [1210–2932]** | 90.4 [87–91] | 154.5 |
+| | | after | 90.1 [90–90] | **80.3 [60–84]** | **59 [52–74]** | 89.8 [87–91] | 140.6 |
+| churn | 3000 | before | 60.1 [58–61] | **0.6 [0–1]** | **21599 [21302–21610]** | 60.3 [59–61] | 162.1 |
+| | | after | 60.6 [57–76] | **25.1 [23–35]** | **140 [86–175]** | 62.8 [58–75] | 173.7 |
+| leaves | 1500 | before | 90.0 | 83.8 [77–88] | 30 [25–37] | 91.3 | 128.7 |
+| | | after | 90.0 | 82.5 [73–87] | 33 [26–36] | 91.1 | 136.3 |
+| mixed | 1500 | before | 89.8 | 85.7 [76–88] | 32 [26–40] | 89.4 [84–90] | 167.7 |
+| | | after | 89.9 | 84.4 [82–86] | 30 [30–30] | 87.5 [87–88] | 168.8 |
+| group | 20000 | before | 90.0 | 89.8 | 26 [22–28] | 78.2 [76–79] | 186.6 |
+| | | after | 90.0 | 90.0 | 25 [25–31] | 77.7 [70–81] | 181.9 |
+
+Read: a recommit while 3000 slots animate went from freezing the JS thread for
+~21.5 s to 86–175 ms; at 1500 from 1.2–2.9 s to 52–74 ms, in both run orders.
+The three control workloads never recommit, and their ranges overlap between
+builds on every metric, as they should — the change touches no per-frame path.
+
+### First mount: the view holds a program until its values land
+
+Only the first commit of a value the UI thread was already writing still read
+it across runtimes. Closed natively: `setScene(scene, strings, awaitValues)`.
+When a commit meets a mutable it has no mirror value for, it writes the fallback
+literal instead of hopping and passes `awaitValues`; the renderer keeps the
+previous program (or nothing) until the next `setValues` — the driver's first
+push, one UI frame later — then draws program and values together. A `Scene`
+driving an offscreen surface never defers, so `flush()` semantics are unchanged.
+
+Interleaved A/B, hold mode, before / after3 alternating per rep, screenshot
+2 s into each window (pixel coverage identical between builds: 45.7 % at 3000,
+79.2 % at 6000). `mountGap` = BENCH_IDLE → BENCH_START; 6.0 s is the harness
+floor (settle 3.5 s + warmup 2.5 s).
+
+| wl | N | build | mountGap | uiFps | jsFps | jsMaxMs |
+|:---|---:|:--|---:|---:|---:|---:|
+| leaves | 3000 | before | 6.0 s / 9.1 s | 88.2 / 57.4 | 42.9 / 28.4 | 36 / 56 |
+| | | after | 6.0 s / 6.1 s | 87.9 / 59.7 | 42.8 / 29.4 | 50 / 67 |
+| churn | 3000 | before | 26.8 s / 7.5 s | 64.5 / 58.4 | 0.35 / 0.12 | 25320 / 24588 |
+| | | after | 6.1 s / 6.1 s | 59.3 / 58.6 | 24.0 / 26.2 | 193 / 125 |
+| leaves | 6000 | before | **250.6 s** (405 s, 412 s in earlier runs) | 29.2 | 14.0 | 340 |
+| | | after | **6.1 s / 6.1 s** | 30.3 / 31.3 | 14.6 / 15.2 | 174 / 123 |
+
+Read: a `leaves`@6000 mount on a saturated UI thread went from minutes to the
+harness floor; `churn`@3000's first recommit no longer races the driver. The
+rep-2 pairs ran on a hotter device (steady-state fps lower for both builds
+alike). The second before-`leaves`@6000 run and the 1500-object controls for this
+build were not completed: another app kept taking the phone's foreground. The
+1500 controls for the mirror build above stand, and the hold only changes what
+happens before a program's first push.

@@ -15,10 +15,10 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
     }
   }
 
-  func setScene(scene: ArrayBuffer, strings: [String]) throws {
+  func setScene(scene: ArrayBuffer, strings: [String], awaitValues: Bool?) throws {
     let words = UnsafeRawPointer(scene.data).assumingMemoryBound(to: Double.self)
     metalView.setScene(words, count: scene.size / MemoryLayout<Double>.size,
-                       strings: strings)
+                       strings: strings, awaitValues: awaitValues ?? false)
   }
 
   func prepareForRecycle() {

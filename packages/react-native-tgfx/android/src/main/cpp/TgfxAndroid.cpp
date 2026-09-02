@@ -239,7 +239,8 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setPixelRatio(JNIEnv*, jobject, jlong ptr
 JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
                                                 jobject sceneBuffer,
-                                                jobjectArray stringTable) {
+                                                jobjectArray stringTable,
+                                                jboolean awaitValues) {
   auto* view = asView(ptr);
   if (view == nullptr || sceneBuffer == nullptr) {
     return;
@@ -271,7 +272,7 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setScene(JNIEnv* env, jobject, jlong ptr,
   }
   view->renderer.setScene(
       std::span<const double>(words, static_cast<size_t>(bytes) / sizeof(double)),
-      strings);
+      strings, awaitValues == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL

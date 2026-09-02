@@ -12,6 +12,7 @@ import {
   readLiveString,
 } from './reanimated/liveValue'
 import { reanimated } from './reanimated/peer'
+import { flagsOf, valuesOf } from './reanimated/slotFlags'
 import { TgfxContainer } from './reconciler/Container'
 import type { SceneNode } from './elements'
 import type { TgfxImage as TgfxImageHandle } from './specs/TgfxImage.nitro'
@@ -388,6 +389,7 @@ export class Scene {
     // A worklet clones captured arrays at creation, so membership changes
     // restart the mapper instead of mutating these.
     const views = this.targets.map((t) => t.target)
+    const mirror = this.container.mirror?.block.boxed ?? null
     const slots = new Array<number>(values.length)
     const sent = new Array<string | null>(stringValues.length).fill(null)
     // Block slots have no listeners, so they cannot be mapper inputs; the
@@ -404,8 +406,16 @@ export class Scene {
     this.mapperId = startMapper(
       () => {
         'worklet'
+        const mirrored = mirror != null ? valuesOf(mirror) : null
         for (let i = 0; i < values.length; i++) {
-          slots[i] = readLiveNumber(values[i]!)
+          const v = readLiveNumber(values[i]!)
+          slots[i] = v
+          if (mirrored != null) {
+            mirrored[i] = v
+          }
+        }
+        if (mirror != null) {
+          flagsOf(mirror)[0] = 1
         }
         for (const view of views) {
           view.setValues(slots)

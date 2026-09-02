@@ -57,7 +57,7 @@ namespace margelo::nitro::tgfx {
 
   public:
     // Methods
-    void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) override;
+    void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings, std::optional<bool> awaitValues) override;
     void invalidate() override;
     void setValues(const std::vector<double>& values) override;
     void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) override;

@@ -90,8 +90,8 @@ internal class TgfxRenderTarget {
     }
   }
 
-  fun setScene(scene: ByteBuffer, strings: Array<String>) {
-    withPtr { TgfxNative.setScene(it, scene, strings) }
+  fun setScene(scene: ByteBuffer, strings: Array<String>, awaitValues: Boolean) {
+    withPtr { TgfxNative.setScene(it, scene, strings, awaitValues) }
     requestRender()
   }
 

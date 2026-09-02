@@ -23,6 +23,7 @@ namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 #include <NitroModules/ArrayBufferHolder.hpp>
 #include <string>
 #include <vector>
+#include <optional>
 #include "NativeSnapshot.hpp"
 #include <NitroModules/Promise.hpp>
 #include "NativeSnapshotOptions.hpp"
@@ -88,8 +89,8 @@ namespace margelo::nitro::tgfx {
 
   public:
     // Methods
-    inline void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) override {
-      auto __result = _swiftPart.setScene(ArrayBufferHolder(scene), strings);
+    inline void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings, std::optional<bool> awaitValues) override {
+      auto __result = _swiftPart.setScene(ArrayBufferHolder(scene), strings, awaitValues);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

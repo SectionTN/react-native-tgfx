@@ -30,6 +30,7 @@ namespace margelo::nitro::tgfx { struct NativeSnapshot; }
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 

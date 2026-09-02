@@ -21,6 +21,7 @@ namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 #include <NitroModules/JArrayBuffer.hpp>
 #include <string>
 #include <NitroModules/JUnit.hpp>
+#include <optional>
 #include "NativeSnapshotOptions.hpp"
 #include "JNativeSnapshotOptions.hpp"
 
@@ -74,8 +75,8 @@ namespace margelo::nitro::tgfx {
   }
 
   // Methods
-  void JHybridTgfxViewSpec::setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JArrayBuffer::javaobject> /* scene */, jni::alias_ref<jni::JArrayClass<jni::JString>> /* strings */)>("setScene");
+  void JHybridTgfxViewSpec::setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings, std::optional<bool> awaitValues) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JArrayBuffer::javaobject> /* scene */, jni::alias_ref<jni::JArrayClass<jni::JString>> /* strings */, jni::alias_ref<jni::JBoolean> /* awaitValues */)>("setScene");
     method(_javaPart, JArrayBuffer::wrap(scene), [&](auto&& __input) {
       size_t __size = __input.size();
       jni::local_ref<jni::JArrayClass<jni::JString>> __array = jni::JArrayClass<jni::JString>::newArray(__size);
@@ -85,7 +86,7 @@ namespace margelo::nitro::tgfx {
         __array->setElement(__i, *__elementJni);
       }
       return __array;
-    }(strings));
+    }(strings), awaitValues.has_value() ? jni::JBoolean::valueOf(awaitValues.value()) : nullptr);
   }
   void JHybridTgfxViewSpec::invalidate() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("invalidate");

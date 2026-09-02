@@ -17,7 +17,8 @@ FOUNDATION_EXPORT void TgfxSnapshotRelease(void* _Nullable token);
 /// Update the draw program. `strings` is a delta, not a table (cpp/SceneStrings.hpp).
 - (void)setScene:(const double*)words
            count:(NSInteger)count
-         strings:(NSArray<NSString*>*)strings;
+         strings:(NSArray<NSString*>*)strings
+     awaitValues:(BOOL)awaitValues;
 
 - (void)clearScene;
 

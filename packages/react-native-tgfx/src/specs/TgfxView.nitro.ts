@@ -75,8 +75,12 @@ export interface TgfxViewMethods extends HybridViewMethods {
    * every reconciler commit, and a prop would push the whole program through a
    * React re-render and a Fabric shadow-tree commit before reaching the engine.
    * The buffer is only valid for the duration of the call; the engine copies it.
+   *
+   * `awaitValues`: the program's slot literals are placeholders, so hold it
+   * until the next `setValues` lands and draw the two together. The driver
+   * pushes one frame later; the frames in between keep the previous program.
    */
-  setScene(scene: ArrayBuffer, strings: string[]): void
+  setScene(scene: ArrayBuffer, strings: string[], awaitValues?: boolean): void
 
   /** Request a repaint. */
   invalidate(): void

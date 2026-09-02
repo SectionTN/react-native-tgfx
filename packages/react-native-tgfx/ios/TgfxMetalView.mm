@@ -191,7 +191,8 @@ void TgfxSnapshotRelease(void* token) {
 
 - (void)setScene:(const double*)words
            count:(NSInteger)count
-         strings:(NSArray<NSString*>*)strings {
+         strings:(NSArray<NSString*>*)strings
+     awaitValues:(BOOL)awaitValues {
   if (_renderer == nullptr || words == nullptr || count <= 0) {
     // As on Android: this drops the string-table delta too, which JS cannot resend.
     return;
@@ -202,7 +203,7 @@ void TgfxSnapshotRelease(void* token) {
     table.emplace_back(string.UTF8String);
   }
   _renderer->setScene(std::span<const double>(words, static_cast<size_t>(count)),
-                      table);
+                      table, awaitValues == YES);
   [self wakeUp];
 }
 

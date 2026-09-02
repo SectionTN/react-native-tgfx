@@ -65,7 +65,7 @@ trap cleanup EXIT
 echo ">>> cold-launching $PKG (mode=bench)..."
 A shell am force-stop "$PKG" >/dev/null 2>&1
 sleep 0.5
-A shell am start -n "$PKG/.MainActivity" -e mode bench ${PLAN:+-e plan $PLAN} >/dev/null 2>&1
+A shell am start -n "$PKG/.MainActivity" -e mode bench ${PLAN:+-e plan $PLAN} ${LIBS:+-e libs $LIBS} ${WL:+-e wl $WL} ${N:+-e n $N} ${WINDOW:+-e window $WINDOW} >/dev/null 2>&1
 sleep 3
 A shell dumpsys activity activities 2>/dev/null | grep -q "topResumedActivity.*$PKG" || {
   echo ">>> app not foregrounded, retrying via launcher intent"

@@ -96,8 +96,8 @@ class HybridTgfxView(private val context: ThemedReactContext) :
       applyCanvas()
     }
 
-  override fun setScene(scene: ArrayBuffer, strings: Array<String>) {
-    target.setScene(scene.getBuffer(false), strings)
+  override fun setScene(scene: ArrayBuffer, strings: Array<String>, awaitValues: Boolean?) {
+    target.setScene(scene.getBuffer(false), strings, awaitValues == true)
   }
 
   override fun invalidate() {

@@ -21,6 +21,7 @@ namespace margelo::nitro::tgfx { struct NativeSnapshotOptions; }
 #include <NitroModules/ArrayBuffer.hpp>
 #include <string>
 #include <vector>
+#include <optional>
 #include "NativeSnapshot.hpp"
 #include <NitroModules/Promise.hpp>
 #include "NativeSnapshotOptions.hpp"
@@ -59,7 +60,7 @@ namespace margelo::nitro::tgfx {
 
     public:
       // Methods
-      virtual void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings) = 0;
+      virtual void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings, std::optional<bool> awaitValues) = 0;
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
       virtual void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) = 0;
