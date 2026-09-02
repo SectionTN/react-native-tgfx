@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native'
 import type { CameraDevice } from 'react-native-vision-camera'
 import {
+  NativePreviewView,
   useCamera,
   useCameraDevice,
   useCameraPermission,
   useFrameOutput,
+  usePreviewOutput,
 } from 'react-native-vision-camera'
 import {
   Blur,
@@ -16,6 +18,7 @@ import {
   Shader,
   useCameraFrame,
   useClock,
+  type TgfxImage,
 } from 'react-native-tgfx'
 import { useTgfxCameraSink } from 'react-native-tgfx-vision-camera'
 
@@ -63,7 +66,7 @@ half4 main(float2 pos) {
 }
 `
 
-type Mode = 'blur' | 'cyberpunk'
+type Mode = 'preview' | 'none' | 'blur' | 'cyberpunk'
 
 /**
  * The gate is its own component: the frame hooks below reach for a camera as
@@ -101,17 +104,45 @@ export function TgfxCameraEffects() {
   return <EffectsCamera device={device} />
 }
 
+/** Own component: useClock ticks every frame, so it must only mount with the effect. */
+function CyberpunkLayer({
+  image,
+  width,
+  height,
+}: {
+  image: TgfxImage
+  width: number
+  height: number
+}) {
+  const clock = useClock()
+  return (
+    <Fill>
+      <Shader
+        source={NEON_EDGE}
+        uniforms={{
+          uSize: [width, height],
+          uTime: clock,
+        }}
+      >
+        {/* Tile modes left at 'clamp': a YUV frame sampled with any
+            other one comes back transparent. */}
+        <ImageShader image={image} />
+      </Shader>
+    </Fill>
+  )
+}
+
 function EffectsCamera({ device }: { device: CameraDevice }) {
   const [mode, setMode] = useState<Mode>('blur')
 
-  const clock = useClock()
   const { image, posture, onFrame } = useCameraFrame()
   const sink = useTgfxCameraSink()
 
+  // HAL-direct preview, no tgfx: the latency floor to compare the canvas against.
+  const previewOutput = usePreviewOutput()
   const frameOutput = useFrameOutput({
     pixelFormat: 'yuv',
     dropFramesWhileBusy: true,
-    enablePhysicalBufferRotation: true,
     // Headless: this output is the only one, so deferring it behind a preview starts it late.
     allowDeferredStart: false,
     onFrame,
@@ -126,33 +157,37 @@ function EffectsCamera({ device }: { device: CameraDevice }) {
   useCamera({
     isActive: true,
     device: device,
-    outputs: [frameOutput],
+    outputs: [frameOutput, previewOutput],
+    // Without a floor the AE drops to ~15fps in dim light, which doubles glass-to-glass latency.
+    constraints: [{ fps: 30 }],
   })
 
   return (
     <View testID="effects-live" style={styles.fill}>
-      <Canvas style={StyleSheet.absoluteFill} opaque={true}>
+      {/* Both surfaces stay mounted: unbinding the preview surface stalls the
+          whole capture session in the HAL, and a remounted Canvas misses its
+          registry wake. The inactive one parks at 1x1. */}
+      {/* <NativePreviewView
+        style={mode === 'preview' ? StyleSheet.absoluteFill : styles.parked}
+        previewOutput={previewOutput}
+      /> */}
+      <Canvas
+        style={mode === 'preview' ? styles.parked : StyleSheet.absoluteFill}
+        opaque={true}
+      >
         <CameraFrame image={image} {...posture}>
           {mode === 'blur' ? <Blur blur={BLUR_RADIUS} /> : null}
-          {mode === 'cyberpunk' && posture.width > 0 ? (
-            <Fill>
-              <Shader
-                source={NEON_EDGE}
-                uniforms={{
-                  uSize: [posture.width, posture.height],
-                  uTime: clock,
-                }}
-              >
-                {/* Tile modes left at 'clamp': a YUV frame sampled with any
-                    other one comes back transparent. */}
-                <ImageShader image={image} />
-              </Shader>
-            </Fill>
+          {mode === 'cyberpunk' && image != null && posture.width > 0 ? (
+            <CyberpunkLayer
+              image={image}
+              width={posture.width}
+              height={posture.height}
+            />
           ) : null}
         </CameraFrame>
       </Canvas>
       <View style={styles.bar}>
-        {(['blur', 'cyberpunk'] as Mode[]).map(m => (
+        {(['preview', 'none', 'blur', 'cyberpunk'] as Mode[]).map(m => (
           <Pressable
             key={m}
             testID={`effects-mode-${m}`}
@@ -180,6 +215,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   text: { color: '#fff', fontSize: 16 },
+  parked: { position: 'absolute', top: 0, left: 0, width: 1, height: 1 },
   bar: {
     position: 'absolute',
     bottom: 48,
