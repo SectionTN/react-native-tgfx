@@ -13,5 +13,5 @@ export const baseOptions: BaseLayoutProps = {
     { text: 'Docs', url: '/docs', icon: <BookOpen /> },
     { text: 'API Reference', url: '/api', icon: <Braces /> },
   ],
-  githubUrl: 'https://github.com/riteshshukla04/react-native-tgfx',
+  githubUrl: 'https://github.com/margelo/react-native-tgfx',
 }
