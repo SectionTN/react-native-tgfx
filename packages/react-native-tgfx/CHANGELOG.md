@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2-alpha.10](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.9...react-native-tgfx%400.0.2-alpha.10) (2026-09-02)
+
+### Performance Improvements
+
+* snapshot animating slots from a shared mirror and hold a program until its first push ([#261](https://github.com/riteshshukla04/react-native-tgfx/issues/261)) ([b7d6c77](https://github.com/riteshshukla04/react-native-tgfx/commit/b7d6c77e0aa335d33f16b6e85618186206175681))
+
 ## [0.0.2-alpha.9](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.8...react-native-tgfx%400.0.2-alpha.9) (2026-09-01)
 
 ### Features
