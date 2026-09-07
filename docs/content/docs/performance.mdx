@@ -6,15 +6,8 @@ icon: Gauge
 
 ## Benchmark
 
-Galaxy F14 (90 Hz, Mali-G68), Android 15, release builds, React Native 0.85.3,
-react-native-tgfx 0.0.2-alpha.10 vs @shopify/react-native-skia 2.11. Same scene
-graph in both engines, one shared value rotating it. Measured 7 Sep 2026.
-
-Loads: 20,000 shapes, 3,600 images, 40-octave full-screen shader, repeating
-image pattern, 6,000 texts.
-
-Present FPS is frames that reached the screen (SurfaceFlinger `queueBuffer`
-count). UI and JS FPS are frame-callback counts on the app threads.
+We load 20,000 shapes, 3,600 images, a 40-octave full-screen shader, a
+repeating image pattern and 6,000 texts.
 
 | engine · scene | Present FPS | UI FPS | JS FPS |
 |---|---|---|---|
