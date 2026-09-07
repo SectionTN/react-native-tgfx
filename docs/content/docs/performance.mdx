@@ -1,66 +1,59 @@
 ---
 title: Performance
-description: What makes a scene cheap, and how to measure it.
+description: Measured against react-native-skia, and what keeps a scene cheap.
 icon: Gauge
 ---
 
-## Animate slots, not the tree
+## Benchmark
 
-A `SharedValue` prop or a slot-backed
-[`NodeHandle.set`](/api/interfaces/NodeHandle) patches native slot data on the UI
-thread. Changing ordinary JSX props through React recompiles and uploads the
-scene. An unslotted handle write also recompiles, but skips the React and Fabric
-commits.
+Galaxy F14 (90 Hz, Mali-G68), Android 15, release builds, React Native 0.85.3,
+react-native-tgfx 0.0.2-alpha.10 vs @shopify/react-native-skia 2.11. Same scene
+graph in both engines, one shared value rotating it. Measured 7 Sep 2026.
 
-## Recommits snapshot animating values from shared memory
+Loads: 20,000 shapes, 3,600 images, 40-octave full-screen shader, repeating
+image pattern, 6,000 texts.
 
-Every commit snapshots each `SharedValue` prop into the program, so the scene
-draws correctly before the first UI-thread push. Reanimated 4 keeps a mutable's
-value on the UI runtime and flags it dirty on every UI-side write, which makes
-a JS-thread `.value` read of an animating value a synchronous hop to that
-runtime, queued behind whatever frame the UI thread is in. A recommit of a
-scene with N animating slots would be N such hops. Instead, the UI-thread
-driver mirrors every value it pushes into shared memory, and a recommit whose
-slots are already animating snapshots them from there with plain loads; a
-recommit that lands before the driver's first push reuses the literals native
-is already drawing. A value the commit has never seen is not read at all: the
-program ships with placeholder literals and the view holds it until the
-driver's first push lands, one UI frame later, so program and values draw
-together. The same mirror backs a JS-thread `NodeHandle.set`. Without
-Reanimated a commit reads each value directly, where a read is a plain
-property.
+Present FPS is frames that reached the screen (SurfaceFlinger `queueBuffer`
+count). UI and JS FPS are frame-callback counts on the app threads.
 
-## Batching is automatic — and order-aware
+| engine · scene | Present FPS | UI FPS | JS FPS |
+|---|---|---|---|
+| tgfx · shapes | **61.6** | 91 | 90 |
+| skia · shapes | 26.5 | 28 | 15 |
+| tgfx · images | **90.0** | 91 | 90 |
+| skia · images | 80.8 | 81 | 49 |
+| tgfx · shader | 15.0 | 91 | 91 |
+| skia · shader | 15.1 | 15 | 8 |
+| tgfx · pattern | 90.3 | 91 | 91 |
+| skia · pattern | 90.1 | 91 | 90 |
+| tgfx · text | **68.4** | 91 | 91 |
+| skia · text | 33.9 | 35 | 18 |
 
-The GPU merges only *adjacent* compatible draws into one batch, so a sibling
-list that interleaves shape kinds (`<Rect>`, `<Circle>`, `<Rect>`, ...) would
-flush a pipeline batch at nearly every node. At scene commit, siblings whose
-painted bounds provably don't overlap are re-clustered by batch class — once,
-off the hot path, with pixel-identical output (overlapping draws are never
-reordered, so paint order still wins where it can be seen). At 20k interleaved
-nodes this cuts ~13k GPU batches a frame to ~1k and roughly quadruples the
-presented frame rate. You still get the best batches by grouping same-kind
-shapes yourself; the pass just stops interleaving from being a cliff.
+Think a number is off, or a scene is missing? Open an
+[issue](https://github.com/riteshshukla04/react-native-tgfx/issues) and we will rerun the benchmark.
 
-## Keep children primitive
+## Keep it cheap
 
-The reconciler recognises the exported drawings directly. A wrapper function
-component falls back to the slower path.
+- Animate through `SharedValue` props or a slot-backed
+  [`NodeHandle.set`](/api/interfaces/NodeHandle): both patch slot data on the
+  UI thread. Changing ordinary JSX props through React recompiles and uploads
+  the scene.
+- Keep children primitive. The reconciler recognises the exported drawings
+  directly; a wrapper component falls back to the slower path.
 
-```tsx
-{/* fast */}
-<Canvas>{shapes.map((s) => <Rect key={s.id} {...s} />)}</Canvas>
+  ```tsx
+  {/* fast */}
+  <Canvas>{shapes.map((s) => <Rect key={s.id} {...s} />)}</Canvas>
 
-{/* falls back */}
-<Canvas>{shapes.map((s) => <Star key={s.id} {...s} />)}</Canvas>
-```
+  {/* falls back */}
+  <Canvas>{shapes.map((s) => <Star key={s.id} {...s} />)}</Canvas>
+  ```
 
-## Other levers
-
-- `<Group picture>` records a static subtree once; dynamic children fall back
-  to direct drawing.
-- `<Group layer>` costs an offscreen surface — use it only for group opacity or
-  group filters.
+- Group same-kind shapes as siblings. The GPU merges only adjacent compatible
+  draws; a commit-time pass reorders non-overlapping siblings by kind, but
+  grouping them yourself always gives the best batches.
+- `<Group picture>` records a static subtree once. `<Group layer>` costs an
+  offscreen surface, so use it only for group opacity or group filters.
 - Pool handles with [`createHandle`](/api/functions/createHandle) and toggle
   `visible` instead of mounting and unmounting.
 - For large sprite or mesh collections, move to
@@ -71,58 +64,6 @@ component falls back to the slower path.
   decoded-pixel and GPU caches immediately;
   [`getCacheInfo`](/api/functions/getCacheInfo) reports what they hold — see
   [Images § Cache](/docs/images#cache).
-
-## Redraws are scoped to what a canvas actually reads
-
-Decoded images and loaded typefaces live in process-wide registries, so a video
-frame, a decode landing or a newly loaded face moves a counter every mounted
-canvas can see. A canvas only reacts to the registry its own compiled scene
-reads: one that draws no image is neither woken nor redrawn when an image
-changes, and the same holds for text and fonts.
-
-Nothing to configure, but it is worth knowing what it keys on. The scene is
-treated as reading the image registry when it holds an `<TgfxImage>`,
-`<CameraFrame>` or `<Atlas>`, an image handle, an `<ImageShader>`, or a runtime
-shader or `<Blend>` whose child shaders sample an image; and as reading fonts
-when it holds any text. A canvas built entirely from shapes, gradients and
-image-free runtime shaders is therefore idle while a video plays beside it.
-
-## Offscreen canvases do not draw (Android)
-
-A canvas scrolled out of view keeps its surface, but Android skips its draws
-entirely: animated values keep flowing into their slots, and the first frame
-after the canvas scrolls back in picks them up. A canvas that never comes back
-costs nothing per frame. Snapshots still render while hidden — `snapshot()` and
-`save()` force the frame they need.
-
-## Vulkan backend (Android)
-
-The Android renderer runs on Vulkan by default; OpenGL ES remains one Gradle
-property away:
-
-```properties
-# android/gradle.properties
-TgfxVulkan=OFF
-```
-
-When Vulkan is on, the build links the Vulkan prebuilt (`android/libs-vulkan`, shipped alongside
-the GL one; absent prebuilts fall back to compiling the vendored tgfx with
-`TGFX_USE_VULKAN`), swaps the window glue to `VulkanWindow` / `VulkanDevice`,
-and routes video frames through an `AImageReader` — a SurfaceTexture cannot
-exist without a GL context. Video frames are converted
-via a CPU plane copy and tgfx's own YUV shader: on at least Mali, the driver
-ignores the color-range override on zero-copy external-format imports and
-full-range video renders washed out otherwise.
-
-Measured on a Galaxy F14 (90 Hz, Mali-G68), the same stress scene presents
-roughly 15–30% more frames per second than the GL backend at GPU-bound loads,
-at similar CPU and ~50 MB more PSS.
-
-## Measure
-
-With the repository's benchmark app installed and an Android device configured:
-
-```bash
-node benchmarks/renderer-benchmark/scripts/run-quick.mjs \
-  --tag=mine --renderers=tgfx,thor-gpu,skia-graphite
-```
+- A canvas scrolled off screen skips its draws on Android, and a canvas that
+  draws no images or text is not redrawn when an image decodes or a font loads
+  elsewhere. Nothing to configure.
