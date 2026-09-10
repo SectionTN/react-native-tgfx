@@ -94,7 +94,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - NitroModules (0.36.3):
+  - NitroModules (0.36.5):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -117,7 +117,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - NitroTgfx (0.0.2-alpha.5):
+  - NitroTgfx (0.0.2-alpha.10):
     - hermes-engine
     - NitroModules
     - RCTRequired
@@ -141,7 +141,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - NitroTgfxCamera (0.0.1-alpha.2):
+  - NitroTgfxCamera (0.0.1-alpha.4):
     - hermes-engine
     - NitroModules
     - NitroTgfx
@@ -2297,7 +2297,7 @@ DEPENDENCIES:
   - "HarnessUI (from `../../../node_modules/@react-native-harness/ui`)"
   - hermes-engine (from `../../../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - NitroImage (from `../../../node_modules/react-native-nitro-image`)
-  - NitroModules (from `../node_modules/react-native-nitro-modules`)
+  - NitroModules (from `../../../node_modules/react-native-nitro-modules`)
   - NitroTgfx (from `../../../node_modules/react-native-tgfx`)
   - NitroTgfxCamera (from `../../../node_modules/react-native-tgfx-vision-camera`)
   - RCTDeprecation (from `../../../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -2406,7 +2406,7 @@ EXTERNAL SOURCES:
   NitroImage:
     :path: "../../../node_modules/react-native-nitro-image"
   NitroModules:
-    :path: "../node_modules/react-native-nitro-modules"
+    :path: "../../../node_modules/react-native-nitro-modules"
   NitroTgfx:
     :path: "../../../node_modules/react-native-tgfx"
   NitroTgfxCamera:
@@ -2585,9 +2585,9 @@ SPEC CHECKSUMS:
   MLKitVision: 39a5a812db83c4a0794445088e567f3631c11961
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   NitroImage: 2f592086cbdecbbaa1c10dd97e0cdd43b1bb0817
-  NitroModules: ad8b30b0f7bc328c62fa078260b9c576e8d100ac
-  NitroTgfx: 011ee96b31fa47659a068c9b1d8bb758f86d55e0
-  NitroTgfxCamera: 8448e38353d572729f21e27016f4642d3edd0acd
+  NitroModules: 452230d9b63c6c3f59dd97eeaa27ec3449271d4a
+  NitroTgfx: 80ee71ec84987ceafac599cd081aca0937e79b17
+  NitroTgfxCamera: d376202c7b83edb3a14bf786f41d5f48301becff
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
   RCTDeprecation: a4c521821fab57cbb125b36effe84d897d0dfa12
   RCTRequired: 9f3a7e5645d4bc3f551593de7550bb66ab6e42bc

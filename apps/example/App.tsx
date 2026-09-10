@@ -32,6 +32,8 @@ import {
 import { FilterSection } from './src/filterExamples';
 import { ImageSection } from './src/imageExamples';
 import { PathSection } from './src/pathExamples';
+import { LogoSection } from './src/logoExample';
+import { LogoScreen } from './src/logoScreen';
 import { GroupSection } from './src/groupExamples';
 import { PathEffectSection } from './src/pathEffectExamples';
 import { TextSection } from './src/textExamples';
@@ -46,6 +48,7 @@ import {
   Wave,
 } from './src/customShapes';
 import { AnimatedSection } from './src/animatedExamples';
+import { PanScreen } from './src/panExamples';
 import { ImperativeSection } from './src/imperativeExample';
 import { ImperativeSlotsSection } from './src/imperativeSlotsExample';
 import { SnapshotSection } from './src/snapshotExample';
@@ -233,6 +236,8 @@ const Demo = memo(function Demo() {
 
       <PathSection />
 
+      <LogoSection />
+
       <GroupSection />
 
       <PathEffectSection />
@@ -378,7 +383,7 @@ function Section({
   );
 }
 
-const SCREENS = ['gallery', 'faceblur', 'effects'] as const;
+const SCREENS = ['gallery', 'logo', 'pan', 'faceblur', 'effects'] as const;
 type Screen = (typeof SCREENS)[number];
 
 function Screens() {
@@ -404,6 +409,16 @@ function Screens() {
           testID="screen-gallery"
         >
           <Demo />
+        </View>
+      ) : null}
+      {screen === 'logo' ? (
+        <View style={styles.screenDark} testID="screen-logo">
+          <LogoScreen />
+        </View>
+      ) : null}
+      {screen === 'pan' ? (
+        <View style={styles.screen} testID="screen-pan">
+          <PanScreen />
         </View>
       ) : null}
       {screen === 'faceblur' ? (
