@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.0.2-alpha.11](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.10...react-native-tgfx%400.0.2-alpha.11) (2026-09-10)
+
 ## [0.0.2-alpha.10](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.9...react-native-tgfx%400.0.2-alpha.10) (2026-09-02)
 
 ### Performance Improvements
