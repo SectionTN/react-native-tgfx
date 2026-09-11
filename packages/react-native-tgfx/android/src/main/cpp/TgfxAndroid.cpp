@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Log.hpp"
+#include "Prewarm.hpp"
 #include "Snapshot.hpp"
 #include "TgfxRenderer.hpp"
 #include "tgfx/core/Data.h"
@@ -147,6 +148,11 @@ Java_com_margelo_nitro_tgfx_TgfxNative_create(JNIEnv*, jobject) {
 }
 
 JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_prewarm(JNIEnv*, jobject) {
+  tgfxrn::prewarm();
+}
+
+JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_surfaceCreated(JNIEnv* env, jobject,
                                                       jlong ptr,
                                                       jobject surface) {
@@ -166,9 +172,7 @@ Java_com_margelo_nitro_tgfx_TgfxNative_surfaceCreated(JNIEnv* env, jobject,
   auto space = view->renderer.wantsDisplayP3() ? tgfx::ColorSpace::DisplayP3()
                                                : tgfx::ColorSpace::SRGB();
 #ifdef TGFX_RN_VULKAN
-  // One VulkanDevice (VkInstance + VkDevice) for every surface of the process.
-  static auto vulkanDevice = tgfx::VulkanDevice::Make();
-  auto window = tgfx::VulkanWindow::MakeFrom(view->nativeWindow, vulkanDevice, space);
+  auto window = tgfx::VulkanWindow::MakeFrom(view->nativeWindow, tgfxrn::sharedVulkanDevice(), space);
 #else
   auto window = tgfx::EGLWindow::MakeFrom(view->nativeWindow, nullptr, space);
 #endif

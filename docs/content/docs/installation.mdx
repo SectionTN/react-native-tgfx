@@ -59,6 +59,14 @@ or a bug you want to bisect — add one line to your app:
 TgfxVulkan=OFF
 ```
 
+## Prewarm (optional)
+
+`Tgfx.prewarm()` in `Application.onCreate` on Android, and a `TgfxPrewarm`
+key in `Info.plist` on iOS, build the GPU device and the font table on a
+background thread before React Native starts, so the first canvas does not pay
+for them — see
+[Performance § Prewarm at launch](/docs/performance#prewarm-at-launch).
+
 ## Camera (optional)
 
 ```bash
