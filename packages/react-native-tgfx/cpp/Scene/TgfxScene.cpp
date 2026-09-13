@@ -2245,6 +2245,17 @@ static void drawGrain(tgfx::Canvas* canvas, const GrainCmd& g,
   canvas->restore();
 }
 
+// Canvas::drawPath sends line/rect/oval/rrect strokes to dedicated draws (and the SVG exporter to
+// <rect>/<line>), so only a generic path is worth caching as a pre-stroked Shape. Probed once.
+static bool cacheStrokedShape(const DrawCmd& cmd) {
+  if (cmd.strokeCache == 0) {
+    const auto& path = cmd.path;
+    cmd.strokeCache =
+        path.isLine() || path.isRect() || path.isOval() || path.isRRect(nullptr) ? -1 : 1;
+  }
+  return cmd.strokeCache > 0;
+}
+
 void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             std::span<const double> v,
                             std::span<const std::string> strings,
@@ -2451,6 +2462,14 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
         tgfx::Path trimmed = *path;
         cmd.effects->apply(&trimmed, v);
         canvas->drawPath(trimmed, *p);
+      } else if (path == &cmd.path && p == &cmd.paint.cached && p->getStroke() != nullptr &&
+                 cacheStrokedShape(cmd)) {
+        if (cmd.strokedShape == nullptr) {
+          cmd.strokedShape = tgfx::Shape::ApplyStroke(tgfx::Shape::MakeFrom(*path), p->getStroke());
+        }
+        tgfx::Paint fill = *p;
+        fill.setStyle(tgfx::PaintStyle::Fill);
+        canvas->drawShape(cmd.strokedShape, fill);
       } else {
         canvas->drawPath(*path, *p);
       }

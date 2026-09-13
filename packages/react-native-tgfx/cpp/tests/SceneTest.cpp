@@ -449,6 +449,112 @@ void aCorruptProgramIsRejectedWithoutTrustingItsCounts() {
   }
 }
 
+// tgfx batches different paths drawn back to back into one ShapeMultiDrawOp once their triangle
+// meshes are resident — i.e. from the second frame on. The first frame therefore goes through
+// one ShapeDrawOp per path and the later frames through the batch; both must draw the same
+// pixels. Half the paths are stroked, every one has its own colour. The rotated pass is what an
+// animated group produces and triangulates at any size; the axis-aligned pass exercises the
+// identity split, so its paths must exceed tgfx's 162 px triangulation floor or they take the
+// texture-mask route and never batch.
+void batchedPathsDrawWhatPerShapeOpsDraw() {
+  // Built once, like a scene keeps its paths: a Path's cache key is its PathRef's identity.
+  auto squiggles = [](int cols, int rows, float w, float h) {
+    std::vector<tgfx::Path> paths;
+    for (int i = 0; i < cols * rows; i++) {
+      float x = 8 + static_cast<float>(i % cols) * (w + 4);
+      float y = 8 + static_cast<float>(i / cols) * (h + 22);
+      tgfx::Path path;
+      path.moveTo(x, y + h / 2);
+      path.cubicTo(x + w / 4, y, x + w / 2, y + h, x + w, y + h / 2);
+      path.cubicTo(x + w * 0.75f, y + h, x + w / 2, y, x, y + h / 2);
+      path.close();
+      paths.push_back(path);
+    }
+    return paths;
+  };
+  auto* context = device()->lockContext();
+  auto frame = [&](const std::vector<tgfx::Path>& paths, int size, bool rotated) {
+    auto surface = tgfx::Surface::Make(context, size, size);
+    CHECK(surface != nullptr);
+    auto* canvas = surface->getCanvas();
+    canvas->clear();
+    if (rotated) {
+      canvas->rotate(17, size / 2.0f, size / 2.0f);
+    }
+    for (size_t i = 0; i < paths.size(); i++) {
+      tgfx::Paint paint;
+      paint.setColor(tgfx::Color::FromRGBA(static_cast<uint8_t>(40 + i * 17),
+                                           static_cast<uint8_t>(200 - i * 13),
+                                           static_cast<uint8_t>(90 + i * 11), 255));
+      if (i % 2 == 1) {
+        paint.setStyle(tgfx::PaintStyle::Stroke);
+        paint.setStrokeWidth(2);
+      }
+      canvas->drawPath(paths[i], paint);
+    }
+    context->flushAndSubmit(true);
+    auto info = tgfx::ImageInfo::Make(size, size, tgfx::ColorType::RGBA_8888);
+    Pixels pixels(static_cast<size_t>(info.byteSize()));
+    surface->readPixels(info, pixels.data());
+    return pixels;
+  };
+  auto maxDiff = [](const Pixels& a, const Pixels& b) {
+    int diff = 0;
+    for (size_t i = 0; i < a.size() && i < b.size(); i++) {
+      diff = std::max(diff, std::abs(static_cast<int>(a[i]) - static_cast<int>(b[i])));
+    }
+    return a.size() == b.size() ? diff : 255;
+  };
+  auto small = squiggles(4, 3, 42, 40);
+  auto large = squiggles(2, 2, 200, 200);
+  for (bool rotated : {true, false}) {
+    const auto& paths = rotated ? small : large;
+    int size = rotated ? 200 : 480;
+    auto first = frame(paths, size, rotated);
+    auto second = frame(paths, size, rotated);
+    auto third = frame(paths, size, rotated);
+    CHECK(anyPixelSet(first));
+    // The batch adds the per-shape translation in the vertex shader instead of folding it into
+    // the matrix, so allow last-bit coverage rounding but nothing a misplaced shape could pass.
+    CHECK(maxDiff(first, second) <= 2);
+    CHECK(second == third);
+  }
+  device()->unlock();
+}
+
+/// The glue strokes a static <Path> once and keeps the Shape; a cubic caches, and the rebuild
+/// (an animated stroke width at the same value) takes drawPath, so the two must agree. A closed
+/// rectangle must not cache: drawPath's fast path is what keeps it a <rect> in the export.
+void aStrokedPathDrawsWhatTheRebuildDraws() {
+  Writer literal;
+  literal.push(1);
+  literal.push(6);  // Path
+  literal.push(0);
+  literal.push(0);
+  literal.pushPaint(0xffcc3366, true, 3);
+
+  Writer animated;
+  animated.push(1);
+  animated.push(6);
+  animated.push(0);
+  animated.push(0);
+  animated.pushPaint(0xffcc3366, true, 3, 1, -1, 0);
+
+  const std::vector<std::string> cubic = {"M8 32 C20 4 44 60 56 32"};
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(literal.finish(), cubic);
+  auto first = drawFrame(renderer, {});
+  auto second = drawFrame(renderer, {});
+  CHECK(anyPixelSet(first));
+  CHECK(first == second);
+  CHECK(first == render(animated.finish(), cubic, {3}));
+
+  auto svg = tgfxrn::renderSceneToSvg(literal.finish(), {"M8 8 L56 8 L56 48 L8 48 Z"}, 64, 64,
+                                      false);
+  CHECK(svg.find("<rect") != std::string::npos);
+  CHECK(svg.find("stroke-width") != std::string::npos);
+}
+
 void staticPaintDrawsWhatTheRebuildDraws() {
   Writer literal;
   literal.push(1);
@@ -5612,6 +5718,8 @@ int main() {
   verticesDrawFromASharedBuffer();
   srcRectSlotStepsSprites();
   aCorruptProgramIsRejectedWithoutTrustingItsCounts();
+  batchedPathsDrawWhatPerShapeOpsDraw();
+  aStrokedPathDrawsWhatTheRebuildDraws();
   staticPaintDrawsWhatTheRebuildDraws();
   animatedColorDrawsWhatTheLiteralDraws();
   staticLineDrawsWhatTheRebuildDraws();

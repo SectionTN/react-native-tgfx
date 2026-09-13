@@ -22,6 +22,17 @@ repeating image pattern and 6,000 texts.
 | tgfx · text | **68.4** | 91 | 91 |
 | skia · text | 33.9 | 35 | 18 |
 
+### Paths
+
+900 distinct cubic paths, half of them stroked, under one rotating group, on a
+moto g35 (Unisoc T760, Vulkan, 120 Hz).
+
+| engine · scene | Present FPS | UI FPS | JS FPS |
+|---|---|---|---|
+| tgfx · paths, before | 70.4 | 120 | 119 |
+| tgfx · paths, after | **114.1** | 120 | 119 |
+| skia · paths | 104.9 | 115 | 62 |
+
 Think a number is off, or a scene is missing? Open an
 [issue](https://github.com/margelo/react-native-tgfx/issues) and we will rerun the benchmark.
 
@@ -115,6 +126,13 @@ what you draw.
 - Group same-kind shapes as siblings. The GPU merges only adjacent compatible
   draws; a commit-time pass reorders non-overlapping siblings by kind, but
   grouping them yourself always gives the best batches.
+- Adjacent `<Path>` siblings draw as one batch from their second frame on when
+  they share a clip and a solid `color` paint with the same `blendMode`,
+  `antiAlias` and `colorFilter` — no `shader`, mask filter, or animated trim or
+  dash. Only paths meshed as triangles batch: any rotation, or a path larger
+  than ~160 px; small unrotated icon-sized paths draw through texture masks
+  and stay separate draws. Keep the `path` string stable — a new string is a
+  new geometry to triangulate.
 - `<Group picture>` records a static subtree once. `<Group layer>` costs an
   offscreen surface, so use it only for group opacity or group filters.
 - Pool handles with [`createHandle`](/api/functions/createHandle) and toggle
