@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.2-alpha.12](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.11...react-native-tgfx%400.0.2-alpha.12) (2026-09-14)
+
+### Features
+
+* prewarm the GPU device and font table at launch ([#263](https://github.com/riteshshukla04/react-native-tgfx/issues/263)) ([41b9264](https://github.com/riteshshukla04/react-native-tgfx/commit/41b926429aef9278fa93f39187396cfd4568ee38))
+
+### Performance Improvements
+
+* batch adjacent paths into one draw and keep frame proxies alive — 900 rotating paths from 70 to 114 fps ([#264](https://github.com/riteshshukla04/react-native-tgfx/issues/264)) ([ea90732](https://github.com/riteshshukla04/react-native-tgfx/commit/ea90732792fb31cdcd6991de1e8dabfd3a71e926))
+
 ## [0.0.2-alpha.11](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.10...react-native-tgfx%400.0.2-alpha.11) (2026-09-10)
 
 ## [0.0.2-alpha.10](https://github.com/riteshshukla04/react-native-tgfx/compare/react-native-tgfx%400.0.2-alpha.9...react-native-tgfx%400.0.2-alpha.10) (2026-09-02)
