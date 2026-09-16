@@ -198,6 +198,7 @@ export {
   useSpriteBuffer,
   useVertexBuffer,
   createSpriteBuffer,
+  spriteFloats,
   createVertexBuffer,
 } from './hooks/useBuffers'
 export type {

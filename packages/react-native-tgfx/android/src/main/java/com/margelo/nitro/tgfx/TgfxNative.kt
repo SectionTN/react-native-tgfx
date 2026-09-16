@@ -19,6 +19,8 @@ internal object TgfxNative {
 
   external fun create(): Long
 
+  external fun prewarm()
+
   external fun setWakeTarget(ptr: Long, target: TgfxRenderTarget)
   external fun surfaceCreated(ptr: Long, surface: Surface)
   external fun surfaceChanged(ptr: Long, width: Int, height: Int)

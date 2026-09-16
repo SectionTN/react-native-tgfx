@@ -22,8 +22,89 @@ repeating image pattern and 6,000 texts.
 | tgfx · text | **68.4** | 91 | 91 |
 | skia · text | 33.9 | 35 | 18 |
 
+### Paths
+
+900 distinct cubic paths, half of them stroked, under one rotating group, on a
+moto g35 (Unisoc T760, Vulkan, 120 Hz).
+
+| engine · scene | Present FPS | UI FPS | JS FPS |
+|---|---|---|---|
+| tgfx · paths, before | 70.4 | 120 | 119 |
+| tgfx · paths, after | **114.1** | 120 | 119 |
+| skia · paths | 104.9 | 115 | 62 |
+
 Think a number is off, or a scene is missing? Open an
 [issue](https://github.com/margelo/react-native-tgfx/issues) and we will rerun the benchmark.
+
+## Prewarm at launch
+
+The first canvas of a process pays for work no scene needs: loading the GPU
+driver and building the device (a `VkInstance` and `VkDevice` on Android, an
+`MTLDevice` on iOS), walking the platform font directories, and opening the
+default face. `prewarm` does all of it on a background thread before React
+Native even starts, so mounting a `<Canvas>` only has to make its window.
+
+Nothing is prewarmed unless you ask for it: one call on Android, one
+Info.plist key on iOS. It touches no JSI and needs no React context, so it is
+safe from `Application.onCreate` or from `+load`, and calling it twice does
+nothing.
+
+### Android
+
+```kotlin title="MainApplication.kt"
+import com.margelo.nitro.tgfx.Tgfx
+
+override fun onCreate() {
+  super.onCreate()
+  Tgfx.prewarm()
+  loadReactNative(this)
+}
+```
+
+### iOS
+
+Set `TgfxPrewarm` in the app's `Info.plist` and the prewarm runs from `+load`,
+before `main` — no launch code at all.
+
+```xml title="Info.plist"
+<key>TgfxPrewarm</key>
+<true/>
+```
+
+The `TGFX_PREWARM` environment variable overrides that key in both directions
+(`1`/`true`/`yes` on, anything else off), which is how you measure one build
+with and without. Set it under *Run → Arguments* in the scheme; it applies to
+local runs only, so shipping builds are governed by the plist key.
+
+To control the timing yourself instead, leave the key out and call `prewarm`
+directly. The header is plain Objective-C, so a Swift `AppDelegate` reaches it
+through a bridging header — importing the `NitroTgfx` module does not work,
+because its umbrella re-exports C++ headers.
+
+```objectivec title="YourApp-Bridging-Header.h"
+#import <NitroTgfx/TgfxPrewarm.h>
+```
+
+```swift title="AppDelegate.swift"
+TgfxPrewarm.prewarm()
+```
+
+### What it buys
+
+Measured on a Samsung SM-E146B (arm64 release, Vulkan backend), four cold
+starts per arm:
+
+| | without prewarm | with prewarm |
+|---|---|---|
+| `libNitroTgfx` load | 10 ms, on the main thread | 15–19 ms, on the render thread |
+| first canvas window | 25.3 / 28.4 / 29.0 / 31.0 ms | 9.6 / 10.9 / 13.5 / 13.5 ms |
+
+So the first canvas builds its window in **11.9 ms instead of 28.4 ms on
+average**, and another 10 ms of library loading leaves the main thread.
+`prewarm` itself costs 13–16 ms (GPU 9.6–12.1 ms, fonts 3.0–4.3 ms) on the
+render thread, roughly 800 ms before the first canvas mounts. The first *draw*
+is unchanged — that is shader compilation and scene upload, which depend on
+what you draw.
 
 ## Keep it cheap
 
@@ -45,6 +126,13 @@ Think a number is off, or a scene is missing? Open an
 - Group same-kind shapes as siblings. The GPU merges only adjacent compatible
   draws; a commit-time pass reorders non-overlapping siblings by kind, but
   grouping them yourself always gives the best batches.
+- Adjacent `<Path>` siblings draw as one batch from their second frame on when
+  they share a clip and a solid `color` paint with the same `blendMode`,
+  `antiAlias` and `colorFilter` — no `shader`, mask filter, or animated trim or
+  dash. Only paths meshed as triangles batch: any rotation, or a path larger
+  than ~160 px; small unrotated icon-sized paths draw through texture masks
+  and stay separate draws. Keep the `path` string stable — a new string is a
+  new geometry to triangulate.
 - `<Group picture>` records a static subtree once. `<Group layer>` costs an
   offscreen surface, so use it only for group opacity or group filters.
 - Pool handles with [`createHandle`](/api/functions/createHandle) and toggle

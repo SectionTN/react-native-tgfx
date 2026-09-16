@@ -7,6 +7,7 @@ apply plugin: "com.facebook.react"
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
+    /* Folders */
     /* Folders — monorepo: node_modules are hoisted to the workspace root. */
     root = file("../../")
     reactNativeDir = file("../../../../node_modules/react-native")
@@ -40,8 +41,11 @@ react {
     // extraPackagerArgs = []
 
     /* Hermes Commands */
+    //   The hermes compiler command to run. By default it is 'hermesc'
     hermesCommand = "${projectDir}/../../../../node_modules/hermes-compiler/hermesc/%OS-BIN%/hermesc"
-    hermesFlags = ["-O", "-output-source-map"]
+    //
+    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+    // hermesFlags = ["-O", "-output-source-map"]
 
     /* Autolinking */
     autolinkLibrariesWithApp()
@@ -70,16 +74,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.tgfxbench"
+    namespace "com.tgfxskiabench"
     defaultConfig {
-        applicationId "com.tgfxbench"
+        applicationId "com.tgfxskiabench"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        ndk {
-            abiFilters "arm64-v8a"
-        }
     }
     signingConfigs {
         debug {

@@ -19,6 +19,7 @@
 #include "tgfx/core/Picture.h"
 #include "tgfx/core/Rect.h"
 #include "tgfx/core/SamplingOptions.h"
+#include "tgfx/core/Shape.h"
 #include "tgfx/core/TileMode.h"
 
 namespace tgfx {
@@ -387,6 +388,11 @@ struct DrawCmd {
   int pathFlags = 0;
   mutable uint64_t pathGen = 0;
   mutable tgfx::Path livePath;
+  /// Stroked form of a static path + static stroke paint, built once on the render thread so a
+  /// frame does not re-stroke and re-probe (rect/oval) every path it draws.
+  mutable std::shared_ptr<tgfx::Shape> strokedShape;
+  /// 0 unprobed, 1 cache as strokedShape, -1 line/rect/oval/rrect: keeps drawPath's fast path.
+  mutable int8_t strokeCache = 0;
   /// Path effects. Held rather than baked when trim or dash phase can move per frame.
   std::shared_ptr<PathEffectCmd> effects;
   // Null for a hardware-buffer handle: caching the resolved image would pin the producer's buffer.

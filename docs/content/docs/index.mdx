@@ -28,5 +28,6 @@ UI thread, so they need no JavaScript work per frame.
 - [Camera frames](/docs/camera), [snapshots, PDF and SVG export](/docs/snapshots)
 - [Headless scenes](/docs/headless) with no React — built on the JS thread or [inside a worklet](/docs/headless#worklets)
 - [Vulkan](/docs/installation#rendering-backend-android) by default on Android (OpenGL ES one flag away), Metal on iOS
+- [Prewarm at launch](/docs/performance#prewarm-at-launch): `Tgfx.prewarm()` in `Application.onCreate`, or a `TgfxPrewarm` key in `Info.plist`, builds the GPU device and font table on a background thread before React Native starts, so the first canvas builds its window in 11.9 ms instead of 28.4 ms
 
 The package version in this source revision is an alpha release.

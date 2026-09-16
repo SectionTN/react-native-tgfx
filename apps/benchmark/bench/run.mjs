@@ -1,0 +1,217 @@
+#!/usr/bin/env node
+// Host half of the bench: restarts the app, tails logcat for its `[bench]`
+// lines, and samples CPU (/proc/<pid>/stat) and memory (dumpsys meminfo) per
+// second. Writes a per-scene table when the app prints `[bench] done`.
+//
+//   node bench/run.mjs [--package com.tgfxskiabench]
+//
+// Install a RELEASE build first: benchmarking a debug build measures the
+// debug overhead, not the engines.
+import { execFile, spawn } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const shotsDir = join(dirname(fileURLToPath(import.meta.url)), 'shots');
+mkdirSync(shotsDir, { recursive: true });
+
+const args = process.argv.slice(2);
+function arg(name, fallback) {
+  const at = args.indexOf(`--${name}`);
+  return at >= 0 && args[at + 1] !== undefined ? args[at + 1] : fallback;
+}
+const PACKAGE = arg('package', 'com.tgfxskiabench');
+// 'atrace' counts SF `queueBuffer - <layer>` events (Android 14+); 'latency'
+// reads `dumpsys SurfaceFlinger --latency` present timestamps (Android <= 13).
+const PRESENT = arg('present', 'atrace');
+// Matrix selection, forwarded to the app through the launch URL (see App.tsx buildPlan).
+const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}`;
+const COMBOS = arg('engines', 'tgfx,skia').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
+const SETTLE_TICKS = 3;
+const HZ = 100; // Linux USER_HZ
+
+function adb(...adbArgs) {
+  return new Promise(resolve => {
+    execFile('adb', adbArgs, { maxBuffer: 4 * 1024 * 1024 }, (error, stdout) =>
+      resolve(error ? null : (stdout ?? '').toString())
+    );
+  });
+}
+
+const median = values => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/** combo key -> {ticks: [{js, ui}], cpu: [], pss: [], seen} */
+const combos = new Map();
+let current = null;
+function comboBucket(key) {
+  if (!combos.has(key)) combos.set(key, { ticks: [], cpu: [], pss: [], presents: [], seen: 0 });
+  return combos.get(key);
+}
+
+// ---- CPU + PSS sampler -----------------------------------------------------
+
+let lastCpu = null;
+async function sampleCpu() {
+  const pidOut = await adb('shell', 'pidof', PACKAGE);
+  const pid = pidOut?.trim().split(/\s+/)[0];
+  if (!pid) return;
+  const stat = await adb('shell', 'cat', `/proc/${pid}/stat`);
+  if (!stat) return;
+  const after = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\s+/);
+  // after[0] is field 3 (state); utime is field 14, stime 15.
+  const utime = Number(after[11]);
+  const stime = Number(after[12]);
+  const now = Date.now();
+  if (Number.isNaN(utime) || Number.isNaN(stime)) return;
+  const ticks = utime + stime;
+  if (lastCpu && lastCpu.pid === pid) {
+    const wall = (now - lastCpu.at) / 1000;
+    const pct = ((ticks - lastCpu.ticks) / HZ / wall) * 100;
+    if (current && wall > 0.2 && pct >= 0) comboBucket(current).cpu.push(pct);
+  }
+  lastCpu = { pid, ticks, at: now };
+}
+
+async function samplePss() {
+  const out = await adb('shell', 'dumpsys', 'meminfo', PACKAGE);
+  const match = out?.match(/TOTAL PSS:\s+(\d+)/);
+  if (match && current) comboBucket(current).pss.push(Number(match[1]));
+}
+
+let busy = false;
+async function sample() {
+  if (busy) return;
+  busy = true;
+  await sampleCpu();
+  await samplePss();
+  busy = false;
+}
+
+// ---- presented frames ------------------------------------------------------
+// Thread FPS says the threads are healthy; only SurfaceFlinger knows what the
+// canvas actually put on screen. atrace `queueBuffer - <layer>` events count
+// buffers the canvas queued. Only the app's own SurfaceView layer counts:
+// with GPU composition on, FramebufferSurface queues once per frame too, and
+// the extra events overflow the default ring buffer inside 8s (hence -b).
+const TRACE_SECONDS = 8;
+let tracing = false;
+async function latencyFps() {
+  const list = await adb('shell', 'dumpsys', 'SurfaceFlinger', '--list');
+  const layer = list?.split('\n').find(l => l.startsWith(`SurfaceView[${PACKAGE}/`) && l.includes('(BLAST)'));
+  if (!layer) return null;
+  const out = await adb('shell', 'dumpsys', 'SurfaceFlinger', '--latency', `'${layer.trim()}'`);
+  const times = [...new Set((out ?? '').split('\n').slice(1).map(l => Number(l.trim().split(/\s+/)[1])).filter(t => t > 0 && t < 9e18))].sort((a, b) => a - b);
+  if (times.length < 2) return null;
+  return (times.length - 1) / ((times.at(-1) - times[0]) / 1e9);
+}
+async function samplePresentedLatency(key) {
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    const fps = await latencyFps();
+    if (fps != null) samples.push(fps);
+    await new Promise(r => setTimeout(r, 2500));
+  }
+  if (samples.length === 0) return;
+  comboBucket(key).presents.push(median(samples));
+  console.log(`[bench] ${key} present=${median(samples).toFixed(1)}fps (latency x${samples.length})`);
+}
+function samplePresented(key) {
+  if (PRESENT === 'latency') return void samplePresentedLatency(key);
+  if (tracing) return;
+  tracing = true;
+  execFile(
+    'adb',
+    ['shell', `atrace -t ${TRACE_SECONDS} -b 8192 gfx 2>/dev/null | grep 'queueBuffer - SurfaceView\\[${PACKAGE}' | wc -l`],
+    { maxBuffer: 16 * 1024 * 1024 },
+    (error, stdout) => {
+      tracing = false;
+      const count = Number((stdout ?? '').trim());
+      if (!error && Number.isFinite(count)) {
+        comboBucket(key).presents.push(count / TRACE_SECONDS);
+        console.log(`[bench] ${key} present=${(count / TRACE_SECONDS).toFixed(1)}fps`);
+      }
+    }
+  );
+}
+
+// ---- logcat ----------------------------------------------------------------
+
+function finish(reason) {
+  clearInterval(timer);
+  logcat.kill();
+  const rows = [];
+  for (const [key, bucket] of combos) {
+    const measured = bucket.ticks.slice(SETTLE_TICKS);
+    if (measured.length === 0) continue;
+    rows.push({
+      key,
+      present: bucket.presents.length ? median(bucket.presents) : null,
+      js: median(measured.map(t => t.js)),
+      ui: median(measured.map(t => t.ui)),
+      cpu: median(bucket.cpu),
+      pss: median(bucket.pss) / 1024,
+      n: measured.length,
+    });
+  }
+  const lines = [
+    `# tgfx vs skia bench (${reason})`,
+    '',
+    '| engine · scene | Present FPS | UI FPS | JS FPS | CPU % (1 core = 100) | PSS MB | ticks |',
+    '|---|---|---|---|---|---|---|',
+    ...rows.map(r =>
+      `| ${r.key} | ${r.present == null ? '?' : r.present.toFixed(1)} | ${r.ui.toFixed(0)} | ${r.js.toFixed(0)} | ${r.cpu.toFixed(0)} | ${r.pss.toFixed(1)} | ${r.n} |`
+    ),
+  ];
+  const report = lines.join('\n');
+  console.log(`\n${report}\n`);
+  const out = join(dirname(fileURLToPath(import.meta.url)), `results-${Date.now()}.md`);
+  writeFileSync(out, report + '\n');
+  console.log(`[bench] wrote ${out}`);
+  process.exit(rows.length > 0 ? 0 : 2);
+}
+
+const logcat = spawn('adb', ['logcat', '-T', '1', '-s', 'ReactNativeJS:I']);
+let pending = '';
+logcat.stdout.on('data', chunk => {
+  pending += chunk.toString();
+  const lines = pending.split('\n');
+  pending = lines.pop() ?? '';
+  for (const line of lines) {
+    const start = line.match(/\[bench\] start engine=(\w+) scene=(\w+)/);
+    if (start) {
+      current = `${start[1]} · ${start[2]}`;
+      console.log(`[bench] >> ${current}`);
+      const key = current;
+      setTimeout(() => samplePresented(key), 6000);
+      continue;
+    }
+    // The app freezes t=0 for 1.5s and prints this; a screencap inside the
+    // window gives pixel-comparable parity stills across the two engines.
+    const pose = line.match(/\[bench\] pose engine=(\w+) scene=(\w+)/);
+    if (pose) {
+      const shot = join(shotsDir, `${pose[1]}-${pose[2]}.png`);
+      execFile('bash', ['-c', `adb exec-out screencap -p > '${shot}'`], () => {});
+      continue;
+    }
+    const tick = line.match(/\[bench\] tick engine=(\w+) scene=(\w+) js=(\d+) ui=(\d+)/);
+    if (tick) {
+      const key = `${tick[1]} · ${tick[2]}`;
+      const bucket = comboBucket(key);
+      bucket.ticks.push({ js: Number(tick[3]), ui: Number(tick[4]) });
+      process.stdout.write(`[bench] ${key} js=${tick[3]} ui=${tick[4]}\n`);
+      continue;
+    }
+    if (line.includes('[bench] done')) finish('complete');
+  }
+});
+
+await adb('shell', 'am', 'force-stop', PACKAGE);
+await adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-n', `${PACKAGE}/.MainActivity`, '-d', `'${PLAN_URL}'`);
+const timer = setInterval(sample, 1000);
+// combos x 28s + startup, with slack.
+setTimeout(() => finish('timeout'), (COMBOS * 28 + 60) * 1000);

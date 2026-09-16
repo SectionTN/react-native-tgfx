@@ -1,5 +1,5 @@
 {
-  "name": "TgfxBench",
+  "name": "TgfxSkiaBench",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -10,17 +10,16 @@
     "test": "jest"
   },
   "dependencies": {
-    "@react-native/new-app-screen": "0.85.3",
-    "@shopify/react-native-skia": "^2.9.1-next.1",
     "react": "19.2.3",
     "react-native": "0.85.3",
-    "react-native-gesture-handler": "^3.0.2",
-    "react-native-nitro-modules": "0.36.5",
-    "react-native-nitro-thor": "0.0.2-alpha.1",
-    "react-native-reanimated": "^4.5.3",
+    "@react-native/new-app-screen": "0.85.3",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-tgfx": "workspace:*",
-    "react-native-worklets": "^0.11.3"
+    "react-native-nitro-modules": "0.36.5",
+    "react-native-reanimated": "4.5.3",
+    "react-native-worklets": "0.11.3",
+    "react-native-gesture-handler": "^3.0.2",
+    "@shopify/react-native-skia": "2.11.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -84,6 +84,8 @@ export interface SpriteBuffer {
   readonly capacity: number
   /** The JS thread's raw floats, `capacity * SPRITE_FLOATS` long. */
   readonly data: Float32Array
+  /** @internal the cross-runtime handle spriteFloats() unboxes. */
+  readonly boxed: BoxedBuffer | null
   /** Write sprite `i`: source rect, uniform scale, and the sprite's centre. */
   set(
     i: number,
@@ -120,7 +122,19 @@ export function createSpriteBuffer(capacity: number): SpriteBuffer {
     data[at + 5] = x
     data[at + 6] = y
   }
-  return { id: created?.native.id ?? 0, capacity, data: fallback, set }
+  return { id: created?.native.id ?? 0, capacity, data: fallback, boxed, set }
+}
+
+/**
+ * This runtime's floats over a {@link SpriteBuffer}'s memory, {@link SPRITE_FLOATS}
+ * per sprite: the bulk path for a worklet that fills thousands of sprites a
+ * frame, where a `set` call per sprite is the cost. A worklet must go through
+ * this — its captured `data` is a clone. Cached per runtime, so a per-frame
+ * call allocates nothing after the first.
+ */
+export function spriteFloats(buffer: SpriteBuffer): Float32Array {
+  'worklet'
+  return buffer.boxed == null ? buffer.data : floatsOf(buffer.boxed)
 }
 
 /** A stable {@link SpriteBuffer}; `capacity` is read once, on first render. */
