@@ -206,6 +206,26 @@ sprites.set(i, 0, 0, 16, 16, p.scale, p.x, p.y)
 count.value = alive                    // set the count after filling entries
 ```
 
+The renderer redraws when a bound shared value changes, and Reanimated drops a
+write of the value it already holds — so a buffer refilled every frame under a
+*constant* count never redraws. Publish something that moves: the live count,
+or `count.value = N + (frame.timestamp % 1000) * 1e-6` (the fraction truncates
+natively).
+
+For thousands of sprites a frame, skip the call per sprite:
+[`spriteFloats`](/api/functions/spriteFloats) returns this runtime's
+`Float32Array` over the same memory (a worklet's captured `data` is a clone):
+
+```tsx
+const f = spriteFloats(sprites)        // SPRITE_FLOATS per sprite
+for (let i = 0; i < alive; i++) {
+  const o = i * SPRITE_FLOATS
+  f[o + 4] = p[i].scale
+  f[o + 5] = p[i].x
+  f[o + 6] = p[i].y
+}
+```
+
 `useVertexBuffer` takes a [`VertexBufferOptions`](/api/interfaces/VertexBufferOptions)
 (`maxVertices`, optional `maxIndices`, and `textures`/`colors` to reserve those
 sections). Its `positions`/`textures`/`colors`/`indices` are plain

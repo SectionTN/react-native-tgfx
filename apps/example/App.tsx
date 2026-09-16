@@ -62,6 +62,8 @@ import {
 } from './src/shaderExamples';
 import { TgfxCameraEffects } from './src/TgfxCameraEffects';
 import { TgfxFaceBlur } from './src/TgfxFaceBlur';
+import { LittlePrinceScreen } from './src/littlePrince';
+import { ScrollableShapesScreen } from './src/scrollableShapes';
 
 // Memoised: the tab switch re-renders Screens, and re-rendering the hidden
 // gallery's dozens of canvases is pure waste on the camera-start path.
@@ -383,7 +385,15 @@ function Section({
   );
 }
 
-const SCREENS = ['gallery', 'logo', 'pan', 'faceblur', 'effects'] as const;
+const SCREENS = [
+  'gallery',
+  'logo',
+  'pan',
+  'faceblur',
+  'effects',
+  'prince',
+  'shapes',
+] as const;
 type Screen = (typeof SCREENS)[number];
 
 function Screens() {
@@ -431,6 +441,16 @@ function Screens() {
           <TgfxCameraEffects />
         </View>
       ) : null}
+      {screen === 'prince' ? (
+        <View style={styles.screen} testID="screen-prince">
+          <LittlePrinceScreen />
+        </View>
+      ) : null}
+      {screen === 'shapes' ? (
+        <View style={styles.screenDark} testID="screen-shapes">
+          <ScrollableShapesScreen />
+        </View>
+      ) : null}
       <View style={[styles.tabs, { paddingBottom: insets.bottom + 8 }]}>
         {SCREENS.map(name => (
           <Pressable
@@ -472,13 +492,14 @@ const styles = StyleSheet.create({
   hiddenScreen: { display: 'none' },
   tabs: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
     paddingTop: 8,
     backgroundColor: '#111',
   },
   tab: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,

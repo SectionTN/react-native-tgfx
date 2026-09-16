@@ -243,6 +243,16 @@ sprites.set(i, 0, 0, 16, 16, p.scale, p.x, p.y)
 count.value = alive          // set the count *after* filling entries
 ```
 
+A canvas redraws when a bound shared value changes, and Reanimated drops a
+same-value write — a buffer refilled under a **constant** count never redraws.
+Publish something that moves (the live count, or
+`N + (frame.timestamp % 1000) * 1e-6`, which truncates natively).
+
+`spriteFloats(buffer)` is this runtime's `Float32Array` over the same memory
+(`SPRITE_FLOATS` per sprite) — the bulk path for thousands of sprites a frame,
+and the only way to write from a worklet without `set` (a captured `data` is a
+clone).
+
 ### `useVertexBuffer(options): VertexBuffer`
 
 `VertexBufferOptions`: `maxVertices`, optional `maxIndices`, and
