@@ -46,11 +46,17 @@ adb install -r -d android/app/build/outputs/apk/release/app-release.apk
   stop. Incoming-call overlays do the same — check the parity stills.
 - Restore `peak_refresh_rate`/`min_refresh_rate` and `svc power stayon false`
   when done.
+- Run the host side under `caffeinate -i -s`. A Mac that idles to sleep
+  suspends the USB link (`adbd: USB event: FUNCTIONFS_SUSPEND` in logcat); the
+  phone finishes the matrix on its own while `run.mjs` hears nothing, prints
+  `logcat silent 8s, respawning`, and times out with a partial table. Before
+  calling a stopped table a freeze, `adb logcat -d -s ReactNativeJS:I` and see
+  whether the app went on without you.
 
 ## Run
 
 ```sh
-node bench/run.mjs                                            # full 12-combo matrix, ~6 min
+caffeinate -i -s node bench/run.mjs                           # full 12-combo matrix, ~6 min
 node bench/run.mjs --engines tgfx,skia --scenes paths --order alternate --reps 2
 node bench/run.mjs --present latency                          # Android ≤ 13
 ```

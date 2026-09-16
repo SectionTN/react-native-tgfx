@@ -8,7 +8,7 @@
 // Install a RELEASE build first: benchmarking a debug build measures the
 // debug overhead, not the engines.
 import { execFile, spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,41 +56,38 @@ function comboBucket(key) {
 // ---- CPU + PSS sampler -----------------------------------------------------
 
 let lastCpu = null;
-async function sampleCpu() {
-  const pidOut = await adb('shell', 'pidof', PACKAGE);
-  const pid = pidOut?.trim().split(/\s+/)[0];
-  if (!pid) return;
-  const stat = await adb('shell', 'cat', `/proc/${pid}/stat`);
-  if (!stat) return;
-  const after = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\s+/);
-  // after[0] is field 3 (state); utime is field 14, stime 15.
-  const utime = Number(after[11]);
-  const stime = Number(after[12]);
-  const now = Date.now();
-  if (Number.isNaN(utime) || Number.isNaN(stime)) return;
-  const ticks = utime + stime;
-  if (lastCpu && lastCpu.pid === pid) {
-    const wall = (now - lastCpu.at) / 1000;
-    const pct = ((ticks - lastCpu.ticks) / HZ / wall) * 100;
-    if (current && wall > 0.2 && pct >= 0) comboBucket(current).cpu.push(pct);
-  }
-  lastCpu = { pid, ticks, at: now };
-}
-
-async function samplePss() {
-  const out = await adb('shell', 'dumpsys', 'meminfo', PACKAGE);
-  const match = out?.match(/TOTAL PSS:\s+(\d+)/);
-  if (match && current) comboBucket(current).pss.push(Number(match[1]));
-}
-
-let busy = false;
+// One adb connection per sample: pid, /proc stat and PSS in a single shell round
+// trip. Three connections a second was enough to wedge the host adb server
+// mid-run, taking the logcat stream down with it.
 async function sample() {
   if (busy) return;
   busy = true;
-  await sampleCpu();
-  await samplePss();
+  const out = await adb(
+    'shell',
+    `pid=$(pidof ${PACKAGE}); echo "PID $pid"; [ -n "$pid" ] && cat /proc/$pid/stat; dumpsys meminfo ${PACKAGE} | grep 'TOTAL PSS'`
+  );
   busy = false;
+  if (!out) return;
+  const now = Date.now();
+  const pid = out.match(/^PID (\d+)/m)?.[1];
+  const stat = out.match(/^\d+ \(.*\) .*$/m)?.[0];
+  if (pid && stat) {
+    const after = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\s+/);
+    // after[0] is field 3 (state); utime is field 14, stime 15.
+    const ticks = Number(after[11]) + Number(after[12]);
+    if (Number.isFinite(ticks)) {
+      if (lastCpu && lastCpu.pid === pid) {
+        const wall = (now - lastCpu.at) / 1000;
+        const pct = ((ticks - lastCpu.ticks) / HZ / wall) * 100;
+        if (current && wall > 0.2 && pct >= 0) comboBucket(current).cpu.push(pct);
+      }
+      lastCpu = { pid, ticks, at: now };
+    }
+  }
+  const pss = out.match(/TOTAL PSS:\s+(\d+)/);
+  if (pss && current) comboBucket(current).pss.push(Number(pss[1]));
 }
+let busy = false;
 
 // ---- presented frames ------------------------------------------------------
 // Thread FPS says the threads are healthy; only SurfaceFlinger knows what the
@@ -143,7 +140,10 @@ function samplePresented(key) {
 
 function finish(reason) {
   clearInterval(timer);
-  logcat.kill();
+  clearInterval(logcatWatchdog);
+  const dead = logcat;
+  logcat = null;
+  dead?.kill();
   const rows = [];
   for (const [key, bucket] of combos) {
     const measured = bucket.ticks.slice(SETTLE_TICKS);
@@ -175,13 +175,36 @@ function finish(reason) {
   process.exit(rows.length > 0 ? 0 : 2);
 }
 
-const logcat = spawn('adb', ['logcat', '-T', '1', '-s', 'ReactNativeJS:I']);
+// adb's logcat stream can die mid-run (Android 15 phones drop it after a few
+// minutes); the app keeps going, the host just stops hearing it. Watch for
+// silence and respawn from the last timestamp seen, dropping the one line
+// `-T` re-delivers.
+const LOGCAT_SILENCE_MS = 8000;
+let logcat = null;
 let pending = '';
-logcat.stdout.on('data', chunk => {
+let lastTimestamp = '1';
+let lastLine = '';
+let lastHeard = Date.now();
+function startLogcat() {
+  logcat = spawn('adb', ['logcat', '-T', lastTimestamp, '-s', 'ReactNativeJS:I']);
+  pending = '';
+  logcat.stdout.on('data', onLogcat);
+  logcat.on('exit', () => {
+    if (logcat) setTimeout(startLogcat, 500);
+  });
+}
+function onLogcat(chunk) {
+  lastHeard = Date.now();
+  // BENCH_RAW_LOG=<file> keeps every byte logcat delivered, for debugging the runner itself.
+  if (process.env.BENCH_RAW_LOG) appendFileSync(process.env.BENCH_RAW_LOG, chunk);
   pending += chunk.toString();
   const lines = pending.split('\n');
   pending = lines.pop() ?? '';
   for (const line of lines) {
+    if (line === lastLine) continue;
+    lastLine = line;
+    const stamp = line.match(/^(\d\d-\d\d \d\d:\d\d:\d\d\.\d+)/);
+    if (stamp) lastTimestamp = stamp[1];
     const start = line.match(/\[bench\] start engine=(\w+) scene=(\w+)/);
     if (start) {
       current = `${start[1]} · ${start[2]}`;
@@ -208,7 +231,21 @@ logcat.stdout.on('data', chunk => {
     }
     if (line.includes('[bench] done')) finish('complete');
   }
-});
+}
+startLogcat();
+const logcatWatchdog = setInterval(() => {
+  if (Date.now() - lastHeard > LOGCAT_SILENCE_MS && logcat) {
+    console.log(`[bench] logcat silent ${LOGCAT_SILENCE_MS / 1000}s, reconnecting and respawning from ${lastTimestamp}`);
+    const dead = logcat;
+    logcat = null;
+    dead.kill();
+    lastHeard = Date.now();
+    busy = false;
+    // The stream usually dies because the host adb server wedged; a reconnect
+    // re-establishes the transport before the new logcat asks for it.
+    adb('reconnect').then(startLogcat);
+  }
+}, 2000);
 
 await adb('shell', 'am', 'force-stop', PACKAGE);
 await adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-n', `${PACKAGE}/.MainActivity`, '-d', `'${PLAN_URL}'`);
