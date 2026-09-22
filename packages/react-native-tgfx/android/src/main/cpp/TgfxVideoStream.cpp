@@ -11,6 +11,7 @@
 // as external-memory VkImages with sampler YCbCr conversion.
 #include <jni.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -53,6 +54,12 @@ struct NdkMedia {
   media_status_t (*imageGetHardwareBuffer)(const AImage*, AHardwareBuffer**) = nullptr;
   jobject (*windowToSurface)(JNIEnv*, ANativeWindow*) = nullptr;
   void (*bufferDescribe)(const AHardwareBuffer*, AHardwareBuffer_Desc*) = nullptr;
+  /// API 29+. The documented way to read a hardware buffer's planes on the CPU:
+  /// it returns pointers and strides for the mapping it just made, rather than
+  /// whatever the producer chose to advertise.
+  int (*bufferLockPlanes)(AHardwareBuffer*, uint64_t, int32_t, const ARect*,
+                          AHardwareBuffer_Planes*) = nullptr;
+  int (*bufferUnlock)(AHardwareBuffer*, int32_t*) = nullptr;
   // API 34+; optional — absent just means the BT601_LIMITED default stands.
   media_status_t (*imageGetDataSpace)(const AImage*, int32_t*) = nullptr;
   bool valid = false;
@@ -86,6 +93,10 @@ struct NdkMedia {
         reinterpret_cast<decltype(windowToSurface)>(load(android, "ANativeWindow_toSurface"));
     bufferDescribe =
         reinterpret_cast<decltype(bufferDescribe)>(load(android, "AHardwareBuffer_describe"));
+    bufferLockPlanes =
+        reinterpret_cast<decltype(bufferLockPlanes)>(load(android, "AHardwareBuffer_lockPlanes"));
+    bufferUnlock =
+        reinterpret_cast<decltype(bufferUnlock)>(load(android, "AHardwareBuffer_unlock"));
     imageGetDataSpace =
         reinterpret_cast<decltype(imageGetDataSpace)>(load(media, "AImage_getDataSpace"));
     valid = readerNewWithUsage && readerDelete && readerSetImageListener && readerGetWindow &&
@@ -166,20 +177,45 @@ class HardwareBufferReader {
     return ndk.windowToSurface(env, window);
   }
 
-  /** I420 copy of an AImage's planes; tgfx applies the (range-correct) matrix itself. */
+  /**
+   * I420 copy of a frame's planes; tgfx applies the (range-correct) matrix itself.
+   *
+   * The planes come from AHardwareBuffer_lockPlanes, not AImage_getPlaneData.
+   * A decoder is free to advertise plane geometry describing a buffer it never
+   * mapped for the CPU: an Exynos/Mali S21 reports a 640x360 luma plane as
+   * 940160 bytes at a 2560 stride while only ~422400 bytes are readable, and
+   * copying by those numbers walks off the mapping and segfaults. Locking hands
+   * back the pointers and strides of the mapping actually made, and unlocking
+   * on every path keeps the buffer reusable.
+   */
   std::shared_ptr<tgfx::Image> makePlanarImage(AImage* aimage) {
-    int32_t width = 0, height = 0, planes = 0;
-    if (AImage_getWidth(aimage, &width) != AMEDIA_OK ||
-        AImage_getHeight(aimage, &height) != AMEDIA_OK ||
-        AImage_getNumberOfPlanes(aimage, &planes) != AMEDIA_OK || planes != 3 || width < 2 ||
-        height < 2) {
+    const auto& ndk = NdkMedia::Get();
+    int32_t width = 0, height = 0;
+    if (ndk.bufferLockPlanes == nullptr || ndk.bufferUnlock == nullptr ||
+        AImage_getWidth(aimage, &width) != AMEDIA_OK ||
+        AImage_getHeight(aimage, &height) != AMEDIA_OK || width < 2 || height < 2) {
       return nullptr;
     }
+    AHardwareBuffer* buffer = nullptr;
+    if (ndk.imageGetHardwareBuffer(aimage, &buffer) != AMEDIA_OK || buffer == nullptr) {
+      return nullptr;
+    }
+    AHardwareBuffer_Planes locked = {};
+    if (ndk.bufferLockPlanes(buffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr,
+                             &locked) != 0) {
+      return nullptr;
+    }
+    if (locked.planeCount != 3) {
+      ndk.bufferUnlock(buffer, nullptr);
+      return nullptr;
+    }
+
     const int32_t chromaW = width / 2, chromaH = height / 2;
     const size_t ySize = static_cast<size_t>(width) * static_cast<size_t>(height);
     const size_t cSize = static_cast<size_t>(chromaW) * static_cast<size_t>(chromaH);
     auto* block = static_cast<uint8_t*>(malloc(ySize + 2 * cSize));
     if (block == nullptr) {
+      ndk.bufferUnlock(buffer, nullptr);
       return nullptr;
     }
     uint8_t* dst[3] = {block, block + ySize, block + ySize + cSize};
@@ -188,13 +224,13 @@ class HardwareBufferReader {
     const int32_t planeW[3] = {width, chromaW, chromaW};
     const int32_t planeH[3] = {height, chromaH, chromaH};
     for (int32_t p = 0; p < 3; p++) {
-      uint8_t* src = nullptr;
-      int srcLen = 0;
-      int32_t rowStride = 0, pixelStride = 0;
-      if (AImage_getPlaneData(aimage, p, &src, &srcLen) != AMEDIA_OK || src == nullptr ||
-          AImage_getPlaneRowStride(aimage, p, &rowStride) != AMEDIA_OK ||
-          AImage_getPlanePixelStride(aimage, p, &pixelStride) != AMEDIA_OK || pixelStride < 1) {
+      const auto& plane = locked.planes[p];
+      const auto* src = static_cast<const uint8_t*>(plane.data);
+      const uint32_t rowStride = plane.rowStride;
+      const uint32_t pixelStride = plane.pixelStride;
+      if (src == nullptr || pixelStride < 1) {
         free(block);
+        ndk.bufferUnlock(buffer, nullptr);
         return nullptr;
       }
       for (int32_t row = 0; row < planeH[p]; row++) {
@@ -203,12 +239,15 @@ class HardwareBufferReader {
         if (pixelStride == 1) {
           memcpy(out, in, static_cast<size_t>(planeW[p]));
         } else {
+          // Semi-planar chroma: every pixelStride-th byte belongs to this plane.
           for (int32_t col = 0; col < planeW[p]; col++) {
             out[col] = in[static_cast<size_t>(col) * static_cast<size_t>(pixelStride)];
           }
         }
       }
     }
+    ndk.bufferUnlock(buffer, nullptr);
+
     const void* data[3] = {dst[0], dst[1], dst[2]};
     auto yuvData = tgfx::YUVData::MakeFrom(
         width, height, data, dstRow, tgfx::YUVData::I420_PLANE_COUNT,
