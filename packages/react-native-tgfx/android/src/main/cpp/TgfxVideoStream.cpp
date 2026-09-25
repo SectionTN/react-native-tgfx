@@ -11,7 +11,6 @@
 // as external-memory VkImages with sampler YCbCr conversion.
 #include <jni.h>
 
-#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -26,6 +25,7 @@
 #ifdef TGFX_RN_VULKAN
 #include <dlfcn.h>
 
+#include <android/api-level.h>
 #include <android/hardware_buffer.h>
 #include <android/log.h>
 #include <media/NdkImageReader.h>
@@ -136,10 +136,9 @@ class HardwareBufferReader {
     // and hardware decoders pipeline deeply — this Exynos H264 decoder asks for
     // 17 output buffers and starves after one frame on a small queue. 24 covers
     // codec depth + one acquired frame + slack; ~350 KB per 640x360 buffer.
-    // Vendor decoders also ignore the requested format and emit private buffers
-    // (Exynos: 0x123); tgfx imports those as Vulkan external formats. CPU_READ
-    // is load-bearing despite never being used: without it this Exynos codec
-    // queues exactly one output buffer and stalls.
+    // Some decoders ignore the requested format and emit private buffers;
+    // tgfx imports those as Vulkan external formats. CPU_READ permits planar
+    // access where available and keeps decoder output flowing.
     auto status = ndk.readerNewWithUsage(
         width, height, AIMAGE_FORMAT_YUV_420_888,
         AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE | AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, 24,
@@ -180,34 +179,55 @@ class HardwareBufferReader {
   /**
    * I420 copy of a frame's planes; tgfx applies the (range-correct) matrix itself.
    *
-   * The planes come from AHardwareBuffer_lockPlanes, not AImage_getPlaneData.
-   * A decoder is free to advertise plane geometry describing a buffer it never
-   * mapped for the CPU: an Exynos/Mali S21 reports a 640x360 luma plane as
-   * 940160 bytes at a 2560 stride while only ~422400 bytes are readable, and
-   * copying by those numbers walks off the mapping and segfaults. Locking hands
-   * back the pointers and strides of the mapping actually made, and unlocking
-   * on every path keeps the buffer reusable.
+   * On API 29+, the planes come from AHardwareBuffer_lockPlanes rather than
+   * AImage_getPlaneData. API 26-28 retains the original AImage plane path.
+   * Some decoders report plane geometry that does not match CPU-accessible
+   * memory. lockPlanes provides mapped plane information; when it exposes
+   * fewer than three planes, pumpFrames() imports the buffer directly.
    */
   std::shared_ptr<tgfx::Image> makePlanarImage(AImage* aimage) {
     const auto& ndk = NdkMedia::Get();
+    static const int apiLevel = android_get_device_api_level();
     int32_t width = 0, height = 0;
-    if (ndk.bufferLockPlanes == nullptr || ndk.bufferUnlock == nullptr ||
-        AImage_getWidth(aimage, &width) != AMEDIA_OK ||
+    if (AImage_getWidth(aimage, &width) != AMEDIA_OK ||
         AImage_getHeight(aimage, &height) != AMEDIA_OK || width < 2 || height < 2) {
       return nullptr;
     }
-    AHardwareBuffer* buffer = nullptr;
-    if (ndk.imageGetHardwareBuffer(aimage, &buffer) != AMEDIA_OK || buffer == nullptr) {
-      return nullptr;
-    }
-    AHardwareBuffer_Planes locked = {};
-    if (ndk.bufferLockPlanes(buffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr,
-                             &locked) != 0) {
-      return nullptr;
-    }
-    if (locked.planeCount != 3) {
-      ndk.bufferUnlock(buffer, nullptr);
-      return nullptr;
+    AHardwareBuffer_Planes planes = {};
+    AHardwareBuffer* lockedBuffer = nullptr;
+    if (apiLevel >= 26 && apiLevel < 29) {
+      int32_t planeCount = 0;
+      if (AImage_getNumberOfPlanes(aimage, &planeCount) != AMEDIA_OK || planeCount != 3) {
+        return nullptr;
+      }
+      planes.planeCount = 3;
+      for (int32_t p = 0; p < 3; p++) {
+        uint8_t* data = nullptr;
+        int dataLength = 0;
+        int32_t rowStride = 0, pixelStride = 0;
+        if (AImage_getPlaneData(aimage, p, &data, &dataLength) != AMEDIA_OK || data == nullptr ||
+            AImage_getPlaneRowStride(aimage, p, &rowStride) != AMEDIA_OK ||
+            AImage_getPlanePixelStride(aimage, p, &pixelStride) != AMEDIA_OK || rowStride < 1 ||
+            pixelStride < 1) {
+          return nullptr;
+        }
+        planes.planes[p] = {data, static_cast<uint32_t>(pixelStride),
+                            static_cast<uint32_t>(rowStride)};
+      }
+    } else {
+      if (ndk.bufferLockPlanes == nullptr || ndk.bufferUnlock == nullptr ||
+          ndk.imageGetHardwareBuffer(aimage, &lockedBuffer) != AMEDIA_OK ||
+          lockedBuffer == nullptr) {
+        return nullptr;
+      }
+      if (ndk.bufferLockPlanes(lockedBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr,
+                               &planes) != 0) {
+        return nullptr;
+      }
+      if (planes.planeCount != 3) {
+        ndk.bufferUnlock(lockedBuffer, nullptr);
+        return nullptr;
+      }
     }
 
     const int32_t chromaW = width / 2, chromaH = height / 2;
@@ -215,7 +235,9 @@ class HardwareBufferReader {
     const size_t cSize = static_cast<size_t>(chromaW) * static_cast<size_t>(chromaH);
     auto* block = static_cast<uint8_t*>(malloc(ySize + 2 * cSize));
     if (block == nullptr) {
-      ndk.bufferUnlock(buffer, nullptr);
+      if (lockedBuffer != nullptr) {
+        ndk.bufferUnlock(lockedBuffer, nullptr);
+      }
       return nullptr;
     }
     uint8_t* dst[3] = {block, block + ySize, block + ySize + cSize};
@@ -224,13 +246,15 @@ class HardwareBufferReader {
     const int32_t planeW[3] = {width, chromaW, chromaW};
     const int32_t planeH[3] = {height, chromaH, chromaH};
     for (int32_t p = 0; p < 3; p++) {
-      const auto& plane = locked.planes[p];
+      const auto& plane = planes.planes[p];
       const auto* src = static_cast<const uint8_t*>(plane.data);
       const uint32_t rowStride = plane.rowStride;
       const uint32_t pixelStride = plane.pixelStride;
       if (src == nullptr || pixelStride < 1) {
         free(block);
-        ndk.bufferUnlock(buffer, nullptr);
+        if (lockedBuffer != nullptr) {
+          ndk.bufferUnlock(lockedBuffer, nullptr);
+        }
         return nullptr;
       }
       for (int32_t row = 0; row < planeH[p]; row++) {
@@ -246,7 +270,9 @@ class HardwareBufferReader {
         }
       }
     }
-    ndk.bufferUnlock(buffer, nullptr);
+    if (lockedBuffer != nullptr) {
+      ndk.bufferUnlock(lockedBuffer, nullptr);
+    }
 
     const void* data[3] = {dst[0], dst[1], dst[2]};
     auto yuvData = tgfx::YUVData::MakeFrom(
