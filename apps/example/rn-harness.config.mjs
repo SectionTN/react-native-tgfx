@@ -3,6 +3,10 @@ import {
   androidPlatform,
   physicalAndroidDevice,
 } from '@react-native-harness/platform-android';
+import {
+  applePlatform,
+  appleSimulator,
+} from '@react-native-harness/platform-apple';
 
 export default {
   entryPoint: './index.js',
@@ -31,6 +35,12 @@ export default {
       name: 'ci-emu',
       device: androidEmulator('ci-avd'),
       bundleId: 'com.tgfxexample',
+    }),
+    // An iOS simulator, selected with --harnessRunner=ios-sim.
+    applePlatform({
+      name: 'ios-sim',
+      device: appleSimulator('iPhone 17 Pro', '26.5'),
+      bundleId: 'com.pikachu.ritesh.dev',
     }),
   ],
   defaultRunner: 'android',
