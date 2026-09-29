@@ -200,6 +200,59 @@ scene.add(
 </Tab>
 </Tabs>
 
+### 3D transforms
+
+`transform` also takes `perspective`, `rotateX`, `rotateY` and `translateZ`.
+Put `perspective` before the rotations it applies to. Every operand can be a shared value or be written
+through a node handle.
+
+`preserve3d` places the child groups in one 3D space, so they hide one another
+by depth. Without it, each child is flattened into the group's plane and drawn
+in order. It needs a GPU surface: inside a `picture` group or an export, the
+children are drawn flattened.
+
+<Tabs items={['Declarative', 'Imperative']}>
+<Tab value="Declarative">
+
+```tsx
+<Group
+  preserve3d
+  transform={[{ translate: [150, 150] }, { perspective: 900 }, { rotateY: turn }]}
+>
+  <Group transform={[{ translateZ: 50 }]}>
+    <Rect x={-50} y={-50} width={100} height={100} color="#0a84ff" />
+  </Group>
+  <Group transform={[{ rotateY: '90deg' }, { translateZ: 50 }]}>
+    <Rect x={-50} y={-50} width={100} height={100} color="#ff3b30" />
+  </Group>
+</Group>
+```
+
+</Tab>
+<Tab value="Imperative">
+
+```ts
+scene.add(
+  group(
+    {
+      preserve3d: true,
+      transform: [{ translate: [150, 150] }, { perspective: 900 }, { rotateY: turn }],
+    },
+    [
+      group({ transform: [{ translateZ: 50 }] }, [
+        rect({ x: -50, y: -50, width: 100, height: 100, color: '#0a84ff' }),
+      ]),
+      group({ transform: [{ rotateY: '90deg' }, { translateZ: 50 }] }, [
+        rect({ x: -50, y: -50, width: 100, height: 100, color: '#ff3b30' }),
+      ]),
+    ]
+  )
+)
+```
+
+</Tab>
+</Tabs>
+
 ## Atlas and meshes
 
 <Tabs items={['Declarative', 'Imperative']}>

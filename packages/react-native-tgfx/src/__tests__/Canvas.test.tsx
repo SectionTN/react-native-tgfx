@@ -506,6 +506,35 @@ test('an unwritten transform stays folded into a literal matrix', async () => {
   expect(pushed).toEqual([])
 })
 
+function Tilted(): React.ReactElement {
+  box = useNode()
+  return (
+    <Canvas>
+      <Group
+        ref={box}
+        preserve3d
+        transform={[{ perspective: 900 }, { rotateY: 0 }]}
+      >
+        <Rect x={0} y={0} width={10} height={10} color="red" />
+      </Group>
+    </Canvas>
+  )
+}
+
+test('a 3D transform operand re-encodes once, then patches', async () => {
+  await render(<Tilted />)
+  scenes = []
+
+  await act(async () => box.set({ rotateY: 1 }))
+  expect(scenes.length).toBe(1)
+  pushed = []
+
+  await act(async () => box.set({ rotateY: 2 }))
+
+  expect(scenes.length).toBe(1)
+  expect(pushed).toEqual([[2]])
+})
+
 function Scaled(): React.ReactElement {
   box = useNode()
   return (

@@ -25,8 +25,10 @@
 namespace tgfx {
 class Canvas;
 class ColorFilter;
+class ColorSpace;
 class Image;
 class ImageFilter;
+class Layer;
 class Shader;
 class Typeface;
 }  // namespace tgfx
@@ -34,7 +36,7 @@ class Typeface;
 namespace tgfxrn {
 
 /// Wire-format version, mirrored by SCENE_VERSION in src/compiler/writer.ts.
-inline constexpr double kSceneVersion = 30;
+inline constexpr double kSceneVersion = 31;
 
 /// How an image is scaled into its destination rect; see fitRects() in TgfxScene.cpp.
 enum class Fit { Fill = 0, Contain, Cover, FitWidth, FitHeight, None, ScaleDown };
@@ -241,7 +243,10 @@ struct PaintCmd {
   }
 };
 
-/// type: 0 translate(a=x,b=y), 1 scale(a=x,b=y), 2 rotate(a), 3 skewX(a), 4 skewY(a)
+/// type: 0 translate(a=x,b=y), 1 scale(a=x,b=y), 2 rotate(a), 3 skewX(a), 4 skewY(a),
+/// 5 rotateX(a), 6 rotateY(a), 7 perspective(a), 8 translateZ(a). 5 and up make the group 3D.
+inline constexpr int kFirst3DOp = 5;
+
 struct TransformOpCmd {
   int type = 0;
   AnimF a;
@@ -378,6 +383,8 @@ struct DrawCmd {
   bool hasMatrix = false;
   tgfx::Matrix matrix = tgfx::Matrix::I();
   std::vector<TransformOpCmd> ops;
+  bool threeD = false;
+  bool preserve3D = false;
   std::vector<DrawCmd> children;
 
   tgfx::Path path;
@@ -488,6 +495,20 @@ class SceneRenderer {
   void drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
                std::span<const std::string> strings, uint64_t stringGen,
                std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const;
+
+  std::shared_ptr<tgfx::Layer> buildLayer3D(const DrawCmd& cmd, float contentScale,
+                                            const std::shared_ptr<tgfx::ColorSpace>& colorSpace,
+                                            std::span<const double> values,
+                                            std::span<const std::string> strings,
+                                            uint64_t stringGen,
+                                            std::span<const uint8_t> stringPushed,
+                                            tgfx::Paint& paint) const;
+
+  void addLayerContent(tgfx::Layer* layer, std::span<const DrawCmd* const> cmds,
+                       float contentScale, const std::shared_ptr<tgfx::ColorSpace>& colorSpace,
+                       std::span<const double> values,
+                       std::span<const std::string> strings, uint64_t stringGen,
+                       std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const;
 };
 
 }  // namespace tgfxrn

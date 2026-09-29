@@ -92,6 +92,10 @@ const TRANSFORM_SLOTS = [
   'rotate',
   'skewX',
   'skewY',
+  'rotateX',
+  'rotateY',
+  'translateZ',
+  'perspective',
 ] as const
 
 type TransformSlot = (typeof TRANSFORM_SLOTS)[number]

@@ -733,6 +733,39 @@ test('a group draws only drawing children, the rest are paint', () => {
   expect(values).toEqual([spin])
 })
 
+test('3D transform ops write their own codes, and a shared operand gets a slot', () => {
+  const turn = sharedValue(0.5)
+  const { used, values } = compile([
+    node(
+      NodeType.Group,
+      {
+        transform: [
+          { perspective: 900 },
+          { rotateX: '90deg' },
+          { rotateY: turn },
+          { translateZ: 40 },
+        ],
+      },
+      []
+    ),
+  ])
+  // kind | opCount | (type a b) x4
+  expect(used[4]).toBe(Kind.Group)
+  expect(used[5]).toBe(4)
+  expect(Array.from(used.subarray(6, 9))).toEqual([7, 900, 0])
+  expect(used[9]).toBe(5)
+  expect(used[10]).toBeCloseTo(Math.PI / 2)
+  expect(used[12]).toBe(6)
+  expect(Array.from(used.subarray(15, 18))).toEqual([8, 40, 0])
+  expect(values).toEqual([turn])
+})
+
+test('preserve3d extends the group and sets flag 32', () => {
+  const { used } = compile([node(NodeType.Group, { preserve3d: true }, [])])
+  // kind | opCount | flags | childCount
+  expect(Array.from(used.subarray(4, 8))).toEqual([Kind.GroupLayer, 0, 32, 0])
+})
+
 test('reuses the writer across compiles without leaking state', () => {
   const writer = new SceneWriter()
   const first = compileScene([node(NodeType.Path, { path: 'M0 0' })], writer)

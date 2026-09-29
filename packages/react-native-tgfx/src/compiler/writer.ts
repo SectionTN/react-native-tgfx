@@ -34,7 +34,7 @@ import {
  * against the live string array pushed with `setStringValues`.
  */
 // Every version and what it broke: docs/wire-format.md.
-export const SCENE_VERSION = 30
+export const SCENE_VERSION = 31
 
 /**
  * Encode a string table as a delta against the one the engine already holds:

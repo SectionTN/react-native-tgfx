@@ -98,6 +98,13 @@ export interface GroupProps extends PaintProps {
    * the recorded subtree again without changing its resolution.
    */
   picture?: boolean
+  /**
+   * Share one 3D space with the child groups, so their 3D transforms hide one
+   * another by depth — the faces of a cube. Without it each child is flattened
+   * into this group's plane and drawn in order. Needs a GPU surface: inside a
+   * `picture` recording or an export, the children are drawn flattened.
+   */
+  preserve3d?: boolean
 }
 
 export interface RectProps extends PaintProps {

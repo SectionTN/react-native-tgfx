@@ -170,3 +170,9 @@ string array pushed with `setStringValues`.
   slots also count as dynamic, so an ancestor `<Group picture>` stops recording
   rather than freezing the grain at a recorder's identity matrix. An older
   reader would take the mode word for the child count.
+- **31** — four transform op types: **5** `rotateX` and **6** `rotateY` (radians),
+  **7** `perspective` and **8** `translateZ`, each with its operand in `a` and
+  `b` unused. Any of them makes the group's ops build a 4x4 matrix. The group
+  flags word gains bit 32, `preserve3d`: the group and its child groups are
+  drawn as tgfx layers in one depth-sorted 3D context. An older reader would
+  skip the new ops as identity and ignore bit 32, drawing the group flat.

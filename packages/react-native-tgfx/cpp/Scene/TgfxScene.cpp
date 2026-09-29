@@ -13,7 +13,10 @@
 #include "Log.hpp"
 #include "SvgPath.hpp"
 #include "TextLayout.hpp"
+#include "tgfx/core/Matrix3D.h"
 #include "tgfx/core/PictureRecorder.h"
+#include "tgfx/layers/ImageLayer.h"
+#include "tgfx/layers/Layer.h"
 #include "tgfx/layers/layerstyles/GlassStyle.h"
 #include "tgfx/layers/layerstyles/NoiseStyle.h"
 #include "tgfx/core/Canvas.h"
@@ -386,6 +389,44 @@ tgfx::Matrix matrixFromOps(const std::vector<TransformOpCmd>& ops,
     m = multiply(m, o);
   }
   return tgfx::Matrix::MakeAll(m.a, m.c, m.e, m.b, m.d, m.f);
+}
+
+float degrees(float radians) {
+  return radians * 180.0f / static_cast<float>(M_PI);
+}
+
+/// Composed like matrixFromOps, from the Matrix3D builders tgfx's own LayerTest uses.
+tgfx::Matrix3D matrix3DFromOps(const std::vector<TransformOpCmd>& ops,
+                               std::span<const double> values) {
+  auto m = tgfx::Matrix3D::I();
+  for (const auto& op : ops) {
+    float a = op.a.resolve(values);
+    float b = op.b.resolve(values);
+    auto o = tgfx::Matrix3D::I();
+    switch (op.type) {
+      case 0: o = tgfx::Matrix3D::MakeTranslate(a, b, 0); break;
+      case 1: o = tgfx::Matrix3D::MakeScale(a, b, 1); break;
+      case 2: o = tgfx::Matrix3D::MakeRotate({0, 0, 1}, degrees(a)); break;
+      case 3: o = tgfx::Matrix3D(tgfx::Matrix::MakeSkew(std::tan(a), 0)); break;
+      case 4: o = tgfx::Matrix3D(tgfx::Matrix::MakeSkew(0, std::tan(a))); break;
+      case 5: o = tgfx::Matrix3D::MakeRotate({1, 0, 0}, degrees(a)); break;
+      case 6: o = tgfx::Matrix3D::MakeRotate({0, 1, 0}, degrees(a)); break;
+      case 7: o.setRowColumn(3, 2, -1 / a); break;
+      case 8: o = tgfx::Matrix3D::MakeTranslate(0, 0, a); break;
+      default: break;
+    }
+    m = m * o;
+  }
+  return m;
+}
+
+/// The group's transform as the canvas takes it: a 3D one flattened to its projective 3x3.
+tgfx::Matrix groupMatrix(const DrawCmd& cmd, std::span<const double> values) {
+  if (cmd.hasMatrix) {
+    return cmd.matrix;
+  }
+  return cmd.threeD ? matrix3DFromOps(cmd.ops, values).asMatrix()
+                    : matrixFromOps(cmd.ops, values);
 }
 
 uint8_t channelOf(const AnimF& f, std::span<const double> v) {
@@ -1396,11 +1437,13 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         op.a = r.nextAnim();
         op.b = r.nextAnim();
         animated = animated || op.a.slot >= 0 || op.b.slot >= 0;
+        cmd.threeD = cmd.threeD || op.type >= kFirst3DOp;
         cmd.ops.push_back(op);
       }
       if (!animated && !cmd.ops.empty()) {
         cmd.hasMatrix = true;
-        cmd.matrix = matrixFromOps(cmd.ops, {});
+        cmd.matrix = cmd.threeD ? matrix3DFromOps(cmd.ops, {}).asMatrix()
+                                : matrixFromOps(cmd.ops, {});
       }
       // Only KGroupLayer carries the clip/layer block; a plain group is unchanged.
       if (kind == KGroupLayer) {
@@ -1408,6 +1451,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         cmd.invertClip = (flags & 2) != 0;
         cmd.layer = (flags & 4) != 0;
         cmd.cachePicture = (flags & 8) != 0;
+        cmd.preserve3D = (flags & 32) != 0;
         if ((flags & 1) != 0) {
           cmd.clipKind = r.nextInt();
           if (cmd.clipKind == 3) {
@@ -2080,7 +2124,7 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
     }
     auto matrix = parent;
     if (cmd.hasMatrix || !cmd.ops.empty()) {
-      matrix.preConcat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
+      matrix.preConcat(groupMatrix(cmd, v));
     }
     tgfx::Matrix inverted = tgfx::Matrix::I();
     if (!matrix.invert(&inverted)) {
@@ -2269,13 +2313,22 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     }
   }
   if (cmd.kind == DrawCmd::Group) {
+    auto* surface = canvas->getSurface();
+    if (cmd.preserve3D && surface != nullptr) {
+      // Drawn directly, a preserve3D layer renders nothing.
+      auto root = tgfx::Layer::Make();
+      root->addChild(buildLayer3D(cmd, canvas->getMatrix().getMaxScale(), surface->colorSpace(),
+                                  v, strings, stringGen, stringPushed, paint));
+      root->draw(canvas);
+      return;
+    }
     bool transformed = cmd.hasMatrix || !cmd.ops.empty();
     bool saved = transformed || cmd.clipKind != 0 || cmd.layer;
     if (saved) {
       canvas->save();
     }
     if (transformed) {
-      canvas->concat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
+      canvas->concat(groupMatrix(cmd, v));
     }
     switch (cmd.clipKind) {
       case 1: canvas->clipRect(cmd.clipRect); break;
@@ -2823,6 +2876,76 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
   if (tookLayer) {
     canvas->restore();
   }
+}
+
+constexpr int64_t kMaxLayerContentPixels = 4096 * 4096;
+
+/// Under preserve3D each child group becomes its own layer; everything else is flat content.
+std::shared_ptr<tgfx::Layer> SceneRenderer::buildLayer3D(
+    const DrawCmd& cmd, float contentScale, const std::shared_ptr<tgfx::ColorSpace>& colorSpace,
+    std::span<const double> v, std::span<const std::string> strings, uint64_t stringGen,
+    std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const {
+  auto layer = tgfx::Layer::Make();
+  layer->setMatrix3D(matrix3DFromOps(cmd.ops, v));
+  layer->setPreserve3D(cmd.preserve3D);
+  std::vector<const DrawCmd*> run;
+  auto flush = [&] {
+    if (!run.empty()) {
+      addLayerContent(layer.get(), run, contentScale, colorSpace, v, strings, stringGen,
+                      stringPushed, paint);
+      run.clear();
+    }
+  };
+  for (const auto& child : cmd.children) {
+    if (!cmd.preserve3D || child.kind != DrawCmd::Group) {
+      run.push_back(&child);
+      continue;
+    }
+    if ((child.visible.slot >= 0 || child.visible.literal < 0.5f) &&
+        child.visible.resolve(v) < 0.5f) {
+      continue;
+    }
+    flush();
+    layer->addChild(buildLayer3D(child, contentScale, colorSpace, v, strings, stringGen,
+                                 stringPushed, paint));
+  }
+  flush();
+  return layer;
+}
+
+/// The draws as one image layer, recorded the way tgfx's ToImageWithOffset does.
+void SceneRenderer::addLayerContent(tgfx::Layer* layer, std::span<const DrawCmd* const> cmds,
+                                    float contentScale,
+                                    const std::shared_ptr<tgfx::ColorSpace>& colorSpace,
+                                    std::span<const double> v,
+                                    std::span<const std::string> strings, uint64_t stringGen,
+                                    std::span<const uint8_t> stringPushed,
+                                    tgfx::Paint& paint) const {
+  tgfx::PictureRecorder recorder;
+  auto* into = recorder.beginRecording();
+  for (const auto* cmd : cmds) {
+    drawCmd(into, *cmd, v, strings, stringGen, stringPushed, paint);
+  }
+  auto picture = recorder.finishRecordingAsPicture();
+  if (picture == nullptr) {
+    return;
+  }
+  auto bounds = picture->getBounds();
+  bounds.roundOut();
+  int width = static_cast<int>(std::ceil(bounds.width() * contentScale));
+  int height = static_cast<int>(std::ceil(bounds.height() * contentScale));
+  if (width <= 0 || height <= 0 ||
+      static_cast<int64_t>(width) * height > kMaxLayerContentPixels) {
+    return;
+  }
+  auto toPixels = tgfx::Matrix::MakeTrans(-bounds.left, -bounds.top);
+  toPixels.postScale(contentScale, contentScale);
+  auto content = tgfx::ImageLayer::Make();
+  content->setImage(tgfx::Image::MakeFrom(picture, width, height, &toPixels, colorSpace));
+  auto toLocal = tgfx::Matrix::MakeScale(1 / contentScale);
+  toLocal.postTranslate(bounds.left, bounds.top);
+  content->setMatrix(toLocal);
+  layer->addChild(std::move(content));
 }
 
 void SceneRenderer::render(tgfx::Canvas* canvas,
