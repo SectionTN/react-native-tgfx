@@ -52,12 +52,21 @@ bun run harness                     # every suite
 bun run harness src/paths.harness.tsx   # one of them
 ```
 
-There is one runner, `android`, and it names a specific phone in
+The default runner, `android`, names a specific phone in
 `rn-harness.config.mjs`. Point it at yours (`adb shell getprop
 ro.product.manufacturer` and `ro.product.model`) and regenerate — the pixels
 are the GPU's, so baselines do not carry between devices. Install a **debug**
 build first (`bun run android`); Harness drives the app through `run-as`, which
 a release build refuses.
+
+`ios-sim` runs a suite on an iOS simulator. Point it at a simulator you have
+booted, install a debug build (`bun run ios`), and select it with
+`--harnessRunner=ios-sim`. Only run suites there that check pixels, not image
+suites.
+
+```sh
+bun run harness --harnessRunner=ios-sim src/<suite>.harness.tsx
+```
 
 `patches/` carries a patch on `@react-native-harness/runtime`: the stock
 runtime defines a `globalThis.jest` trap inside the app, which trips
@@ -68,7 +77,7 @@ the imperative suite.
 
 Baselines live in `src/__image_snapshots__/<runner>/`, and the directory is
 named after the runner — a second runner forks the whole set, which is why
-there is only one. A missing baseline is **written** on the first run rather
+image suites run only on `android`. A missing baseline is **written** on the first run rather
 than failing, so open the new PNG before committing it: whatever lands there is
 what every later run is compared to.
 
