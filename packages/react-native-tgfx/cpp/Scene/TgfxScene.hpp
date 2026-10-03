@@ -29,6 +29,7 @@ class ColorSpace;
 class Image;
 class ImageFilter;
 class Layer;
+class Matrix3D;
 class Shader;
 class Typeface;
 }  // namespace tgfx
@@ -332,6 +333,13 @@ struct PathEffectCmd {
   void apply(tgfx::Path* path, std::span<const double> v) const;
 };
 
+/// One rasterised run of a 3D layer, kept while what it draws is static.
+struct LayerContent {
+  std::shared_ptr<tgfx::Image> image;
+  tgfx::Rect bounds = tgfx::Rect::MakeEmpty();
+  float scale = 0;
+};
+
 struct DrawCmd {
   enum Kind {
     Group, Rect, RRect, Oval, Circle, Line, Path, Image, Text, Fill, CameraFrame, Mask, Atlas,
@@ -385,6 +393,11 @@ struct DrawCmd {
   std::vector<TransformOpCmd> ops;
   bool threeD = false;
   bool preserve3D = false;
+  /// Read-time: something in this subtree resolves per frame.
+  bool dynamic = false;
+  /// Read-time: a <Fill> in this subtree, which has no bounds of its own.
+  bool fills = false;
+  mutable std::vector<LayerContent> layerContents;
   std::vector<DrawCmd> children;
 
   tgfx::Path path;
@@ -483,6 +496,7 @@ class SceneRenderer {
   mutable std::mutex programMutex_;
 
   bool readNode(SceneReader& reader, DrawCmd& cmd, int depth);
+  bool readNodeFields(SceneReader& reader, DrawCmd& cmd, int depth);
   void readTextSpec(SceneReader& reader, TextSpec& spec);
   void readTextRuns(SceneReader& reader, TextCmd& text);
   void readPaint(SceneReader& reader, PaintCmd& paint);
@@ -496,19 +510,27 @@ class SceneRenderer {
                std::span<const std::string> strings, uint64_t stringGen,
                std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const;
 
-  std::shared_ptr<tgfx::Layer> buildLayer3D(const DrawCmd& cmd, float contentScale,
-                                            const std::shared_ptr<tgfx::ColorSpace>& colorSpace,
-                                            std::span<const double> values,
-                                            std::span<const std::string> strings,
-                                            uint64_t stringGen,
-                                            std::span<const uint8_t> stringPushed,
-                                            tgfx::Paint& paint) const;
+  void drawGroupBody(tgfx::Canvas* canvas, const DrawCmd& cmd, std::span<const double> values,
+                     std::span<const std::string> strings, uint64_t stringGen,
+                     std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const;
 
-  void addLayerContent(tgfx::Layer* layer, std::span<const DrawCmd* const> cmds,
-                       float contentScale, const std::shared_ptr<tgfx::ColorSpace>& colorSpace,
-                       std::span<const double> values,
-                       std::span<const std::string> strings, uint64_t stringGen,
-                       std::span<const uint8_t> stringPushed, tgfx::Paint& paint) const;
+  struct Layer3DArgs {
+    float canvasScale = 1;
+    std::shared_ptr<tgfx::ColorSpace> colorSpace;
+    tgfx::Rect canvasRect = tgfx::Rect::MakeEmpty();
+    std::span<const double> values;
+    std::span<const std::string> strings;
+    uint64_t stringGen = 0;
+    std::span<const uint8_t> stringPushed;
+    tgfx::Paint* paint = nullptr;
+  };
+
+  std::shared_ptr<tgfx::Layer> buildLayer3D(const DrawCmd& cmd, const tgfx::Matrix3D& parent,
+                                            const Layer3DArgs& args) const;
+
+  void addLayerContent(tgfx::Layer* layer, const DrawCmd& owner, size_t slot,
+                       const DrawCmd* body, std::span<const DrawCmd* const> run,
+                       const tgfx::Matrix3D& placed, const Layer3DArgs& args) const;
 };
 
 }  // namespace tgfxrn

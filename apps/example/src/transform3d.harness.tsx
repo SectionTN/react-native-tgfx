@@ -6,7 +6,10 @@ import {
   Group,
   Rect,
   renderToSvg,
+  useNode,
   type CanvasHandle,
+  type NodeHandle,
+  type Transform,
 } from 'react-native-tgfx';
 import { STAGE_SIZE, Stage, WARMUP_MS, sleep } from './testSupport';
 
@@ -31,6 +34,7 @@ async function readBack(scene: React.ReactNode) {
   const shot = await canvas!.current!.snapshot({ format: 'raw', scale: 1 });
   const px = new Uint8Array(shot.data);
   return {
+    canvas: canvas!.current!,
     width: shot.width,
     height: shot.height,
     at(x: number, y: number) {
@@ -105,6 +109,77 @@ describe('tgfx 3D transforms', () => {
   test('under picture, preserve3d falls back to draw order', async () => {
     const frame = await readBack(<Group picture>{stacked(true)}</Group>);
     expect(isBlue(frame.at(frame.width / 2, frame.height / 2))).toBe(true);
+  });
+
+  const lens: Transform = [{ translate: [CENTER, CENTER] }, { perspective: 300 }];
+
+  test('a layer on a preserve3d group still fades it', async () => {
+    const frame = await readBack(
+      <Group preserve3d layer opacity={0.5} transform={lens}>
+        <Group transform={[{ translateZ: 40 }]}>
+          <Rect x={-50} y={-50} width={100} height={100} color="#ff0000" />
+        </Group>
+      </Group>,
+    );
+    const [r, g] = frame.at(frame.width / 2, frame.height / 2);
+    expect(r).toBeGreaterThan(200);
+    expect(g).toBeGreaterThan(90);
+    expect(g).toBeLessThan(170);
+  });
+
+  test('a clipped face shows the face behind it outside the clip', async () => {
+    const frame = await readBack(
+      <Group preserve3d transform={lens}>
+        <Group
+          clip={{ x: -50, y: -50, width: 50, height: 100 }}
+          transform={[{ translateZ: 40 }]}
+        >
+          <Rect x={-50} y={-50} width={100} height={100} color="#ff0000" />
+        </Group>
+        <Group transform={[{ translateZ: -40 }]}>
+          <Rect x={-50} y={-50} width={100} height={100} color="#0000ff" />
+        </Group>
+      </Group>,
+    );
+    expect(isRed(frame.at(frame.width / 2 - 20, frame.height / 2))).toBe(true);
+    expect(isBlue(frame.at(frame.width / 2 + 20, frame.height / 2))).toBe(true);
+  });
+
+  test('a Fill on a turned plane draws', async () => {
+    const frame = await readBack(
+      <Group preserve3d transform={lens}>
+        <Group transform={[{ rotateY: '20deg' }]}>
+          <Fill color="#ff0000" />
+        </Group>
+      </Group>,
+    );
+    expect(isRed(frame.at(frame.width / 2, frame.height / 2))).toBe(true);
+  });
+
+  test('a hit test reports the nearer face first, whatever the draw order', async () => {
+    let near: NodeHandle | null = null;
+    let far: NodeHandle | null = null;
+    function Faces() {
+      const front = useNode();
+      const back = useNode();
+      near = front;
+      far = back;
+      return (
+        <Group preserve3d transform={[...lens, { rotateY: '-90deg' }]}>
+          <Group transform={[{ rotateY: '90deg' }, { translateZ: 40 }]}>
+            <Rect ref={front} x={-50} y={-50} width={100} height={100} color="#ff0000" />
+          </Group>
+          <Group transform={[{ rotateY: '90deg' }, { translateZ: -40 }]}>
+            <Rect ref={back} x={-50} y={-50} width={100} height={100} color="#0000ff" />
+          </Group>
+        </Group>
+      );
+    }
+    const frame = await readBack(<Faces />);
+    const hits = frame.canvas.hitTest(CENTER, CENTER);
+    expect(hits[0]?.node).toBe(near);
+    expect(hits.some(hit => hit.node === far)).toBe(true);
+    expect(isRed(frame.at(frame.width / 2, frame.height / 2))).toBe(true);
   });
 
   test('an svg export of preserve3d keeps both children, in draw order', async () => {

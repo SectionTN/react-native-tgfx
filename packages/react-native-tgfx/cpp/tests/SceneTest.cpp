@@ -5697,6 +5697,197 @@ void anOffscreenSurfaceHitTestsBeforeTheFirstDrain() {
   surface->dispose();
 }
 
+/// Transform ops: translate(32,32) then perspective 200, so a 3D group centres on the canvas.
+void push3DOps(Writer& w, std::initializer_list<std::array<double, 3>> extra, int rotateSlot = -1) {
+  w.push(2 + static_cast<double>(extra.size()));
+  w.push(0);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.push(7);
+  w.pushAnim(200);
+  w.pushAnim(0);
+  for (const auto& op : extra) {
+    w.push(op[0]);
+    w.pushAnim(op[1], op[0] == 6 ? rotateSlot : -1);
+    w.pushAnim(op[2]);
+  }
+}
+
+void pushPlane(Writer& w, std::initializer_list<std::array<double, 3>> ops, uint32_t color,
+               double half = 16) {
+  w.push(0);
+  w.push(static_cast<double>(ops.size()));
+  for (const auto& op : ops) {
+    w.push(op[0]);
+    w.pushAnim(op[1]);
+    w.pushAnim(op[2]);
+  }
+  w.push(1);
+  w.push(1);
+  w.pushAnim(-half);
+  w.pushAnim(-half);
+  w.pushAnim(half * 2);
+  w.pushAnim(half * 2);
+  w.pushPaint(color, false);
+}
+
+/// Clip, group opacity and the rest flatten preserve3d instead of being dropped by it.
+void preserve3dKeepsTheGroupsOwnClipAndLayer() {
+  auto scene = [](int flags) {
+    Writer w;
+    w.push(1);
+    w.push(13);
+    push3DOps(w, {});
+    w.push(32 | flags);
+    if ((flags & 1) != 0) {
+      w.push(1);
+      w.push(-16);
+      w.push(-16);
+      w.push(16);
+      w.push(16);
+    }
+    if ((flags & 4) != 0) {
+      w.pushAnim(0.5);
+    }
+    w.push(1);
+    pushPlane(w, {{6, 0, 0}}, 0xffff0000);
+    return render(w.finish(), {}, {});
+  };
+  auto plain = scene(0);
+  CHECK(alphaAt(plain, 32, 32) == 255);
+  auto faded = scene(4);
+  CHECK(alphaAt(faded, 32, 32) > 100 && alphaAt(faded, 32, 32) < 160);
+  auto clipped = scene(1);
+  CHECK(opaqueAt(clipped, 24, 24));
+  CHECK(!opaqueAt(clipped, 40, 40));
+}
+
+/// A plane of a 3D context keeps its own clip and layer opacity.
+void aPlaneOfA3DContextKeepsItsClipAndLayer() {
+  Writer w;
+  w.push(1);
+  w.push(13);
+  push3DOps(w, {});
+  w.push(32);
+  w.push(1);
+  w.push(13);
+  w.push(1);
+  w.push(6);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.push(1 | 4);
+  w.push(1);
+  w.push(-16);
+  w.push(-16);
+  w.push(16);
+  w.push(16);
+  w.pushAnim(0.5);
+  w.push(1);
+  w.push(1);
+  w.pushAnim(-16);
+  w.pushAnim(-16);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushPaint(0xffff0000, false);
+  auto pixels = render(w.finish(), {}, {});
+  CHECK(alphaAt(pixels, 24, 24) > 100 && alphaAt(pixels, 24, 24) < 160);
+  CHECK(!opaqueAt(pixels, 40, 40));
+}
+
+/// A <Fill> has no bounds of its own; on a plane it still draws.
+void aFillOnA3DPlaneDraws() {
+  Writer w;
+  w.push(1);
+  w.push(13);
+  push3DOps(w, {});
+  w.push(32);
+  w.push(1);
+  w.push(0);
+  w.push(1);
+  w.push(6);
+  w.pushAnim(0.3);
+  w.pushAnim(0);
+  w.push(1);
+  w.push(9);
+  w.pushPaint(0xff3366cc, false);
+  CHECK(opaqueAt(render(w.finish(), {}, {}), 32, 32));
+}
+
+/// perspective 0 is no perspective, not a division by zero that blanks the group.
+void aZeroPerspectiveDrawsFlat() {
+  Writer w;
+  w.push(1);
+  w.push(0);
+  w.push(2);
+  w.push(7);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.push(6);
+  w.pushAnim(0);
+  w.pushAnim(0);
+  w.push(1);
+  w.push(1);
+  w.pushAnim(8);
+  w.pushAnim(8);
+  w.pushAnim(32);
+  w.pushAnim(32);
+  w.pushPaint(0xffff0000, false);
+  CHECK(opaqueAt(render(w.finish(), {}, {}), 20, 20));
+}
+
+/// Planes turned edge-on alone face the viewer once composed; the nearer one is hit first.
+void hitTestComposesA3DContextNearestFirst() {
+  constexpr double kQuarter = 1.5707963267948966;
+  Writer w;
+  w.push(1);
+  w.push(13);
+  push3DOps(w, {{6, -kQuarter, 0}});
+  w.push(32);
+  w.push(2);
+  pushPlane(w, {{6, kQuarter, 0}, {8, 10, 0}}, 0xffff0000);
+  pushPlane(w, {{6, kQuarter, 0}, {8, -10, 0}}, 0xff0000ff);
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto hits = renderer.hitTest(32, 32, false, {});
+  CHECK(hits.size() == 8);
+  CHECK(hits.size() >= 4 && hits[0] == 3 && hits[1] == 0 && hits[2] == 0 && hits[3] == 0);
+  CHECK(hits.size() == 8 && hits[4] == 3 && hits[5] == 0 && hits[6] == 1 && hits[7] == 0);
+  auto pixels = drawFrame(renderer, {});
+  CHECK(pixelAt(pixels, 32, 32)[0] > 200 && pixelAt(pixels, 32, 32)[2] < 50);
+}
+
+/// Static plane content survives the context turning; live content still changes per frame.
+void a3DPlaneRedrawsLiveContentAndKeepsStaticContent() {
+  Writer w;
+  w.push(1);
+  w.push(13);
+  push3DOps(w, {{6, 0, 0}}, 0);
+  w.push(32);
+  w.push(2);
+  pushPlane(w, {{8, 0, 0}}, 0xff00ff00, 8);
+  w.push(0);
+  w.push(1);
+  w.push(8);
+  w.pushAnim(1);
+  w.pushAnim(0);
+  w.push(1);
+  w.push(1);
+  w.pushAnim(-16);
+  w.pushAnim(-16);
+  w.pushAnim(32);
+  w.pushAnim(6);
+  w.pushLiveColorPaint(0xffff0000, {{{1, 1}, {0, 2}, {0, 3}, {1, -1}}});
+  tgfxrn::SceneRenderer renderer;
+  renderer.setScene(w.finish(), {});
+  auto first = drawFrame(renderer, {0, 1, 0, 0});
+  CHECK(opaqueAt(first, 32, 32));
+  CHECK(pixelAt(first, 32, 18)[0] > 200);
+  auto second = drawFrame(renderer, {0.6, 0, 0, 1});
+  CHECK(opaqueAt(second, 32, 32));
+  CHECK(inkPixels(second) < inkPixels(first));
+  CHECK(pixelAt(second, 32, 18)[2] > 200 && pixelAt(second, 32, 18)[0] < 50);
+}
+
 int main() {
   if (device() == nullptr) {
     std::printf("no GPU device available\n");
@@ -5832,6 +6023,12 @@ int main() {
   encodingUnpremultipliesAndRejectsLiveFrames();
   anOffscreenSurfaceHitTestsBeforeTheFirstDrain();
   batchClusteringKeepsOverlapOrderAndPixels();
+  preserve3dKeepsTheGroupsOwnClipAndLayer();
+  aPlaneOfA3DContextKeepsItsClipAndLayer();
+  aFillOnA3DPlaneDraws();
+  aZeroPerspectiveDrawsFlat();
+  hitTestComposesA3DContextNearestFirst();
+  a3DPlaneRedrawsLiveContentAndKeepsStaticContent();
   std::printf(failures == 0 ? "SceneTest: ok\n" : "SceneTest: %d failure(s)\n",
               failures);
   return failures == 0 ? 0 : 1;

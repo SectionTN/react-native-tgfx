@@ -158,7 +158,8 @@ silently dropped by the compiler. Operands are individually slot-backed on a han
 `preserve3d` on a `<Group>` puts its child groups in one depth-sorted 3D space
 (the faces of a cube). Without it each child is flattened into the group's
 plane. It needs a GPU surface: under `picture` or in an export the children are
-drawn flattened.
+drawn flattened. `clip`/`layer`/`picture`/`<FilmGrain>` on the group itself
+flatten it (CSS grouping properties); on a child group they apply to its plane.
 
 ### `layer` vs no layer
 

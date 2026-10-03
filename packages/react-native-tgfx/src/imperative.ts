@@ -83,9 +83,11 @@ const VECTOR_SLOTS = ['start', 'end', 'center'] as const
 /** How many gradient stops a handle keeps live slots for. */
 const MAX_STOPS = 16
 
+// Appended in this order when the transform lacks them: perspective before the rotations.
 const TRANSFORM_SLOTS = [
   'translateX',
   'translateY',
+  'perspective',
   'scale',
   'scaleX',
   'scaleY',
@@ -95,7 +97,6 @@ const TRANSFORM_SLOTS = [
   'rotateX',
   'rotateY',
   'translateZ',
-  'perspective',
 ] as const
 
 type TransformSlot = (typeof TRANSFORM_SLOTS)[number]
