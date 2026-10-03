@@ -333,7 +333,7 @@ class HardwareBufferReader {
                               desc.format, desc.width, desc.height,
                               static_cast<unsigned long long>(desc.usage));
         }
-      } else if (!importFailureLogged) {
+      } else if (image == nullptr && !importFailureLogged) {
         importFailureLogged = true;
         __android_log_print(ANDROID_LOG_WARN, "TgfxVideo",
                             "vulkan video: AImage has no hardware buffer");
