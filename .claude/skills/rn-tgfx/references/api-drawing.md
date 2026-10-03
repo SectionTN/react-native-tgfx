@@ -150,9 +150,16 @@ Paint and transform inherit down the subtree.
 
 `translate: [x, y]`, `translateX`, `translateY`, `scale`, `scaleX`, `scaleY`,
 `rotate` (number = radians, or a `'12deg'` / `'0.2rad'` string), `rotateZ` (an
-alias for `rotate`), `skewX`, `skewY`. Any other key in a transform entry is
+alias for `rotate`), `skewX`, `skewY`, and the 3D ops `rotateX`, `rotateY` (as
+`rotate`), `perspective`, `translateZ`. Any other key in a transform entry is
 silently dropped by the compiler. Operands are individually slot-backed on a handle
 (`group.set({ rotate: v })`).
+
+`preserve3d` on a `<Group>` puts its child groups in one depth-sorted 3D space
+(the faces of a cube). Without it each child is flattened into the group's
+plane. It needs a GPU surface: under `picture` or in an export the children are
+drawn flattened. `clip`/`layer`/`picture`/`<FilmGrain>` on the group itself
+flatten it (CSS grouping properties); on a child group they apply to its plane.
 
 ### `layer` vs no layer
 

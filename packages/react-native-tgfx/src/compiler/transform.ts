@@ -20,6 +20,10 @@ export type TransformOp =
   | { rotateZ: TransformAngle }
   | { skewX: TransformAngle }
   | { skewY: TransformAngle }
+  | { rotateX: TransformAngle }
+  | { rotateY: TransformAngle }
+  | { translateZ: TransformNumber }
+  | { perspective: TransformNumber }
 
 export type Transform = TransformOp[]
 

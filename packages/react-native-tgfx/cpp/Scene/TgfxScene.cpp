@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <numbers>
 
 #include "BufferRegistry.hpp"
 #include "FontRegistry.hpp"
@@ -13,7 +14,10 @@
 #include "Log.hpp"
 #include "SvgPath.hpp"
 #include "TextLayout.hpp"
+#include "tgfx/core/Matrix3D.h"
 #include "tgfx/core/PictureRecorder.h"
+#include "tgfx/layers/ImageLayer.h"
+#include "tgfx/layers/Layer.h"
 #include "tgfx/layers/layerstyles/GlassStyle.h"
 #include "tgfx/layers/layerstyles/NoiseStyle.h"
 #include "tgfx/core/Canvas.h"
@@ -386,6 +390,58 @@ tgfx::Matrix matrixFromOps(const std::vector<TransformOpCmd>& ops,
     m = multiply(m, o);
   }
   return tgfx::Matrix::MakeAll(m.a, m.c, m.e, m.b, m.d, m.f);
+}
+
+float degrees(float radians) {
+  return radians * (180.0f / std::numbers::pi_v<float>);
+}
+
+/// Composed like matrixFromOps, from the Matrix3D builders tgfx's own LayerTest uses.
+tgfx::Matrix3D matrix3DFromOps(const std::vector<TransformOpCmd>& ops,
+                               std::span<const double> values) {
+  auto m = tgfx::Matrix3D::I();
+  for (const auto& op : ops) {
+    float a = op.a.resolve(values);
+    float b = op.b.resolve(values);
+    auto o = tgfx::Matrix3D::I();
+    switch (op.type) {
+      case 0: o = tgfx::Matrix3D::MakeTranslate(a, b, 0); break;
+      case 1: o = tgfx::Matrix3D::MakeScale(a, b, 1); break;
+      case 2: o = tgfx::Matrix3D::MakeRotate({0, 0, 1}, degrees(a)); break;
+      case 3: o = tgfx::Matrix3D(tgfx::Matrix::MakeSkew(std::tan(a), 0)); break;
+      case 4: o = tgfx::Matrix3D(tgfx::Matrix::MakeSkew(0, std::tan(a))); break;
+      case 5: o = tgfx::Matrix3D::MakeRotate({1, 0, 0}, degrees(a)); break;
+      case 6: o = tgfx::Matrix3D::MakeRotate({0, 1, 0}, degrees(a)); break;
+      case 7:
+        if (a != 0) {
+          o.setRowColumn(3, 2, -1 / a);
+        }
+        break;
+      case 8: o = tgfx::Matrix3D::MakeTranslate(0, 0, a); break;
+      default: break;
+    }
+    m = m * o;
+  }
+  return m;
+}
+
+/// Clip, layer, picture and grain flatten preserve3d, like CSS grouping properties.
+bool opensContext(const DrawCmd& cmd) {
+  return cmd.kind == DrawCmd::Group && cmd.preserve3D && cmd.clipKind == 0 && !cmd.layer &&
+         !cmd.cachePicture && cmd.grain == nullptr;
+}
+
+bool hidden(const DrawCmd& cmd, std::span<const double> v) {
+  return (cmd.visible.slot >= 0 || cmd.visible.literal < 0.5f) && cmd.visible.resolve(v) < 0.5f;
+}
+
+/// The group's transform as the canvas takes it: a 3D one flattened to its projective 3x3.
+tgfx::Matrix groupMatrix(const DrawCmd& cmd, std::span<const double> values) {
+  if (cmd.hasMatrix) {
+    return cmd.matrix;
+  }
+  return cmd.threeD ? matrix3DFromOps(cmd.ops, values).asMatrix()
+                    : matrixFromOps(cmd.ops, values);
 }
 
 uint8_t channelOf(const AnimF& f, std::span<const double> v) {
@@ -1370,6 +1426,16 @@ void clusterBatchableChildren(std::vector<DrawCmd>& children) {
 }
 
 bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
+  int dynamicBefore = r.dynamic;
+  bool ok = readNodeFields(r, cmd, depth);
+  cmd.dynamic = r.dynamic != dynamicBefore;
+  cmd.fills = cmd.kind == DrawCmd::Fill ||
+              std::any_of(cmd.children.begin(), cmd.children.end(),
+                          [](const DrawCmd& child) { return child.fills; });
+  return ok;
+}
+
+bool SceneRenderer::readNodeFields(SceneReader& r, DrawCmd& cmd, int depth) {
   if (depth > kMaxNodeDepth) {
     r.ok = false;
     return false;
@@ -1396,11 +1462,13 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         op.a = r.nextAnim();
         op.b = r.nextAnim();
         animated = animated || op.a.slot >= 0 || op.b.slot >= 0;
+        cmd.threeD = cmd.threeD || op.type >= kFirst3DOp;
         cmd.ops.push_back(op);
       }
       if (!animated && !cmd.ops.empty()) {
         cmd.hasMatrix = true;
-        cmd.matrix = matrixFromOps(cmd.ops, {});
+        cmd.matrix = cmd.threeD ? matrix3DFromOps(cmd.ops, {}).asMatrix()
+                                : matrixFromOps(cmd.ops, {});
       }
       // Only KGroupLayer carries the clip/layer block; a plain group is unchanged.
       if (kind == KGroupLayer) {
@@ -1408,6 +1476,7 @@ bool SceneRenderer::readNode(SceneReader& r, DrawCmd& cmd, int depth) {
         cmd.invertClip = (flags & 2) != 0;
         cmd.layer = (flags & 4) != 0;
         cmd.cachePicture = (flags & 8) != 0;
+        cmd.preserve3D = (flags & 32) != 0;
         if ((flags & 1) != 0) {
           cmd.clipKind = r.nextInt();
           if (cmd.clipKind == 3) {
@@ -2061,14 +2130,29 @@ bool hitNode(const DrawCmd& cmd, const tgfx::Point& local, bool precise,
   return !bounds.isEmpty() && bounds.contains(local.x, local.y);
 }
 
-/// Walks back to front so the first hit reported is the one drawn last, i.e. on top.
+void hitContext(const DrawCmd& root, const tgfx::Matrix& parent, const tgfx::Point& point,
+                bool precise, std::span<const double> v, std::span<const std::string> strings,
+                std::span<const uint8_t> pushed, std::vector<int32_t>& path,
+                std::vector<double>& out);
+
+void reportHit(const std::vector<int32_t>& path, std::vector<double>& out) {
+  out.push_back(static_cast<double>(path.size()));
+  for (int32_t step : path) {
+    out.push_back(static_cast<double>(step));
+  }
+}
+
+/// Back to front, so the first hit is the one drawn last; `planesOnly` skips a 3D context's groups.
 void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
              const tgfx::Point& point, bool precise, std::span<const double> v,
              std::span<const std::string> strings,
              std::span<const uint8_t> pushed, std::vector<int32_t>& path,
-             std::vector<double>& out) {
+             std::vector<double>& out, bool planesOnly = false) {
   for (size_t i = nodes.size(); i-- > 0;) {
     const auto& cmd = nodes[i];
+    if (planesOnly && cmd.kind == DrawCmd::Group) {
+      continue;
+    }
     if (cmd.kind == DrawCmd::CameraFrame) {
       // Its matrix needs the surface, which a hit test has not got: no answer beats a wrong one.
       continue;
@@ -2078,9 +2162,15 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
         cmd.visible.resolve(v) < 0.5f) {
       continue;
     }
+    if (opensContext(cmd)) {
+      path.push_back(static_cast<int32_t>(i));
+      hitContext(cmd, parent, point, precise, v, strings, pushed, path, out);
+      path.pop_back();
+      continue;
+    }
     auto matrix = parent;
     if (cmd.hasMatrix || !cmd.ops.empty()) {
-      matrix.preConcat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
+      matrix.preConcat(groupMatrix(cmd, v));
     }
     tgfx::Matrix inverted = tgfx::Matrix::I();
     if (!matrix.invert(&inverted)) {
@@ -2102,12 +2192,82 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
       hitWalk(cmd.children, matrix, point, precise, v, strings, pushed, path, out);
     }
     if (hitNode(cmd, local, precise, v, strings, pushed)) {
-      out.push_back(static_cast<double>(path.size()));
-      for (int32_t step : path) {
-        out.push_back(static_cast<double>(step));
-      }
+      reportHit(path, out);
     }
     path.pop_back();
+  }
+}
+
+struct HitPlane {
+  const DrawCmd* cmd;
+  tgfx::Matrix3D placed;
+  std::vector<int32_t> path;
+  tgfx::Point local = {};
+  float depth = 0;
+};
+
+void collectHitPlanes(const DrawCmd& cmd, const tgfx::Matrix3D& parent,
+                      std::span<const double> v, std::vector<int32_t>& path,
+                      std::vector<HitPlane>& out) {
+  auto placed = parent * matrix3DFromOps(cmd.ops, v);
+  out.push_back({&cmd, placed, path});
+  if (!opensContext(cmd)) {
+    return;
+  }
+  for (size_t i = 0; i < cmd.children.size(); i++) {
+    const auto& child = cmd.children[i];
+    if (child.kind != DrawCmd::Group || hidden(child, v)) {
+      continue;
+    }
+    path.push_back(static_cast<int32_t>(i));
+    collectHitPlanes(child, placed, v, path, out);
+    path.pop_back();
+  }
+}
+
+/// Composes a 3D context's planes in 4x4 as the draw does, nearest plane under the point first.
+void hitContext(const DrawCmd& root, const tgfx::Matrix& parent, const tgfx::Point& point,
+                bool precise, std::span<const double> v, std::span<const std::string> strings,
+                std::span<const uint8_t> pushed, std::vector<int32_t>& path,
+                std::vector<double>& out) {
+  std::vector<HitPlane> planes;
+  std::vector<int32_t> relative;
+  collectHitPlanes(root, tgfx::Matrix3D(parent), v, relative, planes);
+  constexpr float kBehind = -std::numeric_limits<float>::infinity();
+  for (auto& plane : planes) {
+    tgfx::Matrix inverted = tgfx::Matrix::I();
+    if (!plane.placed.asMatrix().invert(&inverted)) {
+      plane.depth = kBehind;
+      continue;
+    }
+    plane.local = inverted.mapXY(point.x, point.y);
+    auto clip = plane.placed.mapHomogeneous(plane.local.x, plane.local.y, 0, 1);
+    plane.depth = clip.w > 0 ? clip.z / clip.w : kBehind;
+  }
+  // Reversed first, so planes at one depth keep the drawn-last-on-top order.
+  std::reverse(planes.begin(), planes.end());
+  std::stable_sort(planes.begin(), planes.end(),
+                   [](const HitPlane& a, const HitPlane& b) { return a.depth > b.depth; });
+  for (const auto& plane : planes) {
+    const auto& cmd = *plane.cmd;
+    if (plane.depth == kBehind) {
+      continue;
+    }
+    if (cmd.clipKind != 0 && !cmd.invertClip) {
+      auto clip = cmd.clipKind == 3 ? (cmd.clipPath != nullptr ? cmd.clipPath->getBounds()
+                                                               : tgfx::Rect::MakeEmpty())
+                                    : cmd.clipRect;
+      if (!clip.contains(plane.local.x, plane.local.y)) {
+        continue;
+      }
+    }
+    path.insert(path.end(), plane.path.begin(), plane.path.end());
+    hitWalk(cmd.children, plane.placed.asMatrix(), point, precise, v, strings, pushed, path, out,
+            opensContext(cmd));
+    if (hitNode(cmd, plane.local, precise, v, strings, pushed)) {
+      reportHit(path, out);
+    }
+    path.resize(path.size() - plane.path.size());
   }
 }
 
@@ -2256,6 +2416,66 @@ static bool cacheStrokedShape(const DrawCmd& cmd) {
   return cmd.strokeCache > 0;
 }
 
+void SceneRenderer::drawGroupBody(tgfx::Canvas* canvas, const DrawCmd& cmd,
+                                  std::span<const double> v,
+                                  std::span<const std::string> strings, uint64_t stringGen,
+                                  std::span<const uint8_t> stringPushed,
+                                  tgfx::Paint& paint) const {
+  bool saved = cmd.clipKind != 0 || cmd.layer;
+  if (saved) {
+    canvas->save();
+  }
+  switch (cmd.clipKind) {
+    case 1: canvas->clipRect(cmd.clipRect); break;
+    case 2:
+      canvas->clipRRect(
+          tgfx::RRect::MakeRectXY(cmd.clipRect, cmd.clipRadiusX, cmd.clipRadiusY));
+      break;
+    case 3:
+      if (cmd.clipPath != nullptr) {
+        canvas->clipPath(*cmd.clipPath);
+      }
+      break;
+    default: break;
+  }
+  if (cmd.layer) {
+    canvas->saveLayerAlpha(cmd.layerAlpha.resolve(v));
+  }
+  if (cmd.cachePicture || cmd.grain != nullptr) {
+    // Recorded under the identity, so the transform above stays live and the
+    // replay is not baked to whatever matrix the first frame happened to have.
+    // Grain needs the recording anyway, so it costs one walk, not two.
+    auto picture = cmd.picture;
+    if (picture == nullptr) {
+      tgfx::PictureRecorder recorder;
+      auto* into = recorder.beginRecording();
+      for (const auto& child : cmd.children) {
+        drawCmd(into, child, v, strings, stringGen, stringPushed, paint);
+      }
+      picture = recorder.finishRecordingAsPicture();
+      if (cmd.cachePicture) {
+        cmd.picture = picture;
+      }
+    }
+    if (picture != nullptr) {
+      canvas->drawPicture(picture);
+      if (cmd.grain != nullptr) {
+        drawGrain(canvas, *cmd.grain, picture, v);
+      }
+    }
+  } else {
+    for (const auto& child : cmd.children) {
+      drawCmd(canvas, child, v, strings, stringGen, stringPushed, paint);
+    }
+  }
+  if (cmd.layer) {
+    canvas->restore();
+  }
+  if (saved) {
+    canvas->restore();
+  }
+}
+
 void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
                             std::span<const double> v,
                             std::span<const std::string> strings,
@@ -2269,61 +2489,35 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
     }
   }
   if (cmd.kind == DrawCmd::Group) {
+    auto* surface = canvas->getSurface();
+    if (surface != nullptr && opensContext(cmd)) {
+      Layer3DArgs args{canvas->getMatrix().getMaxScale(), surface->colorSpace(),
+                       tgfx::Rect::MakeEmpty(), v, strings, stringGen, stringPushed, &paint};
+      auto device = canvas->getTotalClipBounds().value_or(
+          tgfx::Rect::MakeWH(surface->width(), surface->height()));
+      tgfx::Matrix toLocal = tgfx::Matrix::I();
+      args.canvasRect = canvas->getMatrix().invert(&toLocal) ? toLocal.mapRect(device) : device;
+      // Into the root's own plane, where an unturned plane's fill covers the canvas.
+      if (groupMatrix(cmd, v).invert(&toLocal)) {
+        auto local = toLocal.mapRect(args.canvasRect);
+        if (std::isfinite(local.left) && std::isfinite(local.top) &&
+            std::isfinite(local.right) && std::isfinite(local.bottom) && !local.isEmpty()) {
+          args.canvasRect = local;
+        }
+      }
+      // Drawn directly, a preserve3D layer renders nothing.
+      auto root = tgfx::Layer::Make();
+      root->addChild(buildLayer3D(cmd, tgfx::Matrix3D::I(), args));
+      root->draw(canvas);
+      return;
+    }
     bool transformed = cmd.hasMatrix || !cmd.ops.empty();
-    bool saved = transformed || cmd.clipKind != 0 || cmd.layer;
-    if (saved) {
-      canvas->save();
-    }
     if (transformed) {
-      canvas->concat(cmd.hasMatrix ? cmd.matrix : matrixFromOps(cmd.ops, v));
+      canvas->save();
+      canvas->concat(groupMatrix(cmd, v));
     }
-    switch (cmd.clipKind) {
-      case 1: canvas->clipRect(cmd.clipRect); break;
-      case 2:
-        canvas->clipRRect(
-            tgfx::RRect::MakeRectXY(cmd.clipRect, cmd.clipRadiusX, cmd.clipRadiusY));
-        break;
-      case 3:
-        if (cmd.clipPath != nullptr) {
-          canvas->clipPath(*cmd.clipPath);
-        }
-        break;
-      default: break;
-    }
-    if (cmd.layer) {
-      canvas->saveLayerAlpha(cmd.layerAlpha.resolve(v));
-    }
-    if (cmd.cachePicture || cmd.grain != nullptr) {
-      // Recorded under the identity, so the transform above stays live and the
-      // replay is not baked to whatever matrix the first frame happened to have.
-      // Grain needs the recording anyway, so it costs one walk, not two.
-      auto picture = cmd.picture;
-      if (picture == nullptr) {
-        tgfx::PictureRecorder recorder;
-        auto* into = recorder.beginRecording();
-        for (const auto& child : cmd.children) {
-          drawCmd(into, child, v, strings, stringGen, stringPushed, paint);
-        }
-        picture = recorder.finishRecordingAsPicture();
-        if (cmd.cachePicture) {
-          cmd.picture = picture;
-        }
-      }
-      if (picture != nullptr) {
-        canvas->drawPicture(picture);
-        if (cmd.grain != nullptr) {
-          drawGrain(canvas, *cmd.grain, picture, v);
-        }
-      }
-    } else {
-      for (const auto& child : cmd.children) {
-        drawCmd(canvas, child, v, strings, stringGen, stringPushed, paint);
-      }
-    }
-    if (cmd.layer) {
-      canvas->restore();
-    }
-    if (saved) {
+    drawGroupBody(canvas, cmd, v, strings, stringGen, stringPushed, paint);
+    if (transformed) {
       canvas->restore();
     }
     return;
@@ -2822,6 +3016,156 @@ void SceneRenderer::drawCmd(tgfx::Canvas* canvas, const DrawCmd& cmd,
 
   if (tookLayer) {
     canvas->restore();
+  }
+}
+
+constexpr float kMaxLayerSide = 4096;
+
+/// The placement's largest edge magnification of `bounds`, in sqrt(2) steps to limit re-rasters.
+float layerMagnification(const tgfx::Matrix3D& placed, const tgfx::Rect& bounds) {
+  tgfx::Point quad[4] = {{bounds.left, bounds.top},
+                         {bounds.right, bounds.top},
+                         {bounds.right, bounds.bottom},
+                         {bounds.left, bounds.bottom}};
+  for (const auto& p : quad) {
+    if (placed.mapHomogeneous(p.x, p.y, 0, 1).w <= 0) {
+      return 1;
+    }
+  }
+  tgfx::Point mapped[4];
+  placed.asMatrix().mapPoints(mapped, quad, 4);
+  float best = 0;
+  for (int i = 0; i < 4; i++) {
+    float local = i % 2 == 0 ? bounds.width() : bounds.height();
+    if (local > 0) {
+      best = std::max(best, tgfx::Point::Distance(mapped[i], mapped[(i + 1) % 4]) / local);
+    }
+  }
+  if (!(best > 0) || !std::isfinite(best)) {
+    return 1;
+  }
+  return std::exp2(std::ceil(std::log2(std::clamp(best, 0.25f, 8.0f)) * 2) / 2);
+}
+
+/// A child group of a 3D context is a layer of its own; any other group is one flat plane.
+std::shared_ptr<tgfx::Layer> SceneRenderer::buildLayer3D(const DrawCmd& cmd,
+                                                         const tgfx::Matrix3D& parent,
+                                                         const Layer3DArgs& args) const {
+  auto layer = tgfx::Layer::Make();
+  auto own = matrix3DFromOps(cmd.ops, args.values);
+  layer->setMatrix3D(own);
+  auto placed = parent * own;
+  if (!opensContext(cmd)) {
+    addLayerContent(layer.get(), cmd, 0, &cmd, {}, placed, args);
+    return layer;
+  }
+  layer->setPreserve3D(true);
+  std::vector<const DrawCmd*> run;
+  size_t slot = 0;
+  auto flush = [&] {
+    if (!run.empty()) {
+      addLayerContent(layer.get(), cmd, slot, nullptr, run, placed, args);
+      run.clear();
+    }
+    slot++;
+  };
+  for (const auto& child : cmd.children) {
+    if (child.kind != DrawCmd::Group) {
+      run.push_back(&child);
+      continue;
+    }
+    // Flushed even for a hidden group, so each run keeps its cache slot.
+    flush();
+    if (!hidden(child, args.values)) {
+      layer->addChild(buildLayer3D(child, placed, args));
+    }
+  }
+  flush();
+  return layer;
+}
+
+/// `body` (a plane: clip, layer, grain and subtree) or `run`, rasterised into one image layer.
+void SceneRenderer::addLayerContent(tgfx::Layer* layer, const DrawCmd& owner, size_t slot,
+                                    const DrawCmd* body, std::span<const DrawCmd* const> run,
+                                    const tgfx::Matrix3D& placed, const Layer3DArgs& args) const {
+  if (owner.layerContents.size() <= slot) {
+    owner.layerContents.resize(slot + 1);
+  }
+  auto& content = owner.layerContents[slot];
+  auto& paint = *args.paint;
+  bool still = true;
+  bool fills = false;
+  if (body != nullptr) {
+    still = body->layerAlpha.slot < 0 && body->grain == nullptr &&
+            std::none_of(body->children.begin(), body->children.end(),
+                         [](const DrawCmd& child) { return child.dynamic; });
+    fills = body->fills;
+  } else {
+    for (const auto* cmd : run) {
+      still = still && !cmd->dynamic;
+      fills = fills || cmd->fills;
+    }
+  }
+  std::shared_ptr<tgfx::Picture> picture;
+  auto record = [&] {
+    tgfx::PictureRecorder recorder;
+    auto* into = recorder.beginRecording();
+    if (body != nullptr) {
+      drawGroupBody(into, *body, args.values, args.strings, args.stringGen, args.stringPushed,
+                    paint);
+    } else {
+      for (const auto* cmd : run) {
+        drawCmd(into, *cmd, args.values, args.strings, args.stringGen, args.stringPushed, paint);
+      }
+    }
+    picture = recorder.finishRecordingAsPicture();
+  };
+  tgfx::Rect bounds = content.bounds;
+  if (!still || content.image == nullptr) {
+    record();
+    if (picture == nullptr) {
+      return;
+    }
+    bounds = picture->getBounds();
+    if (fills) {
+      // A fill draws to the clip: the plane's own, else the canvas the context sits on.
+      bool clipped = body != nullptr && body->clipKind != 0 && !body->invertClip;
+      bounds.join(clipped && body->clipKind == 3 && body->clipPath != nullptr
+                      ? body->clipPath->getBounds()
+                      : (clipped ? body->clipRect : args.canvasRect));
+    }
+    bounds.roundOut();
+  }
+  if (bounds.isEmpty()) {
+    return;
+  }
+  float scale = args.canvasScale * layerMagnification(placed, bounds);
+  scale = std::min({scale, kMaxLayerSide / bounds.width(), kMaxLayerSide / bounds.height()});
+  if (!(scale > 0)) {
+    return;
+  }
+  if (!still || content.image == nullptr || content.scale != scale) {
+    if (picture == nullptr) {
+      record();
+      if (picture == nullptr) {
+        return;
+      }
+    }
+    int width = std::max(1, static_cast<int>(std::ceil(bounds.width() * scale)));
+    int height = std::max(1, static_cast<int>(std::ceil(bounds.height() * scale)));
+    auto toPixels = tgfx::Matrix::MakeTrans(-bounds.left, -bounds.top);
+    toPixels.postScale(scale, scale);
+    content = {tgfx::Image::MakeFrom(picture, width, height, &toPixels, args.colorSpace), bounds,
+               scale};
+  }
+  auto image = tgfx::ImageLayer::Make();
+  image->setImage(content.image);
+  auto toLocal = tgfx::Matrix::MakeScale(1 / scale);
+  toLocal.postTranslate(bounds.left, bounds.top);
+  image->setMatrix(toLocal);
+  layer->addChild(std::move(image));
+  if (!still) {
+    content = {};
   }
 }
 
