@@ -7,20 +7,39 @@ icon: Gauge
 ## Benchmark
 
 We load 20,000 shapes, 3,600 images, a 40-octave full-screen shader, a
-repeating image pattern and 6,000 texts.
+repeating image pattern, 900 cubic paths and 6,000 texts, each under one
+rotating group, against react-native-skia 3.0.0 (Graphite on Vulkan) through
+both its `Canvas` and its `GraphiteCanvas`. Samsung SM-E146B (Exynos 1330,
+90 Hz), release builds, engines alternating per scene, medians across two runs.
 
-| engine · scene | Present FPS | UI FPS | JS FPS |
-|---|---|---|---|
-| tgfx · shapes | **61.6** | 91 | 90 |
-| skia · shapes | 26.5 | 28 | 15 |
-| tgfx · images | **90.0** | 91 | 90 |
-| skia · images | 80.8 | 81 | 49 |
-| tgfx · shader | 15.0 | 91 | 91 |
-| skia · shader | 15.1 | 15 | 8 |
-| tgfx · pattern | 90.3 | 91 | 91 |
-| skia · pattern | 90.1 | 91 | 90 |
-| tgfx · text | **68.4** | 91 | 91 |
-| skia · text | 33.9 | 35 | 18 |
+Present FPS is what reached the screen; UI and JS FPS say whether those threads
+keep up. CPU is the whole process (100 = one core), memory its total PSS.
+
+| engine · scene | Present FPS | UI FPS | JS FPS | CPU % | Memory MB |
+|---|---|---|---|---|---|
+| tgfx · shapes | **60.8** | 91 | 90 | 183 | **444** |
+| skia Canvas · shapes | 18.8 | 86 | 85 | 95 | 505 |
+| skia GraphiteCanvas · shapes | 21.9 | 88 | 86 | 94 | 515 |
+| tgfx · images | **90.1** | 91 | 91 | 123 | 454 |
+| skia Canvas · images | 45.1 | 91 | 90 | 92 | 442 |
+| skia GraphiteCanvas · images | 44.1 | 91 | 91 | 91 | 448 |
+| tgfx · shader | 15.1 | **91** | **91** | 25 | 451 |
+| skia Canvas · shader | 15.0 | 30 | 30 | 17 | 419 |
+| skia GraphiteCanvas · shader | 15.1 | 30 | 30 | 17 | 406 |
+| tgfx · pattern | 90.3 | 91 | 91 | 58 | 426 |
+| skia Canvas · pattern | 89.9 | 91 | 91 | 67 | 401 |
+| skia GraphiteCanvas · pattern | 89.5 | 91 | 91 | 65 | 405 |
+| tgfx · paths | **90.0** | 91 | 91 | 83 | 438 |
+| skia Canvas · paths | 79.4 | 91 | 91 | 86 | 416 |
+| skia GraphiteCanvas · paths | 82.6 | 91 | 91 | 86 | 414 |
+| tgfx · text | **66.3** | 91 | 91 | 153 | **456** |
+| skia Canvas · text | 25.7 | 91 | 91 | 100 | 491 |
+| skia GraphiteCanvas · text | 25.8 | 91 | 91 | 100 | 491 |
+
+tgfx spends more CPU in total because it presents more frames; per presented
+frame it costs less (shapes 3.0 against 4.3–5.1 % of a core, text 2.3 against 3.9).
+That work runs on its own render thread: the UI thread stays at 5–12 % of a
+core, against 20–38 % for either skia canvas.
 
 ### Paths
 

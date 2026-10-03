@@ -1,4 +1,4 @@
-// tgfx vs @shopify/react-native-skia, one scene at a time. The app runs the
+// tgfx vs react-native-skia 3 (Canvas and GraphiteCanvas), one scene at a time. The app runs the
 // whole matrix by itself and prints one `[bench] tick ...` line per second to
 // logcat; bench/run.mjs pairs those with host-side CPU and PSS samples.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,6 +29,7 @@ import {
   Canvas as SkCanvas,
   Circle as SkCircle,
   Fill as SkFill,
+  GraphiteCanvas,
   Group as SkGroup,
   Image as SkImageView,
   ImageShader as SkImageShader,
@@ -40,13 +41,13 @@ import {
   matchFont,
   vec,
   type SkImage,
-} from '@shopify/react-native-skia';
+} from 'react-native-skia';
 
 const { width: W, height: H } = Dimensions.get('window');
 const CX = W / 2;
 const CY = H / 2;
 
-const ENGINES = ['tgfx', 'skia'] as const;
+const ENGINES = ['tgfx', 'skia', 'graphite'] as const;
 const SCENES = ['shapes', 'images', 'shader', 'pattern', 'paths', 'text'] as const;
 const COMBO_MS = 28_000; // 3s settle + 20s measured (run.mjs trims the settle)
 type Engine = (typeof ENGINES)[number];
@@ -472,11 +473,16 @@ export default function App() {
           <TgfxFill color="#101014" />
           <TgfxScene scene={scene} t={t} images={tgfxImages} tile={tgfxTile} />
         </TgfxCanvas>
-      ) : (
+      ) : engine === 'skia' ? (
         <SkCanvas style={StyleSheet.absoluteFill} opaque>
           <SkFill color="#101014" />
           <SkiaScene scene={scene} t={t} images={skImages} tile={skTile} />
         </SkCanvas>
+      ) : (
+        <GraphiteCanvas style={StyleSheet.absoluteFill} opaque>
+          <SkFill color="#101014" />
+          <SkiaScene scene={scene} t={t} images={skImages} tile={skTile} />
+        </GraphiteCanvas>
       )}
       <RNText style={styles.label}>{`${engine} · ${scene}`}</RNText>
     </View>

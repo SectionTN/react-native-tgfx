@@ -8,7 +8,7 @@
 // Install a RELEASE build first: benchmarking a debug build measures the
 // debug overhead, not the engines.
 import { execFile, spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,8 +25,8 @@ const PACKAGE = arg('package', 'com.tgfxskiabench');
 // reads `dumpsys SurfaceFlinger --latency` present timestamps (Android <= 13).
 const PRESENT = arg('present', 'atrace');
 // Matrix selection, forwarded to the app through the launch URL (see App.tsx buildPlan).
-const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}`;
-const COMBOS = arg('engines', 'tgfx,skia').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
+const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia,graphite')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}`;
+const COMBOS = arg('engines', 'tgfx,skia,graphite').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
 const SETTLE_TICKS = 3;
 const HZ = 100; // Linux USER_HZ
 
@@ -45,52 +45,92 @@ const median = values => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
-/** combo key -> {ticks: [{js, ui}], cpu: [], pss: [], seen} */
+/** combo key -> per-second samples, plus per-thread CPU keyed by thread group */
 const combos = new Map();
 let current = null;
 function comboBucket(key) {
-  if (!combos.has(key)) combos.set(key, { ticks: [], cpu: [], pss: [], presents: [], seen: 0 });
+  if (!combos.has(key)) {
+    combos.set(key, { ticks: [], cpu: [], pss: [], java: [], native: [], graphics: [], presents: [], threads: new Map() });
+  }
   return combos.get(key);
 }
 
 // ---- CPU + PSS sampler -----------------------------------------------------
 
 let lastCpu = null;
-async function sampleCpu() {
-  const pidOut = await adb('shell', 'pidof', PACKAGE);
-  const pid = pidOut?.trim().split(/\s+/)[0];
-  if (!pid) return;
-  const stat = await adb('shell', 'cat', `/proc/${pid}/stat`);
-  if (!stat) return;
-  const after = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\s+/);
-  // after[0] is field 3 (state); utime is field 14, stime 15.
-  const utime = Number(after[11]);
-  const stime = Number(after[12]);
-  const now = Date.now();
-  if (Number.isNaN(utime) || Number.isNaN(stime)) return;
-  const ticks = utime + stime;
-  if (lastCpu && lastCpu.pid === pid) {
-    const wall = (now - lastCpu.at) / 1000;
-    const pct = ((ticks - lastCpu.ticks) / HZ / wall) * 100;
-    if (current && wall > 0.2 && pct >= 0) comboBucket(current).cpu.push(pct);
-  }
-  lastCpu = { pid, ticks, at: now };
-}
-
-async function samplePss() {
-  const out = await adb('shell', 'dumpsys', 'meminfo', PACKAGE);
-  const match = out?.match(/TOTAL PSS:\s+(\d+)/);
-  if (match && current) comboBucket(current).pss.push(Number(match[1]));
-}
-
-let busy = false;
+// One adb connection per sample: pid, /proc stat and PSS in a single shell round
+// trip. Three connections a second was enough to wedge the host adb server
+// mid-run, taking the logcat stream down with it.
 async function sample() {
   if (busy) return;
   busy = true;
-  await sampleCpu();
-  await samplePss();
+  const out = await adb(
+    'shell',
+    `cat /proc/uptime; pid=$(pidof ${PACKAGE}); echo "PID $pid"; [ -n "$pid" ] && cat /proc/$pid/stat; dumpsys meminfo ${PACKAGE} | grep -E 'TOTAL PSS|Java Heap:|Native Heap:|Graphics:'`
+  );
   busy = false;
+  if (!out) return;
+  // Device clock, not host: adb round trips add up to 2s of skew per sample.
+  const now = Number(out.match(/^(\d+\.\d+) /m)?.[1]) * 1000;
+  const pid = out.match(/^PID (\d+)/m)?.[1];
+  const stat = out.match(/^\d+ \(.*\) .*$/m)?.[0];
+  if (pid && stat) {
+    const after = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\s+/);
+    // after[0] is field 3 (state); utime is field 14, stime 15.
+    const ticks = Number(after[11]) + Number(after[12]);
+    if (Number.isFinite(ticks)) {
+      if (lastCpu && lastCpu.pid === pid) {
+        const wall = (now - lastCpu.at) / 1000;
+        const pct = ((ticks - lastCpu.ticks) / HZ / wall) * 100;
+        if (current && wall > 0.2 && pct >= 0) comboBucket(current).cpu.push(pct);
+      }
+      lastCpu = { pid, ticks, at: now };
+    }
+  }
+  if (!current) return;
+  const bucket = comboBucket(current);
+  for (const [field, label] of [['pss', 'TOTAL PSS'], ['java', 'Java Heap'], ['native', 'Native Heap'], ['graphics', 'Graphics']]) {
+    const kb = out.match(new RegExp(`${label}:\\s+(\\d+)`));
+    if (kb) bucket[field].push(Number(kb[1]));
+  }
 }
+
+// ---- per-thread CPU ---------------------------------------------------------
+// Two snapshots of every thread's utime+stime, 8s apart, inside the measured
+// window. Pool threads are grouped by name with the trailing index dropped.
+const THREAD_WINDOW_MS = 8000;
+async function threadSnapshot() {
+  const out = await adb('shell', `cat /proc/uptime; pid=$(pidof ${PACKAGE}); for t in /proc/$pid/task/*; do cat $t/stat; done 2>/dev/null`);
+  const at = Number(out?.match(/^(\d+\.\d+) /m)?.[1]);
+  const ticks = new Map();
+  for (const line of (out ?? '').split('\n')) {
+    const m = line.match(/^(\d+) \((.*)\) (.*)$/);
+    if (!m) continue;
+    const f = m[3].trim().split(/\s+/);
+    ticks.set(m[1], { name: m[2], ticks: Number(f[11]) + Number(f[12]) });
+  }
+  return { at, ticks };
+}
+async function sampleThreads(key) {
+  const a = await threadSnapshot();
+  await new Promise(r => setTimeout(r, THREAD_WINDOW_MS));
+  const b = await threadSnapshot();
+  const wall = b.at - a.at;
+  if (!(wall > 1)) return;
+  const groups = new Map();
+  for (const [tid, t] of b.ticks) {
+    const before = a.ticks.get(tid);
+    if (!before) continue;
+    const name = t.name === PACKAGE.slice(-15) ? 'UI' : t.name === 'mqt_v_js' ? 'JS' : t.name.replace(/[\s:_-]*[\d_]+$/, '');
+    groups.set(name, (groups.get(name) ?? 0) + ((t.ticks - before.ticks) / HZ / wall) * 100);
+  }
+  const threads = comboBucket(key).threads;
+  for (const [name, pct] of groups) {
+    if (!threads.has(name)) threads.set(name, []);
+    threads.get(name).push(pct);
+  }
+}
+let busy = false;
 
 // ---- presented frames ------------------------------------------------------
 // Thread FPS says the threads are healthy; only SurfaceFlinger knows what the
@@ -143,7 +183,10 @@ function samplePresented(key) {
 
 function finish(reason) {
   clearInterval(timer);
-  logcat.kill();
+  clearInterval(logcatWatchdog);
+  const dead = logcat;
+  logcat = null;
+  dead?.kill();
   const rows = [];
   for (const [key, bucket] of combos) {
     const measured = bucket.ticks.slice(SETTLE_TICKS);
@@ -155,6 +198,10 @@ function finish(reason) {
       ui: median(measured.map(t => t.ui)),
       cpu: median(bucket.cpu),
       pss: median(bucket.pss) / 1024,
+      java: median(bucket.java) / 1024,
+      native: median(bucket.native) / 1024,
+      graphics: median(bucket.graphics) / 1024,
+      threads: new Map([...bucket.threads].map(([name, pcts]) => [name, median(pcts)])),
       n: measured.length,
     });
   }
@@ -166,6 +213,21 @@ function finish(reason) {
     ...rows.map(r =>
       `| ${r.key} | ${r.present == null ? '?' : r.present.toFixed(1)} | ${r.ui.toFixed(0)} | ${r.js.toFixed(0)} | ${r.cpu.toFixed(0)} | ${r.pss.toFixed(1)} | ${r.n} |`
     ),
+    '',
+    '## Where the CPU and memory go',
+    '',
+    '| engine · scene | UI thread % | JS thread % | busiest other threads % | Graphics MB | Native MB | Java MB |',
+    '|---|---|---|---|---|---|---|',
+    ...rows.map(r => {
+      const pct = name => (r.threads.get(name) ?? 0).toFixed(0);
+      const others = [...r.threads]
+        .filter(([name, p]) => name !== 'UI' && name !== 'JS' && p >= 1)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, p]) => `${name} ${p.toFixed(0)}`)
+        .join(', ');
+      return `| ${r.key} | ${pct('UI')} | ${pct('JS')} | ${others} | ${r.graphics.toFixed(1)} | ${r.native.toFixed(1)} | ${r.java.toFixed(1)} |`;
+    }),
   ];
   const report = lines.join('\n');
   console.log(`\n${report}\n`);
@@ -175,19 +237,43 @@ function finish(reason) {
   process.exit(rows.length > 0 ? 0 : 2);
 }
 
-const logcat = spawn('adb', ['logcat', '-T', '1', '-s', 'ReactNativeJS:I']);
+// adb's logcat stream can die mid-run (Android 15 phones drop it after a few
+// minutes); the app keeps going, the host just stops hearing it. Watch for
+// silence and respawn from the last timestamp seen, dropping the one line
+// `-T` re-delivers.
+const LOGCAT_SILENCE_MS = 8000;
+let logcat = null;
 let pending = '';
-logcat.stdout.on('data', chunk => {
+let lastTimestamp = '1';
+let lastLine = '';
+let lastHeard = Date.now();
+function startLogcat() {
+  logcat = spawn('adb', ['logcat', '-T', lastTimestamp, '-s', 'ReactNativeJS:I']);
+  pending = '';
+  logcat.stdout.on('data', onLogcat);
+  logcat.on('exit', () => {
+    if (logcat) setTimeout(startLogcat, 500);
+  });
+}
+function onLogcat(chunk) {
+  lastHeard = Date.now();
+  // BENCH_RAW_LOG=<file> keeps every byte logcat delivered, for debugging the runner itself.
+  if (process.env.BENCH_RAW_LOG) appendFileSync(process.env.BENCH_RAW_LOG, chunk);
   pending += chunk.toString();
   const lines = pending.split('\n');
   pending = lines.pop() ?? '';
   for (const line of lines) {
+    if (line === lastLine) continue;
+    lastLine = line;
+    const stamp = line.match(/^(\d\d-\d\d \d\d:\d\d:\d\d\.\d+)/);
+    if (stamp) lastTimestamp = stamp[1];
     const start = line.match(/\[bench\] start engine=(\w+) scene=(\w+)/);
     if (start) {
       current = `${start[1]} · ${start[2]}`;
       console.log(`[bench] >> ${current}`);
       const key = current;
       setTimeout(() => samplePresented(key), 6000);
+      setTimeout(() => sampleThreads(key), 7000);
       continue;
     }
     // The app freezes t=0 for 1.5s and prints this; a screencap inside the
@@ -208,7 +294,21 @@ logcat.stdout.on('data', chunk => {
     }
     if (line.includes('[bench] done')) finish('complete');
   }
-});
+}
+startLogcat();
+const logcatWatchdog = setInterval(() => {
+  if (Date.now() - lastHeard > LOGCAT_SILENCE_MS && logcat) {
+    console.log(`[bench] logcat silent ${LOGCAT_SILENCE_MS / 1000}s, reconnecting and respawning from ${lastTimestamp}`);
+    const dead = logcat;
+    logcat = null;
+    dead.kill();
+    lastHeard = Date.now();
+    busy = false;
+    // The stream usually dies because the host adb server wedged; a reconnect
+    // re-establishes the transport before the new logcat asks for it.
+    adb('reconnect').then(startLogcat);
+  }
+}, 2000);
 
 await adb('shell', 'am', 'force-stop', PACKAGE);
 await adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-n', `${PACKAGE}/.MainActivity`, '-d', `'${PLAN_URL}'`);
