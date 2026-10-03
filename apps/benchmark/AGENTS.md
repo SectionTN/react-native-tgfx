@@ -21,9 +21,11 @@ ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease
   link fails with an undefined symbol.
 - After changing JS on a release build, delete
   `android/app/build/generated/assets` first or the old bundle ships.
-- `bun install` may print `Fail extracting tarball from react-native-skia-*`;
-  check `node_modules/react-native-skia-android/libs/android/arm64-v8a` exists
-  before building.
+- `bun install` runs `bench/install-dawn.sh`: react-native-skia 3 links
+  `libwebgpu_dawn.so`, which `react-native-skia-graphite-android` does not ship,
+  so it is copied from `react-native-webgpu@0.10.4` (same chrome-m154 Dawn).
+  A build that dies on `libwebgpu_dawn.so … missing and no known rule` means
+  the script did not run — run it by hand.
 
 ## Device prep — do all of it, every time
 
@@ -56,7 +58,7 @@ adb install -r -d android/app/build/outputs/apk/release/app-release.apk
 ## Run
 
 ```sh
-caffeinate -i -s node bench/run.mjs                           # full 12-combo matrix, ~6 min
+caffeinate -i -s node bench/run.mjs                           # full 18-combo matrix, ~9 min
 node bench/run.mjs --engines tgfx,skia --scenes paths --order alternate --reps 2
 node bench/run.mjs --present latency                          # Android ≤ 13
 ```

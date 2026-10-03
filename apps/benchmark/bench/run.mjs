@@ -25,8 +25,8 @@ const PACKAGE = arg('package', 'com.tgfxskiabench');
 // reads `dumpsys SurfaceFlinger --latency` present timestamps (Android <= 13).
 const PRESENT = arg('present', 'atrace');
 // Matrix selection, forwarded to the app through the launch URL (see App.tsx buildPlan).
-const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}`;
-const COMBOS = arg('engines', 'tgfx,skia').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
+const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia,graphite')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}`;
+const COMBOS = arg('engines', 'tgfx,skia,graphite').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
 const SETTLE_TICKS = 3;
 const HZ = 100; // Linux USER_HZ
 
@@ -45,11 +45,13 @@ const median = values => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
-/** combo key -> {ticks: [{js, ui}], cpu: [], pss: [], seen} */
+/** combo key -> per-second samples, plus per-thread CPU keyed by thread group */
 const combos = new Map();
 let current = null;
 function comboBucket(key) {
-  if (!combos.has(key)) combos.set(key, { ticks: [], cpu: [], pss: [], presents: [], seen: 0 });
+  if (!combos.has(key)) {
+    combos.set(key, { ticks: [], cpu: [], pss: [], java: [], native: [], graphics: [], presents: [], threads: new Map() });
+  }
   return combos.get(key);
 }
 
@@ -64,11 +66,12 @@ async function sample() {
   busy = true;
   const out = await adb(
     'shell',
-    `pid=$(pidof ${PACKAGE}); echo "PID $pid"; [ -n "$pid" ] && cat /proc/$pid/stat; dumpsys meminfo ${PACKAGE} | grep 'TOTAL PSS'`
+    `cat /proc/uptime; pid=$(pidof ${PACKAGE}); echo "PID $pid"; [ -n "$pid" ] && cat /proc/$pid/stat; dumpsys meminfo ${PACKAGE} | grep -E 'TOTAL PSS|Java Heap:|Native Heap:|Graphics:'`
   );
   busy = false;
   if (!out) return;
-  const now = Date.now();
+  // Device clock, not host: adb round trips add up to 2s of skew per sample.
+  const now = Number(out.match(/^(\d+\.\d+) /m)?.[1]) * 1000;
   const pid = out.match(/^PID (\d+)/m)?.[1];
   const stat = out.match(/^\d+ \(.*\) .*$/m)?.[0];
   if (pid && stat) {
@@ -84,8 +87,48 @@ async function sample() {
       lastCpu = { pid, ticks, at: now };
     }
   }
-  const pss = out.match(/TOTAL PSS:\s+(\d+)/);
-  if (pss && current) comboBucket(current).pss.push(Number(pss[1]));
+  if (!current) return;
+  const bucket = comboBucket(current);
+  for (const [field, label] of [['pss', 'TOTAL PSS'], ['java', 'Java Heap'], ['native', 'Native Heap'], ['graphics', 'Graphics']]) {
+    const kb = out.match(new RegExp(`${label}:\\s+(\\d+)`));
+    if (kb) bucket[field].push(Number(kb[1]));
+  }
+}
+
+// ---- per-thread CPU ---------------------------------------------------------
+// Two snapshots of every thread's utime+stime, 8s apart, inside the measured
+// window. Pool threads are grouped by name with the trailing index dropped.
+const THREAD_WINDOW_MS = 8000;
+async function threadSnapshot() {
+  const out = await adb('shell', `cat /proc/uptime; pid=$(pidof ${PACKAGE}); for t in /proc/$pid/task/*; do cat $t/stat; done 2>/dev/null`);
+  const at = Number(out?.match(/^(\d+\.\d+) /m)?.[1]);
+  const ticks = new Map();
+  for (const line of (out ?? '').split('\n')) {
+    const m = line.match(/^(\d+) \((.*)\) (.*)$/);
+    if (!m) continue;
+    const f = m[3].trim().split(/\s+/);
+    ticks.set(m[1], { name: m[2], ticks: Number(f[11]) + Number(f[12]) });
+  }
+  return { at, ticks };
+}
+async function sampleThreads(key) {
+  const a = await threadSnapshot();
+  await new Promise(r => setTimeout(r, THREAD_WINDOW_MS));
+  const b = await threadSnapshot();
+  const wall = b.at - a.at;
+  if (!(wall > 1)) return;
+  const groups = new Map();
+  for (const [tid, t] of b.ticks) {
+    const before = a.ticks.get(tid);
+    if (!before) continue;
+    const name = t.name === PACKAGE.slice(-15) ? 'UI' : t.name === 'mqt_v_js' ? 'JS' : t.name.replace(/[\s:_-]*[\d_]+$/, '');
+    groups.set(name, (groups.get(name) ?? 0) + ((t.ticks - before.ticks) / HZ / wall) * 100);
+  }
+  const threads = comboBucket(key).threads;
+  for (const [name, pct] of groups) {
+    if (!threads.has(name)) threads.set(name, []);
+    threads.get(name).push(pct);
+  }
 }
 let busy = false;
 
@@ -155,6 +198,10 @@ function finish(reason) {
       ui: median(measured.map(t => t.ui)),
       cpu: median(bucket.cpu),
       pss: median(bucket.pss) / 1024,
+      java: median(bucket.java) / 1024,
+      native: median(bucket.native) / 1024,
+      graphics: median(bucket.graphics) / 1024,
+      threads: new Map([...bucket.threads].map(([name, pcts]) => [name, median(pcts)])),
       n: measured.length,
     });
   }
@@ -166,6 +213,21 @@ function finish(reason) {
     ...rows.map(r =>
       `| ${r.key} | ${r.present == null ? '?' : r.present.toFixed(1)} | ${r.ui.toFixed(0)} | ${r.js.toFixed(0)} | ${r.cpu.toFixed(0)} | ${r.pss.toFixed(1)} | ${r.n} |`
     ),
+    '',
+    '## Where the CPU and memory go',
+    '',
+    '| engine · scene | UI thread % | JS thread % | busiest other threads % | Graphics MB | Native MB | Java MB |',
+    '|---|---|---|---|---|---|---|',
+    ...rows.map(r => {
+      const pct = name => (r.threads.get(name) ?? 0).toFixed(0);
+      const others = [...r.threads]
+        .filter(([name, p]) => name !== 'UI' && name !== 'JS' && p >= 1)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, p]) => `${name} ${p.toFixed(0)}`)
+        .join(', ');
+      return `| ${r.key} | ${pct('UI')} | ${pct('JS')} | ${others} | ${r.graphics.toFixed(1)} | ${r.native.toFixed(1)} | ${r.java.toFixed(1)} |`;
+    }),
   ];
   const report = lines.join('\n');
   console.log(`\n${report}\n`);
@@ -211,6 +273,7 @@ function onLogcat(chunk) {
       console.log(`[bench] >> ${current}`);
       const key = current;
       setTimeout(() => samplePresented(key), 6000);
+      setTimeout(() => sampleThreads(key), 7000);
       continue;
     }
     // The app freezes t=0 for 1.5s and prints this; a screencap inside the
