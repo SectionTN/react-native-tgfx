@@ -1,4 +1,4 @@
-// tgfx vs react-native-skia 3 (Canvas and GraphiteCanvas), one scene at a time. The app runs the
+// tgfx vs react-native-skia 3 (Graphite on Vulkan), one scene at a time. The app runs the
 // whole matrix by itself and prints one `[bench] tick ...` line per second to
 // logcat; bench/run.mjs pairs those with host-side CPU and PSS samples.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,7 +29,6 @@ import {
   Canvas as SkCanvas,
   Circle as SkCircle,
   Fill as SkFill,
-  GraphiteCanvas,
   Group as SkGroup,
   Image as SkImageView,
   ImageShader as SkImageShader,
@@ -47,14 +46,17 @@ const { width: W, height: H } = Dimensions.get('window');
 const CX = W / 2;
 const CY = H / 2;
 
-const ENGINES = ['tgfx', 'skia', 'graphite'] as const;
+// react-native-skia 3.8 has one canvas, on Graphite; 3.0's separate GraphiteCanvas is gone.
+const ENGINES = ['tgfx', 'skia'] as const;
 const SCENES = ['shapes', 'images', 'shader', 'pattern', 'paths', 'text'] as const;
 const COMBO_MS = 28_000; // 3s settle + 20s measured (run.mjs trims the settle)
 type Engine = (typeof ENGINES)[number];
 type Combo = [Engine, string];
 
-// Launch URL picks the matrix: bench://run?engines=skia,tgfx&scenes=paths&order=alternate&reps=2
+// Launch URL picks the matrix: bench://run?engines=skia,tgfx&scenes=paths&order=alternate&reps=2&gap=30
 // order=sequential runs every scene per engine; alternate runs both engines per scene.
+// gap=<seconds> idles with no canvas mounted between combos, so the phone cools the same
+// amount before every engine.
 function buildPlan(url: string | null): Combo[] {
   // RN's URLSearchParams has no get(), so split by hand.
   const q = new Map(
@@ -72,6 +74,11 @@ function buildPlan(url: string | null): Combo[] {
       ? scenes.flatMap(s => engines.map(e => [e, s] as Combo))
       : engines.flatMap(e => scenes.map(s => [e, s] as Combo));
   return Array.from({ length: reps }, () => one).flat();
+}
+
+function gapMsFrom(url: string | null): number {
+  const gap = Number(url?.match(/[?&]gap=(\d+(?:\.\d+)?)/)?.[1] ?? 0);
+  return Number.isFinite(gap) ? gap * 1000 : 0;
 }
 
 const PALETTE = [
@@ -181,8 +188,9 @@ function makeSkTexture(i: number, size: number): SkImage {
   paint.setColor(Skia.Color('#00000040'));
   canvas.drawRect({ x: size / 4, y: size / 4, width: size / 2, height: 6 }, paint);
   // Texture-backed snapshots cannot cross into the on-screen context — they
-  // draw as nothing. Raster copy makes the image context-free.
-  return surface.makeImageSnapshot().makeNonTextureImage()!;
+  // draw as nothing. Raster copy makes the image context-free (3.0 called it
+  // makeNonTextureImage).
+  return surface.makeImageSnapshot().makeRasterImageSync();
 }
 
 function tgfxTextureScene(i: number, size: number) {
@@ -360,8 +368,13 @@ export default function App() {
   const [tgfxImages, setTgfxImages] = useState<TgfxImage[]>([]);
   const [tgfxTile, setTgfxTile] = useState<TgfxImage | null>(null);
   const [plan, setPlan] = useState<Combo[] | null>(null);
+  const [gapMs, setGapMs] = useState(0);
+  const [cooling, setCooling] = useState(false);
   useEffect(() => {
-    Linking.getInitialURL().then(url => setPlan(buildPlan(url)));
+    Linking.getInitialURL().then(url => {
+      setGapMs(gapMsFrom(url));
+      setPlan(buildPlan(url));
+    });
   }, []);
   const done = plan != null && combo >= plan.length;
   const engine = plan == null || done ? 'done' : plan[combo][0];
@@ -434,31 +447,54 @@ export default function App() {
     };
   }, []);
 
-  // One tick line per second; run.mjs joins these with CPU/PSS samples.
+  // One tick line per second; run.mjs joins these with CPU/PSS samples. None while
+  // cooling: those seconds belong to no combo.
   useEffect(() => {
-    if (done) return;
+    if (done || cooling) return;
     const timer = setInterval(() => {
       console.log(`[bench] tick engine=${engine} scene=${scene} js=${jsFrames.current} ui=${uiFrames.value}`);
       jsFrames.current = 0;
       uiFrames.value = 0;
     }, 1000);
     return () => clearInterval(timer);
-  }, [engine, scene, done, uiFrames]);
+  }, [engine, scene, done, cooling, uiFrames]);
 
   // The matrix driver. Waits for the tgfx assets before combo 0 starts.
   const ready = tgfxImages.length === 8 && tgfxTile != null && plan != null;
+  const last = plan != null && combo >= plan.length - 1;
   useEffect(() => {
-    if (!ready || done) return;
+    if (!ready || done || cooling) return;
     console.log(`[bench] start engine=${engine} scene=${scene}`);
-    const timer = setTimeout(() => setCombo(c => c + 1), COMBO_MS);
+    const timer = setTimeout(
+      () => (gapMs > 0 && !last ? setCooling(true) : setCombo(c => c + 1)),
+      COMBO_MS
+    );
     return () => clearTimeout(timer);
-  }, [ready, combo, done, engine, scene]);
+  }, [ready, combo, done, cooling, gapMs, last, engine, scene]);
+
+  // The gap: the canvas unmounts and the phone idles, the same for every engine.
+  useEffect(() => {
+    if (!cooling) return;
+    console.log(`[bench] cool ms=${gapMs}`);
+    const timer = setTimeout(() => {
+      setCombo(c => c + 1);
+      setCooling(false);
+    }, gapMs);
+    return () => clearTimeout(timer);
+  }, [cooling, gapMs]);
 
   useEffect(() => {
     if (done) console.log('[bench] done');
   }, [done]);
 
   if (!ready) return <View style={styles.root} />;
+  if (cooling) {
+    return (
+      <View style={styles.root}>
+        <RNText style={styles.label}>cooling</RNText>
+      </View>
+    );
+  }
   if (done) {
     return (
       <View style={styles.root}>
@@ -473,21 +509,21 @@ export default function App() {
           <TgfxFill color="#101014" />
           <TgfxScene scene={scene} t={t} images={tgfxImages} tile={tgfxTile} />
         </TgfxCanvas>
-      ) : engine === 'skia' ? (
-        <SkCanvas style={StyleSheet.absoluteFill} opaque>
+      ) : (
+        <SkCanvas style={StyleSheet.absoluteFill} android={SK_ANDROID}>
           <SkFill color="#101014" />
           <SkiaScene scene={scene} t={t} images={skImages} tile={skTile} />
         </SkCanvas>
-      ) : (
-        <GraphiteCanvas style={StyleSheet.absoluteFill} opaque>
-          <SkFill color="#101014" />
-          <SkiaScene scene={scene} t={t} images={skImages} tile={skTile} />
-        </GraphiteCanvas>
       )}
       <RNText style={styles.label}>{`${engine} · ${scene}`}</RNText>
     </View>
   );
 }
+
+// The same kind of layer tgfx draws into by default (composite="layer"): an opaque
+// SurfaceView. Skia 3.8 defaults to a TextureView, which also hides it from the
+// runner's `queueBuffer - SurfaceView[...]` present counter.
+const SK_ANDROID = { backingView: 'SurfaceView', opaque: true } as const;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#101014' },

@@ -21,11 +21,10 @@ ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease
   link fails with an undefined symbol.
 - After changing JS on a release build, delete
   `android/app/build/generated/assets` first or the old bundle ships.
-- `bun install` runs `bench/install-dawn.sh`: react-native-skia 3 links
-  `libwebgpu_dawn.so`, which `react-native-skia-graphite-android` does not ship,
-  so it is copied from `react-native-webgpu@0.10.4` (same chrome-m154 Dawn).
-  A build that dies on `libwebgpu_dawn.so … missing and no known rule` means
-  the script did not run — run it by hand.
+- react-native-skia 3.8 ships `libwebgpu_dawn.so` itself (chrome-m157, through
+  `react-native-skia-graphite-android` and `react-native-webgpu-dawn`), so the
+  3.0-era `install-dawn.sh` copy step is gone. Do not copy an older Dawn in:
+  it would not match the m157 Graphite binaries.
 
 ## Device prep — do all of it, every time
 
@@ -58,13 +57,16 @@ adb install -r -d android/app/build/outputs/apk/release/app-release.apk
 ## Run
 
 ```sh
-caffeinate -i -s node bench/run.mjs                           # full 18-combo matrix, ~9 min
-node bench/run.mjs --engines tgfx,skia --scenes paths --order alternate --reps 2
+caffeinate -i -s node bench/run.mjs                           # full 12-combo matrix, ~6 min
+node bench/run.mjs --scenes paths --order alternate --reps 2
+caffeinate -i -s node bench/run.mjs --order alternate --reps 2 --gap 30   # a warm phone: idle 30 s between combos
 node bench/run.mjs --present latency                          # Android ≤ 13
 ```
 
 - `--order alternate` interleaves engines per scene; use it for A/B and
-  thermal-sensitive comparisons. Two reps in alternating order is the minimum
+  thermal-sensitive comparisons. The `thermal` column is the highest Android
+  thermal status seen as each combo started; anything above 1 means that row
+  ran throttled — add `--gap` and rerun. Two reps in alternating order is the minimum
   for a before/after claim; the present column is the median across reps.
 - Present FPS comes from SurfaceFlinger: `atrace gfx` `queueBuffer - SurfaceView[<pkg>`
   on Android 14+, `dumpsys SurfaceFlinger --latency` (`--present latency`) on

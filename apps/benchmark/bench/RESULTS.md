@@ -1,5 +1,8 @@
 # react-native-tgfx vs @shopify/react-native-skia — stress tier
 
+> Historical: measured against `@shopify/react-native-skia` 2.4.x. For react-native-skia
+> 3.8.1 see `results-2026-10-29-samsung-90hz-skia381-independent.md`.
+
 Samsung SM-E146B (90Hz), Android 15, release builds, new arch, RN 0.85.3,
 react-native-skia 2.4.x, tgfx from source.
 

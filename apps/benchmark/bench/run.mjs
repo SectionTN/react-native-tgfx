@@ -25,8 +25,11 @@ const PACKAGE = arg('package', 'com.tgfxskiabench');
 // reads `dumpsys SurfaceFlinger --latency` present timestamps (Android <= 13).
 const PRESENT = arg('present', 'atrace');
 // Matrix selection, forwarded to the app through the launch URL (see App.tsx buildPlan).
-const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia,graphite')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}`;
-const COMBOS = arg('engines', 'tgfx,skia,graphite').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
+// --gap <seconds> idles the phone with no canvas between combos, so heat from one
+// engine's run is not carried into the next one's.
+const GAP = Number(arg('gap', '0'));
+const PLAN_URL = `bench://run?engines=${arg('engines', 'tgfx,skia')}&scenes=${arg('scenes', 'shapes,images,shader,pattern,paths,text')}&order=${arg('order', 'sequential')}&reps=${arg('reps', '1')}&gap=${GAP}`;
+const COMBOS = arg('engines', 'tgfx,skia').split(',').length * arg('scenes', 'shapes,images,shader,pattern,paths,text').split(',').length * Number(arg('reps', '1'));
 const SETTLE_TICKS = 3;
 const HZ = 100; // Linux USER_HZ
 
@@ -50,7 +53,7 @@ const combos = new Map();
 let current = null;
 function comboBucket(key) {
   if (!combos.has(key)) {
-    combos.set(key, { ticks: [], cpu: [], pss: [], java: [], native: [], graphics: [], presents: [], threads: new Map() });
+    combos.set(key, { ticks: [], cpu: [], pss: [], java: [], native: [], graphics: [], presents: [], thermal: [], threads: new Map() });
   }
   return combos.get(key);
 }
@@ -132,6 +135,14 @@ async function sampleThreads(key) {
 }
 let busy = false;
 
+// Android's thermal status as each combo starts: a hot phone throttles whichever
+// engine runs next, and the table should show it.
+async function sampleThermal(key) {
+  const out = await adb('shell', 'dumpsys thermalservice | grep "Thermal Status"');
+  const status = Number(out?.match(/Thermal Status: (\d+)/)?.[1]);
+  if (Number.isFinite(status)) comboBucket(key).thermal.push(status);
+}
+
 // ---- presented frames ------------------------------------------------------
 // Thread FPS says the threads are healthy; only SurfaceFlinger knows what the
 // canvas actually put on screen. atrace `queueBuffer - <layer>` events count
@@ -202,17 +213,20 @@ function finish(reason) {
       native: median(bucket.native) / 1024,
       graphics: median(bucket.graphics) / 1024,
       threads: new Map([...bucket.threads].map(([name, pcts]) => [name, median(pcts)])),
+      thermal: bucket.thermal.length ? Math.max(...bucket.thermal) : null,
       n: measured.length,
     });
   }
   const lines = [
     `# tgfx vs skia bench (${reason})`,
     '',
-    '| engine · scene | Present FPS | UI FPS | JS FPS | CPU % (1 core = 100) | PSS MB | ticks |',
-    '|---|---|---|---|---|---|---|',
+    '| engine · scene | Present FPS | UI FPS | JS FPS | CPU % (1 core = 100) | PSS MB | thermal | ticks |',
+    '|---|---|---|---|---|---|---|---|',
     ...rows.map(r =>
-      `| ${r.key} | ${r.present == null ? '?' : r.present.toFixed(1)} | ${r.ui.toFixed(0)} | ${r.js.toFixed(0)} | ${r.cpu.toFixed(0)} | ${r.pss.toFixed(1)} | ${r.n} |`
+      `| ${r.key} | ${r.present == null ? '?' : r.present.toFixed(1)} | ${r.ui.toFixed(0)} | ${r.js.toFixed(0)} | ${r.cpu.toFixed(0)} | ${r.pss.toFixed(1)} | ${r.thermal ?? '?'} | ${r.n} |`
     ),
+    '',
+    '`thermal` is the highest Android thermal status (0 none … 3 severe) seen at the start of the combo\'s runs.',
     '',
     '## Where the CPU and memory go',
     '',
@@ -272,6 +286,7 @@ function onLogcat(chunk) {
       current = `${start[1]} · ${start[2]}`;
       console.log(`[bench] >> ${current}`);
       const key = current;
+      sampleThermal(key);
       setTimeout(() => samplePresented(key), 6000);
       setTimeout(() => sampleThreads(key), 7000);
       continue;
@@ -313,5 +328,5 @@ const logcatWatchdog = setInterval(() => {
 await adb('shell', 'am', 'force-stop', PACKAGE);
 await adb('shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-n', `${PACKAGE}/.MainActivity`, '-d', `'${PLAN_URL}'`);
 const timer = setInterval(sample, 1000);
-// combos x 28s + startup, with slack.
-setTimeout(() => finish('timeout'), (COMBOS * 28 + 60) * 1000);
+// combos x (28s + gap) + startup, with slack.
+setTimeout(() => finish('timeout'), (COMBOS * (28 + GAP) + 60) * 1000);

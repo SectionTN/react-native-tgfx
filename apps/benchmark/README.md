@@ -1,8 +1,8 @@
 # TgfxSkiaBench
 
-react-native-tgfx vs `react-native-skia` 3 (Graphite on Vulkan), one scene at a
-time, on a release build. Three engines: `tgfx`, `skia` (skia's `Canvas`) and
-`graphite` (skia's `GraphiteCanvas`). The app runs a scene matrix by itself and prints one
+react-native-tgfx vs `react-native-skia` 3.8.1 (Graphite on Vulkan), one scene at a
+time, on a release build. Two engines: `tgfx` and `skia`; since 3.8 skia has a single
+`Canvas`, on Graphite (3.0's separate `GraphiteCanvas` is gone). The app runs a scene matrix by itself and prints one
 `[bench] tick engine=… scene=… js=… ui=…` line per second to logcat;
 `bench/run.mjs` on the host pairs those with CPU (`/proc/<pid>/stat`), PSS
 (`dumpsys meminfo`) and the presented frame rate (SurfaceFlinger), and writes a
@@ -30,10 +30,11 @@ app and the rows stop.
 
 | flag | default | |
 |---|---|---|
-| `--engines` | `tgfx,skia,graphite` | engine order; `skia,tgfx` runs skia first |
+| `--engines` | `tgfx,skia` | engine order; `skia,tgfx` runs skia first |
 | `--scenes` | all six | subset, e.g. `paths,text` |
 | `--order` | `sequential` | `alternate` runs every engine per scene |
 | `--reps` | `1` | repeat the matrix; present FPS is the median across reps |
+| `--gap` | `0` | seconds idle between combos, no canvas mounted, so heat from one run is not carried into the next |
 | `--present` | `atrace` | `latency` on Android ≤ 13, where `atrace gfx` has no SurfaceFlinger `queueBuffer` events |
 | `--package` | `com.tgfxskiabench` | |
 
@@ -67,13 +68,13 @@ What every engine gets, identically:
 - One set of layout arrays (`SHAPES`, `IMAGE_CELLS`, `PATHS_900`, `TEXTS`),
   one palette, one SkSL source, one stroke width, one 14 px sans-serif font,
   one rotation shared value. Each engine binds it the way its docs say to
-  (tgfx slot props, skia `useDerivedValue`); `skia` and `graphite` render the
-  same `SkiaScene` children, only the canvas differs.
+  (tgfx slot props, skia `useDerivedValue`).
 - Anti-aliasing on by default (`JsiSkPaint` sets it; tgfx encodes
-  `antiAlias` unless `false`). Every canvas is `absoluteFill` and `opaque`, so
-  each draws through a `SurfaceView` and the present counter reads the same
-  kind of layer.
-- Vulkan on Android for all three: tgfx by default, react-native-skia 3 because
+  `antiAlias` unless `false`). Every canvas is `absoluteFill` and opaque, and
+  each draws through a `SurfaceView`, so the present counter reads the same
+  kind of layer: tgfx by default, skia through
+  `android={{ backingView: 'SurfaceView' }}` (3.8 defaults to a `TextureView`).
+- Vulkan on Android for both: tgfx by default, react-native-skia 3 because
   Graphite is its only Android backend.
 - The same measurement: present FPS at SurfaceFlinger, thread FPS from a
   frame callback and `requestAnimationFrame` that know nothing about any
@@ -83,28 +84,30 @@ What every engine gets, identically:
 
 What differs, on purpose:
 
-- **Threading.** tgfx renders on its own `TgfxRender` thread; its UI thread
-  stays at 5–12 % of a core. Both skia 3 canvases spend 20–38 % of a core on
-  the UI thread and replay on a four-thread `RNSkia Render` pool, and measure
-  the same in every column. Neither skia canvas drags the UI or JS thread
-  below the refresh rate except on the shader scene (30/30).
+- **Threading.** tgfx renders on its own `TgfxRender` thread; skia 3.8 records
+  on a four-thread `RNSkia Render` pool and submits from `RNSkia Present`. Neither
+  drags the UI or JS thread below the refresh rate on any scene (3.0's `Canvas`
+  fell to 30/30 on the shader; 3.8.1 holds 90/90).
 - **Stress, not typical.** Static scenes under one animated group at extreme
   counts measure the draw path, not scene rebuilds.
 
-Samsung SM-E146B (Exynos 1330, Android 15, 90 Hz), react-native-skia 3.0.0,
-engines alternating per scene, present FPS median of 2 reps
-(`bench/results-2026-10-02-samsung-90hz-skia3-alternate.md`):
+Samsung SM-E146B (Exynos 1330, Android 15, 90 Hz), react-native-skia 3.8.1,
+measured independently: a separate app re-implementing these scenes and a separate
+runner (SurfaceFlinger `--latency` present timestamps), engines alternating, mean of
+2 runs, thermal status 0–1 throughout
+(`bench/results-2026-10-29-samsung-90hz-skia381-independent.md`, which also has
+neutral layouts):
 
-| scene | tgfx | skia `Canvas` | skia `GraphiteCanvas` | skia 2.11.1 `Canvas` (GL, Sep 16) |
+| scene | tgfx | skia 3.8.1 | skia 3.0.0 `Canvas` (Oct 2) | skia 2.11.1 `Canvas` (GL, Sep 16) |
 |---|---|---|---|---|
-| shapes | 59.8 | 20.4 | 20.6 | 27.0 |
-| images | 89.9 | 42.1 | 41.4 | 82.4 |
-| shader | 15.1 | 15.0 | 15.1 | 15.1 |
-| pattern | 90.2 | 89.9 | 89.8 | 90.3 |
-| paths | 90.2 | 82.5 | 86.1 | 90.0 |
-| text | 68.9 | 25.4 | 25.7 | 33.8 |
+| shapes | 60.5 | 25.8 | 20.4 | 27.0 |
+| images | 90.3 | 66.1 | 42.1 | 82.4 |
+| shader | 15.0 | 9.3 | 15.0 | 15.1 |
+| pattern | 90.3 | 84.8 | 89.9 | 90.3 |
+| paths | 90.3 | 17.6 | 82.5 | 90.0 |
+| text | 68.3 | 34.4 | 25.4 | 33.8 |
 
-Threads hold at 87–91 for every engine except the skia shader rows (30/28 and
-31/29). tgfx is the only engine whose UI and JS stay at 91 there too. The
-per-thread CPU and memory breakdown is in
-`bench/results-2026-10-02-samsung-90hz-skia3-breakdown.md`.
+UI and JS hold at 90 for both engines in every row. Skia 3.8.1's shader and paths
+rows run at 99–100 % GPU busy at the full 949 MHz; this app and `bench/run.mjs`
+reproduce them (paths 17.8, shader 9.3:
+`bench/results-2026-10-29-samsung-90hz-skia381-crosscheck.md`).
