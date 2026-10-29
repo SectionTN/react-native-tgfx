@@ -63,7 +63,13 @@ export function createDocsRoute(source: Source) {
     generateMetadata: async ({ params }: { params: Params }) => {
       const page = source.getPage((await params).slug)
       if (!page) notFound()
-      return { title: page.data.title, description: page.data.description }
+      const image = `/og${page.url}/image.png`
+      return {
+        title: page.data.title,
+        description: page.data.description,
+        openGraph: { images: image },
+        twitter: { card: 'summary_large_image', images: image },
+      }
     },
   }
 }

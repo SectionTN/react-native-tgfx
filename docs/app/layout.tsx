@@ -7,6 +7,8 @@ const sans = Geist({ subsets: ['latin'], variable: '--font-geist' })
 const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata = {
+  metadataBase: new URL('https://tgfx.margelo.com'),
+  twitter: { card: 'summary_large_image' },
   title: { default: 'react-native-tgfx', template: '%s · react-native-tgfx' },
   description:
     'A declarative GPU 2D canvas for React Native, backed by Tencent tgfx. Animate on the thread that paints.',
