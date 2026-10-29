@@ -8,9 +8,7 @@
     "build": "bun run docs:api && fumadocs-mdx && next build",
     "start": "next start",
     "clean": "rm -rf .next .source content/api",
-    "postinstall": "fumadocs-mdx",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
     "fumadocs-core": "16.14.0",
@@ -22,7 +20,6 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "1.20.2",
     "@tailwindcss/postcss": "^4.1.14",
     "@types/mdx": "^2.0.13",
     "@types/node": "^22.10.2",
@@ -33,7 +30,6 @@
     "typedoc": "0.28.19",
     "typedoc-plugin-frontmatter": "1.3.1",
     "typedoc-plugin-markdown": "4.11.0",
-    "typescript": "^5.7.2",
-    "wrangler": "4.118.0"
+    "typescript": "^5.7.2"
   }
 }

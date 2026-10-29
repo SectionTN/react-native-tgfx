@@ -100,7 +100,7 @@ directly. The header is plain Objective-C, so a Swift `AppDelegate` reaches it
 through a bridging header — importing the `NitroTgfx` module does not work,
 because its umbrella re-exports C++ headers.
 
-```objectivec title="YourApp-Bridging-Header.h"
+```objc title="YourApp-Bridging-Header.h"
 #import <NitroTgfx/TgfxPrewarm.h>
 ```
 
