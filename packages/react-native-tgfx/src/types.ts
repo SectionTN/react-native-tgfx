@@ -23,7 +23,7 @@ export type { PixelFormat, TgfxImage } from './specs/TgfxImage.nitro'
 /**
  * What a drawable image has to expose: a registry id and its size. A
  * {@link TgfxImage} from `useImage` is one, and so is a video's frame from
- * `useVideo` — that one is owned natively and has no handle to dispose.
+ * `useVideo` - that one is owned natively and has no handle to dispose.
  */
 export interface ImageLike {
   readonly handle: number
@@ -42,7 +42,7 @@ export interface PaintProps {
   ref?: NodeHandle
   /**
    * Skip drawing (and hit-testing) this node. A value slot, so a handle or a
-   * SharedValue toggles it with no re-encode — the supported way to pool
+   * SharedValue toggles it with no re-encode - the supported way to pool
    * mounted nodes for particle systems and variable-count scenes.
    */
   visible?: Animated<boolean | number>
@@ -87,9 +87,9 @@ export interface GroupProps extends PaintProps {
   layer?: boolean
   /**
    * Record this subtree once and replay the recording every frame, for a static
-   * background a scene redraws but never changes — a map, a chart grid.
+   * background a scene redraws but never changes - a map, a chart grid.
    *
-   * Ignored, with a warning, if anything under it changes between frames — an
+   * Ignored, with a warning, if anything under it changes between frames - an
    * animated value, a video or camera frame, an image still decoding. A
    * recording would freeze those. Cheap to leave on otherwise; the recording is
    * rebuilt whenever the scene recommits.
@@ -100,7 +100,7 @@ export interface GroupProps extends PaintProps {
   picture?: boolean
   /**
    * Share one 3D space with the child groups, so their 3D transforms hide one
-   * another by depth — the faces of a cube. Without it each child is flattened
+   * another by depth - the faces of a cube. Without it each child is flattened
    * into this group's plane and drawn in order. Needs a GPU surface: inside a
    * `picture` recording or an export, the children are drawn flattened. As in
    * CSS, `clip`, `layer`, `picture` or a `<FilmGrain>` on this group flatten it.
@@ -149,7 +149,7 @@ export interface PathProps extends PaintProps {
    * changes, with no scene re-encode.
    */
   path: Animated<string>
-  /** Where along the path to start drawing, 0-1. Animatable — this is line-drawing. */
+  /** Where along the path to start drawing, 0-1. Animatable - this is line-drawing. */
   start?: Animated<number>
   /** Where to stop, 0-1. `end` below `start` draws the segment reversed. */
   end?: Animated<number>
@@ -177,7 +177,7 @@ export interface ImageProps extends PaintProps {
   height: Animated<number>
   /**
    * A native image handle from `useImage`. `null` draws nothing. Swappable
-   * through a node handle — `handle.set({ image })` patches the registry id in
+   * through a node handle - `handle.set({ image })` patches the registry id in
    * place, no re-encode.
    */
   image: ImageLike | null
@@ -185,7 +185,7 @@ export interface ImageProps extends PaintProps {
   fit?: Fit
   /** Defaults to `'linear'`. Use `'mipmap'` for large images in small boxes. */
   sampling?: Sampling
-  /** Source sub-rect, in image pixels — animatable, for sprite-sheet stepping. */
+  /** Source sub-rect, in image pixels - animatable, for sprite-sheet stepping. */
   rect?: SrcRect
 }
 
@@ -241,7 +241,7 @@ export type MeshTopology = 'triangles' | 'triangleStrip'
 export interface VerticesProps extends PaintProps {
   /**
    * A shared mesh buffer from `useVertexBuffer`: positions (and reserved
-   * texture/colour/index sections) written in place and read at draw — the
+   * texture/colour/index sections) written in place and read at draw - the
    * zero-allocation path for per-frame mesh deformation. Replaces the inline
    * arrays below when given.
    */
@@ -268,7 +268,7 @@ export interface VerticesProps extends PaintProps {
   /**
    * Indices into `vertices`. Without them the vertices are taken in order.
    * Indexed meshes are capped at 65536 vertices, and every index must be in
-   * range — one that is not skips the whole mesh.
+   * range - one that is not skips the whole mesh.
    */
   indices?: number[]
   /** Defaults to `'triangles'`. */
@@ -297,7 +297,7 @@ export interface HitTestResult {
  * content it frosts, and the region is its `clip` rect.
  *
  * The panel is not painted, it is sampled, so of the inherited paint only
- * `opacity`, `visible` and `ref` apply, plus the alpha of `color` — its RGB,
+ * `opacity`, `visible` and `ref` apply, plus the alpha of `color` - its RGB,
  * the stroke props and any paint or shader child are all ignored. A `ref`
  * patches values; a backdrop has no hit bounds, so it is never pressable.
  */
@@ -318,8 +318,8 @@ export interface BackdropProps extends PaintProps {
  * this path.
  *
  * Every field here is animatable and every one is a value slot, so driving the
- * material from a SharedValue — a highlight that tracks device tilt, a frost
- * that fades in — costs one slot write per frame and no scene re-encode. Only
+ * material from a SharedValue - a highlight that tracks device tilt, a frost
+ * that fades in - costs one slot write per frame and no scene re-encode. Only
  * the inherited `r` is static: it is a clip, not a material parameter.
  */
 export interface GlassProps extends Omit<BackdropProps, 'blur'> {
@@ -343,7 +343,7 @@ export interface GlassProps extends Omit<BackdropProps, 'blur'> {
   lightAngle?: Animated<number>
   /**
    * How bright the edge highlight is, 0–100 (values above 100 are not clamped).
-   * Defaults to 50 — tgfx's own default is 80, which reads as chrome rather
+   * Defaults to 50 - tgfx's own default is 80, which reads as chrome rather
    * than glass over most content. 0 removes the highlight and leaves the
    * refraction and frost alone.
    */
@@ -354,7 +354,7 @@ export interface CameraFrameProps extends PaintProps {
   /**
    * A hardware-buffer handle from `imageFromNativeBuffer`, re-pointed at each
    * new frame with `image.setNativeBuffer(...)`. `null` draws nothing at all,
-   * children included — there is no frame to place them against.
+   * children included - there is no frame to place them against.
    */
   image: ImageLike | null
   /**
@@ -370,7 +370,7 @@ export interface CameraFrameProps extends PaintProps {
    * +90° from upright) needs `270`.
    *
    * Rounded to the nearest quarter turn and wrapped, so `-90` and `270` are the
-   * same thing — a detector or camera API that reports signed degrees can be
+   * same thing - a detector or camera API that reports signed degrees can be
    * passed straight through.
    */
   rotation?: number
@@ -435,7 +435,7 @@ export interface FontProps {
  */
 export interface ParagraphProps {
   /**
-   * Wrap width in px. Without it, text is only broken at explicit `\n` — which
+   * Wrap width in px. Without it, text is only broken at explicit `\n` - which
    * is the cheap single-line path, unchanged.
    */
   width?: number
@@ -455,7 +455,7 @@ export interface TextProps extends PaintProps, FontProps, ParagraphProps {
   /**
    * A SharedValue (or a `handle.set({ text })` write) gets a string slot: the
    * engine re-shapes on the render thread when the value changes, with no
-   * re-encode — the live-counter path.
+   * re-encode - the live-counter path.
    *
    * Optional because `<Span>` children (inherited from {@link PaintProps}) are
    * the other way to give a `<Text>` its content, and they replace this when
@@ -467,7 +467,7 @@ export interface TextProps extends PaintProps, FontProps, ParagraphProps {
 /**
  * Text laid along an SVG path: each glyph is placed at its own advance along the
  * curve and rotated to the tangent there. The path is the baseline, so there is
- * no `x`/`y` — and no wrapping, since the path is the line.
+ * no `x`/`y` - and no wrapping, since the path is the line.
  */
 export interface TextPathProps extends PaintProps, FontProps {
   /** SVG path data, read once per commit, exactly as `<Path>` reads it. */
@@ -480,7 +480,7 @@ export interface TextPathProps extends PaintProps, FontProps {
 
 /**
  * A styled run inside a `<Text>` or `<TextPath>`. Everything it does not set is
- * the paragraph's — so a bold word is `<Span text="..." fontWeight={700} />`.
+ * the paragraph's - so a bold word is `<Span text="..." fontWeight={700} />`.
  *
  * `fontSize` here is static on purpose. The paragraph's `fontSize` is the one
  * with an animation slot; the layout is memoised against it, and a second
@@ -506,7 +506,7 @@ export interface PlacedGlyph {
 
 /**
  * Explicitly positioned glyphs: the escape hatch for a caller doing its own
- * layout. There is no shaping, no line breaking and no font fallback here — an
+ * layout. There is no shaping, no line breaking and no font fallback here - an
  * id the face does not have draws `.notdef`.
  *
  * Get the ids from `glyphIds()` with the same font props.
@@ -563,7 +563,7 @@ export interface CanvasHandle {
   save(path: string, options?: SnapshotOptions): Promise<void>
   /**
    * Force a frame without a React commit. Only needed for state the scene
-   * points at rather than holds — an image handle re-pointed at new pixels, say.
+   * points at rather than holds - an image handle re-pointed at new pixels, say.
    * A `NodeHandle.set` already redraws on its own.
    */
   redraw(): void
@@ -577,13 +577,13 @@ export interface CanvasHandle {
    * transforms forward.
    *
    * Only nodes carrying a `useNode()` handle can be named, so a hit on an
-   * unnamed node reports `node: null` — the `path` is still there if you want
+   * unnamed node reports `node: null` - the `path` is still there if you want
    * to tell two anonymous hits apart.
    */
   hitTest(x: number, y: number, options?: HitTestOptions): HitTestResult[]
 
   /**
-   * Move the root viewport — the zoom/pan the renderer owns.
+   * Move the root viewport - the zoom/pan the renderer owns.
    *
    * One native write and a redraw: no React render, no scene recommit, no wire
    * traffic, because the transform sits above the whole draw program. That is
@@ -609,7 +609,7 @@ export interface CanvasHandle {
  *
  * `zoom` scales about the scene origin and `x`/`y` translate in canvas points
  * *after* it, the order a scroll view uses. To pinch about a focal point
- * `(fx, fy)` — the gesture centroid, in canvas points — hold the scene point
+ * `(fx, fy)` - the gesture centroid, in canvas points - hold the scene point
  * under it still:
  *
  * ```ts
@@ -622,7 +622,7 @@ export interface CanvasHandle {
  * })
  * ```
  *
- * Fields are plain numbers — the viewport is a native write above the draw
+ * Fields are plain numbers - the viewport is a native write above the draw
  * program, never a value slot. To drive it from a gesture without touching the
  * JS thread, pass the whole object as one `SharedValue<Viewport>` to
  * `<Canvas viewport>` and write it from the gesture worklet; the update is
@@ -652,7 +652,7 @@ export interface CanvasProps {
    * `{ Family: [require('./Family-Regular.ttf'), ...] }`.
    *
    * The canvas registers them and withholds its children until every face is
-   * in, so text never flashes in the platform fallback — no hook, no gating in
+   * in, so text never flashes in the platform fallback - no hook, no gating in
    * user code. Registration is process-wide and permanent, exactly as
    * `loadFonts` does it; a failed load warns and renders anyway, since
    * fallback text beats a canvas that stays blank forever.
@@ -680,7 +680,7 @@ export interface CanvasProps {
    * `'display-p3'` creates a P3 surface, so wide-gamut images and gradients keep
    * their colour on a P3 screen instead of being clamped. Note that a `color`
    * prop is still carried as sRGB in the draw program, so `color(display-p3 …)`
-   * remains a compile-time conversion — this widens what images and gradients
+   * remains a compile-time conversion - this widens what images and gradients
    * can show, not what a packed colour can express.
    *
    * **Read once, when the canvas mounts.** The surface takes its colour space
@@ -699,11 +699,11 @@ export interface CanvasProps {
    */
   opaque?: boolean
   /**
-   * A root zoom/pan the renderer owns — see {@link Viewport}.
+   * A root zoom/pan the renderer owns - see {@link Viewport}.
    *
    * Applied above the whole draw program, so moving it never re-encodes the
    * scene. A plain object is set from the commit. A `SharedValue<Viewport>` is
-   * pushed from the UI thread whenever it is written — a gesture worklet can
+   * pushed from the UI thread whenever it is written - a gesture worklet can
    * drive it with no JS-thread hop and no React render. Drive it from one side
    * or the other, not both.
    */
@@ -724,7 +724,7 @@ export interface GradientStops {
    * SharedValue channel animates; a handle's `set({ colors })` patches them all.
    */
   colors: Color[]
-  /** Stop offsets in 0..1. Animatable — each is a value slot when live. */
+  /** Stop offsets in 0..1. Animatable - each is a value slot when live. */
   positions?: Animated<number>[]
   /** A handle from `useNode()`, for patching this gradient without a render. */
   ref?: NodeHandle
@@ -827,7 +827,7 @@ export interface DropShadowProps {
  * and takes its strength from `opacity`.
  */
 export interface FilmGrainProps {
-  /** Grain size in points — larger is coarser. Defaults to 4. */
+  /** Grain size in points - larger is coarser. Defaults to 4. */
   size?: Animated<number>
   /** How much of the group the grain reaches, 0–1. Defaults to 0.5. */
   density?: Animated<number>
@@ -844,7 +844,7 @@ export interface FilmGrainProps {
   /**
    * Colourless grain only: overall strength, 0–1. Defaults to 1. It is not
    * written in the other two modes, so a handle write there re-encodes and
-   * changes nothing — set the colour's alpha instead.
+   * changes nothing - set the colour's alpha instead.
    */
   opacity?: Animated<number>
   /**
@@ -890,7 +890,7 @@ export type LumaProps = Record<string, never>
  * transparent, alpha at or above it fully opaque. Colours are untouched.
  *
  * tgfx's own, with no Skia equivalent. Useful for turning a blurred alpha into
- * a solid shape — a sticker outline, a metaball — by blurring first and
+ * a solid shape - a sticker outline, a metaball - by blurring first and
  * thresholding after, which the ordering rule below makes expressible.
  */
 export interface AlphaThresholdProps {

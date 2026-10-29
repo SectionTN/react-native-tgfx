@@ -29,12 +29,12 @@ export interface OffscreenSurfaceOptions {
 }
 
 /**
- * A retained GPU surface for headless rendering — create once, render many.
+ * A retained GPU surface for headless rendering - create once, render many.
  *
  * Attach a `Scene` (`scene.attach(surface)`), or drive it directly with the
  * `setScene`/`setValues` view contract; `flush()` renders on a dedicated
  * offscreen worker, and `toImage()`/`save()` read the frame back only when
- * asked. Free it with `dispose()` — the GPU memory is explicit-lifetime.
+ * asked. Free it with `dispose()` - the GPU memory is explicit-lifetime.
  *
  * For a single export, `renderToImage` stays the cheaper call: a surface earns
  * its keep when the same scene renders repeatedly.

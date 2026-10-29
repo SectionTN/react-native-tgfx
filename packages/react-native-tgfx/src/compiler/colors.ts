@@ -5,7 +5,7 @@ import { resolveNumber, type SharedValueLike } from './values'
 
 /**
  * Red, green, blue, alpha, each 0..1. The one colour form that can carry a
- * SharedValue per channel, and so the one the engine can patch per frame — a
+ * SharedValue per channel, and so the one the engine can patch per frame - a
  * packed integer cannot survive the float32 slot it would have to travel in.
  */
 export type ColorComponents = readonly [
@@ -345,7 +345,7 @@ function warnUnparseable(str: string): void {
  * in. Components are 0..1 rather than 0..255.
  *
  * Only `display-p3` and `srgb` are accepted, and a P3 colour is **converted to
- * sRGB here** rather than carried through — the wire format holds one packed
+ * sRGB here** rather than carried through - the wire format holds one packed
  * sRGB word per colour. On a P3 surface that clamps the extra gamut, which is
  * the honest behaviour until the program can carry a colour space.
  */

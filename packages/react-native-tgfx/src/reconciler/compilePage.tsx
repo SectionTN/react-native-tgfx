@@ -1,5 +1,5 @@
 // The ReactNode adapter for the offscreen renderers. The only reason the
-// export path ever touches React — lazy-required from offscreen.ts so the
+// export path ever touches React - lazy-required from offscreen.ts so the
 // imperative path never loads the reconciler.
 import React, { type ReactNode } from 'react'
 import { TgfxRoot } from './Reconciler'

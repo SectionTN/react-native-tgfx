@@ -6,7 +6,7 @@ export const nativeMocks = {
   assetSource: null as { uri: string } | null,
   hybridObject: (): unknown => ({}),
   hostComponent: (() => null) as ComponentType<never>,
-  /// createHybridObject invocations — the number the singleton tests assert on.
+  /// createHybridObject invocations - the number the singleton tests assert on.
   /// hybridObject() itself now fires per method dispatch (see the proxy below).
   hybridCreations: 0,
 }
@@ -27,7 +27,7 @@ mock.module('react-native-nitro-modules', () => ({
         {},
         {
           // Only `get` is trapped: `in`, spread and Object.keys see an empty
-          // object, and every access re-invokes hybridObject() — keep mock
+          // object, and every access re-invokes hybridObject() - keep mock
           // state in closures, never on the returned object.
           get: (_target, prop) =>
             (nativeMocks.hybridObject() as Record<PropertyKey, unknown>)[prop],

@@ -10,11 +10,8 @@ icon: Download
 npm install react-native-tgfx@alpha react-native-nitro-modules
 ```
 
-tgfx ships prebuilt per ABI (Android archive, iOS `xcframework`). No postinstall
-step.
-
-Also install `react-native-reanimated` and `react-native-worklets` — required
-for animated, camera-frame and video paths; skip if nothing animates.
+Animation, camera and video also need `react-native-reanimated` and
+`react-native-worklets`.
 
 ## 2. Build
 
@@ -47,13 +44,7 @@ export default function App() {
 
 ## Rendering backend (Android)
 
-The Android renderer runs on **Vulkan by default** — on our device stress
-benchmark it presents up to 24% more frames per second than the OpenGL ES
-backend at 15–30% lower CPU cost, with the biggest wins on GPU-bound scenes.
-Prebuilts for all four ABIs ship in the package.
-
-To fall back to OpenGL ES — an older device fleet, a driver you do not trust,
-or a bug you want to bisect — add one line to your app:
+Vulkan is the default. For OpenGL ES, add:
 
 ```properties title="android/gradle.properties"
 TgfxVulkan=OFF
@@ -61,10 +52,8 @@ TgfxVulkan=OFF
 
 ## Prewarm (optional)
 
-`Tgfx.prewarm()` in `Application.onCreate` on Android, and a `TgfxPrewarm`
-key in `Info.plist` on iOS, build the GPU device and the font table on a
-background thread before React Native starts, so the first canvas does not pay
-for them — see
+Call `Tgfx.prewarm()` in `Application.onCreate` (Android) or add a `TgfxPrewarm`
+key to `Info.plist` (iOS) so the first canvas mounts faster. See
 [Performance § Prewarm at launch](/docs/performance#prewarm-at-launch).
 
 ## Camera (optional)
@@ -74,17 +63,3 @@ npm install react-native-vision-camera react-native-vision-camera-worklets
 ```
 
 See [Camera frames](/docs/camera).
-
-## Native binary check
-
-The JavaScript writer and C++ reader share a scene version. After that version
-changes, an `unexpected header` warning or blank canvas means the installed APK
-still contains the old native reader, so rebuild the app. To inspect a release
-APK directly:
-
-```bash
-unzip -l android/app/build/outputs/apk/release/app-release.apk | grep NitroTgfx
-```
-
-The packaged Android build contains one `lib/<abi>/libNitroTgfx.so` for each of
-`arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`.

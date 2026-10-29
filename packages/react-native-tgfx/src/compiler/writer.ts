@@ -12,7 +12,7 @@ import {
  * Writer for the binary draw-program the native engine consumes.
  *
  * The program is a flat `Float64Array` written in tree preorder, so compiling a
- * scene is a run of stores into one reused buffer — no intermediate objects and
+ * scene is a run of stores into one reused buffer - no intermediate objects and
  * no JSON. Strings (path data, text, image sources, shader source) are rare and
  * variable-width, so they travel beside the buffer in a string table and the
  * buffer holds their indices.
@@ -40,7 +40,7 @@ export const SCENE_VERSION = 31
  * Encode a string table as a delta against the one the engine already holds:
  * element 0 is the number of leading entries it keeps, the rest replaces
  * everything after them. Entries carry the payloads that scale with content
- * rather than node count — path data, text, shader source — and they are
+ * rather than node count - path data, text, shader source - and they are
  * byte-identical across commits, so re-sending them costs a Nitro marshal, a
  * UTF-8 conversion and a full hash scan per commit for nothing. Images are not
  * among them: they travel as an integer handle.

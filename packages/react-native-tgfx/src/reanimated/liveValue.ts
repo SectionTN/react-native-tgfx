@@ -17,15 +17,15 @@ const LIVE = new WeakSet<object>()
  * A live slot backed by the handle's native block instead of a Reanimated
  * SharedValue. A SharedValue written from the JS thread serializes a fresh
  * worklet per write; at the write rates an imperative handle exists for
- * (`set()` on a timer or per gesture frame) that garbage outruns the GC —
- * measured ~170 KB/s of native heap on an idle demo screen — because its
+ * (`set()` on a timer or per gesture frame) that garbage outruns the GC -
+ * measured ~170 KB/s of native heap on an idle demo screen - because its
  * native weight is invisible to the JS heaps. A block slot write is one
  * aligned 8-byte store into memory every runtime shares: no serialization, no
  * allocation, nothing for a GC to chase.
  *
  * On the runtime that created it, `value` is a real accessor over the block,
- * so every existing `.value` read and write — the compiler snapshot, seeding,
- * `applyOnJS` — works unchanged. A worklet capture clones it, which freezes
+ * so every existing `.value` read and write - the compiler snapshot, seeding,
+ * `applyOnJS` - works unchanged. A worklet capture clones it, which freezes
  * `value` into a stale plain number; worklet-side code must go through
  * {@link readLiveNumber}/{@link writeLiveNumber}, which reach the live bytes
  * through the boxed hybrid that survives the capture.
@@ -76,7 +76,7 @@ export function liveStringFromBlock(block: FlagBlock, at: number, initial: strin
   return slot
 }
 
-/** Read a live number wherever it is — block slot (cloned or not) or SharedValue. */
+/** Read a live number wherever it is - block slot (cloned or not) or SharedValue. */
 export function readLiveNumber(v: MaybeSharedValue<unknown>): number {
   'worklet'
   const at = (v as Partial<BlockSlot>).__tgfxAt
@@ -97,7 +97,7 @@ export function writeLiveNumber(v: MaybeSharedValue<unknown>, x: number): void {
   ;(v as MaybeSharedValue<number>).value = x
 }
 
-/** Read a live string — block slot (cloned or not) or SharedValue. */
+/** Read a live string - block slot (cloned or not) or SharedValue. */
 export function readLiveString(v: MaybeSharedValue<unknown>): string {
   'worklet'
   const at = (v as Partial<BlockStringSlot>).__tgfxStrAt
@@ -135,7 +135,7 @@ export function isBlockSlot(v: unknown): boolean {
  * instead of a re-encode.
  *
  * A real SharedValue whenever Reanimated is installed, because it has to be
- * writable from the UI thread — both by the animation driver's mapper, which
+ * writable from the UI thread - both by the animation driver's mapper, which
  * copies a plain object over once and would then push the stale copy back every
  * frame, and by an imperative write inside a worklet.
  */
@@ -171,7 +171,7 @@ export function isLive(value: MaybeSharedValue<unknown>): boolean {
 }
 
 /**
- * Reanimated's own `runOnJS`, which is itself a worklet — so it can be captured
+ * Reanimated's own `runOnJS`, which is itself a worklet - so it can be captured
  * by one of ours and called on the UI thread. A wrapper around it could not: a
  * plain function reached from a worklet is a remote handle, and calling one on
  * the UI runtime throws.

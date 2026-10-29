@@ -1,18 +1,18 @@
 import type { HybridObject } from 'react-native-nitro-modules'
 
 /**
- * A block of floats shared between JS and the renderer, for bulk per-frame data
- * — atlas sprites and mesh vertices — where per-slot patching would mean
+ * A block of floats shared between JS and the renderer, for bulk per-frame data -
+ * atlas sprites and mesh vertices - where per-slot patching would mean
  * thousands of slots.
  *
  * The allocation is native and registered under {@link id}; the draw program
  * carries the id, and the renderer reads the floats directly at draw. JS (or a
- * worklet — the `ArrayBuffer` maps the same memory on every runtime) writes
+ * worklet - the `ArrayBuffer` maps the same memory on every runtime) writes
  * into a `Float32Array` view, so a frame of sprite updates is a run of float
  * stores: no marshalling, no allocation, no re-encode.
  *
- * One writer at a time. The renderer may read while JS writes — a sprite can
- * straddle a frame — so publish a consistent frame by writing data first and
+ * One writer at a time. The renderer may read while JS writes - a sprite can
+ * straddle a frame - so publish a consistent frame by writing data first and
  * the node's `count` slot last.
  */
 export interface TgfxBuffer extends HybridObject<{

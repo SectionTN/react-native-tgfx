@@ -1,14 +1,10 @@
 ---
 title: Headless
-description: Build, mutate, render and export scenes with no React and no view.
+description: Build, render and export scenes without React.
 icon: Server
 ---
 
-Everything on this page runs with **zero React imports**: thumbnails, chart
-images, share cards, atlas baking, PDF reports, background tasks. The
-imperative layer is the floor the declarative layer stands on — components are
-sugar over the same nodes, so the two forms compile byte-for-byte the same
-program.
+Everything on this page runs without React.
 
 ## Build and export
 
@@ -28,11 +24,9 @@ await scene.save(`${dir}/card.png`, { pixelRatio: 2 });
 // written natively; bytes never enter JS
 ```
 
-Every component has a factory (`rect`, `text`, `linearGradient`, `mask`, …) —
-see [Imperative](/docs/imperative). `scene.save` picks the format from the
-extension (`.png`, `.jpg`, `.webp`) unless `format` overrides it; `toImage`
-returns the [`TgfxImage`](/docs/images) instead, and `toSvg` / `toPdf` are the
-vector twins:
+Every component has a factory; see [Imperative](/docs/imperative).
+`scene.save` picks the format from the extension, or from `format`. `toImage`
+returns a [`TgfxImage`](/docs/images). `toSvg` and `toPdf` export vectors:
 
 ```ts
 const still = await scene.toImage(); // draw it back, encode it, share it
@@ -40,17 +34,13 @@ const markup = await scene.toSvg();
 await scene.toPdf(`${dir}/card.pdf`);
 ```
 
-The render size comes from the call's `width`/`height`, else the size
-`Scene.create` was given, else a lone attached surface — with none of the
-three, the call throws. The `renderToImage` / `renderToSvg` / `renderToPdf`
-functions still take a `Scene`, `SceneNode[]` or JSX; PDF pages mix `element`
-(JSX) and `scene` freely.
+Render size comes from `width`/`height`, else `Scene.create`, else one
+attached surface. With none, it throws.
 
 ## Mutate without re-encoding
 
-Structural mutations (`add` / `insert` / `remove` / `replaceChildren`) batch
-into one compile per microtask. Value mutation goes through handles — the slot
-path, no re-encode:
+`add`, `insert`, `remove` and `replaceChildren` batch per microtask. Set
+values through handles:
 
 ```ts
 const counter = createHandle();
@@ -64,11 +54,9 @@ for (const n of [1, 2, 3]) {
 }
 ```
 
-Handles are for tens of live nodes, not thousands: a handle promotes every
-numeric prop to a slot, so 400 handled nodes are thousands of slots walked per
-frame. Pools go through buffers — `atlas` + [`createSpriteBuffer`](/api/functions/createSpriteBuffer)
-or `vertices` + [`createVertexBuffer`](/api/functions/createVertexBuffer)
-scale to 10³–10⁵ where handles stop at 10¹–10².
+Use handles for tens of nodes. For pools, use `atlas` with
+[`createSpriteBuffer`](/api/functions/createSpriteBuffer) or `vertices` with
+[`createVertexBuffer`](/api/functions/createVertexBuffer).
 
 ## Repeated renders: the retained surface
 
@@ -83,8 +71,7 @@ for (let f = 0; f < 120; f++) {
 surface.dispose();
 ```
 
-See [Export](/docs/snapshots) for the surface's full contract —
-`setViewport`, headless `hitTest`, `toImage`.
+See [Export](/docs/snapshots) for the full surface API.
 
 ## Presses without a canvas
 
@@ -96,11 +83,11 @@ dispatchPress(scene.handlesAt(surface.hitTest(x, y, false)), [
 ]);
 ```
 
-Topmost wins, exactly as `useCanvasPress` dispatches on a canvas.
+Topmost wins, as with `useCanvasPress`.
 
 ## Clocks, video and camera, callable
 
-Each hook-only API now has a callable form the hook wraps:
+These hooks have callable forms:
 
 ```ts
 const clock = createClock(); // seconds on the UI thread; clock.value → a uniform
@@ -109,7 +96,7 @@ clock.stop();
 const player = await createVideoPlayer(require("./clip.mp4"), {
   looping: true,
 });
-// currentFrame is null until the first decode and is read once at add time —
+// currentFrame is null until the first decode and is read once at add time -
 // build the node when the frame exists:
 player.onFrame((frame) =>
   scene.add(image({ image: frame, x: 0, y: 0, width: 1280, height: 720 }))
@@ -124,11 +111,7 @@ sink.dispose();
 
 ## Worklets
 
-Scenes are built on worklet runtimes too. `createScene()` and `sceneFrom()`
-are the worklet-callable forms — a class's statics do not cross runtimes, so
-`Scene.create` is not. The whole compile graph is workletized: factories,
-`add`/`remove`, `attach` and `flush` all run where the worklet runs, and the
-program a worklet compiles is byte-identical to the JS thread's.
+Scenes also work on worklet runtimes:
 
 ```ts
 const surface = createOffscreenSurface({ width: 1024, height: 1024 });
@@ -147,28 +130,20 @@ scheduleOnUI(() => {
 });
 ```
 
-What differs from the JS thread:
+On a worklet:
 
-- `createScene()` / `sceneFrom()`, never the statics.
-- Call `scene.flush()` yourself after structural changes — commit batching is
-  a microtask affair, and explicit flush is the predictable form inside a
-  frame callback.
-- The exports (`save`, `toImage`, `toSvg`, `toPdf`) throw by name: render
-  into an attached offscreen surface and call `surface.save` / `surface.toImage`
-  from the JS thread instead.
-- Handles (`createHandle`) and mapper-driven animation stay on the JS thread:
-  a worklet scene is structural nodes and literal props, and per-frame motion
-  drives `surface.setValues` directly.
+- Use `createScene()` / `sceneFrom()`, not `Scene.create`.
+- Call `scene.flush()` after structural changes.
+- Exports throw. Call `surface.save` / `surface.toImage` from the JS thread.
+- Handles and mapper-driven animation stay on the JS thread. Use
+  `surface.setValues` for per-frame motion.
 
-A `Scene` attached on the JS thread still drives value slots from the UI
-thread by itself when Reanimated is installed — `handle.set()` and
-`SharedValue` props repaint with no driver component. A surface is a Nitro
-object, so `NitroModules.box()` hands it to any worklet runtime; box the
-object and call methods on the unboxed instance — never destructure them.
+With Reanimated, `handle.set()` and `SharedValue` props repaint a JS-thread
+`Scene` on their own. Box a surface with `NitroModules.box()` to use it in a
+worklet, and don't destructure its methods.
 
 ## Without Reanimated
 
-Factories, `Scene`, every export, `encode`/`save` and the offscreen surface
-work with Reanimated absent — pushes come from the JS thread. `createClock`,
-`createVideoPlayer` and `createCameraFrameSink` throw without it: their pumps
-live on the UI runtime.
+Factories, `Scene`, exports, `encode`/`save` and the offscreen surface work
+without Reanimated. `createClock`, `createVideoPlayer` and
+`createCameraFrameSink` throw without it.

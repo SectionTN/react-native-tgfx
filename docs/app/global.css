@@ -116,7 +116,7 @@ table {
   font-family: var(--font-display);
 }
 
-/* Thread marks. Colour is never the only signal — each carries its label. */
+/* Thread marks. Colour is never the only signal - each carries its label. */
 .tg-thread {
   display: inline-flex;
   align-items: center;

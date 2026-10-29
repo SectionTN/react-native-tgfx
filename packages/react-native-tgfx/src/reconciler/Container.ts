@@ -60,7 +60,7 @@ export class TgfxContainer implements NodeOwner {
    * A commit snapshots every SharedValue prop into the program, and on
    * Reanimated 4 a JS-thread read of a value the UI thread has written since
    * is a synchronous hop to that runtime, queued behind whatever frame it is
-   * in — N hops per commit, minutes at a few thousand animating slots. The
+   * in - N hops per commit, minutes at a few thousand animating slots. The
    * driver mirrors what it pushes here, so the snapshot is a plain load. Flag
    * byte 0 marks the mirror written. Block slots are never taken from it: a
    * JS-thread write to one fires no driver, so the mirror can trail it.

@@ -4,8 +4,7 @@ description: SVG path data, boolean ops, measurement and sampling.
 icon: Spline
 ---
 
-Paths are SVG path strings. Every helper accepts one; helpers that create or
-modify geometry return another SVG path string.
+Paths are SVG path strings.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -36,7 +35,7 @@ scene.add(path({ path: pathOp(plate, hole, 'difference'), color: '#4F8EF7' }))
 
 | Function | Returns |
 | --- | --- |
-| [`pathOp`](/api/functions/pathOp) | path produced by union / difference / intersect / xor ([`PathOp`](/api/type-aliases/PathOp)) |
+| [`pathOp`](/api/functions/pathOp) | path: union / difference / intersect / xor ([`PathOp`](/api/type-aliases/PathOp)) |
 | [`pathBounds`](/api/functions/pathBounds) | [`PathBounds`](/api/interfaces/PathBounds) |
 | [`pathContains`](/api/functions/pathContains) | `boolean` |
 | [`pathTransform`](/api/functions/pathTransform) | path, by [`PathMatrix`](/api/type-aliases/PathMatrix) |
@@ -78,9 +77,9 @@ scene.add(
 ## Trim and dash
 
 `start` and `end` on [`PathProps`](/api/interfaces/PathProps) trim the path to
-normalised fractions of its length.
-[`DashPathEffect`](/api/variables/DashPathEffect) and
-[`CornerPathEffect`](/api/variables/CornerPathEffect) are path-effect children.
+fractions of its length.
+Add [`DashPathEffect`](/api/variables/DashPathEffect) or
+[`CornerPathEffect`](/api/variables/CornerPathEffect) as children.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">

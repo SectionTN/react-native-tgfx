@@ -1,8 +1,8 @@
 import type { HybridObject } from 'react-native-nitro-modules'
 
 /**
- * A decoding video, driven by the platform player — AVPlayer on iOS,
- * MediaPlayer on Android — so audio, looping and seeking cost this package no
+ * A decoding video, driven by the platform player - AVPlayer on iOS,
+ * MediaPlayer on Android - so audio, looping and seeking cost this package no
  * decoder of its own.
  *
  * A frame never reaches JS at all, as pixels or as a pointer: the decoder writes
@@ -34,8 +34,8 @@ export interface TgfxVideo
    * Point this video's image at its newest decoded frame and return that image's
    * registry id, or 0 when nothing new has been decoded since the last call.
    *
-   * The id is stable for the life of the video — a new frame replaces what the
-   * id points at, so a scene referencing it costs no re-commit — and the frame
+   * The id is stable for the life of the video - a new frame replaces what the
+   * id points at, so a scene referencing it costs no re-commit - and the frame
    * is whatever the decoder produced: a `CVPixelBuffer` on iOS, a
    * `SurfaceTexture` stream on Android, neither of them copied.
    */
@@ -43,7 +43,7 @@ export interface TgfxVideo
 
   /**
    * Stop playback and free the decoder and its buffers now, rather than at the
-   * next GC. A player left to a finalizer holds a hardware decoder — a device
+   * next GC. A player left to a finalizer holds a hardware decoder - a device
    * has a handful of those, so a screen that opens videos runs out.
    */
   release(): void

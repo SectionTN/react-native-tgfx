@@ -2,7 +2,7 @@ import type { HybridObject } from 'react-native-nitro-modules'
 import type { TgfxImage } from './TgfxImage.nitro'
 
 /**
- * A retained GPU surface no view owns — the render target for headless work.
+ * A retained GPU surface no view owns - the render target for headless work.
  *
  * `renderToImage` is one-shot: every call allocates a surface, compiles the
  * program, renders, reads back, and throws it all away. This object keeps the
@@ -13,7 +13,7 @@ import type { TgfxImage } from './TgfxImage.nitro'
  *
  * `setScene` / `setValues` / `setStringValues` are byte-for-byte the
  * `TgfxViewMethods` contract, so a surface and a view are interchangeable
- * scene targets — `Scene.attach(surface)` and the Reanimated drivers work
+ * scene targets - `Scene.attach(surface)` and the Reanimated drivers work
  * unchanged. As a Nitro object it boxes with `NitroModules.box()`, so a
  * worklet runtime can own the whole mutate-flush loop.
  *
@@ -42,19 +42,19 @@ export interface TgfxOffscreenSurface
   /** Sparse writes into the string-slot array (live text and path data). */
   setStringValues(indices: number[], values: string[]): void
 
-  /** `[zoom, x, y]`, the view's viewport contract — a zoomed crop export. */
+  /** `[zoom, x, y]`, the view's viewport contract - a zoomed crop export. */
   setViewport(viewport: number[]): void
 
   /**
    * Index paths under a point in canvas points, flattened `[depth, i0, i1, …]`,
-   * topmost first — the view's `hitTest`, answered headless from the same
+   * topmost first - the view's `hitTest`, answered headless from the same
    * staged scene and viewport. The program compiles on the worker's first
    * drain, so a hit test racing the very first `flush()` can answer empty.
    */
   hitTest(x: number, y: number, precise: boolean): number[]
 
   /**
-   * Render the staged state now. Stages and wakes the offscreen worker — it
+   * Render the staged state now. Stages and wakes the offscreen worker - it
    * never renders on the calling thread, so a UI-runtime caller pays a method
    * call, not a GPU pass. Consecutive flushes coalesce: the worker draws the
    * latest state, and readbacks only run for pending {@link toImage}/{@link save}.
@@ -69,7 +69,7 @@ export interface TgfxOffscreenSurface
   toImage(): Promise<TgfxImage>
 
   /**
-   * Encode the current frame straight to `path` — png (default) / jpeg / webp,
+   * Encode the current frame straight to `path` - png (default) / jpeg / webp,
    * `quality` 1-100. The bytes never enter JS, and no image handle is minted.
    */
   save(path: string, format?: string, quality?: number): Promise<void>

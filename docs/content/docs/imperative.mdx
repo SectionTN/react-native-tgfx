@@ -5,10 +5,7 @@ icon: MousePointerClick
 ---
 
 [`useNode`](/api/functions/useNode) returns a [`NodeHandle`](/api/interfaces/NodeHandle).
-`set()` changes a mounted node without a React render. Slot-backed writes patch
-in place and can run in a worklet; a prop without a slot re-encodes the scene on
-the JS thread. Most non-geometry slot families are created lazily, so their
-first write re-encodes once and later writes patch in place.
+`set()` updates a mounted node without a React render.
 
 ```tsx
 import { Canvas, RoundedRect, useNode } from 'react-native-tgfx'
@@ -30,7 +27,7 @@ function Box() {
 ## Colour from a worklet
 
 ```tsx
-box.set({ color: '#4F8EF7' })         // JS thread only — the parser lives there
+box.set({ color: '#4F8EF7' })         // JS thread only - the parser lives there
 box.set({ color: 0xff4f8ef7 })        // packed AARRGGBB, worklet-safe
 box.set({ color: [0.3, 0.5, 1, 1] })  // r, g, b, a in 0..1, worklet-safe
 ```
@@ -44,11 +41,8 @@ const pan = Gesture.Pan().onUpdate((e) => {
 })
 ```
 
-A node handle writes a value slot, which is worklet-safe. The canvas
-[`viewport`](/docs/animation#zoom-and-pan) is not a slot — it sits above the
-draw program entirely — but it has its own UI-thread path: pass a
-`SharedValue<Viewport>` as the `viewport` prop and write it from the gesture
-worklet.
+To drive the canvas [`viewport`](/docs/animation#zoom-and-pan) from a gesture,
+pass it a `SharedValue<Viewport>`:
 
 ```tsx
 const viewport = useSharedValue({ zoom: 1, x: 0, y: 0 })
@@ -59,18 +53,13 @@ const zoom = Gesture.Pinch().onChange((e) => {
 // <Canvas viewport={viewport}>
 ```
 
-`CanvasHandle.setViewport()` is the same write from the JS thread, for a
-gesture running with `runOnJS(true)` or any other JS-side caller. Both cost
-one native write per tick, with no React render and no scene re-encode.
+`CanvasHandle.setViewport()` does the same from JS.
 
 ## What has slots
 
-Geometry, group transform operands, paint values and enums, image handles and
-source rectangles, shader uniforms, gradient geometry and stops, blur and
-shadow parameters, the alpha threshold, the backdrop material, the film grain's
-size, density and seed, text and path strings, and `visible`. A handle keeps at most
-16 gradient stops, so a longer imperative stop list is truncated. Its uniform
-pool holds 32 floats; uniforms that do not fit fall back to re-encoding.
+Geometry, transforms, paint, images, uniforms, gradients, blur, shadow, alpha
+threshold, backdrop, film grain, text, paths and `visible` patch in place. Other
+props re-encode. Max 16 gradient stops and 32 uniform floats.
 
 ```tsx
 fx.set({ uniforms: { uFace: [face.x, face.y], uRadius: face.width / 2 } })
@@ -82,8 +71,8 @@ glow.set({ blur: 4 + press.value * 12, dy: 2 + press.value * 6 })
 
 ## Pools
 
-[`createHandle`](/api/functions/createHandle) is `useNode` without the hook, for
-making N handles at once. `visible={false}` skips drawing and hit testing.
+[`createHandle`](/api/functions/createHandle) is `useNode` without the hook.
+`visible={false}` skips drawing and hit testing.
 
 ```tsx
 const [dots] = useState(() => Array.from({ length: 64 }, () => createHandle()))
@@ -99,13 +88,11 @@ dots[next].set({ visible: true, cx: x, cy: y })
 
 ## Scenes without React
 
-Every component has an element factory — a plain function returning the node
-the JSX would: [`rect`](/api/functions/rect), [`circle`](/api/functions/circle),
-[`group`](/api/functions/group), [`linearGradient`](/api/functions/linearGradient),
-[`mask`](/api/functions/mask), and so on, one per component. A
-[`Scene`](/api/classes/Scene) holds a tree of them, compiles it through the same
-engine `<Canvas>` uses, and drives any attached target — no React anywhere.
-The two forms compile byte-for-byte the same program:
+Each component has a factory ([`rect`](/api/functions/rect),
+[`circle`](/api/functions/circle), [`group`](/api/functions/group),
+[`linearGradient`](/api/functions/linearGradient), [`mask`](/api/functions/mask)
+and so on). A [`Scene`](/api/classes/Scene) draws a tree of them without React.
+Both forms compile the same program:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -128,7 +115,7 @@ function Scene() {
   )
 }
 
-// later, from JS or a worklet — no React render
+// later, from JS or a worklet - no React render
 box.set({ x: 120 })
 ```
 
@@ -154,46 +141,29 @@ scene.add(
 
 const detach = scene.attach(viewRef)   // a TgfxViewRef from <TgfxNativeView>
 
-// later, from JS or a worklet — no re-encode
+// later, from JS or a worklet - no re-encode
 box.set({ x: 120 })
 ```
 
 </Tab>
 </Tabs>
 
-Structural mutations (`add`, `insert`, `remove`, `replaceChildren`) batch into
-one compile per microtask — a 1000-add loop costs one encode — and `flush()`
-commits now. Value mutation goes through handles, exactly as with JSX: do not
-rebuild the tree per frame. One scene can drive several targets at once; each
-gets the full program on attach and deltas after.
-
-`ref` props, `SharedValue` props and worklet writes behave identically to their
-JSX equivalents — the factories produce the very nodes the reconciler would.
+`add`, `insert`, `remove` and `replaceChildren` batch into one compile per
+microtask; `flush()` commits now. Update values through handles. One scene can
+drive several targets.
 
 ## Where slot writes go
 
-A handle's value slots live in one native memory block per handle, mapped into
-every runtime — the same mechanism as its patchability flags. A `set()` write
-is a plain store into that shared memory: nothing is serialized across
-runtimes, so writing from the JS thread on a timer or per gesture frame
-allocates nothing per write. (Routing these writes through Reanimated
-SharedValues serialized a fresh worklet closure per write on the JS thread —
-native heap the JS GCs never felt pressure to reclaim, growing ~10 MB/min at
-60 Hz write rates.) A JS-thread write pushes the patched slots to the canvas
-itself; a worklet-side write bumps the handle's wake value so the UI-thread
-driver pushes on the next mapper run. Semantics are unchanged: last write wins,
-and the next React commit is still the truth.
+`set()` writes shared native memory and allocates nothing. Last write wins until
+the next React commit.
 
-The whole scene can also be built *inside* a worklet — `createScene()` is
-`Scene.create` as a plain function, which is the form that crosses runtimes —
-see [Worklets](/docs/headless#worklets) for the rules.
+Build a scene in a worklet with `createScene()` ([Worklets](/docs/headless#worklets)).
 
 ## Buffers
 
 [`useSpriteBuffer`](/api/functions/useSpriteBuffer) and
 [`useVertexBuffer`](/api/functions/useVertexBuffer) share a typed array with the
-renderer for counts too large for one handle each
-([`SpriteBuffer`](/api/interfaces/SpriteBuffer), [`VertexBuffer`](/api/interfaces/VertexBuffer)).
+renderer ([`SpriteBuffer`](/api/interfaces/SpriteBuffer), [`VertexBuffer`](/api/interfaces/VertexBuffer)).
 
 ```tsx
 const sprites = useSpriteBuffer(512)   // SPRITE_FLOATS per sprite
@@ -206,15 +176,10 @@ sprites.set(i, 0, 0, 16, 16, p.scale, p.x, p.y)
 count.value = alive                    // set the count after filling entries
 ```
 
-The renderer redraws when a bound shared value changes, and Reanimated drops a
-write of the value it already holds — so a buffer refilled every frame under a
-*constant* count never redraws. Publish something that moves: the live count,
-or `count.value = N + (frame.timestamp % 1000) * 1e-6` (the fraction truncates
-natively).
+The canvas redraws only when a bound shared value changes. For a constant count, publish
+`count.value = N + (frame.timestamp % 1000) * 1e-6` (truncated natively).
 
-For thousands of sprites a frame, skip the call per sprite:
-[`spriteFloats`](/api/functions/spriteFloats) returns this runtime's
-`Float32Array` over the same memory (a worklet's captured `data` is a clone):
+For speed, write the `Float32Array` from [`spriteFloats`](/api/functions/spriteFloats):
 
 ```tsx
 const f = spriteFloats(sprites)        // SPRITE_FLOATS per sprite
@@ -226,10 +191,8 @@ for (let i = 0; i < alive; i++) {
 }
 ```
 
-`useVertexBuffer` takes a [`VertexBufferOptions`](/api/interfaces/VertexBufferOptions)
-(`maxVertices`, optional `maxIndices`, and `textures`/`colors` to reserve those
-sections). Its `positions`/`textures`/`colors`/`indices` are plain
-`Float32Array` views, written directly from JS:
+`useVertexBuffer` takes a [`VertexBufferOptions`](/api/interfaces/VertexBufferOptions).
+Write its `positions`/`textures`/`colors`/`indices` views from JS:
 
 ```tsx
 const mesh = useVertexBuffer({ maxVertices: 4, maxIndices: 6 })
@@ -239,9 +202,7 @@ mesh.indices.set([0, 1, 2, 1, 2, 3])
 <Vertices buffer={mesh} vertexCount={4} indexCount={6} />
 ```
 
-A worklet's captured `mesh.positions` is a cloned copy, not the shared memory —
-call [`meshViews`](/api/functions/meshViews) there to map this runtime's own
-view onto the same buffer:
+In a worklet, write through [`meshViews`](/api/functions/meshViews):
 
 ```tsx
 const drag = Gesture.Pan().onUpdate((e) => {

@@ -42,27 +42,27 @@ export const Path = NodeType.Path as unknown as FC<PathProps>
 
 /**
  * One styled stretch inside a `<Text>` or `<TextPath>`. Spans lay out as one
- * paragraph — they wrap and align together — and each draws with the face and
+ * paragraph - they wrap and align together - and each draws with the face and
  * colour it overrides. A `<Text>` with spans ignores its own `text` prop.
  */
 export const Span = NodeType.Span as unknown as FC<SpanProps>
 
 /**
  * Glyphs you positioned yourself, drawn in one run. See {@link GlyphsProps}: no
- * shaping and no fallback, which is the point — `<Text>` does all of that.
+ * shaping and no fallback, which is the point - `<Text>` does all of that.
  */
 export const Glyphs = NodeType.Glyphs as unknown as FC<GlyphsProps>
 
 /**
  * Bitmap image drawn into the destination rect with the given `fit`, from an
- * already-loaded handle — the power form. `<Image>` takes a `source` and loads
+ * already-loaded handle - the power form. `<Image>` takes a `source` and loads
  * it for you; this host tag takes the `image` you loaded (`useImage`,
  * `loadImage`) and stays on the direct-node fast path.
  */
 export const TgfxImage = NodeType.Image as unknown as FC<ImageProps>
 
 /**
- * An SVG document drawn into the destination rect — Skia's `<ImageSVG>` by
+ * An SVG document drawn into the destination rect - Skia's `<ImageSVG>` by
  * name and by behaviour.
  *
  * An alias for {@link Image}, not a wrapper: an SVG source already becomes an
@@ -74,7 +74,7 @@ export const TgfxImage = NodeType.Image as unknown as FC<ImageProps>
 export const ImageSVG = NodeType.Image as unknown as FC<ImageSVGProps>
 
 /**
- * Many sprites from one image in a single node — the fast path for particle
+ * Many sprites from one image in a single node - the fast path for particle
  * systems and tile maps, where N `<TgfxImage>` nodes would be N nodes to compile,
  * paint and read. The GPU batches either form the same way.
  */
@@ -124,8 +124,8 @@ export const Fill = NodeType.Fill as unknown as FC<PaintComponentProps>
  * A live camera frame, scaled to cover the canvas, with the scene drawn over it.
  *
  * Its children are laid out in **frame pixel** coordinates and share the one
- * matrix that places the frame, so an overlay derived from the frame — a
- * detector's box, a face contour — cannot drift from the image whatever the
+ * matrix that places the frame, so an overlay derived from the frame - a
+ * detector's box, a face contour - cannot drift from the image whatever the
  * canvas size is. Pass detector output through unchanged; do not scale it.
  *
  * The frame arrives as a hardware-buffer handle

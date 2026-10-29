@@ -38,7 +38,7 @@ export type BlendMode =
   | 'plusDarker'
 
 /**
- * Blend modes, in the order of tgfx's `BlendMode` enum — the index is what
+ * Blend modes, in the order of tgfx's `BlendMode` enum - the index is what
  * travels on the wire, so this array must not be reordered.
  */
 export const BLEND_MODES = [
@@ -96,8 +96,8 @@ export interface ColorFilterInput {
 }
 
 /**
- * A filter over the rasterised drawing rather than its colours. Changes bounds
- * — tgfx draws through an offscreen layer — so it costs a render target.
+ * A filter over the rasterised drawing rather than its colours. Changes bounds -
+ * tgfx draws through an offscreen layer - so it costs a render target.
  */
 export interface ImageFilterInput {
   kind: 'blur' | 'dropShadow' | 'compose' | 'colorFilter'
@@ -231,7 +231,7 @@ function writeImageFilter(
 
 /**
  * Write the paint's filter block: blend mode, colour filter, image filter.
- * Only written when {@link hasFilters} says so — the flag bit tells the reader.
+ * Only written when {@link hasFilters} says so - the flag bit tells the reader.
  *
  * Parameters travel through `pushAnim`, so a live one becomes a value slot. A
  * filter with no live parameter is still built once at setScene; only one that

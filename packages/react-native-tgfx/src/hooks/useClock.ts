@@ -15,7 +15,7 @@ export interface Clock {
 
 /**
  * {@link useClock} with no React: seconds since creation as a SharedValue,
- * written on the UI thread, for driving a shader uniform on any target — a
+ * written on the UI thread, for driving a shader uniform on any target - a
  * canvas or an offscreen surface. Call `stop()` when done; the loop otherwise
  * runs for the process's life.
  *
@@ -31,7 +31,7 @@ export function createClock(): Clock {
     if (first.value < 0) {
       first.value = t
     }
-    // Seconds, not milliseconds: see useClock below — mediump floats.
+    // Seconds, not milliseconds: see useClock below - mediump floats.
     clock.value = (t - first.value) / 1000
   })
   return { value: clock as SharedValueLike<number>, stop }

@@ -63,7 +63,7 @@ interface DriverProps {
 /**
  * Pushes a SharedValue `<Canvas viewport>` to the native view from the UI
  * thread: a gesture worklet writes the shared value and the frame moves with
- * no JS-thread hop. The same defaults as the plain prop — a missing or
+ * no JS-thread hop. The same defaults as the plain prop - a missing or
  * non-finite field falls back rather than reaching native, which would reject
  * the triple whole and strand the other two.
  */

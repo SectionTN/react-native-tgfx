@@ -53,25 +53,25 @@ export const FractalNoise = NodeType.FractalNoise as unknown as FC<NoiseProps>
  */
 export const Shader = NodeType.Shader as unknown as FC<ShaderProps>
 
-/** Perlin turbulence shader — like fractal noise but with sharper patterns. */
+/** Perlin turbulence shader - like fractal noise but with sharper patterns. */
 export const Turbulence = NodeType.Turbulence as unknown as FC<NoiseProps>
 
 /**
  * An image as a paint source: textured fills, image-backed masks, tiled
- * patterns. Use it wherever a gradient goes — inside a shape or a `<Paint>`.
+ * patterns. Use it wherever a gradient goes - inside a shape or a `<Paint>`.
  */
 export const ImageShader =
   NodeType.ImageShader as unknown as FC<ImageShaderProps>
 
 /**
- * A 4x5 colour matrix — saturation, hue rotation, greyscale, channel swaps.
+ * A 4x5 colour matrix - saturation, hue rotation, greyscale, channel swaps.
  * A paint child, like a gradient. Cheap: it is one more stage in the fragment
  * shader, with no offscreen and no bounds change.
  */
 export const ColorMatrix =
   NodeType.ColorMatrix as unknown as FC<ColorMatrixProps>
 
-/** Blends a constant colour into the drawing's own colours — a tint. */
+/** Blends a constant colour into the drawing's own colours - a tint. */
 export const BlendColor = NodeType.BlendColor as unknown as FC<BlendColorProps>
 
 /**

@@ -9,11 +9,9 @@ npm install react-native-vision-camera react-native-vision-camera-worklets
 ```
 
 [`useCameraFrame`](/api/functions/useCameraFrame) turns a VisionCamera frame into
-a [`TgfxImage`](/api/interfaces/TgfxImage) plus a
-[`CameraFramePosture`](/api/interfaces/CameraFramePosture) — together a
-[`CameraFrameSource`](/api/interfaces/CameraFrameSource). Frames are typed
-structurally ([`FrameLike`](/api/interfaces/FrameLike)), so the core package does
-not depend on VisionCamera.
+a [`TgfxImage`](/api/interfaces/TgfxImage) and a
+[`CameraFramePosture`](/api/interfaces/CameraFramePosture), together a
+[`CameraFrameSource`](/api/interfaces/CameraFrameSource).
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -58,7 +56,7 @@ const scene = Scene.create()
 const node = createHandle()
 
 const sink = createCameraFrameSink({
-  // sink.image is null until the first frame mints the handle — build the node here.
+  // sink.image is null until the first frame mints the handle - build the node here.
   onImage: (image) => scene.add(cameraFrame({ ref: node, image, ...sink.posture })),
   onPosture: (posture) => node.set(posture),
 })
@@ -73,42 +71,24 @@ const frameOutput = useFrameOutput({
 })
 
 scene.attach(viewRef)
-// sink.dispose() when the stream ends — nothing else frees the minted handle.
+// sink.dispose() when the stream ends - nothing else frees the minted handle.
 ```
 
 </Tab>
 </Tabs>
 
-The snippet assumes camera permission has already been granted; the example
-app's face-blur screen uses VisionCamera's `useCameraPermission` before
-mounting it.
+Get camera permission first. No camera view is mounted. Keep
+`allowDeferredStart: false`, or frames start late.
 
-The camera is a headless frame source driven by `useCamera` — no camera view is
-mounted; every visible pixel is drawn by tgfx. That is also why
-`allowDeferredStart: false` belongs in the options: VisionCamera's default
-defers non-preview outputs behind a preview that a headless screen never
-mounts, which starts the frame stream late.
-
-Options objects passed to `useFrameOutput` (and detector options, if you run
-one) must be stable — a module constant or memoised. VisionCamera re-registers
-the output whenever the options identity changes, and an inline object literal
-re-creates it on every render.
+Keep `useFrameOutput` options stable (a module constant or memoised).
 
 [`CameraFrameProps`](/api/interfaces/CameraFrameProps) · [`CameraFrameOptions`](/api/interfaces/CameraFrameOptions)
 
 ## Zero copy
 
-The frame's platform buffer — `AHardwareBuffer*` on Android, `CVPixelBufferRef`
-on iOS, wrapped as a [`NativeBufferLike`](/api/interfaces/NativeBufferLike) —
-is imported straight to a texture. No decode, no pixel copy, no
-promise: [`imageFromNativeBuffer`](/api/functions/imageFromNativeBuffer) is
-synchronous, and YUV planes are converted in the fragment shader rather than on
-the CPU. Such a handle is not charged against the decoded-pixel budget; the
-memory belongs to whoever produced the buffer.
-
-The first frame creates the handle. Every later frame imports the new native
-buffer and replaces the registry entry behind the same handle — no React
-render, reconciler commit or program recompile:
+[`imageFromNativeBuffer`](/api/functions/imageFromNativeBuffer) imports the
+frame's buffer ([`NativeBufferLike`](/api/interfaces/NativeBufferLike)) as a
+texture with no copy. Later frames reuse the handle:
 
 ```ts
 handle.value == null
@@ -116,25 +96,18 @@ handle.value == null
   : handle.value.setNativeBuffer(buffer.pointer, format)  // every frame after
 ```
 
-[`setNativeBuffer`](/api/interfaces/TgfxImage) retains the new buffer and drops
-the previous one before returning, so a producer recycling a fixed pool gets its
-slot back on the swap.
+[`setNativeBuffer`](/api/interfaces/TgfxImage) releases the previous buffer
+before returning.
 
 <Callout type="warn">
-The buffer's *contents* must stay unchanged while a handle points at it — tgfx
-samples it directly. Write into a pool slot only after it has been swapped out.
+Don't write into a buffer a handle points at.
 </Callout>
 
-`useCameraFrame` owns that lifetime for you: the raw pointer never leaves its
-worklet, and a `try`/`finally` releases the buffer and disposes the frame on
-every path including a throw.
+`useCameraFrame` manages this for you.
 
 <Callout type="warn">
-The frame passed to your own per-frame callback dies when it returns. Do not
-retain it, do not call `getNativeBuffer()` on it again — that is a second retain
-nothing releases, and one unreleased buffer stalls the producer's bounded pool —
-and never store `getNativeBuffer().pointer`. A stale pointer does not throw; it
-imports whatever memory now sits at that address.
+The frame in your callback dies when it returns. Don't retain it, call
+`getNativeBuffer()` again, or store its pointer.
 </Callout>
 
 ## No JS per frame
@@ -143,9 +116,8 @@ imports whatever memory now sits at that address.
 npm install react-native-tgfx-vision-camera
 ```
 
-`useTgfxCameraSink` can move the same zero-copy import into a native
-frame-processor plugin so, after attachment completes, no frame reaches a JS
-runtime. Attach it once the hook's worklet has minted the handle:
+`useTgfxCameraSink` does the import natively, so frames skip JS. Attach it once
+the handle exists:
 
 ```tsx
 const sink = useTgfxCameraSink()
@@ -155,20 +127,14 @@ useEffect(() => {
 }, [sink, frameOutput, image])
 ```
 
-`attach` is asynchronous. The worklet keeps receiving frames until the native
-callback is installed; after that, orientation state no longer reaches JS, so
-keep `enablePhysicalBufferRotation: true` or stay on `useCameraFrame` alone when
-orientation must continue to track.
-
-Not usable when the frame processor has JS work of its own — a per-frame
-detector, for instance.
+After `attach`, orientation stops reaching JS, so keep
+`enablePhysicalBufferRotation: true`. Not for frame processors that run JS,
+like a detector.
 
 ## Zooming
 
-A `<CameraFrame>` fits itself to the surface, not to scene coordinates, so the
-[`viewport`](/docs/animation#zoom-and-pan) does not move it: the frame stays put
-while overlays drawn above it zoom and pan. Wrap it in a `<Group transform>` if
-the frame should zoom with them.
+The [`viewport`](/docs/animation#zoom-and-pan) doesn't move a `<CameraFrame>`.
+Wrap it in `<Group transform>` to zoom it.
 
 ## Shading a frame
 
@@ -200,14 +166,12 @@ cameraFrame({ image, ...sink.posture }, [
 </Tabs>
 
 <Callout type="warn">
-Leave tile modes at `'clamp'`. A YUV frame sampled with any other one comes back
-transparent.
+Keep tile modes at `'clamp'`, or YUV frames turn transparent.
 </Callout>
 
 ## Face blur
 
-The scene compiles once, so allocate a fixed number of slots. An unused slot has
-zero size and draws nothing.
+Allocate fixed slots. Zero-size slots draw nothing.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">

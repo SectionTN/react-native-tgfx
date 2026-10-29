@@ -23,8 +23,8 @@ import type { Orientation, ImageSampling } from '../specs/TgfxImage.nitro'
  * return <Canvas>{badge && <TgfxImage image={badge} x={0} y={0} width={64} height={64} />}</Canvas>
  * ```
  *
- * An inline `element` is a new object every render, so pass `deps` — the values
- * the scene actually depends on — or memoise the tree. Without either, every
+ * An inline `element` is a new object every render, so pass `deps` - the values
+ * the scene actually depends on - or memoise the tree. Without either, every
  * parent render re-exports, and each export takes the shared GPU device lock.
  */
 export function useOffscreenImage(
@@ -120,7 +120,7 @@ export function useDerivedImage(
  * Render a scene to SVG markup and get the text back when it is ready.
  *
  * The declarative half of {@link renderToSvg}: null on the first frame, then
- * the document. Pass `deps` — the values the scene depends on — or memoise the
+ * the document. Pass `deps` - the values the scene depends on - or memoise the
  * tree, or every parent render re-exports.
  */
 export function useOffscreenSvg(
@@ -167,7 +167,7 @@ export interface PdfExportState {
  * Keep a PDF on disk in step with a scene: it writes on mount and rewrites
  * whenever `path`, `pages` or `metadata` change.
  *
- * The declarative half of {@link renderToPdf} — a file that reflects the scene,
+ * The declarative half of {@link renderToPdf} - a file that reflects the scene,
  * rather than a call you make. Memoise `pages`, or an inline array rewrites the
  * document every render.
  */

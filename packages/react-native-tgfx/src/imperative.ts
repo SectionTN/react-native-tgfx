@@ -175,8 +175,8 @@ export interface NodeOwner {
  * `antiAlias`), `image` and `rect`, a `<Group>`'s transform operands, a
  * `<Shader>`'s `uniforms`, a gradient's geometry / `positions` / `colors`, a
  * filter's parameters, and `text` / `path` content (string slots, re-shaped or
- * re-parsed on the render thread). A prop with no slot re-encodes the scene —
- * still with no React render, no reconciler commit and no Fabric commit — and
+ * re-parsed on the render thread). A prop with no slot re-encodes the scene -
+ * still with no React render, no reconciler commit and no Fabric commit - and
  * from a worklet it hops to the JS thread to do it.
  *
  * Most of the non-geometry props are made live by the first write, not by the
@@ -328,7 +328,7 @@ export function createHandle(): NodeHandle {
   const runOnJS = getRunOnJS()
   // One native block per handle: flag bytes, every numeric slot as shared
   // Float64 bytes, and the two string slots. Slot writes are plain stores into
-  // memory all runtimes share — a SharedValue written from the JS thread
+  // memory all runtimes share - a SharedValue written from the JS thread
   // serializes a fresh worklet per write, and at set()-per-frame rates that
   // garbage grows the native heap faster than any GC reclaims it (issue #254).
   const flagBlock = makeFlagBlock(FLAG_BYTES, VALUE_COUNT, STRING_COUNT)
@@ -704,7 +704,7 @@ export function createHandle(): NodeHandle {
       owner.recompile()
     } else if (touched) {
       // A block write fires no SharedValue listener, so a JS-thread write pushes
-      // itself — one direct Nitro call, nothing serialized across runtimes.
+      // itself - one direct Nitro call, nothing serialized across runtimes.
       owner.pushValues()
     }
   }
@@ -1057,8 +1057,8 @@ export function createHandle(): NodeHandle {
   internalsMap().set(handle, {
     gen,
     apply(node: Node, reseed: boolean, w: SceneWriter): Node {
-      // A compile by anyone but the owner — an export writer rendering nodes
-      // that are also mounted somewhere — must read the live state, never
+      // A compile by anyone but the owner - an export writer rendering nodes
+      // that are also mounted somewhere - must read the live state, never
       // reset it: clearing overrides or reseeding slots would visibly damage
       // the scene that owns this handle.
       const foreign = owner != null && w !== boundWriter
@@ -1068,7 +1068,7 @@ export function createHandle(): NodeHandle {
       }
       const props: Record<string, unknown> = { ...node.props }
       // An unbound handle's slots hold nothing meaningful yet, so its first
-      // compile must seed them from the props whatever `reseed` says — that is
+      // compile must seed them from the props whatever `reseed` says - that is
       // what lets a Scene's structural commits use reseed=false without
       // snapping already-written handles back to their factory-time props.
       const seed = (reseed && !foreign) || owner == null

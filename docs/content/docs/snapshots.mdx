@@ -38,26 +38,20 @@ async function exportScene() {
 
 [`snapshot`](/api/interfaces/CanvasHandle) returns a [`Snapshot`](/api/interfaces/Snapshot):
 PNG/JPEG/WebP bytes, or straight-alpha RGBA8888 rows for `format: 'raw'`, in an
-`ArrayBuffer` rather than base64. iOS wraps the native result without a copy;
-Android copies the temporary JNI buffer into a Nitro-owned `ArrayBuffer` once.
-`save` encodes and writes natively, so the bytes never enter JS.
+`ArrayBuffer`. `save` writes the file natively.
 
 [`SnapshotOptions`](/api/interfaces/SnapshotOptions) · [`SnapshotFormat`](/api/type-aliases/SnapshotFormat)
 
 ### Colour
 
-An encoded readback carries the surface's colour profile, so a
-`colorSpace="display-p3"` canvas produces a P3-tagged PNG rather than P3 numbers
-labelled sRGB. `scale` goes through a second surface and now carries the space
-with it — before, a scaled readback lost the profile a scale-1 one kept.
+Encoded snapshots keep the canvas colour profile, also when scaled.
 
 ## Offscreen
 
-[`renderToImage`](/api/functions/renderToImage) renders a scene with no canvas
-mounted ([`RenderToImageOptions`](/api/interfaces/RenderToImageOptions)). It —
-like `renderToSvg` and `renderToPdf` — takes JSX, a `SceneNode[]` from the
-element factories, or a [`Scene`](/api/classes/Scene); the non-JSX forms never
-construct a reconciler:
+[`renderToImage`](/api/functions/renderToImage) renders without a canvas
+([`RenderToImageOptions`](/api/interfaces/RenderToImageOptions)). Like
+`renderToSvg` and `renderToPdf`, it takes JSX, a `SceneNode[]` or a
+[`Scene`](/api/classes/Scene):
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -84,7 +78,7 @@ const image = await renderToImage(
   { width: 512, height: 512 }
 )
 
-// Or a retained Scene — live handle writes are baked at their current values,
+// Or a retained Scene - live handle writes are baked at their current values,
 // so mutate-and-export loops re-render without rebuilding the tree:
 counter.set({ text: `Day ${n}` })
 const still = await renderToImage(scene, { width: 400, height: 400 })
@@ -93,22 +87,19 @@ const still = await renderToImage(scene, { width: 400, height: 400 })
 </Tab>
 </Tabs>
 
-`renderToPdf` pages carry either `element` (JSX) or `scene` (nodes or a
-`Scene`), mixed freely.
+`renderToPdf` pages can mix `element` and `scene`.
 
 ## Retained surface
 
 [`createOffscreenSurface`](/api/functions/createOffscreenSurface) keeps a GPU
-surface and its compiled program alive between renders — the
-iterate-and-export loop `renderToImage` would pay full price for every time
-(surface allocation, program compile, synchronous readback, per call):
+surface and its program alive between renders:
 
 ```ts
 const surface = createOffscreenSurface({ width: 1024, height: 1024 })
 scene.attach(surface)                 // a surface is a scene target, like a view
 
 for (let f = 0; f < 120; f++) {
-  t.set({ x: f * 4 })                 // slot write — no re-encode
+  t.set({ x: f * 4 })                 // slot write - no re-encode
   surface.flush()                     // render on the offscreen worker
   if (f % 30 === 0) await surface.save(`${dir}/frame-${f}.png`)
 }
@@ -116,16 +107,11 @@ const still = await surface.toImage() // readback only when asked
 surface.dispose()                     // GPU memory is explicit-lifetime
 ```
 
-It speaks the view's `setScene`/`setValues` contract, so `Scene.attach`, node
-handles and the Reanimated drivers work unchanged, and it boxes with
-`NitroModules.box()` for worklet runtimes. `setViewport([zoom, x, y])` crops
-and zooms an export; `hitTest(x, y, precise)` answers headless from the staged
-scene. The colour space is a creation option — like a view, a surface cannot
-change space after it exists. For a single export, `renderToImage` remains the
-cheaper call.
+`setViewport([zoom, x, y])` crops and zooms the export. `hitTest(x, y, precise)`
+works headless. The colour space is fixed at creation. For a single export,
+`renderToImage` is cheaper.
 
-`colorSpace` picks the offscreen surface's space, exactly as the prop does for
-a `<Canvas>`, and the result carries it:
+`colorSpace` picks the output space, as on a `<Canvas>`:
 
 ```tsx
 const wide = await renderToImage(<Chart data={data} />, {
@@ -135,13 +121,9 @@ const wide = await renderToImage(<Chart data={data} />, {
 })
 ```
 
-Match it to the canvas the image is headed for. The tag is what makes drawing it
-later a *conversion* rather than a reinterpretation — an untagged image is taken
-for whatever space it lands in, so a P3 render dropped on an sRGB canvas would
-keep its numbers and change its colours.
+Match it to the canvas the image will be drawn on.
 
-[`useOffscreenImage`](/api/functions/useOffscreenImage) is the hook form, re-run
-on a dependency change:
+[`useOffscreenImage`](/api/functions/useOffscreenImage) is the hook form:
 
 ```tsx
 const badge = useOffscreenImage(<Badge count={n} />, { width: 64, height: 64 }, [n])

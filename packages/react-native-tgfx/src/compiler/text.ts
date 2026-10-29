@@ -30,7 +30,7 @@ export function weightValue(weight: unknown): number {
 export function writeFont(w: SceneWriter, p: Record<string, unknown>): void {
   w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
   w.push(weightValue(p.fontWeight))
-  // Bit 1 italic, 2 forced faux bold, 4 forced faux italic — one word instead of three.
+  // Bit 1 italic, 2 forced faux bold, 4 forced faux italic - one word instead of three.
   w.push(
     (p.fontStyle === 'italic' ? 1 : 0) |
       (p.fauxBold === true ? 2 : 0) |
@@ -49,7 +49,7 @@ function writeRun(
   w.pushString(p.fontFamily != null ? String(p.fontFamily) : '')
   // 0, not 400: the paragraph's weight is what an unset span inherits.
   w.push(p.fontWeight !== undefined ? weightValue(p.fontWeight) : 0)
-  // 0 inherit, 1 italic, 2 upright — a flag could not say "unset", and an implicit run always is.
+  // 0 inherit, 1 italic, 2 upright - a flag could not say "unset", and an implicit run always is.
   w.push(p.fontStyle === 'italic' ? 1 : p.fontStyle === 'normal' ? 2 : 0)
   w.push(resolveNumber(p.letterSpacing, 0))
   w.push(resolveNumber(p.fontSize, 0))

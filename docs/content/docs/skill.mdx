@@ -4,10 +4,8 @@ description: Teach a coding agent this API, the SkSL subset and the Skia migrati
 icon: Bot
 ---
 
-The repository ships an [agent skill](https://github.com/margelo/react-native-tgfx/tree/main/.claude/skills/rn-tgfx):
-the parts an agent gets wrong from memory — which props have animation slots,
-what the SkSL subset rejects, camera frame lifetimes, and the mapping from
-`@shopify/react-native-skia`.
+An [agent skill](https://github.com/margelo/react-native-tgfx/tree/main/.claude/skills/rn-tgfx)
+for animation slots, the SkSL subset, camera frames and Skia migration.
 
 ## Install
 
@@ -15,7 +13,7 @@ what the SkSL subset rejects, camera frame lifetimes, and the mapping from
 npx skills add margelo/react-native-tgfx
 ```
 
-Pick it explicitly, or list what the repository offers first:
+Pick it, or list what is offered:
 
 ```bash
 npx skills add margelo/react-native-tgfx --skill rn-tgfx
@@ -25,21 +23,12 @@ npx skills add margelo/react-native-tgfx --skill rn-tgfx
 npx skills add margelo/react-native-tgfx --list
 ```
 
-[`npx skills`](https://github.com/vercel-labs/skills) detects the agents you
-have installed and writes to `.claude/skills/` or `.agents/skills/`. Copying the
-folder in by hand works just as well.
+Or copy the folder into `.claude/skills/` by hand.
 
 ## Contents
 
-`SKILL.md` routes to one reference per task: drawing, text and images, effects
-and shaders, animation and node handles, export, VisionCamera, the Skia
-migration, and troubleshooting.
-
-Its front matter also flags stale code as an agent writes it —
-`useSkiaFrameProcessor`, `pixelFormat: 'rgb'`, a tile mode on a camera frame,
-array uniforms, declarations after `main()`.
-
-Every SkSL source in it is checked against the real transpiler:
+One reference per task, from drawing to troubleshooting. Its SkSL is checked
+against the transpiler:
 
 ```bash
 bun .claude/skills/rn-tgfx/scripts/check-shaders.ts

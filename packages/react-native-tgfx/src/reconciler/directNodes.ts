@@ -7,7 +7,7 @@ const HOST_TYPES = new Set<string>(Object.values(NodeType))
  * Build the host-node tree straight from React elements, skipping the
  * reconciler.
  *
- * The reconciler exists so `<Canvas>` composes like real React — function
+ * The reconciler exists so `<Canvas>` composes like real React - function
  * components, `.map()`, hooks and context all expand. That costs a fiber per
  * node per commit, which on a 400-object animation is the JS thread's largest
  * single expense (measured at ~52% of a core, against nitro-thor's 17.8% for
@@ -15,8 +15,8 @@ const HOST_TYPES = new Set<string>(Object.values(NodeType))
  * mounts anything).
  *
  * Most scenes are just shape elements, and those need none of that machinery.
- * Returns null the moment anything is not a plain host element — a function
- * component, a raw string, a portal — and the caller falls back to the
+ * Returns null the moment anything is not a plain host element - a function
+ * component, a raw string, a portal - and the caller falls back to the
  * reconciler, so composition keeps working exactly as before.
  */
 export function directNodes(children: ReactNode): Node[] | null {
@@ -29,7 +29,7 @@ export function directNodes(children: ReactNode): Node[] | null {
     if (child == null || typeof child === 'boolean') {
       return
     }
-    // A keyed `.map()` wraps items in a Fragment, which adds no node — splice its children in.
+    // A keyed `.map()` wraps items in a Fragment, which adds no node - splice its children in.
     if (isValidElement(child) && child.type === Fragment) {
       const inner = directNodes(
         (child.props as { children?: ReactNode }).children

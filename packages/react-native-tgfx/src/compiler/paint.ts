@@ -155,7 +155,7 @@ function anyShared(list: readonly unknown[] | undefined): boolean {
 
 /**
  * A flags word, then the stops. Bit 1: each colour travels as four animated
- * channels instead of one packed word. Positions are animatable either way —
+ * channels instead of one packed word. Positions are animatable either way -
  * they are single words, so a slot costs nothing when unused.
  */
 function writeStops(w: SceneWriter, g: GradientInput): void {
@@ -300,7 +300,7 @@ export const NO_PAINT_PROPS: Record<string, unknown> = {}
  * an optional shader.
  *
  * Fields are read straight off the node's props, falling back to the inherited
- * paint — the same precedence {@link mergePaint} gives, without building a
+ * paint - the same precedence {@link mergePaint} gives, without building a
  * merged object per node. Only the rare node that carries `<Paint>` or gradient
  * children merges eagerly and passes the result as `inherited`.
  *
@@ -338,7 +338,7 @@ export function writePaint(
   const channels =
     isColorComponents(color) && color.some(isSharedValue) ? color : null
   // Style and antiAlias are flag bits, so a live one needs its own word. A live
-  // style must hold the numeric code — a string cannot ride the value array.
+  // style must hold the numeric code - a string cannot ride the value array.
   const styleNow = resolveValue(style)
   const aaNow = resolveValue(antiAlias)
   const liveStyle =

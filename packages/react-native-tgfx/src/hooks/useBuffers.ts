@@ -73,7 +73,7 @@ function floatsOf(boxed: BoxedBuffer): Float32Array {
 /**
  * A shared sprite buffer for `<Atlas buffer count>`: `capacity` sprites of
  * {@link SPRITE_FLOATS} floats each, written in place and read by the renderer
- * at draw. `set` is a worklet — call it from either thread; it writes the same
+ * at draw. `set` is a worklet - call it from either thread; it writes the same
  * native memory. Write `data` directly for bulk updates on the JS thread.
  *
  * Without the native module (tests, web) `id` is 0 and the atlas falls back to
@@ -129,7 +129,7 @@ export function createSpriteBuffer(capacity: number): SpriteBuffer {
  * This runtime's floats over a {@link SpriteBuffer}'s memory, {@link SPRITE_FLOATS}
  * per sprite: the bulk path for a worklet that fills thousands of sprites a
  * frame, where a `set` call per sprite is the cost. A worklet must go through
- * this — its captured `data` is a clone. Cached per runtime, so a per-frame
+ * this - its captured `data` is a clone. Cached per runtime, so a per-frame
  * call allocates nothing after the first.
  */
 export function spriteFloats(buffer: SpriteBuffer): Float32Array {
@@ -201,7 +201,7 @@ function sectionsOf(all: Float32Array, buffer: VertexBufferOptions): MeshViews {
 
 /**
  * This runtime's section views over a {@link VertexBuffer}'s memory. A worklet
- * must go through this — its captured copies of the JS-thread views write to a
+ * must go through this - its captured copies of the JS-thread views write to a
  * clone. Cached per runtime, so a per-frame call allocates nothing after the
  * first.
  */

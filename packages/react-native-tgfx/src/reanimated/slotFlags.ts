@@ -37,7 +37,7 @@ function nitro(): Nitro {
 
 /**
  * `size` flag bytes plus `valueCount` value slots and `stringCount` string
- * slots, or null when the native module is unavailable — a test runner, or a
+ * slots, or null when the native module is unavailable - a test runner, or a
  * build without the native side linked.
  */
 export function makeFlagBlock(

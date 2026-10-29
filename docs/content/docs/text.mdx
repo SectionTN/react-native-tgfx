@@ -67,9 +67,8 @@ scene.add(
 
 ## Fonts
 
-The `fonts` prop on [`Canvas`](/api/interfaces/CanvasProps) handles the whole
-thing — registration, waiting, and gating — so text never flashes in the
-platform fallback and nothing needs a hook:
+The `fonts` prop on [`Canvas`](/api/interfaces/CanvasProps) loads fonts before
+the children render:
 
 ```tsx
 <Canvas
@@ -84,17 +83,13 @@ platform fallback and nothing needs a hook:
 </Canvas>
 ```
 
-The canvas withholds its children until every face is in; a failed load warns
-and renders anyway, since fallback text beats a canvas that stays blank
-forever. Registration is process-wide and permanent, so a second canvas naming
-the same families mounts instantly.
+A failed load warns and renders anyway.
 
-The lower-level pieces remain for readiness in your own UI, or loading outside
-React: [`useFonts`](/api/functions/useFonts) registers and returns readiness,
+[`useFonts`](/api/functions/useFonts) returns readiness.
 [`loadFont`](/api/functions/loadFont) and [`loadFonts`](/api/functions/loadFonts)
-are the callable forms, and
-[`registeredFontFamilies`](/api/functions/registeredFontFamilies) queries the
-registered family names.
+work outside React.
+[`registeredFontFamilies`](/api/functions/registeredFontFamilies) lists
+registered families.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -123,10 +118,8 @@ await loadFonts({
 </Tab>
 </Tabs>
 
-Each entry is a [`FontSource`](/api/type-aliases/FontSource) — a `require()`'d
-asset, a URI, or raw base64 bytes. `useFonts` stays `false` forever on a
-failed load; reach for [`useFontsState`](/api/functions/useFontsState) instead
-when that failure needs to be visible rather than just gating the text off:
+Each entry is a [`FontSource`](/api/type-aliases/FontSource). Use
+[`useFontsState`](/api/functions/useFontsState) to see load errors:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -162,10 +155,7 @@ const { lines } = measureText(label, { fontSize: 18, width: 200 });
 
 ## Bidi and complex scripts
 
-Text is shaped through HarfBuzz and reordered by the Unicode bidirectional
-algorithm, so Arabic joins into its initial, medial and final forms, Indic
-scripts reorder, ligatures and mark positioning apply, and a right-to-left run
-reads right to left inside a left-to-right paragraph.
+Complex scripts and mixed-direction text are shaped and reordered.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -202,14 +192,10 @@ scene.add(
 </Tab>
 </Tabs>
 
-The paragraph's base direction comes from its first strong character, so a
-string that starts in Arabic lays out right-to-left and one that starts in Latin
-does not. `textAlign` is unaffected — it still defaults to `'left'`, so a
-right-to-left paragraph that should sit against the right edge needs
+The first strong character sets the direction. Right-to-left text still needs
 `textAlign="right"`.
 
-**A script still needs a face that covers it.** The fallback chain is emoji-only
-by design, so register one for anything outside the primary family:
+**A script still needs a face that covers it:**
 
 ```tsx
 await loadFonts({
@@ -217,31 +203,17 @@ await loadFonts({
 });
 ```
 
-Without it the glyphs are `.notdef` — laid out in the right order, drawn as
-blanks — and a warning names the codepoint once.
+Otherwise glyphs draw blank, with a warning.
 
-`U+200E`, `U+200F` and `U+061C` — the left-to-right, right-to-left and Arabic
-letter marks — work, so a neutral that resolves the wrong way can be placed by
-hand.
-
-Three parts of UAX#9 are not implemented. The explicit embedding, override and
-isolate controls (`U+202A`–`U+202E`, `U+2066`–`U+2069`) are treated as
-formatting characters with no direction of their own. The paired-bracket rule N0
-is absent, so a bracket takes its direction from its surroundings rather than
-from its pair. And P1 is not applied: a `<Text>` is one paragraph however many
-newlines it holds, so every line shares the base direction the first strong
-character set. W1–W7, N1–N2, I1–I2 and L1–L2 are all there, with format
-characters removed as X9 requires.
+Direction marks `U+200E`, `U+200F` and `U+061C` work. Embedding, override and
+isolate controls, bracket pairing (N0) and per-line direction (P1) do not.
 
 ## Hit testing
 
-[`glyphPositionAtCoordinate`](/api/functions/glyphPositionAtCoordinate) turns a
-point into an insertion point, and
-[`rectsForRange`](/api/functions/rectsForRange) turns a byte range into the
-boxes it occupies — a caret and a selection, from the same layout `<Text>` draws.
-
-Both take the coordinates `measureText` reports, with the first baseline at
-`y = 0`, so subtract the `x`/`y` you gave `<Text>` from the touch point first.
+[`glyphPositionAtCoordinate`](/api/functions/glyphPositionAtCoordinate) maps a
+point to an insertion point.
+[`rectsForRange`](/api/functions/rectsForRange) maps a byte range to boxes.
+Subtract the `<Text>` `x`/`y` from the touch point first.
 
 ```tsx
 const style = { fontSize: 17, fontFamily: "PT Serif", width: 320 };
@@ -254,14 +226,7 @@ const boxes = rectsForRange(text, style, selection.start, selection.end);
 // One box per line the range crosses; a one-glyph range is that glyph's bounds.
 ```
 
-`index` is always the insertion point, never a glyph to advance past. `leading`
-says which half produced it — the leading half of the glyph starting there, or
-the trailing half of the one ending there — which is the affinity a caret needs
-at a wrap, where one offset has two positions on screen.
-
-**Not every offset has a box.** The space a line wraps at, a newline, and the
-ellipsis a truncated line ends with all draw nothing, so a caret drawn from the
-glyph at `index` needs the one before it as a fallback:
+**Not every offset has a box.** Fall back to the glyph before it:
 
 ```tsx
 const at = rectsForRange(text, style, caret, caret + 1)[0];
@@ -271,14 +236,12 @@ const x = at ? at.x : before ? before.x + before.width : 0;
 const rule = at ?? before;
 ```
 
-Each call lays the paragraph out, the same as
-[`measureText`](/api/functions/measureText) — cheap for a tap, wasteful once a
-frame. [`TextBox`](/api/interfaces/TextBox) is what `rectsForRange` returns.
+Each call runs layout, like [`measureText`](/api/functions/measureText), so
+avoid it every frame. `rectsForRange` returns [`TextBox`](/api/interfaces/TextBox).
 
-Offsets are UTF-8 byte offsets throughout, matching `startIndex` on
-[`LineMeasurement`](/api/interfaces/LineMeasurement) — for ASCII they are the
-same as JS string indices, and for anything else they are not. `TextBox.endIndex`
-is exclusive, where `LineMeasurement.endIndex` names its last glyph.
+Offsets are UTF-8 bytes, like `startIndex` on
+[`LineMeasurement`](/api/interfaces/LineMeasurement). They match JS string
+indices only for ASCII. `TextBox.endIndex` is exclusive.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -320,8 +283,7 @@ for (const box of boxes) {
 
 ## Text as a path
 
-[`textToPath`](/api/functions/textToPath) returns SVG path data, so text can be
-stroked, clipped or path-operated like any other shape.
+[`textToPath`](/api/functions/textToPath) returns text as SVG path data.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -353,7 +315,7 @@ scene.add(
 </Tab>
 </Tabs>
 
-[`TextPath`](/api/variables/TextPath) lays text along a path instead.
+[`TextPath`](/api/variables/TextPath) lays text along a path.
 
 ## Glyphs
 

@@ -211,7 +211,7 @@ function writeAtlas(w: SceneWriter, p: Record<string, unknown>): void {
 /**
  * A leading buffer id, then either the shared-buffer header (topology, section
  * capacities, live counts) or the inline stream: positions, then optional
- * texture coordinates and colours, then optional indices — each block preceded
+ * texture coordinates and colours, then optional indices - each block preceded
  * by its own count so the reader never has to guess which are present.
  */
 function writeVertices(w: SceneWriter, p: Record<string, unknown>): void {
@@ -487,7 +487,7 @@ function paintFromChild(
  *
  * That holds *across* the two classes too, which is the only way the order is
  * expressible at all. A colour filter is normally applied to the paint, before
- * the draw — so it can never run after an image filter, which works on the
+ * the draw - so it can never run after an image filter, which works on the
  * rasterised result. When one is declared after an image filter, it joins the
  * image chain instead (tgfx's `ImageFilter::ColorFilter`), and then it does.
  *
@@ -554,7 +554,7 @@ function paintFromChildren(w: SceneWriter, node: Node): PaintInput | null {
   for (const child of node.children) {
     if (child.type === NodeType.FilmGrain) {
       // Grain is a group's own style, not a paint contribution, and writeGroup
-      // routes its ref itself — walking it here would register the handle
+      // routes its ref itself - walking it here would register the handle
       // twice. Reaching it here at all means it is not a group's direct child,
       // which is the only place it draws anything.
       if (!warnedGrain.stranded && inDev()) {
@@ -700,7 +700,7 @@ function writeDrawing(
       w.pushAnim(p.y)
       w.pushAnim(p.width)
       w.pushAnim(p.height)
-      // An integer, not a payload — and a slot when live, so swapping images is a patch.
+      // An integer, not a payload - and a slot when live, so swapping images is a patch.
       w.pushAnim(isSharedValue(p.image) ? p.image : imageHandle(p.image))
       w.push(fitCode(p.fit))
       w.push(samplingCode(p.sampling))
@@ -720,7 +720,7 @@ function writeDrawing(
       w.pushAnim(p.width)
       w.pushAnim(p.height)
       // The corner radius is a clip, so it stays a literal; every material word
-      // is an anim word — the style object is rebuilt per draw either way, so a
+      // is an anim word - the style object is rebuilt per draw either way, so a
       // slot write costs nothing a literal does not.
       w.push(resolveNumber(p.r, 0))
       w.pushAnim(p.blur, 12)

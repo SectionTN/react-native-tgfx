@@ -10,7 +10,7 @@ export interface CanvasPress {
 }
 
 export interface CanvasPressOptions extends HitTestOptions {
-  /** Called for every press, whatever it landed on — including nothing. */
+  /** Called for every press, whatever it landed on - including nothing. */
   onPress?: (press: CanvasPress) => void
 }
 
@@ -32,7 +32,7 @@ export interface CanvasPressOptions extends HitTestOptions {
  * </View>
  * ```
  *
- * Only the topmost hit fires, which is what a tap target should do — a handler
+ * Only the topmost hit fires, which is what a tap target should do - a handler
  * on a node underneath does not also run. Nodes with no handle are reported in
  * `onPress` but dispatch to nothing.
  */
@@ -57,8 +57,8 @@ export function useCanvasPress(
  * `Scene.handlesAt(surface.hitTest(x, y, precise))` names and the handlers you
  * care about. Returns whether anything ran.
  *
- * Only the topmost hit fires — a handler on a node underneath does not also
- * run — exactly as {@link useCanvasPress} dispatches on a canvas.
+ * Only the topmost hit fires - a handler on a node underneath does not also
+ * run - exactly as {@link useCanvasPress} dispatches on a canvas.
  */
 export function dispatchPress(
   nodes: (NodeHandle | null)[],

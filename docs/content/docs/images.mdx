@@ -7,9 +7,8 @@ icon: Image
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
 
-[`Image`](/api/functions/Image) takes the source directly — a `require()`'d
-asset, a web URL, a file path, SVG markup, or base64 — and handles decoding,
-registration and readiness itself:
+[`Image`](/api/functions/Image) takes a `require()`d asset, URL, file path, SVG
+markup or base64:
 
 ```tsx
 import { Canvas, Image } from 'react-native-tgfx'
@@ -20,13 +19,8 @@ import { Canvas, Image } from 'react-native-tgfx'
 </Canvas>
 ```
 
-It draws nothing until the decode lands (a web URL is fetched as bytes and
-decoded natively — nothing is base64'd in JS), and a failed load warns and
-stays empty. One trade, stated plainly: it is a function component, so a
-canvas containing one reconciles through React instead of the direct-node
-fast path. Irrelevant for typical scenes; for hundreds of animated nodes,
-[`TgfxImage`](/api/variables/TgfxImage) is the power form — a plain host tag
-taking an already-loaded handle:
+For hundreds of animated nodes, [`TgfxImage`](/api/variables/TgfxImage) is
+faster. It takes a loaded handle:
 
 ```tsx
 import { Canvas, TgfxImage, useImage } from 'react-native-tgfx'
@@ -54,22 +48,16 @@ scene.add(image({ image: photo, x: 0, y: 0, width: 300, height: 200, fit: 'cover
 
 [`useImage`](/api/functions/useImage) returns [`TgfxImage`](/api/interfaces/TgfxImage) or `null`.
 [`useImageState`](/api/functions/useImageState) returns [`ImageState`](/api/interfaces/ImageState) with `loading` and `error`.
-[`loadImage`](/api/functions/loadImage) is the promise form. SVG sources decode to a resolution-independent picture that replays at whatever size it's drawn, not a fixed-resolution raster.
+[`loadImage`](/api/functions/loadImage) is the promise form.
 
 [`ImageProps`](/api/interfaces/ImageProps) · [`Fit`](/api/type-aliases/Fit) · [`Sampling`](/api/type-aliases/Sampling)
 
-A `require()`d asset works in both build types. A release Android build compiles
-it into a drawable or raw resource rather than shipping a file, so the source
-resolves to a resource name; that name is read natively, and the bytes still
-never cross into JS. Two assets whose file names differ only by extension —
-`logo.png` beside `logo.webp` — collide as one Android resource, so give them
-distinct names.
+In Android release builds, asset names can't differ only by extension
+(`logo.png`, `logo.webp`).
 
 ## SVG documents
 
-A whole SVG document — multiple shapes, fills, strokes, gradients, groups,
-`viewBox` scaling — loads through the same sources as any other image, and
-draws through [`ImageSVG`](/api/variables/ImageSVG):
+A whole SVG document draws with [`ImageSVG`](/api/variables/ImageSVG):
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -100,42 +88,22 @@ scene.add(imageSvg({ image: dot, x: 104, y: 0, width: 96, height: 96 }))
 </Tab>
 </Tabs>
 
-Markup is recognised by its opening `<`, so a document built in JS needs no
-`data:` URI and no base64 — it crosses as UTF-8 bytes and is parsed natively.
-
-`<ImageSVG>` is `<TgfxImage>` under a Skia-compatible name, not a second node kind.
-The document is parsed once, at load, into a picture the renderer *replays* at
-draw resolution, so it is already an image handle by the time a scene sees it —
-which is why `width`/`height` are a destination rather than a raster size, and
-why a 24pt icon drawn at 240pt is redrawn rather than blown up. `<Path>` remains
-the right thing for a single `d` string; this is for a document.
+`<ImageSVG>` is `<TgfxImage>` under a Skia-compatible name. It is redrawn at
+any size. Use `<Path>` for a single `d` string.
 
 [`ImageSVGProps`](/api/interfaces/ImageSVGProps)
 
 ## Colour profiles
 
-An embedded ICC profile is read at decode and honoured on draw. A photo tagged
-Adobe RGB, ProPhoto or Rec.2020 is converted into the canvas's own space rather
-than having its numbers reinterpreted, so it looks the same on an `srgb` canvas
-as on a `display-p3` one — a browser does the same thing.
+Embedded ICC profiles are honoured: images are converted into the canvas's
+colour space. An sRGB canvas clips out-of-gamut colour. A
+[`colorSpace="display-p3"` canvas](/api/interfaces/CanvasProps) keeps it.
 
-Converting into sRGB is a real conversion, not a no-op: out-of-gamut colour is
-clipped, which is the correct and unavoidable answer for a display that cannot
-show it. A [`colorSpace="display-p3"` canvas](/api/interfaces/CanvasProps) keeps
-it instead.
-
-An image with no profile at all — or with one the decoder cannot parse — is read
-as **sRGB**, silently. That is the web's default and what the conversion
-substitutes for an untagged source, so it is a definition rather than a
-correction: nothing has to re-tag the image for it to hold.
+Images with no readable profile are read as sRGB.
 
 <Callout type="warn">
-  On iOS, PNG and JPEG decode through ImageIO rather than through tgfx's own
-  readers, and ImageIO renders into an sRGB bitmap. A wide-gamut source is
-  therefore flattened at decode on iOS, before any canvas sees it, and a P3
-  canvas cannot recover what was already clipped. Android reads the profile and
-  converts at draw, as described above. Closing the gap means having the Apple
-  codec report the `CGImage`'s own colour space — a change in tgfx itself.
+  On iOS, PNG and JPEG decode to sRGB, so a P3 canvas cannot recover
+  wide-gamut colour.
 </Callout>
 
 ## Sub-rects
@@ -198,8 +166,7 @@ scene.add(
 
 ## Derived images
 
-These transforms are native-side and reuse the decoded source instead of
-decoding the original file again.
+These reuse the decoded source.
 
 ```ts
 const thumb = photo.scaled(200, 200)
@@ -208,11 +175,9 @@ const upright = photo.oriented('rightTop')
 const frosted = photo.blurred(20, 20)
 ```
 
-`oriented` takes an [`Orientation`](/api/type-aliases/Orientation) — the EXIF
-tags `topLeft`/`topRight`/`bottomRight`/`bottomLeft`/`leftTop`/`rightTop`/`rightBottom`/`leftBottom`,
-naming where the stored top-left pixel belongs.
+`oriented` takes an EXIF [`Orientation`](/api/type-aliases/Orientation).
 
-[`useDerivedImage`](/api/functions/useDerivedImage) does the same as a hook ([`Derivation`](/api/type-aliases/Derivation)).
+[`useDerivedImage`](/api/functions/useDerivedImage) is the hook form ([`Derivation`](/api/type-aliases/Derivation)).
 
 ```tsx
 const thumb = useDerivedImage(photo, { type: 'scaled', width: 200, height: 200 })
@@ -220,25 +185,22 @@ const thumb = useDerivedImage(photo, { type: 'scaled', width: 200, height: 200 }
 
 ## Encode and save
 
-Any image handle encodes to bytes or writes itself to disk — including a
-`renderToImage` result, which completes the headless flow:
+Any image handle encodes to bytes or saves to disk:
 
 ```ts
 const bytes = await image.encode('webp', 90)   // zero-copy ArrayBuffer, for upload
 await image.save(`${dir}/thumb.jpg`, 'jpeg', 85) // written natively; bytes never enter JS
 ```
 
-`format` is `'png'` (default), `'jpeg'`, `'webp'`, or `'raw'` (straight-alpha
-RGBA rows). A derived image encodes what it draws. A disposed handle and a live
-camera or video frame reject — a stream has no still to encode.
+`format` is `'png'` (default), `'jpeg'`, `'webp'` or `'raw'` (straight-alpha
+RGBA). Disposed handles and live camera or video frames reject.
 
 ## Native buffers
 
 [`imageFromNativeBuffer`](/api/functions/imageFromNativeBuffer) wraps a camera or
 decoder buffer without a copy ([`PixelFormat`](/api/type-aliases/PixelFormat)).
-The producer's reference still has to be released after tgfx retains the
-buffer; prefer [`useCameraFrame`](/api/functions/useCameraFrame) for frame
-lifecycle management.
+Release the producer's buffer after wrapping, or use
+[`useCameraFrame`](/api/functions/useCameraFrame).
 
 ```tsx
 let frameImage: TgfxImage
@@ -255,26 +217,22 @@ try {
 
 ## Decoded pixels
 
-[`imageFromPixels`](/api/functions/imageFromPixels) wraps premultiplied RGBA a
-producer computed rather than loaded, e.g. an ML model's output. `rowBytes` is
-the stride in bytes, a multiple of 4, tightly packed when omitted.
+[`imageFromPixels`](/api/functions/imageFromPixels) wraps premultiplied RGBA,
+such as an ML model's output. `rowBytes` (a multiple of 4) defaults to tightly
+packed.
 
 ```tsx
 const image = imageFromPixels(pixels, width, height)
 ```
 
-A buffer another native module produced and owns is borrowed rather than
-copied, and the handle keeps that memory alive — so do not write into it while
-the handle still points at it. An `ArrayBuffer` constructed in JavaScript is
-always copied: JS owns that memory and can detach or collect it at any time.
+A buffer from another native module is borrowed, so don't write to it while the
+handle uses it. A JS `ArrayBuffer` is copied.
 
-Like a camera frame, such a handle is a surface to draw, not a source to
-derive from: `subset`, `scaled`, `oriented`, `blurred`, `encode` and `save`
-throw on it.
+`subset`, `scaled`, `oriented`, `blurred`, `encode` and `save` throw on these
+handles.
 
-For a stream, mint once and re-point that handle with
-[`setPixels`](/api/interfaces/TgfxImage#setpixels) rather than creating one per
-frame - the same shape as `setNativeBuffer`:
+For a stream, reuse one handle with
+[`setPixels`](/api/interfaces/TgfxImage#setpixels):
 
 ```tsx
 if (image != null) {
@@ -290,13 +248,10 @@ if (image != null) {
 setImageCacheLimit(32 * 1024 * 1024)
 ```
 
-The default decoded-image budget is 64 MB. The limit is applied to both the
-decoded-pixel cache and the tgfx GPU resource cache.
+The default is 64 MB, applied to both the decoded-pixel and GPU caches.
 
-[`getCacheInfo`](/api/functions/getCacheInfo) reports what tgfx is holding, and
-[`purgeCaches`](/api/functions/purgeCaches) drops it all now — for a
-memory-pressure handler or a screen that just navigated away from image-heavy
-content:
+[`getCacheInfo`](/api/functions/getCacheInfo) reports usage.
+[`purgeCaches`](/api/functions/purgeCaches) frees it all, e.g. on memory pressure:
 
 ```tsx
 const { imageBytes, imageLimit, gpuBytes, offscreenGpuBytes } = getCacheInfo()
@@ -304,24 +259,16 @@ const { imageBytes, imageLimit, gpuBytes, offscreenGpuBytes } = getCacheInfo()
 purgeCaches()
 ```
 
-A purge frees the decoded CPU pixels before it returns and schedules a frame on
-every live canvas, where each drops its GPU resource cache — so process memory
-falls within a frame rather than waiting for budget evictions. Handles stay
-valid: whatever is still on screen re-decodes and re-uploads lazily, exactly as
-after an eviction. `gpuBytes` is published by each canvas's last frame, so read
-it a frame after purging, not in the same tick.
+Handles stay valid. Read `gpuBytes` a frame after purging.
 
 ## Video
 
-[`useVideo`](/api/functions/useVideo) gives a [`Video`](/api/interfaces/Video)
-whose `currentFrame` can be passed straight to `<TgfxImage>`. It requires
-Reanimated and Worklets because frames are pulled from a UI-thread frame
-callback.
-[`loadVideo`](/api/functions/loadVideo) is the promise form outside React — it
-resolves the raw native player, not a `Video`, so the caller drives
-`updateFrame()` and `release()` itself.
+[`useVideo`](/api/functions/useVideo) returns a [`Video`](/api/interfaces/Video)
+whose `currentFrame` goes straight to `<TgfxImage>`. It needs Reanimated and
+Worklets. [`loadVideo`](/api/functions/loadVideo) returns the raw native player
+instead, so call `updateFrame()` and `release()` yourself.
 
-Its second argument is a [`VideoOptions`](/api/interfaces/VideoOptions):
+Its options are a [`VideoOptions`](/api/interfaces/VideoOptions):
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -331,7 +278,7 @@ useVideo(require('./clip.mp4'), {
   seek: 1500,     // jump to 1.5s; seeks again whenever this changes
   paused: false,  // plays as soon as it's open (the default)
   looping: true,
-  volume: 0.5,    // 0 to 1, defaults to 0 — a canvas video is usually decoration
+  volume: 0.5,    // 0 to 1, defaults to 0 - a canvas video is usually decoration
 })
 ```
 
@@ -343,10 +290,10 @@ const player = await createVideoPlayer(require('./clip.mp4'), {
   seek: 1500,     // jump to 1.5s; seeks again whenever this changes
   paused: false,  // plays as soon as it's open (the default)
   looping: true,
-  volume: 0.5,    // 0 to 1, defaults to 0 — a canvas video is usually decoration
+  volume: 0.5,    // 0 to 1, defaults to 0 - a canvas video is usually decoration
 })
 
-// currentFrame is a one-time snapshot at add time — build the node per frame:
+// currentFrame is a one-time snapshot at add time - build the node per frame:
 player.onFrame((frame) =>
   scene.add(image({ image: frame, x: 0, y: 0, width: 1280, height: 720 }))
 )

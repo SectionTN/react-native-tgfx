@@ -2,7 +2,7 @@
 
 // Element factories: the imperative constructors behind every JSX component.
 // Each returns the same plain host node the reconciler would produce, with no
-// normalization of its own — the compiler is the single normalizer — so a
+// normalization of its own - the compiler is the single normalizer - so a
 // factory tree and its JSX equivalent compile to byte-identical programs.
 import { NodeType, type Node, type NodeTypeName } from './reconciler/types'
 import type {
@@ -46,7 +46,7 @@ import type {
 
 /**
  * A plain scene node: a type tag, its props, and its children. The imperative
- * counterpart of a rendered JSX element — what the factories below return, what
+ * counterpart of a rendered JSX element - what the factories below return, what
  * a `Scene` holds, and what the offscreen renderers accept.
  */
 export type SceneNode = Node
@@ -62,7 +62,7 @@ type Factory<P> =
 const element = <P>(type: NodeTypeName): Factory<P> =>
   ((props?: ElementProps<P>, children?: SceneNode[]): SceneNode => {
     // Its own directive: the file-level one covers `element`, not the arrows
-    // it returns — without this, `rect` crosses to a worklet as a remote
+    // it returns - without this, `rect` crosses to a worklet as a remote
     // function and the first call there throws.
     'worklet'
     if (
@@ -71,7 +71,7 @@ const element = <P>(type: NodeTypeName): Factory<P> =>
       props != null &&
       typeof props !== 'object'
     ) {
-      // Catches text('hi') — and plain-JS callers of the renamed font utility:
+      // Catches text('hi') - and plain-JS callers of the renamed font utility:
       // textPath(text, style) is now textToPath; this textPath builds a node.
       throw new Error(
         `[tgfx] the ${type.slice(5)} factory takes a props object, got ${typeof props}.` +
@@ -104,8 +104,8 @@ export const path = element<PathProps>(NodeType.Path)
 /** Imperative `<TgfxImage>`. */
 export const image = element<ImageProps>(NodeType.Image)
 /**
- * Imperative `<ImageSVG>`. The same host node as {@link image} — an SVG source
- * already becomes an image handle at load — typed for SVG props.
+ * Imperative `<ImageSVG>`. The same host node as {@link image} - an SVG source
+ * already becomes an image handle at load - typed for SVG props.
  */
 export const imageSvg = element<ImageSVGProps>(NodeType.Image)
 /** Imperative `<Text>`: `text({ text: 'hi' })`, or spans as children. */

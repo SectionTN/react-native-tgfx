@@ -18,8 +18,8 @@ function images(): TgfxImageFactory {
 }
 
 /**
- * Byte budget for decoded images. A decoded image is resident twice — as CPU
- * pixels and as the GPU texture uploaded from them — so this is applied to both
+ * Byte budget for decoded images. A decoded image is resident twice - as CPU
+ * pixels and as the GPU texture uploaded from them - so this is applied to both
  * the pixel cache and the tgfx context's resource cache. Defaults to 64 MB.
  */
 export function setImageCacheLimit(bytes: number): void {
@@ -38,7 +38,7 @@ export function getCacheInfo(): CacheInfo {
 /**
  * Drop every tgfx cache now. Decoded CPU pixels are freed before this returns;
  * each live canvas drops its GPU resource cache on its next frame, which this
- * schedules — so process memory falls within a frame, without waiting for any
+ * schedules - so process memory falls within a frame, without waiting for any
  * budget eviction. What is still on screen re-decodes and re-uploads lazily.
  */
 export function purgeCaches(): void {
@@ -46,13 +46,13 @@ export function purgeCaches(): void {
 }
 
 /**
- * Wrap a platform hardware buffer — an `AHardwareBuffer*` on Android, a
- * `CVPixelBufferRef` on iOS — as an image handle. Pass
+ * Wrap a platform hardware buffer - an `AHardwareBuffer*` on Android, a
+ * `CVPixelBufferRef` on iOS - as an image handle. Pass
  * `frame.getNativeBuffer().pointer`.
  *
  * Zero-copy and synchronous: the buffer is imported straight to a GPU texture,
  * with no decode and no CPU round trip. For a stream of frames, keep the handle
- * and call `image.setNativeBuffer(...)` per frame — native code imports the new
+ * and call `image.setNativeBuffer(...)` per frame - native code imports the new
  * buffer and replaces the registry entry, while the draw path resolves the
  * stable handle every frame. Nothing is re-committed, replacement schedules a
  * redraw, and an undrawn frame is superseded by the next rather than queued
@@ -70,11 +70,11 @@ export function purgeCaches(): void {
  * Unlike every other function here, this one does **not** share the memoised
  * factory: a worklet gets its own copy of module state, so it builds a
  * `TgfxImageFactory` per call. That is deliberate and cheap for the intended
- * once-per-stream use, but it is not free — do not call it per frame. Use
+ * once-per-stream use, but it is not free - do not call it per frame. Use
  * `image.setNativeBuffer(...)` for the second and every later buffer.
  *
  * **`buffer` is a raw pointer, and nothing here can check it.** It is only
- * valid for as long as its producer says it is — for a VisionCamera frame, the
+ * valid for as long as its producer says it is - for a VisionCamera frame, the
  * body of the `onFrame` callback. Passing a stale or already-released pointer
  * is a use-after-free that will not throw: it imports whatever memory is now at
  * that address. Never store one, never let one outlive the callback it came
@@ -91,7 +91,7 @@ export function imageFromNativeBuffer(
   ).fromNativeBuffer(buffer, format)
 }
 
-/** Wrap decoded premultiplied RGBA pixels as a handle. `rowBytes` is the stride in bytes (a multiple of 4), tightly packed when omitted. A native module's own buffer is borrowed — do not write into it while the handle lives; a JS-constructed `ArrayBuffer` is copied. Per-frame like a camera frame: it cannot be derived from or encoded. */
+/** Wrap decoded premultiplied RGBA pixels as a handle. `rowBytes` is the stride in bytes (a multiple of 4), tightly packed when omitted. A native module's own buffer is borrowed - do not write into it while the handle lives; a JS-constructed `ArrayBuffer` is copied. Per-frame like a camera frame: it cannot be derived from or encoded. */
 export function imageFromPixels(
   pixels: ArrayBuffer,
   width: number,
@@ -107,7 +107,7 @@ export function imageFromPixels(
 /**
  * Load an image source into a native handle, outside React.
  *
- * Same sources as {@link useImageState}, `.svg` included — a `require()`d
+ * Same sources as {@link useImageState}, `.svg` included - a `require()`d
  * asset, a path or URI, base64, or an SVG document as markup. The caller owns
  * the handle and must `dispose()` it; the hooks do that for you.
  */
@@ -117,7 +117,7 @@ export function loadImage(
 ): Promise<TgfxImage> {
   // Ahead of the URI routing: markup is neither a path nor base64, and would
   // otherwise be base64-decoded into nothing. The one place this decision is
-  // made — `useImageState` comes through here rather than repeating it.
+  // made - `useImageState` comes through here rather than repeating it.
   if (typeof source === 'string' && looksLikeSvgMarkup(source)) {
     return images().fromSvg(source)
   }
@@ -144,7 +144,7 @@ const PENDING: ImageState = Object.freeze({
  *
  * A local file is opened natively, so its bytes never enter JS at all. Only a
  * remote or Metro-served URI still goes through `fetch`, and then as an
- * `ArrayBuffer` — nothing is ever base64-encoded on the JS thread.
+ * `ArrayBuffer` - nothing is ever base64-encoded on the JS thread.
  *
  * `data` is cleared the moment `source` changes, so a slow or failing load can
  * never leave the previous image on screen. The handle is disposed when the

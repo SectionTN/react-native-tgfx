@@ -35,8 +35,8 @@ export interface Worklets {
  * Reanimated, if it is installed, resolved on use.
  *
  * On use rather than at import, because this module is reachable from the
- * compiler, and the compiler must not drag an optional peer dependency — and
- * React Native itself behind it — into the graph of anything that only wants to
+ * compiler, and the compiler must not drag an optional peer dependency - and
+ * React Native itself behind it - into the graph of anything that only wants to
  * build a scene. The module object itself is not cached: `require` already is.
  *
  * A worklet. The absence cache is a const-object property, not a module `let`:
@@ -110,7 +110,7 @@ export function requireReanimated(
 }
 
 /**
- * react-native-worklets, a hard peer of Reanimated — so it resolves whenever
+ * react-native-worklets, a hard peer of Reanimated - so it resolves whenever
  * Reanimated did, and a miss here is a broken install rather than an absent
  * optional peer. Call only behind `requireReanimated`.
  */

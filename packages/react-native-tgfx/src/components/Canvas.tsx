@@ -37,12 +37,12 @@ let warnedNoDriver = false
 
 /**
  * The `fonts` prop's gate: children are withheld until every face registers,
- * so text never flashes in the platform fallback. No prop — ready at once,
+ * so text never flashes in the platform fallback. No prop - ready at once,
  * costing canvases without fonts nothing. A failed load warns and lets the
  * children through: fallback text beats a canvas that stays blank forever.
  */
 /// Keys whose faces already registered: a remount with a known key is ready
-/// synchronously — no withheld frame, no repeated font-file reads.
+/// synchronously - no withheld frame, no repeated font-file reads.
 const settledFontKeys = new Set<string>()
 
 function useFontsReady(families?: Record<string, FontSource[]>): boolean {
@@ -162,12 +162,12 @@ function sameViewport(
  *
  * Only a string is taken. A `PlatformColor()` is an opaque object the scene
  * cannot encode, and a bare number is `0xRRGGBBAA` to React Native but
- * `0xAARRGGBB` to `<Fill>` — both are left to the platform view instead of
+ * `0xAARRGGBB` to `<Fill>` - both are left to the platform view instead of
  * being guessed at.
  */
 function backgroundOf(style: unknown): string | undefined {
   if (Array.isArray(style)) {
-    // Last wins, and an entry that names the key at all settles it — even as undefined.
+    // Last wins, and an entry that names the key at all settles it - even as undefined.
     for (let i = style.length - 1; i >= 0; i--) {
       const entry = style[i] as Record<string, unknown> | null | undefined
       if (
@@ -268,7 +268,7 @@ export function Canvas({
   // Three separate triples: `viewport` is what the canvas is at, `prop` is what
   // the last commit asked for, `sent` is what native was told. Folding the prop
   // into `viewport` on every render would revert an imperative write the moment
-  // anything else re-rendered, and the effect — keyed on the prop's fields —
+  // anything else re-rendered, and the effect - keyed on the prop's fields -
   // would not notice.
   const viewportRef = useRef<[number, number, number]>([1, 0, 0])
   const propViewport = useRef<[number, number, number]>([1, 0, 0])

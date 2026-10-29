@@ -4,9 +4,8 @@ description: Shapes, paint, groups and hit testing.
 icon: Shapes
 ---
 
-Every drawing is a child of [`Canvas`](/api/functions/Canvas) — or, without
-React, a node built by the matching lowercase element factory and held in a
-[`Scene`](/api/classes/Scene). Both forms compile to the identical program:
+Draw in a [`Canvas`](/api/functions/Canvas), or without React, in a
+[`Scene`](/api/classes/Scene):
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -33,9 +32,7 @@ scene.attach(viewRef) // a TgfxViewRef from <TgfxNativeView>
 </Tab>
 </Tabs>
 
-Every component in the tables below has a factory of the same name in
-lowercase (`Rect` → `rect`, `LinearGradient` → `linearGradient`, ...), taking
-the same props plus an optional children array — see
+Each component has a lowercase factory (`Rect` → `rect`). See
 [Imperative](/docs/imperative).
 
 ## Shapes
@@ -79,9 +76,8 @@ scene.add(
 </Tab>
 </Tabs>
 
-[`Color`](/api/type-aliases/Color) accepts named colours, hex, `rgb()`/`rgba()`,
-`hsl()`/`hsla()`, packed `0xAARRGGBB`, `[r, g, b, a]` in 0..1, and the
-`color(srgb ...)` and `color(display-p3 ...)` forms:
+[`Color`](/api/type-aliases/Color) accepts names, hex, `rgb()`/`rgba()`,
+`hsl()`/`hsla()`, `0xAARRGGBB`, `[r, g, b, a]` in 0..1, and `color()`:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -143,12 +139,10 @@ scene.add(
 </Tab>
 </Tabs>
 
-`clip` takes a [`ClipRect`](/api/interfaces/ClipRect) or SVG path data;
-`invertClip` keeps what falls *outside* it instead of inside. `origin` shifts
-the pivot `transform` rotates and scales around, away from `(0, 0)`.
+`clip` takes a [`ClipRect`](/api/interfaces/ClipRect) or SVG path data.
+`invertClip` keeps the outside instead. `origin` sets the `transform` pivot.
 
-`layer` composites children into one offscreen layer first, so a group opacity
-applies to the union rather than to each child:
+`layer` applies opacity to the group as a whole:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -175,7 +169,7 @@ scene.add(
 </Tab>
 </Tabs>
 
-`picture` records children once and replays them — for static subtrees.
+`picture` records a static subtree once and replays it.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -203,18 +197,10 @@ scene.add(
 ### 3D transforms
 
 `transform` also takes `perspective`, `rotateX`, `rotateY` and `translateZ`.
-Put `perspective` before the rotations it applies to. Every operand can be a shared value or be written
-through a node handle; one the transform lacks is appended after the translation (`perspective`) or at
-the end (everything else).
+Put `perspective` before the rotations it applies to.
 
-`preserve3d` places the child groups in one 3D space, so they hide one another
-by depth. Without it, each child is flattened into the group's plane and drawn
-in order. It needs a GPU surface: inside a `picture` group or an export, the
-children are drawn flattened. As with CSS grouping properties, `clip`, `layer`,
-`picture` or a `<FilmGrain>` on the group itself flatten it; on a child group
-they apply to that child's plane. A `<Fill>` on a plane covers the plane's clip,
-or else the area of the canvas. Hit tests compose the same 3D space and report
-the nearest plane first.
+`preserve3d` sorts child groups by depth. `clip`, `layer`, `picture`,
+`<FilmGrain>` or an export flattens it.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -325,12 +311,9 @@ scene.add(
 
 ## Viewport
 
-`<Canvas viewport={{ zoom, x, y }}>` is a zoom/pan the renderer applies above the
-whole scene, so moving it never re-encodes the draw program.
-[`CanvasHandle.setViewport`](/api/interfaces/CanvasHandle) is the imperative form
-and the one a gesture should use — see
-[Zoom and pan](/docs/animation#zoom-and-pan). `hitTest` inverts it, so the two
-stay in agreement at any zoom. Headless, the same `[zoom, x, y]` triple goes to
+`<Canvas viewport={{ zoom, x, y }}>` zooms and pans the whole scene. For
+gestures, use [`CanvasHandle.setViewport`](/api/interfaces/CanvasHandle); see
+[Zoom and pan](/docs/animation#zoom-and-pan). Headless, use
 [`surface.setViewport`](/docs/snapshots#retained-surface).
 
 ## Hit testing
@@ -351,7 +334,7 @@ const bar = useNode()
 </GestureDetector>
 ```
 
-[`useCanvasPress`](/api/functions/useCanvasPress) wires the same thing to the responder system:
+[`useCanvasPress`](/api/functions/useCanvasPress) does the same with the responder system:
 
 ```tsx
 const onTouch = useCanvasPress(canvas, [[bar, () => select(bar)]], {
@@ -366,13 +349,11 @@ const onTouch = useCanvasPress(canvas, [[bar, () => select(bar)]], {
 </View>
 ```
 
-Third argument is a [`CanvasPressOptions`](/api/interfaces/CanvasPressOptions):
-`precise` tests the filled region rather than the bounding box, and `onPress`
-gets a [`CanvasPress`](/api/interfaces/CanvasPress) for every press, whatever
-it landed on — including nothing.
+Options are [`CanvasPressOptions`](/api/interfaces/CanvasPressOptions).
+`precise` tests the filled shape, not its bounds. `onPress` gets a
+[`CanvasPress`](/api/interfaces/CanvasPress) for every press, even on empty space.
 
-Headless, the same topmost-wins dispatch runs against an offscreen surface —
-[`dispatchPress`](/api/functions/dispatchPress) plus `Scene.handlesAt`:
+Headless, use [`dispatchPress`](/api/functions/dispatchPress) with `Scene.handlesAt`:
 
 ```ts
 dispatchPress(scene.handlesAt(surface.hitTest(x, y, true)), [

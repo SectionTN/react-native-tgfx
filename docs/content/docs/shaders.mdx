@@ -4,10 +4,9 @@ description: Runtime SkSL shaders and uniforms.
 icon: Code
 ---
 
-[`Shader`](/api/variables/Shader) accepts the SkSL subset supported by tgfx,
-transpiles it while the scene is compiled, and creates the runtime shader
-natively ([`ShaderProps`](/api/interfaces/ShaderProps)). `main` receives the
-position in local space and returns a premultiplied `half4`.
+[`Shader`](/api/variables/Shader) runs tgfx's SkSL subset
+([`ShaderProps`](/api/interfaces/ShaderProps)). `main` gets local coordinates and
+returns premultiplied `half4`.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -56,15 +55,13 @@ scene.add(
 </Tabs>
 
 <Callout>
-Declarations must come before `main()`, or compilation fails with
-`[tgfx] shader: declarations must come before main(), found after it`.
+Declarations must come before `main()`.
 </Callout>
 
 ## Animated uniforms
 
-Uniform values accept a `SharedValue`, so they update on the UI thread.
-[`useClock`](/api/functions/useClock) is a shared value of seconds since its
-first frame callback.
+Uniforms accept a `SharedValue`. [`useClock`](/api/functions/useClock) counts
+seconds.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -95,8 +92,7 @@ scene.add(
 
 ## Shader inputs
 
-Each `uniform shader` declaration takes one shader child, in order. `eval` and
-`sample` both work.
+One shader child per `uniform shader`, in order.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -143,7 +139,7 @@ shader({ source, uniforms: { uShift: 4 } }, [
 </Tab>
 </Tabs>
 
-Any shader works as an input, not just images:
+Inputs can be any shader:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -166,9 +162,9 @@ shader({ source: banded }, [
 </Tab>
 </Tabs>
 
-A count mismatch throws while the scene is compiled on commit:
+A count mismatch throws:
 
 ```
 [tgfx] shader: the source declares 1 'uniform shader' (img) but 0 shader children
-were given — pass one shader child per declaration, in order
+were given - pass one shader child per declaration, in order
 ```

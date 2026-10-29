@@ -59,12 +59,12 @@ interface Attachment {
 }
 
 /**
- * A retained scene built from {@link SceneNode}s — the imperative counterpart
+ * A retained scene built from {@link SceneNode}s - the imperative counterpart
  * of `<Canvas>`, with no React anywhere.
  *
  * Structural mutations (`add`, `remove`, ...) batch per microtask into one
  * compile; `flush()` commits now. Value mutation goes through node handles
- * (`createHandle`), which patch slots without re-encoding — do not rebuild the
+ * (`createHandle`), which patch slots without re-encoding - do not rebuild the
  * tree per frame.
  */
 export class Scene {
@@ -171,7 +171,7 @@ export class Scene {
     // Reseed=false, unlike a JSX commit: factory props are construction-time
     // values, not a re-asserted truth, so a structural commit must not snap
     // written handles back to them. A handle's first compile still seeds its
-    // slots from the props — apply() treats an unbound handle as seedable.
+    // slots from the props - apply() treats an unbound handle as seedable.
     this.container.root = this.roots
     this.container.recompile()
   }
@@ -229,7 +229,7 @@ export class Scene {
   }
 
   /**
-   * Name the nodes behind a flat hit-test answer — what `surface.hitTest` and
+   * Name the nodes behind a flat hit-test answer - what `surface.hitTest` and
    * `view.hitTest` return raw. Topmost first, `null` for a node with no
    * handle; feed the result to `dispatchPress`.
    */
@@ -246,7 +246,7 @@ export class Scene {
   }
 
   /**
-   * Render this scene and write the still to `path` — the full headless loop
+   * Render this scene and write the still to `path` - the full headless loop
    * in one call. Size comes from `options`, then `Scene.create`'s options,
    * then an attached offscreen surface. Format from the file extension unless
    * given. Resolves once the file is on disk; the bytes never enter JS.
@@ -350,7 +350,7 @@ export class Scene {
 
   /**
    * With Reanimated installed, handle writes and SharedValue props change on
-   * the UI thread and `handle.set` defers its push to a driver — `<Canvas>`
+   * the UI thread and `handle.set` defers its push to a driver - `<Canvas>`
    * mounts one, so a scene must run its own. The mapper is AnimationDriver's:
    * fill the slot array from the live values, push to every target, diff the
    * string slots. Without Reanimated the JS-thread push in `pushValues` covers
@@ -361,7 +361,7 @@ export class Scene {
   // which the slot path exists to avoid.
   private syncMapper(): void {
     // On a worklet runtime there is no Reanimated module to start a mapper on,
-    // and none is owed: a worklet scene is structural nodes and literal props —
+    // and none is owed: a worklet scene is structural nodes and literal props -
     // value slots land at flush(), and per-frame motion drives the surface's
     // setValues directly.
     if ((globalThis as { _WORKLET?: boolean })._WORKLET === true) {
@@ -393,7 +393,7 @@ export class Scene {
     const slots = new Array<number>(values.length)
     const sent = new Array<string | null>(stringValues.length).fill(null)
     // Block slots have no listeners, so they cannot be mapper inputs; the
-    // handles' gen values — bumped once per worklet-side set() — stand in.
+    // handles' gen values - bumped once per worklet-side set() - stand in.
     const listenable = [...values, ...stringValues].filter(
       (v) => !isBlockSlot(v)
     )
@@ -460,7 +460,7 @@ export class Scene {
 /**
  * `Scene.create`, as a plain function. Inside a worklet this is the only form
  * that works: a class captured across modules crosses as a host reference, so
- * `Scene.create` is not callable there — `createScene()` is.
+ * `Scene.create` is not callable there - `createScene()` is.
  */
 export function createScene(options?: SceneOptions): Scene {
   // The casts step around `private`: this factory IS the constructor's public
@@ -471,7 +471,7 @@ export function createScene(options?: SceneOptions): Scene {
   return scene
 }
 
-/** `Scene.from`, as a plain function — the worklet-callable form. */
+/** `Scene.from`, as a plain function - the worklet-callable form. */
 export function sceneFrom(roots: SceneNode[], options?: SceneOptions): Scene {
   const scene = createScene(options)
   scene.replaceChildren(roots)

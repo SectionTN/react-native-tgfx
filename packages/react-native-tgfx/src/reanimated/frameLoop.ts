@@ -4,8 +4,8 @@ import { requireReanimated, worklets } from './peer'
 
 /**
  * Run `tick` (a worklet) once per UI-thread frame until the returned stop is
- * called. Timestamps are the UI runtime's `requestAnimationFrame` milliseconds
- * — the same clock `useFrameCallback` rides.
+ * called. Timestamps are the UI runtime's `requestAnimationFrame` milliseconds -
+ * the same clock `useFrameCallback` rides.
  */
 export function startUiFrameLoop(
   what: string,

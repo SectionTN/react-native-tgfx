@@ -2,7 +2,7 @@ import type { HybridObject, UInt64 } from 'react-native-nitro-modules'
 
 /**
  * How a hardware buffer's YUV planes map to RGB. `rgba` means the buffer is not
- * YUV at all — a single-plane RGBA surface, imported without a conversion.
+ * YUV at all - a single-plane RGBA surface, imported without a conversion.
  *
  * The camera hook infers the matrix and range from the producer's pixel-format
  * string, falling back to `bt601-limited` when it carries no recognised tag.
@@ -34,7 +34,7 @@ export type Orientation =
 /**
  * A decoded image living in native memory.
  *
- * The draw program carries {@link handle} — a small integer — so the scene's
+ * The draw program carries {@link handle} - a small integer - so the scene's
  * string table stops scaling with image bytes and a re-commit costs no hashing
  * and no decode. Bytes never travel as base64.
  */
@@ -98,15 +98,15 @@ export interface TgfxImage extends HybridObject<{
    * This image with a Gaussian blur baked in, so a frosted backdrop is filtered
    * once rather than every frame.
    *
-   * The result is **larger than the source and centred in it** — a blur spreads
-   * about two sigma past each edge — so drawing it at the source's position
+   * The result is **larger than the source and centred in it** - a blur spreads
+   * about two sigma past each edge - so drawing it at the source's position
    * shifts the content. Offset by `(derived.width - source.width) / 2` to line
    * the two up.
    */
   blurred(blurX: number, blurY: number): TgfxImage
 
   /**
-   * Encode to bytes — the missing half of the headless flow, where
+   * Encode to bytes - the missing half of the headless flow, where
    * `renderToImage` produces a handle nothing could persist.
    *
    * `format` is `'png'` (default), `'jpeg'`, `'webp'`, or `'raw'`
@@ -116,7 +116,7 @@ export interface TgfxImage extends HybridObject<{
    *
    * Rasterizes through the shared offscreen GPU context, so a derived image
    * (`subset`/`scaled`/`blurred`) encodes what it draws. A disposed handle and
-   * a live camera/video frame reject — a stream has no still to encode.
+   * a live camera/video frame reject - a stream has no still to encode.
    */
   encode(format?: string, quality?: number): Promise<ArrayBuffer>
 
@@ -155,7 +155,7 @@ export interface TgfxImageFactory extends HybridObject<{
    */
   fromBytes(bytes: ArrayBuffer): Promise<TgfxImage>
 
-  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride in bytes (a multiple of 4), tightly packed when omitted. A buffer a native module owns is borrowed — do not write into it while the handle points at it; a JS-constructed `ArrayBuffer` is copied. A per-frame handle like a camera frame: it cannot be derived from (`subset`, `scaled`, ...) or encoded. */
+  /** Decoded premultiplied RGBA pixels. `rowBytes` is the stride in bytes (a multiple of 4), tightly packed when omitted. A buffer a native module owns is borrowed - do not write into it while the handle points at it; a JS-constructed `ArrayBuffer` is copied. A per-frame handle like a camera frame: it cannot be derived from (`subset`, `scaled`, ...) or encoded. */
   fromPixels(
     pixels: ArrayBuffer,
     width: number,
@@ -177,14 +177,14 @@ export interface TgfxImageFactory extends HybridObject<{
   fromSvg(markup: string): Promise<TgfxImage>
 
   /**
-   * Wrap a platform hardware buffer — an `AHardwareBuffer*` on Android, a
-   * `CVPixelBufferRef` on iOS — as a GPU-resident handle. Pass
+   * Wrap a platform hardware buffer - an `AHardwareBuffer*` on Android, a
+   * `CVPixelBufferRef` on iOS - as a GPU-resident handle. Pass
    * `frame.getNativeBuffer().pointer`.
    *
    * Zero-copy and synchronous: there is nothing to decode, so the buffer is
    * imported straight to a texture and there is no promise to await on a
    * 16 ms budget. The returned handle retains the buffer, so the caller may
-   * release its own reference as soon as this returns — but must not write into
+   * release its own reference as soon as this returns - but must not write into
    * the buffer while the handle still points at it: tgfx requires the contents
    * to stay unchanged for the image's lifetime
    * (cpp/third_party/tgfx/include/tgfx/core/Image.h).
@@ -248,8 +248,8 @@ export interface TgfxImageFactory extends HybridObject<{
   ): Promise<TgfxImage>
 
   /**
-   * Byte budget for decoded images. A decoded image is resident twice — as CPU
-   * pixels here and as the GPU texture uploaded from them — so this number is
+   * Byte budget for decoded images. A decoded image is resident twice - as CPU
+   * pixels here and as the GPU texture uploaded from them - so this number is
    * applied to both the pixel cache and the tgfx context's resource cache
    * rather than to only one of them. Defaults to 64 MB.
    */
@@ -273,7 +273,7 @@ export interface CacheInfo {
   imageLimit: number
   /**
    * GPU resources across the live canvas contexts, as of each canvas's last
-   * frame — a canvas publishes the number when it draws, so right after a
+   * frame - a canvas publishes the number when it draws, so right after a
    * purge this reads pre-purge until the canvases have drawn a frame.
    */
   gpuBytes: number

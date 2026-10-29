@@ -46,7 +46,7 @@ export interface LineMeasurement {
 export interface GlyphPosition {
   /**
    * The insertion point, as a UTF-8 byte offset into the string. Always where
-   * a caret goes — never a glyph index to advance past.
+   * a caret goes - never a glyph index to advance past.
    */
   index: number
   /**
@@ -106,7 +106,7 @@ export interface TgfxFonts extends HybridObject<{
    */
   registerFromFile(path: string, family: string): Promise<string>
 
-  /** The same, from font bytes — zero-copy across the Nitro boundary. */
+  /** The same, from font bytes - zero-copy across the Nitro boundary. */
   registerFromBytes(bytes: ArrayBuffer, family: string): Promise<string>
 
   /** The same, from base64-encoded font bytes. */
@@ -122,7 +122,7 @@ export interface TgfxFonts extends HybridObject<{
   measureText(text: string, style: TextLayoutStyle): TextMeasurement
 
   /**
-   * The same layout as an outline, in SVG path data — the string `<Path>` takes.
+   * The same layout as an outline, in SVG path data - the string `<Path>` takes.
    * Relative to the first baseline at (0, 0), exactly as `measureText` reports.
    *
    * Empty when the face has no outlines to give: a colour emoji is a bitmap.
@@ -131,7 +131,7 @@ export interface TgfxFonts extends HybridObject<{
 
   /**
    * The insertion point nearest `x`, `y` in the same coordinates `measureText`
-   * reports — first baseline at y = 0. The y picks a line and is clamped to the
+   * reports - first baseline at y = 0. The y picks a line and is clamped to the
    * paragraph, so a point above or below one still resolves.
    */
   glyphPositionAtCoordinate(
@@ -155,7 +155,7 @@ export interface TgfxFonts extends HybridObject<{
   /**
    * The glyph id per codepoint of `text` in the face `style` selects, for a
    * caller placing glyphs itself with `<Glyphs>`. 0 means the face has no glyph
-   * for that codepoint — there is no fallback here, by design: `<Glyphs>` is the
+   * for that codepoint - there is no fallback here, by design: `<Glyphs>` is the
    * escape hatch for callers doing their own layout.
    */
   glyphIds(text: string, style: TextLayoutStyle): number[]

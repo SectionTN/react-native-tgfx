@@ -39,7 +39,7 @@ export interface VideoOptions {
   /** Defaults to `false`, so a video plays as soon as it is open. */
   paused?: boolean
   looping?: boolean
-  /** 0 to 1. Defaults to 0 — a canvas video is usually decoration, not media. */
+  /** 0 to 1. Defaults to 0 - a canvas video is usually decoration, not media. */
   volume?: number
 }
 
@@ -84,7 +84,7 @@ function pumpVideoFrame(
   if (current == null) {
     return
   }
-  // 0 means "nothing decoded since the last call" — the frame stays as it is.
+  // 0 means "nothing decoded since the last call" - the frame stays as it is.
   const handle = current.updateFrame()
   // The id never changes, so React hears about it once rather than every frame.
   if (handle !== 0 && posted.value !== handle) {
@@ -100,7 +100,7 @@ export interface VideoPlayer extends Video {
   setOptions(options: VideoOptions): void
   /**
    * Hear about the first decoded frame; fires immediately if it has already
-   * landed. One listener — the last registered wins.
+   * landed. One listener - the last registered wins.
    */
   onFrame(listener: (frame: ImageLike) => void): void
   /** Stop the pump and release the player and its frame. */
@@ -110,7 +110,7 @@ export interface VideoPlayer extends Video {
 /**
  * {@link useVideo} with no React: opens the player, applies the options, and
  * owns the UI-thread frame pump and its teardown. Resolves once the video is
- * open. Call `dispose()` when done — a device has only a handful of hardware
+ * open. Call `dispose()` when done - a device has only a handful of hardware
  * decoders.
  *
  * Needs react-native-reanimated and react-native-worklets, exactly as the hook
@@ -240,7 +240,7 @@ export async function createVideoPlayer(
  * <TgfxImage image={currentFrame} x={0} y={0} width={size.width} height={size.height} />
  * ```
  *
- * Decoding is the platform's — AVPlayer on iOS, MediaPlayer on Android — so
+ * Decoding is the platform's - AVPlayer on iOS, MediaPlayer on Android - so
  * audio, seeking and looping come from the player rather than from this package,
  * and every frame reaches the GPU as the texture or buffer it decoded into. A
  * frame never enters JS in any form: it lands in a native registry entry whose
@@ -251,7 +251,7 @@ export async function createVideoPlayer(
  * playback. That is what needs react-native-reanimated here.
  *
  * The player, and the frame it owns, are released when `source` changes or the
- * component unmounts — a device has only a handful of hardware decoders.
+ * component unmounts - a device has only a handful of hardware decoders.
  *
  * @remarks
  * Android decodes into a SurfaceTexture rather than a hardware buffer: a video

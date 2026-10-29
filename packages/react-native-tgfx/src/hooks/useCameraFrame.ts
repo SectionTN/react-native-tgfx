@@ -15,7 +15,7 @@ export interface NativeBufferLike {
 }
 
 /**
- * What {@link useCameraFrame} needs of a frame, structurally — so it works for
+ * What {@link useCameraFrame} needs of a frame, structurally - so it works for
  * a VisionCamera `Frame` and for any other producer, and costs this package no
  * dependency on either.
  */
@@ -45,7 +45,7 @@ export interface CameraFrameSource<F extends FrameLike = FrameLike> {
 
 export interface CameraFrameOptions<F extends FrameLike = FrameLike> {
   /**
-   * Map the producer's `pixelFormat` to the one tgfx imports with. A worklet —
+   * Map the producer's `pixelFormat` to the one tgfx imports with. A worklet -
    * it runs on the frame thread.
    *
    * The default reads the string: `rgb`/`rgba`/`bgra` import as `'rgba'`,
@@ -178,7 +178,7 @@ export interface CameraFrameSink<F extends FrameLike = FrameLike> {
   /** `null` until the first frame mints the handle. */
   readonly image: TgfxImage | null
   readonly posture: CameraFramePosture
-  /** Feed a frame in — a worklet, callable from the producer's frame thread. */
+  /** Feed a frame in - a worklet, callable from the producer's frame thread. */
   push: (frame: F) => void
   /** Dispose the minted handle; an external registry entry is never evicted. */
   dispose(): void
@@ -187,7 +187,7 @@ export interface CameraFrameSink<F extends FrameLike = FrameLike> {
 export interface CameraFrameSinkOptions<
   F extends FrameLike = FrameLike,
 > extends CameraFrameOptions<F> {
-  /** Your own per-frame worklet — a detector, say. Runs inside the same try. */
+  /** Your own per-frame worklet - a detector, say. Runs inside the same try. */
   onEachFrame?: (frame: F) => void
   /** Called on the JS thread when the handle mints. */
   onImage?: (image: TgfxImage) => void
@@ -198,7 +198,7 @@ export interface CameraFrameSinkOptions<
 /**
  * {@link useCameraFrame} with no React: an analyze/record pipeline needs no
  * on-screen canvas. The sink owns the buffer lifecycle exactly as the hook
- * does — mint once, `setNativeBuffer` per frame, re-post until acked — and its
+ * does - mint once, `setNativeBuffer` per frame, re-post until acked - and its
  * `image`/`posture` fields update as frames arrive. Call `dispose()` when the
  * stream ends. Everything in the hook's remarks about frame lifetime applies
  * to `push` unchanged.
@@ -307,15 +307,15 @@ export function createCameraFrameSink<F extends FrameLike = FrameLike>(
  * React state when it actually changes. The handle is disposed on unmount: an
  * external registry entry is never evicted, so nothing else would ever free it.
  *
- * `onEachFrame` is your own per-frame worklet — a detector, say. It runs inside
+ * `onEachFrame` is your own per-frame worklet - a detector, say. It runs inside
  * the same `try`, so work that throws still cannot leak the frame. Memoise it,
  * or the output re-registers every render.
  *
  * @remarks
  * **The frame `onEachFrame` receives dies when it returns.** Read from it and
- * let it go: do not retain it, do not call `getNativeBuffer()` on it again —
+ * let it go: do not retain it, do not call `getNativeBuffer()` on it again -
  * that is a second `+1` retain the hook will not release, and one unreleased
- * buffer stalls the producer's bounded pool — and never store
+ * buffer stalls the producer's bounded pool - and never store
  * `getNativeBuffer().pointer` anywhere. A stale pointer does not throw; it
  * imports whatever memory is now at that address. Everything the hook itself
  * needs from the buffer is already done before your callback runs.
@@ -347,7 +347,7 @@ export function useCameraFrame<F extends FrameLike = FrameLike>(
     [createSynchronizable]
   )
   // Written back from the React side: a cross-runtime post can be lost, and a
-  // fire-once post that never lands is a permanently black canvas — so the
+  // fire-once post that never lands is a permanently black canvas - so the
   // worklet keeps re-posting each frame until the matching ack arrives.
   const imageAcked = mod.useSharedValue!(false)
   const postureAcked = mod.useSharedValue!('')

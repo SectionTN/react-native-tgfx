@@ -2,7 +2,7 @@ import { Image as RNImage } from 'react-native'
 
 /**
  * The three ways bytes reach native. Images and fonts both have exactly these,
- * so the routing below — which of the three a given source needs — is written
+ * so the routing below - which of the three a given source needs - is written
  * once rather than once per asset kind.
  */
 export interface SourceReader<T> {
@@ -42,7 +42,7 @@ function dataPayload(uri: string): string | null {
  *
  * A local file is opened natively, so its bytes never enter JS at all. Only a
  * remote or Metro-served URI still goes through `fetch`, and then as an
- * `ArrayBuffer` — nothing is ever base64-encoded on the JS thread.
+ * `ArrayBuffer` - nothing is ever base64-encoded on the JS thread.
  */
 export async function loadSource<T>(
   source: number | string,
@@ -73,7 +73,7 @@ export async function loadSource<T>(
     return api.fromBase64(payload)
   }
   // A release Android build compiles a bundled asset into a drawable/raw
-  // resource, so this is a bare resource name — no scheme, no path. Native
+  // resource, so this is a bare resource name - no scheme, no path. Native
   // reads it by name; base64 would only see the name's own characters.
   if (uri.startsWith('file:') || (bareIsPath && !/^[a-z][a-z\d+.-]*:/i.test(uri))) {
     return api.fromFile(uri)

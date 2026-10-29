@@ -6,56 +6,32 @@ icon: Gauge
 
 ## Benchmark
 
-We load 20,000 shapes, 3,600 images, a 40-octave full-screen shader, a
-repeating image pattern, 900 cubic paths and 6,000 texts, each under one
-rotating group, against react-native-skia 3.0.0 (Graphite on Vulkan) through
-both its `Canvas` and its `GraphiteCanvas`. Samsung SM-E146B (Exynos 1330,
-90 Hz), release builds, engines alternating per scene, medians across two runs.
+20,000 shapes, 3,600 images, a 40-octave shader, an image pattern, 900 paths
+and 6,000 texts against react-native-skia 3.8.1 on a Samsung SM-E146B (90 Hz),
+release builds, mean of two runs. Present FPS is frames that reached the screen.
 
-Present FPS is what reached the screen; UI and JS FPS say whether those threads
-keep up. CPU is the whole process (100 = one core), memory its total PSS.
+| engine · scene | Present FPS | UI FPS | JS FPS |
+|---|---|---|---|
+| tgfx · shapes | **60.5** | 90 | 90 |
+| skia · shapes | 25.8 | 90 | 90 |
+| tgfx · images | **90.3** | 90 | 90 |
+| skia · images | 66.1 | 90 | 90 |
+| tgfx · shader | **15.0** | 90 | 90 |
+| skia · shader | 9.3 | 90 | 90 |
+| tgfx · pattern | **90.3** | 90 | 90 |
+| skia · pattern | 84.8 | 90 | 90 |
+| tgfx · paths | **90.3** | 90 | 90 |
+| skia · paths | 17.6 | 90 | 90 |
+| tgfx · text | **68.3** | 90 | 90 |
+| skia · text | 34.4 | 90 | 90 |
 
-| engine · scene | Present FPS | UI FPS | JS FPS | CPU % | Memory MB |
-|---|---|---|---|---|---|
-| tgfx · shapes | **60.8** | 91 | 90 | 183 | **444** |
-| skia Canvas · shapes | 18.8 | 86 | 85 | 95 | 505 |
-| skia GraphiteCanvas · shapes | 21.9 | 88 | 86 | 94 | 515 |
-| tgfx · images | **90.1** | 91 | 91 | 123 | 454 |
-| skia Canvas · images | 45.1 | 91 | 90 | 92 | 442 |
-| skia GraphiteCanvas · images | 44.1 | 91 | 91 | 91 | 448 |
-| tgfx · shader | 15.1 | **91** | **91** | 25 | 451 |
-| skia Canvas · shader | 15.0 | 30 | 30 | 17 | 419 |
-| skia GraphiteCanvas · shader | 15.1 | 30 | 30 | 17 | 406 |
-| tgfx · pattern | 90.3 | 91 | 91 | 58 | 426 |
-| skia Canvas · pattern | 89.9 | 91 | 91 | 67 | 401 |
-| skia GraphiteCanvas · pattern | 89.5 | 91 | 91 | 65 | 405 |
-| tgfx · paths | **90.0** | 91 | 91 | 83 | 438 |
-| skia Canvas · paths | 79.4 | 91 | 91 | 86 | 416 |
-| skia GraphiteCanvas · paths | 82.6 | 91 | 91 | 86 | 414 |
-| tgfx · text | **66.3** | 91 | 91 | 153 | **456** |
-| skia Canvas · text | 25.7 | 91 | 91 | 100 | 491 |
-| skia GraphiteCanvas · text | 25.8 | 91 | 91 | 100 | 491 |
-
-tgfx spends more CPU in total because it presents more frames; per presented
-frame it costs less (shapes 3.0 against 4.3–5.1 % of a core, text 2.3 against 3.9).
-That work runs on its own render thread: the UI thread stays at 5–12 % of a
-core, against 20–38 % for either skia canvas.
-
-Think a number is off, or a scene is missing? Open an
-[issue](https://github.com/margelo/react-native-tgfx/issues) and we will rerun the benchmark.
+Think a number is off?
+[Open an issue](https://github.com/margelo/react-native-tgfx/issues).
 
 ## Prewarm at launch
 
-The first canvas of a process pays for work no scene needs: loading the GPU
-driver and building the device (a `VkInstance` and `VkDevice` on Android, an
-`MTLDevice` on iOS), walking the platform font directories, and opening the
-default face. `prewarm` does all of it on a background thread before React
-Native even starts, so mounting a `<Canvas>` only has to make its window.
-
-Nothing is prewarmed unless you ask for it: one call on Android, one
-Info.plist key on iOS. It touches no JSI and needs no React context, so it is
-safe from `Application.onCreate` or from `+load`, and calling it twice does
-nothing.
+You can prewarm the GPU device and fonts at launch, so the first `<Canvas>`
+mounts faster.
 
 ### Android
 
@@ -71,23 +47,15 @@ override fun onCreate() {
 
 ### iOS
 
-Set `TgfxPrewarm` in the app's `Info.plist` and the prewarm runs from `+load`,
-before `main` — no launch code at all.
+Set `TgfxPrewarm` in `Info.plist`; no launch code needed.
 
 ```xml title="Info.plist"
 <key>TgfxPrewarm</key>
 <true/>
 ```
 
-The `TGFX_PREWARM` environment variable overrides that key in both directions
-(`1`/`true`/`yes` on, anything else off), which is how you measure one build
-with and without. Set it under *Run → Arguments* in the scheme; it applies to
-local runs only, so shipping builds are governed by the plist key.
-
-To control the timing yourself instead, leave the key out and call `prewarm`
-directly. The header is plain Objective-C, so a Swift `AppDelegate` reaches it
-through a bridging header — importing the `NitroTgfx` module does not work,
-because its umbrella re-exports C++ headers.
+`TGFX_PREWARM=1` or `0` in the scheme overrides the key on local runs. To time it
+yourself, leave the key out and call `prewarm`; Swift needs a bridging header.
 
 ```objc title="YourApp-Bridging-Header.h"
 #import <NitroTgfx/TgfxPrewarm.h>
@@ -99,29 +67,21 @@ TgfxPrewarm.prewarm()
 
 ### What it buys
 
-Measured on a Samsung SM-E146B (arm64 release, Vulkan backend), four cold
-starts per arm:
+Samsung SM-E146B, four cold starts per arm:
 
 | | without prewarm | with prewarm |
 |---|---|---|
 | `libNitroTgfx` load | 10 ms, on the main thread | 15–19 ms, on the render thread |
 | first canvas window | 25.3 / 28.4 / 29.0 / 31.0 ms | 9.6 / 10.9 / 13.5 / 13.5 ms |
 
-So the first canvas builds its window in **11.9 ms instead of 28.4 ms on
-average**, and another 10 ms of library loading leaves the main thread.
-`prewarm` itself costs 13–16 ms (GPU 9.6–12.1 ms, fonts 3.0–4.3 ms) on the
-render thread, roughly 800 ms before the first canvas mounts. The first *draw*
-is unchanged — that is shader compilation and scene upload, which depend on
-what you draw.
+The first canvas window drops from **28.4 ms to 11.9 ms** on average.
 
 ## Keep it cheap
 
-- Animate through `SharedValue` props or a slot-backed
-  [`NodeHandle.set`](/api/interfaces/NodeHandle): both patch slot data on the
-  UI thread. Changing ordinary JSX props through React recompiles and uploads
+- Animate through `SharedValue` props or
+  [`NodeHandle.set`](/api/interfaces/NodeHandle); changing JSX props re-uploads
   the scene.
-- Keep children primitive. The reconciler recognises the exported drawings
-  directly; a wrapper component falls back to the slower path.
+- Keep children primitive; wrapper components take a slower path.
 
   ```tsx
   {/* fast */}
@@ -131,28 +91,17 @@ what you draw.
   <Canvas>{shapes.map((s) => <Star key={s.id} {...s} />)}</Canvas>
   ```
 
-- Group same-kind shapes as siblings. The GPU merges only adjacent compatible
-  draws; a commit-time pass reorders non-overlapping siblings by kind, but
-  grouping them yourself always gives the best batches.
-- Adjacent `<Path>` siblings draw as one batch from their second frame on when
-  they share a clip and a solid `color` paint with the same `blendMode`,
-  `antiAlias` and `colorFilter` — no `shader`, mask filter, or animated trim or
-  dash. Only paths meshed as triangles batch: any rotation, or a path larger
-  than ~160 px; small unrotated icon-sized paths draw through texture masks
-  and stay separate draws. Keep the `path` string stable — a new string is a
-  new geometry to triangulate.
-- `<Group picture>` records a static subtree once. `<Group layer>` costs an
-  offscreen surface, so use it only for group opacity or group filters.
+- Group same-kind shapes as siblings.
+- Adjacent `<Path>` siblings with the same solid paint draw as one batch. Keep
+  the `path` string stable.
+- `<Group picture>` records a static subtree once. Use `<Group layer>` only for
+  group opacity or filters.
 - Pool handles with [`createHandle`](/api/functions/createHandle) and toggle
-  `visible` instead of mounting and unmounting.
-- For large sprite or mesh collections, move to
+  `visible` instead of remounting.
+- For large sprite or mesh collections, use
   [`useSpriteBuffer`](/api/functions/useSpriteBuffer) or
   [`useVertexBuffer`](/api/functions/useVertexBuffer).
-- One animated opacity per chain — see [Animation](/docs/animation).
-- Under memory pressure, [`purgeCaches`](/api/functions/purgeCaches) drops the
-  decoded-pixel and GPU caches immediately;
-  [`getCacheInfo`](/api/functions/getCacheInfo) reports what they hold — see
-  [Images § Cache](/docs/images#cache).
-- A canvas scrolled off screen skips its draws on Android, and a canvas that
-  draws no images or text is not redrawn when an image decodes or a font loads
-  elsewhere. Nothing to configure.
+- One animated opacity per chain ([Animation](/docs/animation)).
+- [`purgeCaches`](/api/functions/purgeCaches) frees the image and GPU caches;
+  [`getCacheInfo`](/api/functions/getCacheInfo) reports them
+  ([Images § Cache](/docs/images#cache)).

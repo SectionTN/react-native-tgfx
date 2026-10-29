@@ -4,11 +4,9 @@ description: Driving props from the UI thread with shared values.
 icon: Activity
 ---
 
-Numeric, boolean and string props typed
-[`Animated<T>`](/api/type-aliases/Animated) accept a Reanimated `SharedValue`
-([`SharedValueLike`](/api/type-aliases/SharedValueLike)). The compiler gives
-each one a slot that the renderer patches on the UI thread — no re-render and
-no JavaScript work per frame. Colour is the exception described below.
+Props typed [`Animated<T>`](/api/type-aliases/Animated) accept a Reanimated
+`SharedValue` ([`SharedValueLike`](/api/type-aliases/SharedValueLike)) and
+update on the UI thread, with no re-render.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -53,10 +51,8 @@ scene.attach(viewRef) // an attached Scene drives the slot from the UI thread it
 
 ## Animated colour
 
-A shared value in a [`ColorComponents`](/api/type-aliases/ColorComponents) tuple
-animates a channel. A `SharedValue` holding a colour string or packed number
-does not animate, since conversion into channels happens during scene
-compilation on the JS thread.
+Animate colour channels inside a [`ColorComponents`](/api/type-aliases/ColorComponents)
+tuple. A `SharedValue` holding a colour string or number does not animate.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -91,7 +87,7 @@ const t = useClock()
 ```ts
 const t = createClock() // seconds on the UI thread
 scene.add(shader({ source, uniforms: { uTime: t.value, uSize: [300, 300] } }))
-t.stop() // when done — the loop otherwise runs for the process's life
+t.stop() // when done - the loop otherwise runs for the process's life
 ```
 
 </Tab>
@@ -99,8 +95,7 @@ t.stop() // when done — the loop otherwise runs for the process's life
 
 ## One opacity per chain
 
-A draw command has a single alpha slot, so two opacities multiply at commit
-time and freeze:
+Animate one opacity per chain. Two opacities multiply and freeze:
 
 ```
 [tgfx] two opacities in one chain, at least one animated: a draw command has a
@@ -110,15 +105,8 @@ opacity per chain.
 
 ## Zoom and pan
 
-A zoomable canvas built from a `<Group transform>` re-renders React, re-encodes
-the draw program and re-uploads the scene on every pinch tick — for a change
-that is one matrix. The viewport is that matrix, owned by the renderer and
-applied above the whole program, so moving it costs one native write and a
-redraw: no recommit, no wire traffic.
-
-Pass a `SharedValue<Viewport>` as the `viewport` prop and the canvas follows
-it from the UI thread: the gesture worklet writes the shared value, the frame
-moves, and the JS thread is never on the path.
+Pass a `SharedValue<Viewport>` as `viewport` to zoom and pan from the UI
+thread, with no React render or scene re-upload.
 
 ```tsx
 import { Gesture, GestureDetector } from 'react-native-gesture-handler'
@@ -150,14 +138,8 @@ function Map() {
 }
 ```
 
-Write the whole object, not one field at a time: the triple is applied
-atomically, so a pinch never presents this frame's zoom with last frame's pan.
-
-`zoom` scales about the scene origin and `x`/`y` pan in canvas points *after*
-it — `scale(pixelRatio) · translate(x, y) · scale(zoom)`, the order a scroll
-view uses. A pinch usually wants to zoom about the gesture centroid instead,
-which is that same matrix with the offset solved for: hold the scene point
-under the focus still.
+Write the whole object at once. `zoom` scales about the origin, then `x`/`y`
+pan. To pinch about the focal point:
 
 ```tsx
 const pinch = Gesture.Pinch().onChange(e => {
@@ -173,38 +155,16 @@ const pinch = Gesture.Pinch().onChange(e => {
 })
 ```
 
-Without Reanimated, drive `CanvasHandle.setViewport()` from a JS-thread
-gesture callback (`Gesture.Pan().runOnJS(true)`) instead — the same one
-native write per tick, with a JS hop on the path.
+Without Reanimated, call `CanvasHandle.setViewport()` from a JS gesture
+callback. Headless, use
+[`surface.setViewport([zoom, x, y])`](/docs/snapshots#retained-surface).
 
-Headless, the same triple goes to
-[`surface.setViewport([zoom, x, y])`](/docs/snapshots#retained-surface) on an
-offscreen surface — the gesture worklets above are unchanged.
-
-`hitTest` inverts the viewport along with each group's transform, so a tap
-reports the node actually under the finger at any zoom, and `snapshot()` reads
-back the frame as shown.
-
-`<CameraFrame>` is the exception: it fits itself to the surface rather than to
-scene coordinates, so the viewport does not move it — the frame stays put while
-everything drawn over it zooms. Put the frame in a `<Group transform>` if you
-want it to zoom with the rest.
-
-The `<Canvas viewport={{ zoom, x, y }}>` prop is the same write driven from a
-commit — convenient for a fixed zoom, but a gesture should use the handle so it
-does not re-render React per tick. Use one or the other: a `viewport` prop
-re-pushes on the next commit that moves it, overwriting an imperative write.
-
-`setViewport` takes plain numbers, not SharedValues. The viewport is not a
-value slot — it never touches the draw program — so there is nothing for the
-UI-thread driver to patch.
-
-A non-positive `zoom`, or a non-finite `x`/`y`, is ignored and the last good
-viewport stays — a bad value cannot collapse the scene.
+`hitTest` and `snapshot()` follow the viewport. `<CameraFrame>` does not; wrap
+it in a `<Group transform>` to zoom it. Use the `viewport` prop or
+`setViewport`, not both. Invalid values are ignored.
 
 ## Without Reanimated
 
-[`useNode`](/api/functions/useNode) works from JavaScript event handlers without
-Reanimated. With Reanimated and Worklets installed, slot-backed writes also run
-inside worklets — see [Imperative](/docs/imperative) — and whole scenes can be
-built on a worklet runtime with [`createScene`](/docs/headless#worklets).
+[`useNode`](/api/functions/useNode) works from plain JS handlers. With
+Reanimated, writes also run in worklets ([Imperative](/docs/imperative)), and
+[`createScene`](/docs/headless#worklets) builds scenes on a worklet runtime.

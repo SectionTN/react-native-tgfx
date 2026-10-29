@@ -4,10 +4,8 @@ description: Blend modes, filters, shadows, gradients, masks and backdrops.
 icon: Sparkles
 ---
 
-Paint effects and shaders are children of a drawing or
-[`Paint`](/api/variables/Paint). A `Paint` child on a
-[`Group`](/api/variables/Group) supplies inherited paint defaults. Masks and
-backdrops are drawing nodes; dash and corner effects are children of `Path`.
+Effects and shaders are children of a drawing or
+[`Paint`](/api/variables/Paint).
 
 ## Blend modes
 
@@ -85,9 +83,7 @@ scene.add(
 </Tab>
 </Tabs>
 
-`<AlphaThreshold>` cuts translucency to a hard edge — alpha below `threshold`
-becomes fully transparent, at or above it fully opaque, colours untouched. It is
-tgfx's own, with no Skia equivalent, and `threshold` is animatable.
+`<AlphaThreshold>` makes alpha below `threshold` transparent and the rest opaque.
 
 ## Blur and shadow
 
@@ -132,10 +128,7 @@ scene.add(
 
 ## Filter order
 
-Filters compose in declaration order, and that holds across the two kinds. The
-scope is one node's own children: a `<Paint>` child and an inherited group paint
-are merged rather than chained, so a colour filter arriving from either of those
-stays on the paint and runs first whatever else the node declares.
+Filters apply in declaration order.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -156,14 +149,7 @@ stays on the paint and runs first whatever else the node declares.
 </Tab>
 </Tabs>
 
-A colour filter normally runs on the paint, before anything is rasterised, so on
-its own it can never follow a blur. Declared after one it joins the image chain
-instead, which is what makes the second line above mean what it reads like.
-Declared first it stays on the paint, which is cheaper: a paint colour filter
-costs no offscreen.
-
-The composition this exists for is blurring an alpha and then cutting it back to
-a solid shape — a sticker outline, a metaball:
+Blur, then threshold, for a sticker outline or metaball:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -231,7 +217,7 @@ scene.add(
 </Tab>
 </Tabs>
 
-[`Blend`](/api/variables/Blend) folds its shader children from left to right:
+[`Blend`](/api/variables/Blend) combines its shader children left to right:
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -265,9 +251,7 @@ scene.add(
 ## Film grain
 
 [`FilmGrain`](/api/variables/FilmGrain) is a child of a
-[`Group`](/api/variables/Group), not a paint: it dusts tgfx's `NoiseStyle` over
-what the group actually drew, clipped to that alpha rather than to a bounding
-box.
+[`Group`](/api/variables/Group). It adds grain over what the group drew.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -294,10 +278,8 @@ scene.add(
 </Tab>
 </Tabs>
 
-`color` alone gives single-colour grain, its alpha the grain's opacity. Adding
-`secondColor` splits the grain into two complementary halves, one per colour —
-the classic light-and-dark stock look. Naming neither keeps the noise's own RGB
-and takes its strength from `opacity`.
+`color` sets one grain colour. Add `secondColor` for two-tone grain. With
+neither, `opacity` sets the strength.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -318,9 +300,7 @@ filmGrain({ size: 1.5, density: 0.6, opacity: 0.25 })
 </Tab>
 </Tabs>
 
-`size`, `density`, `seed` and the colour channels are value slots, so grain
-animates without a commit — a per-frame `seed` is what makes it crawl like film
-rather than sit still:
+Change `seed` every frame to make the grain move:
 
 ```tsx
 const seed = useSharedValue(0)
@@ -329,20 +309,11 @@ useFrameCallback(() => { seed.value += 1 })
 <FilmGrain size={2} density={0.4} color="white" seed={seed} />
 ```
 
-`opacity` is written only in the colourless mode, and `blendMode` moves through
-a handle rather than a shared value — an enum reaches a slot as its wire code,
-which only `set()` resolves. `secondColor` re-encodes through a handle; passing
-it as `[r, g, b, a]` with shared values in it keeps it live.
-
-A grained group is drawn once and then replayed into an offscreen for the style,
-so it costs about two draws of its subtree per frame. Keep the grained subtree
-to what needs the grain rather than wrapping the whole scene, and note that a
-`<Group picture>` holding one is never recorded — a recording has no surface to
-measure the grain against.
+Grain costs about two draws of its group per frame, so keep the group small.
 
 ## Mask
 
-[`MaskProps`](/api/interfaces/MaskProps) — `mode` is `'alpha'` or `'luminance'`.
+[`MaskProps`](/api/interfaces/MaskProps): `mode` is `'alpha'` or `'luminance'`.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -383,7 +354,7 @@ scene.add(
 ## Backdrop
 
 [`BackdropBlur`](/api/variables/BackdropBlur) and [`Glass`](/api/variables/Glass)
-read the pixels already drawn beneath them.
+read the pixels drawn beneath them.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -406,16 +377,12 @@ scene.add(glass({ x: 20, y: 40, width: 260, height: 120, r: 24, refraction: 40, 
 </Tab>
 </Tabs>
 
-The panel is sampled, not painted, so of the inherited paint only `opacity`,
-`visible` and `ref` apply, plus the alpha of `color`. It has no hit bounds, so
-it is never pressable, and it reads the surface — put it *after* the content it
-frosts, and note that a `<Group picture>` holding one is never recorded.
+Put the panel *after* the content it covers. It is not pressable.
 
 ### Lighting the glass
 
-`refraction`, `depth`, `frost` and `dispersion` shape the material; `splay`,
-`lightAngle` and `lightIntensity` light it. Together they are the whole of
-tgfx's `GlassStyle`.
+`refraction`, `depth`, `frost` and `dispersion` shape the material. `splay`,
+`lightAngle` and `lightIntensity` light it.
 
 <Tabs items={['Declarative', 'Imperative']}>
 <Tab value="Declarative">
@@ -448,13 +415,9 @@ scene.add(
 </Tab>
 </Tabs>
 
-The defaults are the values the renderer used to hardcode, so a `<Glass>` that
-names none of them looks exactly as it did. `lightIntensity` defaults to 50
-rather than tgfx's own 80, which over most content reads as chrome rather than
-as glass.
+`lightIntensity` defaults to 50.
 
-Every one of those eight — `blur` included — is a value slot, so the whole
-material animates without a commit:
+All of these, plus `blur`, can be animated:
 
 ```tsx
 const angle = useSharedValue(45)
@@ -464,6 +427,6 @@ const panel = useNode()
 // or, from an event handler: panel.set({ lightAngle: 120 })
 ```
 
-Only `r` is static — it is a clip, not a material parameter.
+`r` cannot be animated.
 
 [`BackdropProps`](/api/interfaces/BackdropProps) · [`GlassProps`](/api/interfaces/GlassProps)

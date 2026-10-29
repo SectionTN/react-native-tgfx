@@ -30,7 +30,7 @@ function isSceneNodes(input: unknown): input is SceneNode[] {
   const first = input[0] as { type?: unknown; children?: unknown } | null
   // The children check is what tells a factory node from a JSX element: the
   // host components are literally these type strings, so `[<Rect/>]` matches
-  // on type alone — but an element keeps its children in props.
+  // on type alone - but an element keeps its children in props.
   return (
     typeof first?.type === 'string' &&
     (first.type as string).startsWith('tgfx_') &&
@@ -64,7 +64,7 @@ export interface RenderToImageOptions {
   height: number
   /**
    * Pixels per point. Defaults to 1, so the result is exactly `width` x
-   * `height` pixels — pass the screen's scale for a display-resolution render.
+   * `height` pixels - pass the screen's scale for a display-resolution render.
    */
   pixelRatio?: number
   /** Defaults to false, which leaves everything the scene did not cover transparent. */
@@ -73,7 +73,7 @@ export interface RenderToImageOptions {
    * The offscreen surface's colour space. Defaults to `'srgb'`.
    *
    * `'display-p3'` keeps wide-gamut image and gradient content instead of
-   * clamping it, exactly as the `<Canvas colorSpace>` prop does — and the
+   * clamping it, exactly as the `<Canvas colorSpace>` prop does - and the
    * result carries that space, so drawing it onto a P3 canvas converts rather
    * than reinterprets. Match it to the canvas the image is headed for.
    */
@@ -96,10 +96,10 @@ export interface RenderToSvgOptions {
  *
  * The vector counterpart to `snapshot()`: geometry and text stay resolution
  * independent, so the result opens in a design tool rather than being pixels.
- * Like the other offscreen entry points, it is a still — animated props resolve
+ * Like the other offscreen entry points, it is a still - animated props resolve
  * to their committed value.
  *
- * Takes JSX, a `SceneNode[]` from the element factories, or a `Scene` — the
+ * Takes JSX, a `SceneNode[]` from the element factories, or a `Scene` - the
  * non-JSX forms never touch React.
  */
 export async function renderToSvg(
@@ -122,7 +122,7 @@ export interface PdfPage {
   height: number
   /** The page as JSX. Exactly one of `element` and `scene` per page. */
   element?: ReactNode
-  /** The page as factory nodes or a `Scene` — no React involved. */
+  /** The page as factory nodes or a `Scene` - no React involved. */
   scene?: SceneSource
 }
 
@@ -135,7 +135,7 @@ export interface PdfMetadata {
 
 /**
  * Write a scene to a PDF, one page per entry. Geometry and text stay
- * **vectors** — only images rasterize — so a chart drawn with the same
+ * **vectors** - only images rasterize - so a chart drawn with the same
  * components that render on screen exports as a real document rather than a
  * screenshot.
  *
@@ -187,7 +187,7 @@ export async function renderToPdf(
  *
  * Takes JSX (compiled by the same reconciler a canvas uses, so function
  * components, `.map()` and context all work), a `SceneNode[]` from the element
- * factories, or a `Scene` — the non-JSX forms skip the reconciler entirely.
+ * factories, or a `Scene` - the non-JSX forms skip the reconciler entirely.
  * The program is rendered on an offscreen GPU surface and registered as an
  * image handle, ready for `<TgfxImage>`, `<ImageShader>`, or `save()`.
  *

@@ -129,7 +129,7 @@ export function registeredFontFamilies(): string[] {
 }
 
 /**
- * Exactly the `<Text>` props that affect layout — derived from them, not
+ * Exactly the `<Text>` props that affect layout - derived from them, not
  * re-listed, so a prop added to one cannot go missing from the other. Only
  * `fontSize` narrows: there is nothing to animate against here.
  */
@@ -137,7 +137,7 @@ export type TextStyle = Omit<FontProps, 'fontSize'> &
   ParagraphProps & { fontSize?: number }
 
 /**
- * What `text` would occupy if `<Text>` drew it with these props — same layout,
+ * What `text` would occupy if `<Text>` drew it with these props - same layout,
  * same fallback chain, so a width measured here is the width drawn.
  *
  * The result is relative to the first baseline: `ascent` is negative, and the
@@ -154,8 +154,8 @@ export function measureText(
  * The same layout as SVG path data, ready for `<Path>`: text you can stroke,
  * dash, or feed to a path effect rather than only fill.
  *
- * Relative to the first baseline at (0, 0) — the coordinates `measureText`
- * reports — so translate it by the `x`/`y` you would have given `<Text>`.
+ * Relative to the first baseline at (0, 0) - the coordinates `measureText`
+ * reports - so translate it by the `x`/`y` you would have given `<Text>`.
  * Empty for a face with no outlines, which is what a colour emoji is.
  */
 export function textToPath(text: string, style: TextStyle = {}): string {
@@ -163,15 +163,15 @@ export function textToPath(text: string, style: TextStyle = {}): string {
 }
 
 /**
- * The insertion point nearest a coordinate — a caret, or which character a tap
+ * The insertion point nearest a coordinate - a caret, or which character a tap
  * landed on. The coordinates are the ones `measureText` reports, first baseline
  * at y = 0, so subtract the `x`/`y` you gave `<Text>` from the point first.
  *
  * `index` is a UTF-8 byte offset, not a JS string index. For ASCII they are the
  * same; for anything else, walk the string counting bytes rather than slicing
- * it — one codepoint is 1 to 4 bytes, and a slice at a byte offset cuts one in
- * half. Every offset the text API reports — here, `LineMeasurement.startIndex`,
- * and `TextBox` — is in the same units, so they compose without converting.
+ * it - one codepoint is 1 to 4 bytes, and a slice at a byte offset cuts one in
+ * half. Every offset the text API reports - here, `LineMeasurement.startIndex`,
+ * and `TextBox` - is in the same units, so they compose without converting.
  *
  * Lays the paragraph out on every call, the same as {@link measureText}: cheap
  * for a tap, wasteful once a frame.
@@ -186,7 +186,7 @@ export function glyphPositionAtCoordinate(
 }
 
 /**
- * The boxes a UTF-8 byte range occupies, one per line it crosses — a selection
+ * The boxes a UTF-8 byte range occupies, one per line it crosses - a selection
  * highlight, or one glyph's bounds when the range is one glyph long. Same
  * coordinates and the same per-call layout cost as {@link measureText}.
  *

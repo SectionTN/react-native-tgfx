@@ -19,7 +19,7 @@ export interface PathPoint {
 /**
  * Path geometry, string in and string out. Every method parses SVG path data,
  * hands it to the tgfx geometry the renderer already uses, and serialises the
- * result back — so a path built here draws identically in `<Path path>`.
+ * result back - so a path built here draws identically in `<Path path>`.
  */
 export interface TgfxPath extends HybridObject<{
   ios: 'c++'
@@ -52,7 +52,7 @@ export interface TgfxPath extends HybridObject<{
 
   /**
    * The piece of the path between two distances, as its own path. Empty when
-   * `start >= stop` or the path has no length — the same cases tgfx refuses.
+   * `start >= stop` or the path has no length - the same cases tgfx refuses.
    */
   segment(path: string, start: number, stop: number): string
 }

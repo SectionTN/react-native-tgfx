@@ -10,7 +10,7 @@ export interface ImageSourceProps extends Omit<ImageProps, 'image'> {
 
 /**
  * The image component: hand it the source and it decodes, registers, and
- * draws when ready — no hook, no null-gating in user code.
+ * draws when ready - no hook, no null-gating in user code.
  *
  * ```tsx
  * <Canvas style={{ width: 300, height: 200 }}>
@@ -20,7 +20,7 @@ export interface ImageSourceProps extends Omit<ImageProps, 'image'> {
  * ```
  *
  * Nothing draws until the decode lands (a frame or two for a local asset), and
- * a failed load warns and stays empty — `useImage`'s behaviour, which this
+ * a failed load warns and stays empty - `useImage`'s behaviour, which this
  * wraps. The handle lives for the component's life; remounting the same source
  * re-decodes through the shared cache.
  *

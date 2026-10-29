@@ -32,7 +32,7 @@ export function pathBounds(path: string, tight = false): PathBounds {
   return paths().bounds(path, tight)
 }
 
-/** Whether the point falls inside the path, under non-zero winding — what `<Path>` draws. */
+/** Whether the point falls inside the path, under non-zero winding - what `<Path>` draws. */
 export function pathContains(path: string, x: number, y: number): boolean {
   return paths().contains(path, x, y)
 }
@@ -49,7 +49,7 @@ export function pathLength(path: string): number {
 
 /**
  * The point `distance` along the path, with the tangent there as an angle in
- * radians — enough to place and rotate a marker on a route.
+ * radians - enough to place and rotate a marker on a route.
  */
 export function pathPointAtLength(path: string, distance: number): PathPoint {
   return paths().pointAtLength(path, distance)
