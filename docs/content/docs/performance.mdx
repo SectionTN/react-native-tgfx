@@ -41,17 +41,6 @@ frame it costs less (shapes 3.0 against 4.3–5.1 % of a core, text 2.3 against 
 That work runs on its own render thread: the UI thread stays at 5–12 % of a
 core, against 20–38 % for either skia canvas.
 
-### Paths
-
-900 distinct cubic paths, half of them stroked, under one rotating group, on a
-moto g35 (Unisoc T760, Vulkan, 120 Hz).
-
-| engine · scene | Present FPS | UI FPS | JS FPS |
-|---|---|---|---|
-| tgfx · paths, before | 70.4 | 120 | 119 |
-| tgfx · paths, after | **114.1** | 120 | 119 |
-| skia · paths | 104.9 | 115 | 62 |
-
 Think a number is off, or a scene is missing? Open an
 [issue](https://github.com/margelo/react-native-tgfx/issues) and we will rerun the benchmark.
 
