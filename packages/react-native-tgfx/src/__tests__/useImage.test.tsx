@@ -294,9 +294,9 @@ test('a viewBox-only document needs no width or height attribute', async () => {
 test('an empty or blank string is not markup', async () => {
   // Neither is a document, and both must keep reporting as an unusable source
   // rather than being handed to the SVG parser.
-  await loadImage('').catch(() => {})
+  await expect(loadImage('')).rejects.toThrow('no image source')
   await loadImage('   ').catch(() => {})
-  expect(made.map((m) => m.via)).toEqual(['fromBase64', 'fromBase64'])
+  expect(made.map((m) => m.via)).toEqual(['fromBase64'])
 })
 
 test('a path is still a path', async () => {
