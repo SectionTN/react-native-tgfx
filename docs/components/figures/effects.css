@@ -1,0 +1,5 @@
+/* Effects figure: the blur value the cursor edits, coloured as a number token */
+
+.tgf-effects .tgf-effects__value {
+  color: var(--ss-code-num);
+}

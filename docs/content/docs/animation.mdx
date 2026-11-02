@@ -4,6 +4,10 @@ description: Driving props from the UI thread with shared values.
 icon: Activity
 ---
 
+import { AnimationFigure } from '@/components/figures/animation'
+
+<AnimationFigure />
+
 Props typed [`Animated<T>`](/api/type-aliases/Animated) accept a Reanimated
 `SharedValue` ([`SharedValueLike`](/api/type-aliases/SharedValueLike)) and
 update on the UI thread, with no re-render.

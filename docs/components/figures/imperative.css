@@ -1,0 +1,8 @@
+/* Imperative figure: a ball on a cord, carried by the finger. Positions are
+   written every frame from the drag, as the worklet writes slots, so nothing
+   here eases: the ball is exactly under the finger. */
+
+.tgf-imp .tgf-imp__ball,
+.tgf-imp .tgf-imp__cord {
+  transition: none;
+}

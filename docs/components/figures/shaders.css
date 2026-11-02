@@ -1,0 +1,30 @@
+/* Shaders figure: the gradient fills the canvas, the rings tighten. */
+
+.tgf-shaders .tgf-shaders__fill {
+  opacity: 0;
+  isolation: isolate;
+  transition: opacity 0.8s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgf-shaders .tgf-shaders__fill[data-on] {
+  opacity: 1;
+}
+
+.tgf-shaders .tgf-shaders__screen {
+  mix-blend-mode: screen;
+}
+
+/* A uniform write is a frequency change: the pattern scales about the uv
+   center, rings arriving from the edge and closing in */
+.tgf-shaders .tgf-shaders__rings {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: scale 1.4s cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tgf-shaders .tgf-shaders__fill,
+  .tgf-shaders .tgf-shaders__rings {
+    transition: none;
+  }
+}
