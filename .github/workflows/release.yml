@@ -66,7 +66,7 @@ jobs:
       - name: Install Android NDK 27.1.12297006
         if: matrix.platform == 'android'
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" > /dev/null
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
           # The NDK's yasm is x86_64-only; without Rosetta the x86 ABIs' libjpeg-turbo build dies on it.
           NDK_YASM="$ANDROID_HOME/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/yasm"
