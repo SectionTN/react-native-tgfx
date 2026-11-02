@@ -2,6 +2,7 @@
 // the eraser burns a line away from the touch, shedding dust, and a bucket at
 // the bottom counts what it catches. Balls and dust are one atlas over a baked
 // sprite sheet; every line is one path slot.
+// Thank you rimax200  :)
 import { useState } from 'react';
 import {
   Dimensions,
