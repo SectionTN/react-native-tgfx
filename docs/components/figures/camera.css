@@ -1,0 +1,58 @@
+/* Camera figure: the first frame arrives, the stream drifts, the shader lands. */
+
+/* No image yet draws nothing: the opaque canvas is black until the first
+   frame, which arrives like a camera starting, quick and soft */
+.tgf-camera .tgf-camera__frame {
+  opacity: 0;
+  transition: opacity 0.45s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgf-camera .tgf-camera__frame[data-live] {
+  opacity: 1;
+}
+
+/* A live frame never sits still: a handheld drift, slow and small */
+.tgf-camera .tgf-camera__drift {
+  transform-box: view-box;
+  transform-origin: 201px 200px;
+  scale: 1.03;
+}
+
+.tgf-camera .tgf-camera__frame[data-live] .tgf-camera__drift {
+  animation: tgf-camera-drift 7s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+
+.tgf-camera .tgf-camera__neon {
+  opacity: 0;
+  transition: opacity 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgf-camera .tgf-camera__neon[data-on] {
+  opacity: 1;
+}
+
+@keyframes tgf-camera-drift {
+  0% {
+    translate: 0 0;
+    rotate: 0deg;
+  }
+  50% {
+    translate: -4px 2px;
+    rotate: -0.25deg;
+  }
+  100% {
+    translate: 3px -2px;
+    rotate: 0.2deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tgf-camera .tgf-camera__frame[data-live] .tgf-camera__drift {
+    animation: none;
+  }
+
+  .tgf-camera .tgf-camera__frame,
+  .tgf-camera .tgf-camera__neon {
+    transition: none;
+  }
+}

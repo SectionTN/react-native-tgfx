@@ -1,0 +1,12 @@
+/* Images figure: the crop pans across the photo as crop.x changes */
+
+.tgf-images .tgf-canvas .tgf-images__pan {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  transition: transform 1s cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+/* The value the cursor edits, coloured as a number token */
+.tgf-images .tgf-images__value {
+  color: var(--ss-code-num);
+}

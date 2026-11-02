@@ -1,0 +1,114 @@
+/* Docs figures: one ground, one gutter, one shadow for every page. */
+
+.tgf {
+  margin: 0 0 1.75rem;
+}
+
+.tgf-stage .ss-stage {
+  --gutter: 32px;
+  --ss-font: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  overflow: hidden;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-fd-foreground) 5%, var(--color-fd-background));
+}
+
+/* The editor: pinned top-left, a fifth past the bottom */
+.tgf-stage .tgf-editor {
+  position: absolute;
+  top: var(--gutter);
+  left: var(--gutter);
+  width: 520px;
+  height: 440px;
+  border-radius: 10px;
+  box-shadow: var(--ss-shadow-hero);
+}
+
+.tgf-stage .tgf-editor .ss-window__body {
+  background: var(--ss-surface);
+}
+
+.tgf-stage .tgf-code {
+  padding: 14px 0 14px 4px;
+  font-family: var(--font-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 21px;
+}
+
+/* The phone: straddles the editor's right edge over its margin, a gutter from
+   the stage's right, off the bottom */
+.tgf-stage .tgf-phone {
+  position: absolute;
+  top: 44px;
+  right: var(--gutter);
+}
+
+.tgf-canvas {
+  position: absolute;
+  top: 62px;
+  left: 0;
+  display: block;
+  overflow: visible;
+}
+
+.tgf-canvas * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Narrow: the editor whole across the top, the phone under it, off the bottom */
+.tgf-stage .ss-stage[data-layout='compact'] {
+  --gutter: 16px;
+}
+
+.tgf-stage .ss-stage[data-layout='compact'] .tgf-editor {
+  width: calc(100% - 2 * var(--gutter));
+  height: 260px;
+}
+
+.tgf-stage .ss-stage[data-layout='compact'] .tgf-code {
+  padding: 10px 0;
+  font-size: 10px;
+  line-height: 18px;
+}
+
+/* No room for line numbers in a phone column: the code gets the width */
+.tgf-stage .ss-stage[data-layout='compact'] .tgf-code .ss-code__line > .ss-code__num {
+  display: none;
+}
+
+.tgf-stage .ss-stage[data-layout='compact'] .tgf-code .ss-code__line > .ss-code__mark {
+  width: 12px;
+}
+
+.tgf-stage .ss-stage[data-layout='compact'] .tgf-phone {
+  top: 244px;
+  right: auto;
+  left: 50%;
+  translate: -50% 0;
+}
+
+/* An empty line keeps its pitch */
+.tgf-stage .tgf-code .ss-code__line {
+  min-height: 1lh;
+}
+
+/* The line whose element is drawing: a soft accent band across the editor */
+.tgf-stage .ss-code__line:has(.tgf-line) {
+  transition: background-color 0.3s ease;
+}
+
+.tgf-stage .ss-code__line:has(.tgf-line[data-on]) {
+  background: color-mix(in srgb, var(--ss-accent) 10%, transparent);
+}
+
+/* A shape arriving on the canvas: a short fade and settle */
+.tgf-shape {
+  opacity: 0;
+  scale: 0.92;
+  transition: opacity 0.5s cubic-bezier(0.25, 0.8, 0.25, 1), scale 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgf-shape[data-on] {
+  opacity: 1;
+  scale: 1;
+}

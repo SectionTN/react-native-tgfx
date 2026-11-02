@@ -1,0 +1,22 @@
+/* Paths figure: a trim drawing the stroke on, then a marker along it */
+
+.tgf-paths .tgf-paths-route {
+  transition: stroke-dasharray 0.257s linear, opacity 0.15s ease;
+}
+
+/* The marker rides the route itself (offset-path, measured by arc length, as
+   pathPointAtLength is), placed in the canvas's own coordinates */
+.tgf-paths .tgf-canvas .tgf-paths-marker {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  offset-anchor: 0 0;
+  offset-rotate: 0deg;
+  opacity: 0;
+  scale: 0.6;
+  transition: offset-distance 0.257s linear, opacity 0.35s cubic-bezier(0.25, 0.8, 0.25, 1), scale 0.45s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgf-paths .tgf-canvas .tgf-paths-marker[data-on] {
+  opacity: 1;
+  scale: 1;
+}

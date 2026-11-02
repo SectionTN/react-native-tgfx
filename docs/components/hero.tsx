@@ -70,17 +70,17 @@ export function Hero() {
       </div>
 
       <div className="tg-hero-content">
-        <div className="tg-hero-actions">
-          <Link href="/docs" className="tg-cta">
-            <span className="tg-cta-bg" />
-            <span className="tg-cta-text">Let&rsquo;s draw</span>
-            <span className="tg-cta-circle" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-                <path d="M5 13L13 5M13 5H6M13 5V12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/docs"
+            className="rounded-full bg-fd-primary px-5 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Get Started
           </Link>
-          <Link href="/api" className="tg-ghost">
+          <Link
+            href="/api"
+            className="rounded-full border bg-fd-secondary px-5 py-2.5 text-sm font-medium text-fd-secondary-foreground transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
+          >
             API Reference
           </Link>
         </div>

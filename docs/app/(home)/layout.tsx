@@ -1,0 +1,13 @@
+import { HomeLayout } from 'fumadocs-ui/layouts/home'
+import { homeOptions } from '@/lib/layout.shared'
+
+export default function Layout({ children }: LayoutProps<'/'>) {
+  return (
+    <HomeLayout
+      {...homeOptions()}
+      className="landing-shell flex flex-col min-h-dvh"
+    >
+      {children}
+    </HomeLayout>
+  )
+}

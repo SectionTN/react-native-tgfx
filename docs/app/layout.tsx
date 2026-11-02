@@ -1,24 +1,50 @@
+import { RootProvider } from 'fumadocs-ui/provider/next'
+import type { Metadata, Viewport } from 'next'
 import './global.css'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { RootProvider } from 'fumadocs-ui/provider/next'
-import type { ReactNode } from 'react'
+import { siteConfig } from '@/lib/site-config'
 
-const sans = Geist({ subsets: ['latin'], variable: '--font-geist' })
-const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
+const geist = Geist({
+  variable: '--font-sans',
+  subsets: ['latin'],
+})
 
-export const metadata = {
-  metadataBase: new URL('https://tgfx.margelo.com'),
-  twitter: { card: 'summary_large_image' },
-  title: { default: 'react-native-tgfx', template: '%s · react-native-tgfx' },
-  description:
-    'A declarative GPU 2D canvas for React Native, backed by Tencent tgfx. Animate on the thread that paints.',
+const mono = Geist_Mono({
+  variable: '--font-mono',
+  subsets: ['latin'],
+})
+
+export const viewport: Viewport = {
+  viewportFit: 'cover',
 }
 
-export default function Layout({ children }: { children: ReactNode }) {
+export const metadata: Metadata = {
+  metadataBase: siteConfig.metadataBase,
+  applicationName: siteConfig.name,
+  title: {
+    default: siteConfig.name,
+    template: `%s | ${siteConfig.name}`,
+  },
+  description: siteConfig.description,
+  openGraph: {
+    siteName: siteConfig.name,
+  },
+  twitter: {
+    card: 'summary_large_image',
+  },
+}
+
+export default function Layout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
-      <body className="flex min-h-screen flex-col">
-        <RootProvider search={{ options: { api: '/search' } }}>{children}</RootProvider>
+    <html
+      lang="en"
+      className={`${geist.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="flex flex-col min-h-dvh">
+        <RootProvider search={{ options: { api: '/search' } }}>
+          {children}
+        </RootProvider>
       </body>
     </html>
   )

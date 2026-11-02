@@ -1,0 +1,29 @@
+/* Text figure: a paragraph of spans, then its measured box stroking on */
+
+.tgf-text .tgf-text-para {
+  font-family: var(--ss-font);
+  font-size: 64px;
+  font-weight: 400;
+}
+
+.tgf-text .tgf-text-span {
+  opacity: 0;
+  transition: opacity 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tgf-text .tgf-text-span[data-on] {
+  opacity: 1;
+}
+
+/* The measured box draws round from its top-left corner */
+.tgf-text .tgf-text-box {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.45, 0, 0.1, 1), opacity 0.2s ease;
+}
+
+.tgf-text .tgf-text-box[data-on] {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
