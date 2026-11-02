@@ -1,7 +1,6 @@
-import { createDocsRoute } from '@/lib/docs-route'
-import { apiSource } from '@/lib/source'
+import { createDocsRoute } from '@/lib/docs-page'
 
-const route = createDocsRoute(apiSource)
+const route = createDocsRoute('docs')
 
 export default route.Page
 export const generateStaticParams = route.generateStaticParams

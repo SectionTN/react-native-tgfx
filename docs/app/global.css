@@ -1,181 +1,268 @@
-@import 'tailwindcss';
-@import 'fumadocs-ui/css/neutral.css';
-@import 'fumadocs-ui/css/preset.css';
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
 
-/*
- * Two accents, and they carry meaning: copper is work the JS thread pays for,
- * blue is work the native render thread pays for. Nothing else uses them.
- */
-:root {
-  --tg-ground: #fafbfc;
-  --tg-surface: #ffffff;
-  --tg-line: #dfe3ea;
-  --tg-ink: #171b23;
-  --tg-muted: #5d6577;
-  --tg-js: #a75f21;
-  --tg-native: #1f5fbf;
-  /* The giant hero wordmark: one step off the ground in both themes. */
-  --tg-word: #edf0f4;
+@source "../lib/**/*.tsx";
+@source "../components/**/*.tsx";
 
-  --color-fd-background: var(--tg-ground);
-  --color-fd-foreground: var(--tg-ink);
-  --color-fd-muted-foreground: var(--tg-muted);
-  --color-fd-border: var(--tg-line);
-  --color-fd-card: var(--tg-surface);
-  --color-fd-popover: var(--tg-surface);
-  --color-fd-primary: var(--tg-js);
-  --color-fd-accent: #eef1f6;
-  --color-fd-accent-foreground: var(--tg-ink);
-
-  --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
-  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-
-  --tg-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --tg-settle: cubic-bezier(0.34, 1.36, 0.5, 1);
+button[data-search-full] {
+  @apply mx-auto! rounded-xl! max-w-lg!;
 }
 
-/*
- * The theme toggle (next-themes via fumadocs) swaps a `light`/`dark` CLASS on
- * <html>; under "system" no class wins and the media query decides. Keying
- * anything on data-theme here desyncs our tokens from fumadocs' own palette.
- */
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --tg-ground: #0d1017;
-    --tg-surface: #151a23;
-    --tg-line: #232a36;
-    --tg-ink: #e6eaf2;
-    --tg-muted: #8b93a5;
-    --tg-js: #d98a4a;
-    --tg-native: #6aa9ff;
-    --tg-word: #151a23;
-    --color-fd-accent: #1c222d;
+article {
+  @apply pt-8;
+}
+
+article h2 {
+  @apply text-3xl md:text-4xl;
+}
+
+article > .prose.flex-1 > h2#properties {
+  @apply border-t border-fd-border/60 pt-8 mt-6;
+}
+
+/* Keep code glyph-for-glyph; Geist Mono renders sequences like `...` as ligatures. */
+.prose code {
+  font-variant-ligatures: none;
+  font-feature-settings:
+    "liga" 0,
+    "calt" 0;
+}
+
+/* Wrap long inline code/API symbols on narrow screens without overflowing. */
+article .prose :not(pre) > code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Let fenced code examples wrap on mobile instead of forcing horizontal scroll. */
+@media (max-width: 767px) {
+  article .prose pre,
+  article .prose pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 
-:root.dark {
-  --tg-ground: #0d1017;
-  --tg-surface: #151a23;
-  --tg-line: #232a36;
-  --tg-ink: #e6eaf2;
-  --tg-muted: #8b93a5;
-  --tg-js: #d98a4a;
-  --tg-native: #6aa9ff;
-  --tg-word: #151a23;
-  --color-fd-accent: #1c222d;
+/* Center markdown images rendered through Fumadocs ImageZoom */
+article .prose [data-rmiz] {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
-:root.light {
-  --tg-ground: #fafbfc;
-  --tg-surface: #ffffff;
-  --tg-line: #dfe3ea;
-  --tg-ink: #171b23;
-  --tg-muted: #5d6577;
-  --tg-js: #a75f21;
-  --tg-native: #1f5fbf;
-  --tg-word: #edf0f4;
-  --color-fd-accent: #eef1f6;
+/* Prevent mobile page overflow from long API symbols (e.g. function names) */
+.api-reference-layout #nd-page,
+.api-reference-layout #nd-page > article,
+.api-reference-layout #nd-page > article > .prose {
+  min-width: 0;
+}
+
+.api-reference-layout #nd-page :is(h1, h2, h3, h4, h5, h6) {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.api-code-link {
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: text-decoration-color 120ms ease;
+}
+
+.api-code-link:hover {
+  text-decoration-color: var(--color-fd-primary);
+}
+
+.dependency-callout {
+  --dependency-callout-accent: rgba(255, 255, 255, 0.82);
+  @apply border-zinc-600/35 bg-zinc-900 text-zinc-100;
+  box-shadow: none;
+}
+
+.dark .dependency-callout {
+  --dependency-callout-accent: rgba(24, 24, 27, 0.78);
+  @apply border-zinc-900/20 bg-zinc-100 text-zinc-900;
+}
+
+.dependency-callout-icon {
+  @apply size-5 -me-0.5 text-white;
+}
+
+.dark .dependency-callout-icon {
+  @apply text-zinc-900;
+}
+
+.dependency-callout-title {
+  @apply text-white;
+}
+
+.dark .dependency-callout-title {
+  @apply text-zinc-900;
+}
+
+.dependency-callout .text-fd-muted-foreground {
+  @apply text-zinc-200;
+}
+
+.dark .dependency-callout .text-fd-muted-foreground {
+  @apply text-zinc-800;
+}
+
+.dependency-callout a,
+.dependency-callout .api-code-link {
+  @apply text-zinc-100;
+  text-decoration-color: rgba(244, 244, 245, 0.75);
+}
+
+.dependency-callout a:hover,
+.dependency-callout .api-code-link:hover {
+  @apply text-white;
+  text-decoration-color: rgba(255, 255, 255, 0.95);
+}
+
+.dark .dependency-callout a,
+.dark .dependency-callout .api-code-link {
+  @apply text-zinc-900;
+  text-decoration-color: rgba(24, 24, 27, 0.55);
+}
+
+.dark .dependency-callout a:hover,
+.dark .dependency-callout .api-code-link:hover {
+  @apply text-black;
+  text-decoration-color: rgba(24, 24, 27, 0.8);
+}
+
+.dependency-callout code {
+  @apply border border-white/20 bg-white/10 text-zinc-100;
+}
+
+.dark .dependency-callout code {
+  @apply border-zinc-900/20 bg-zinc-900/10 text-zinc-900;
+}
+
+.api-platform-inline-pill {
+  @apply ms-2 inline-flex items-center rounded-full border border-fd-border/70 px-2 py-0.5 align-middle text-[10px] font-medium text-fd-muted-foreground;
+}
+
+.api-sidebar-platform-pill {
+  @apply inline-flex shrink-0 items-center rounded-full border border-fd-border/70 px-1.5 py-0.5 text-[10px] font-medium text-fd-muted-foreground;
+}
+
+.api-sidebar-item-content {
+  @apply min-w-0 flex w-full items-center justify-between gap-2 overflow-hidden;
+}
+
+.api-sidebar-item-label {
+  @apply min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap;
+  overflow-wrap: normal;
+}
+
+.api-toc-item-title {
+  @apply inline-flex items-center gap-1.5;
+}
+
+.api-toc-platform-pill {
+  @apply inline-flex shrink-0 items-center rounded-full border border-fd-border/70 px-1.5 py-0.5 text-[10px] leading-none font-medium text-fd-muted-foreground;
+}
+
+.api-member-platform-pill-row {
+  @apply mt-1.5 mb-3 flex flex-wrap gap-1.5;
+}
+
+.api-member-platform-pill {
+  @apply inline-flex items-center rounded-full border border-fd-border/70 px-2 py-0.5 text-[10px] leading-none font-medium text-fd-muted-foreground;
+}
+
+a[data-active="true"] .api-sidebar-platform-pill {
+  @apply border-fd-primary/50 text-fd-primary;
+}
+
+a[data-active="true"] .api-toc-platform-pill {
+  @apply border-fd-primary/50 text-fd-primary;
+}
+
+/* API parameter blocks: Apple-docs-like compact indentation */
+.api-reference-layout article h5 {
+  @apply ms-5 mt-3 mb-1;
+}
+
+.api-reference-layout article h5 + p,
+.api-reference-layout article h5 + ul,
+.api-reference-layout article h5 + ol {
+  @apply ms-9 mt-1 mb-3;
+}
+
+.api-reference-layout article h5 + p + p {
+  @apply ms-9 mt-1 mb-3;
+}
+
+@media (min-width: 768px) {
+  /* Make the HomeLayout wrapper transparent so its sticky #nd-nav child
+     becomes a direct layout participant of .vc-docs-shell. */
+  .vc-docs-shell > #nd-home-layout {
+    display: contents;
+  }
+
+  /* Nav bar height (h-14 = 3.5rem). Fumadocs uses this to offset
+     sticky sidebar/ToC below the nav. */
+  .vc-docs-shell {
+    --fd-banner-height: 3.5rem;
+  }
+
+  /* Short pages fill the viewport (nav + grid = 100dvh). */
+  .vc-docs-shell > #nd-docs-layout {
+    min-height: calc(100dvh - var(--fd-banner-height));
+  }
+
+  #nd-sidebar > div:has(.vc-mobile-sidebar-logo) {
+    display: none;
+  }
+}
+
+@theme inline {
+  --default-mono-font-family: var(--font-mono);
+}
+
+@theme {
+  --spacing-fd-container: 1400px;
+  --fd-layout-width: 1400px;
+  --color-fd-primary: #6d28d9;
+}
+
+.dark {
+  --color-fd-primary: #b69cff;
 }
 
 body {
-  font-family: var(--font-body);
-  font-size: 0.975rem;
-  line-height: 1.65;
-  background: var(--tg-ground);
-  color: var(--tg-ink);
-  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  background-color: var(--color-fd-background);
 }
 
-h1,
-h2,
-h3,
-h4,
-.font-display {
-  font-family: var(--font-display);
-  letter-spacing: -0.018em;
-  text-wrap: balance;
+.landing-shell {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-code,
-pre,
-kbd {
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
+.landing-shell :is(input, textarea) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
-table {
-  font-variant-numeric: tabular-nums;
-}
-
-#nd-sidebar,
-#nd-sidebar-mobile,
-#nd-tocnav,
-#nd-toc {
-  font-family: var(--font-display);
-}
-
-/* Thread marks. Colour is never the only signal - each carries its label. */
-.tg-thread {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 0.18rem 0.5rem;
-  border-radius: 3px;
-  border: 1px solid currentColor;
-  white-space: nowrap;
-}
-
-.tg-thread[data-thread='js'] {
-  color: var(--tg-js);
-}
-
-.tg-thread[data-thread='native'] {
-  color: var(--tg-native);
-}
-
-.tg-thread::before {
-  content: '';
-  width: 0.45em;
-  height: 0.45em;
-  background: currentColor;
-  border-radius: 50%;
-}
-
-/* Release status is not thread work, so it must not borrow a thread hue. */
-.tg-status {
-  display: inline-block;
-  width: fit-content;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 0.2rem 0.55rem;
-  border-radius: 3px;
-  border: 1px solid var(--tg-line);
-  color: var(--tg-muted);
-}
-
-.tg-rail {
-  border-left: 2px solid var(--tg-line);
-  padding-left: 1rem;
-}
-
-.tg-rail[data-thread='js'] {
-  border-color: var(--tg-js);
-}
-
-.tg-rail[data-thread='native'] {
-  border-color: var(--tg-native);
+:root:not(.dark) .shiki {
+  box-shadow: none;
 }
 
 /* ---- landing ---- */
+
 .tg-hero {
+  --tg-word: color-mix(in srgb, var(--color-fd-foreground) 5%, var(--color-fd-background));
   position: relative;
   width: 100%;
   flex: 1 1 auto;
@@ -197,7 +284,6 @@ table {
 
 .tg-hero-word h2 {
   margin: 0;
-  font-family: var(--font-display);
   font-weight: 700;
   font-size: clamp(140px, 26vw, 420px);
   line-height: 0.8;
@@ -231,127 +317,14 @@ table {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 1.1rem;
   width: 100%;
-  max-width: 1180px;
+  max-width: var(--fd-layout-width);
   margin: 0 auto;
   padding: 4rem 1.5rem;
 }
 
-.tg-hero-headline {
-  margin: 0;
-  max-width: 17ch;
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: clamp(2rem, 4.6vw, 3.4rem);
-  line-height: 1.06;
-  letter-spacing: -0.03em;
-}
-
-.tg-word {
-  display: inline-block;
-  margin-right: 0.26em;
-  opacity: 0;
-  animation: tg-word-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes tg-word-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.35em);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: blur(0);
-  }
-}
-
-.tg-hero-sub {
-  margin: 0;
-  max-width: 46ch;
-  font-size: 1.05rem;
-  opacity: 0.78;
-}
-
-.tg-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 0.5rem;
-}
-
-.tg-cta {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.35rem;
-  border-radius: 999px;
-  text-decoration: none;
-  background: color-mix(in srgb, var(--tg-js) 16%, transparent);
-}
-
-.tg-cta-bg {
-  position: absolute;
-  top: 0.3rem;
-  bottom: 0.3rem;
-  left: 0.35rem;
-  width: calc(100% - 3.4rem);
-  border-radius: 999px;
-  background: var(--tg-js);
-  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.tg-cta:hover .tg-cta-bg {
-  width: calc(100% - 0.7rem);
-}
-
-.tg-cta-text {
-  position: relative;
-  z-index: 1;
-  padding: 0.7rem 1.6rem;
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--tg-ground);
-  white-space: nowrap;
-}
-
-.tg-cta-circle {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 2.6rem;
-  height: 2.6rem;
-  border-radius: 50%;
-  background: var(--tg-native);
-  color: var(--tg-ground);
-  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.tg-cta:hover .tg-cta-circle {
-  transform: translateX(-0.4rem);
-}
-
-.tg-ghost {
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  font-weight: 500;
-  text-decoration: none;
-  border-bottom: 1px solid var(--tg-line);
-  padding-bottom: 2px;
-}
-
-.tg-ghost:hover {
-  border-color: var(--tg-js);
-}
-
-/* Narrow screens: spider keeps the upper half, actions sit centred above the
-   wordmark instead of overlapping the body. */
+/* Narrow screens: the spider keeps the upper half, actions sit centred above
+   the wordmark instead of overlapping the body. */
 @media (max-width: 640px) {
   .tg-hero {
     align-items: flex-end;
@@ -364,191 +337,5 @@ table {
   .tg-hero-content {
     align-items: center;
     padding: 2rem 1.25rem 9.5rem;
-  }
-
-  .tg-hero-actions {
-    justify-content: center;
-  }
-}
-
-/* Consultancy card at the foot of the TOC rail; the CTA reuses the hero pill. */
-.tg-margelo {
-  margin-top: 1.5rem;
-  padding: 1rem 1.1rem 1.1rem;
-  border: 1px solid var(--tg-line);
-  border-radius: 12px;
-  background: var(--tg-surface);
-  transition: border-color 0.3s var(--tg-ease);
-}
-
-.tg-margelo:hover {
-  border-color: color-mix(in srgb, var(--tg-js) 55%, var(--tg-line));
-}
-
-.tg-margelo-title {
-  margin: 0 0 0.3rem;
-  font-family: var(--font-display);
-  font-size: 0.88rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--tg-ink);
-}
-
-.tg-margelo-sub {
-  margin: 0 0 0.85rem;
-  font-size: 0.78rem;
-  line-height: 1.55;
-  color: var(--tg-muted);
-}
-
-/* Compact cut of the hero pill so it fits the rail. */
-.tg-margelo-cta .tg-cta-text {
-  padding: 0.45rem 0.95rem;
-  font-size: 0.82rem;
-}
-
-.tg-margelo-cta .tg-cta-circle {
-  width: 2rem;
-  height: 2rem;
-}
-
-.tg-margelo-cta .tg-cta-bg {
-  width: calc(100% - 2.75rem);
-}
-
-.tg-margelo-cta:hover .tg-cta-bg {
-  width: calc(100% - 0.7rem);
-}
-
-/* ---- navigation ---- */
-
-/* The rail is portalled into the sidebar scroller so it scrolls with the list. */
-:is(#nd-sidebar, #nd-sidebar-mobile) [data-radix-scroll-area-viewport] > div {
-  position: relative;
-}
-
-.tg-nav-rail {
-  position: absolute;
-  inset-inline-start: 0;
-  top: 0;
-  width: 3px;
-  border-radius: 999px;
-  background: var(--tg-js);
-  pointer-events: none;
-  will-change: transform;
-  transition: transform 0.42s var(--tg-settle);
-}
-
-:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active] {
-  transition:
-    background-color 0.25s ease,
-    color 0.25s ease,
-    translate 0.3s var(--tg-ease);
-}
-
-:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active]:hover {
-  translate: 2px 0;
-}
-
-:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active] svg {
-  transition: scale 0.35s var(--tg-settle);
-}
-
-:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active]:hover svg {
-  scale: 1.12;
-}
-
-:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active='true'] {
-  font-weight: 500;
-}
-
-/* Group labels are structure, not content, so they take the mono register. */
-:is(#nd-sidebar, #nd-sidebar-mobile) p {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--tg-muted);
-}
-
-#nd-toc a {
-  transition:
-    color 0.25s ease,
-    translate 0.3s var(--tg-ease);
-}
-
-#nd-toc a:hover {
-  translate: 2px 0;
-}
-
-#nd-toc a[data-active='true'] {
-  translate: 2px 0;
-}
-
-/* Fumadocs ships the track and the travelling dot; only the easing is ours. */
-#nd-toc svg,
-#nd-toc [style*='offset-path'] {
-  transition-duration: 0.45s;
-  transition-timing-function: var(--tg-ease);
-}
-
-.tg-enter > * {
-  animation: tg-enter-in 0.5s var(--tg-ease) both;
-}
-
-.tg-enter > *:nth-child(2) {
-  animation-delay: 0.06s;
-}
-
-.tg-enter > *:nth-child(3) {
-  animation-delay: 0.12s;
-}
-
-.tg-enter ~ * {
-  animation: tg-enter-in 0.5s 0.18s var(--tg-ease) both;
-}
-
-@keyframes tg-enter-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-}
-
-/* Previous / next: the chevron leans the way the link goes. */
-article > div:last-child > a {
-  transition:
-    background-color 0.25s ease,
-    border-color 0.25s ease,
-    color 0.25s ease;
-}
-
-article > div:last-child > a:hover {
-  border-color: color-mix(in srgb, var(--tg-js) 45%, var(--tg-line));
-}
-
-article > div:last-child > a svg {
-  transition: translate 0.3s var(--tg-ease);
-}
-
-article > div:last-child > a:hover .lucide-chevron-left {
-  translate: -3px 0;
-}
-
-article > div:last-child > a:hover .lucide-chevron-right {
-  translate: 3px 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  .tg-word {
-    opacity: 1;
-    animation: none;
   }
 }

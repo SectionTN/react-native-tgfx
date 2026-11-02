@@ -7,7 +7,7 @@ type Colors = { body: string; limb: string; glint: string; silk: string }
 
 const PALETTE: Record<'dim' | 'lit', Colors> = {
   dim: { body: '#2a313d', limb: '#232a36', glint: '#2a313d', silk: 'rgba(35,42,54,0.9)' },
-  lit: { body: '#e6eaf2', limb: '#d98a4a', glint: '#6aa9ff', silk: 'rgba(106,169,255,0.5)' },
+  lit: { body: '#e6eaf2', limb: '#8b5cf6', glint: '#c4b5fd', silk: 'rgba(196,181,253,0.5)' },
 }
 
 // The Margelo mark, as served inline in their own header (viewBox 0 0 15 14).
@@ -29,7 +29,8 @@ function colorsFor(variant: Variant, el: Element): Colors {
   if (variant !== 'themed') return PALETTE[variant]
   const style = getComputedStyle(el)
   const read = (name: string) => style.getPropertyValue(name).trim()
-  return { body: read('--tg-ink'), limb: read('--tg-js'), glint: read('--tg-native'), silk: read('--tg-js') }
+  const primary = read('--color-fd-primary')
+  return { body: read('--color-fd-foreground'), limb: primary, glint: primary, silk: primary }
 }
 
 /**
