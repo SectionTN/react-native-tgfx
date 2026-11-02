@@ -243,13 +243,15 @@ FitRects fitRects(Fit fit, const tgfx::Rect& source, const tgfx::Rect& dest) {
       sh = dh = std::min(ih, oh);
       break;
     case Fit::ScaleDown:
-      if (dh > ih) {
-        dw = ih * (iw / ih);
-        dh = ih;
+      dw = iw;
+      dh = ih;
+      if (dh > oh) {
+        dw = oh * (iw / ih);
+        dh = oh;
       }
-      if (dw > iw) {
-        dh = iw / (iw / ih);
-        dw = iw;
+      if (dw > ow) {
+        dh = ow / (iw / ih);
+        dw = ow;
       }
       break;
   }
