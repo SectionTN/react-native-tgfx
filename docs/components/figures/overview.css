@@ -1,0 +1,8 @@
+/* Narrow: a taller editor so the Text lines clear the phone */
+.tgf-ov .ss-stage[data-layout='compact'] .tgf-editor {
+  height: 300px;
+}
+
+.tgf-ov .ss-stage[data-layout='compact'] .tgf-phone {
+  top: 288px;
+}
