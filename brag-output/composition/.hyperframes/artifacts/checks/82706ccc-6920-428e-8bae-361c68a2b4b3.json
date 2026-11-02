@@ -1,0 +1,1175 @@
+{
+  "ok": true,
+  "strict": false,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 1,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "composition_file_too_large",
+        "severity": "warning",
+        "message": "This HTML composition file has 761 lines. Smaller sub-compositions are easier to read, iterate on, and diff.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "/Users/riteshshukla/Desktop/development/opensource/Tgfx/brag-output/composition/index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Split coherent scenes or layers into separate .html files under compositions/, then mount them from the parent with data-composition-src so each file stays small enough to inspect, revise, and validate independently."
+      }
+    ],
+    "filesScanned": 1
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 1,
+    "infoCount": 10,
+    "findings": [
+      {
+        "code": "canvas_content_at_edge",
+        "severity": "warning",
+        "time": 10,
+        "selector": "#ghost",
+        "message": "Canvas content touches the frame edge (bottom).",
+        "rect": {
+          "left": 496.67,
+          "top": 600,
+          "right": 1996.67,
+          "bottom": 1160,
+          "width": 1500,
+          "height": 560
+        },
+        "containerSelector": "#root",
+        "fixHint": "Keep drawn text inside the visible part of the canvas, or mark intentional full-bleed art with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 496.67,
+          "y": 600,
+          "width": 1500,
+          "height": 560
+        },
+        "firstSeen": 10,
+        "lastSeen": 50,
+        "occurrences": 7,
+        "heldMs": 0,
+        "times": [
+          10,
+          16.667,
+          23.333,
+          30,
+          36.667,
+          43.333,
+          50
+        ]
+      },
+      {
+        "code": "content_overlap",
+        "severity": "info",
+        "time": 9.385,
+        "selector": "#s2tag > span:nth-of-type(1)",
+        "message": "Two text blocks overlap and may render unreadable.",
+        "rect": {
+          "left": 157.52,
+          "top": 88.98,
+          "right": 633.64,
+          "bottom": 125.55,
+          "width": 476.12,
+          "height": 36.57
+        },
+        "containerSelector": "#s3eye",
+        "text": "margelo / react-native-tgfx",
+        "fixHint": "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 157.52,
+          "y": 88.98,
+          "width": 476.12,
+          "height": 36.57
+        },
+        "firstSeen": 9.385,
+        "lastSeen": 9.385,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          9.385
+        ]
+      },
+      {
+        "code": "text_box_overflow",
+        "severity": "info",
+        "time": 10,
+        "selector": "#code > span:nth-of-type(1) > span:nth-of-type(4)",
+        "message": "Text extends outside its nearest visual/container box.",
+        "rect": {
+          "left": 1253.63,
+          "top": 351.94,
+          "right": 1536.34,
+          "bottom": 372.89,
+          "width": 282.71,
+          "height": 20.95
+        },
+        "containerSelector": "#editor",
+        "text": "'react-native-tgfx'",
+        "fixHint": "Text is 283px x 21px inside 1170px x 760px and overflows by up to 246px; widen the container to at least ~1416px, or allow wrapping with max-width/fitTextFontSize.",
+        "containerRect": {
+          "left": 120,
+          "top": 270,
+          "right": 1290,
+          "bottom": 1030,
+          "width": 1170,
+          "height": 760
+        },
+        "overflow": {
+          "right": 246.34
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1253.63,
+          "y": 351.94,
+          "width": 282.71,
+          "height": 20.95
+        },
+        "firstSeen": 10,
+        "lastSeen": 10,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          10
+        ]
+      },
+      {
+        "code": "text_occluded",
+        "severity": "info",
+        "time": 10,
+        "selector": "#code > span:nth-of-type(1) > span:nth-of-type(4)",
+        "message": "Text is hidden beneath an opaque element.",
+        "rect": {
+          "left": 1253.63,
+          "top": 345,
+          "right": 1536.34,
+          "bottom": 376,
+          "width": 282.72,
+          "height": 31
+        },
+        "containerSelector": "#dphone",
+        "text": "'react-native-tgfx'",
+        "fixHint": "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "coveredFraction": 1,
+        "lifetime": {
+          "start": 0,
+          "end": 60
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1253.63,
+          "y": 345,
+          "width": 282.72,
+          "height": 31
+        },
+        "firstSeen": 10,
+        "lastSeen": 10,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          10
+        ]
+      },
+      {
+        "code": "container_overflow",
+        "severity": "info",
+        "time": 10,
+        "selector": "#code",
+        "message": "Element extends outside a clipping layout container.",
+        "rect": {
+          "left": 120,
+          "top": 342,
+          "right": 1536.34,
+          "bottom": 950,
+          "width": 1416.34,
+          "height": 608
+        },
+        "containerSelector": "#editor",
+        "fixHint": "Resize/reposition the child or container, or mark intentional overflow with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 120,
+          "top": 270,
+          "right": 1290,
+          "bottom": 1030,
+          "width": 1170,
+          "height": 760
+        },
+        "overflow": {
+          "right": 246.34
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 120,
+          "y": 342,
+          "width": 1416.34,
+          "height": 608
+        },
+        "firstSeen": 10,
+        "lastSeen": 10,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          10
+        ]
+      },
+      {
+        "code": "panel_out_of_canvas",
+        "severity": "info",
+        "time": 16.667,
+        "selector": "#glow",
+        "message": "Painted panel extends outside the composition canvas.",
+        "rect": {
+          "left": 269.17,
+          "top": -150.83,
+          "right": 1650.82,
+          "bottom": 1230.82,
+          "width": 1381.65,
+          "height": 1381.65
+        },
+        "containerSelector": "#root",
+        "text": "",
+        "fixHint": "Move the panel inward, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "top": 150.83,
+          "bottom": 150.82
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 269.17,
+          "y": -150.83,
+          "width": 1381.65,
+          "height": 1381.65
+        },
+        "firstSeen": 16.667,
+        "lastSeen": 43.333,
+        "occurrences": 3,
+        "heldMs": 0,
+        "times": [
+          16.667,
+          30,
+          43.333
+        ]
+      },
+      {
+        "code": "content_overlap",
+        "severity": "info",
+        "time": 26.48,
+        "selector": "#mExplode",
+        "message": "Two text blocks overlap and may render unreadable.",
+        "rect": {
+          "left": 70.81,
+          "top": 478,
+          "right": 257.85,
+          "bottom": 535,
+          "width": 187.04,
+          "height": 57
+        },
+        "containerSelector": "#n5 > h2:nth-of-type(1)",
+        "text": "Explode",
+        "fixHint": "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 70.81,
+          "y": 478,
+          "width": 187.04,
+          "height": 57
+        },
+        "firstSeen": 26.48,
+        "lastSeen": 26.48,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          26.48
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 43.333,
+        "selector": "#n6 > div:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 997.17,
+          "top": 1438,
+          "right": 1414.82,
+          "bottom": 1488.52,
+          "width": 417.65,
+          "height": 50.52
+        },
+        "containerSelector": "#root",
+        "text": "camera frames, zero-copy",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 408.52
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 997.17,
+          "y": 1438,
+          "width": 417.65,
+          "height": 50.52
+        },
+        "firstSeen": 43.333,
+        "lastSeen": 56.667,
+        "occurrences": 3,
+        "heldMs": 0,
+        "times": [
+          43.333,
+          50,
+          56.667
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 43.333,
+        "selector": "#n6 > h2:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 979.13,
+          "top": 1487.48,
+          "right": 1142.67,
+          "bottom": 1595,
+          "width": 163.54,
+          "height": 107.52
+        },
+        "containerSelector": "#root",
+        "text": "Live",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 515
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 979.13,
+          "y": 1487.48,
+          "width": 163.54,
+          "height": 107.52
+        },
+        "firstSeen": 43.333,
+        "lastSeen": 56.667,
+        "occurrences": 3,
+        "heldMs": 0,
+        "times": [
+          43.333,
+          50,
+          56.667
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 43.333,
+        "selector": "#n6 > h2:nth-of-type(1) > em:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 1139.11,
+          "top": 1493.07,
+          "right": 1419.29,
+          "bottom": 1604.66,
+          "width": 280.18,
+          "height": 111.59
+        },
+        "containerSelector": "#root",
+        "text": "camera.",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 524.66
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1139.11,
+          "y": 1493.07,
+          "width": 280.18,
+          "height": 111.59
+        },
+        "firstSeen": 43.333,
+        "lastSeen": 56.667,
+        "occurrences": 3,
+        "heldMs": 0,
+        "times": [
+          43.333,
+          50,
+          56.667
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 43.333,
+        "selector": "#n6 > p:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 975.83,
+          "top": 1599.8,
+          "right": 1655.45,
+          "bottom": 1694.98,
+          "width": 679.62,
+          "height": 95.18
+        },
+        "containerSelector": "#root",
+        "text": "Every frame from the camera, reshaped on the GPU while you watch.",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 614.98
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 975.83,
+          "y": 1599.8,
+          "width": 679.62,
+          "height": 95.18
+        },
+        "firstSeen": 43.333,
+        "lastSeen": 56.667,
+        "occurrences": 3,
+        "heldMs": 0,
+        "times": [
+          43.333,
+          50,
+          56.667
+        ]
+      }
+    ],
+    "duration": 60,
+    "samples": [
+      3.333,
+      10,
+      16.667,
+      23.333,
+      30,
+      36.667,
+      43.333,
+      50,
+      56.667
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 11,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [
+      3.333,
+      16.667,
+      30,
+      43.333,
+      56.667
+    ],
+    "checked": 16,
+    "passed": 16
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 1,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "text_below_floor",
+        "severity": "warning",
+        "message": "Type floor is 28 px (2.6% of the 1080 px short side, what a phone can read) and 71 text elements stay under it for 0.5 s or more, the smallest \"Frosted.tsx\" at 24 px: set reading text to at least 28 px, or put data-layout-ignore on text that is texture rather than reading; see references/look.md.",
+        "text": "Frosted.tsx",
+        "selector": "div.bar > span:nth-of-type(1)",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 629.16,
+          "y": 318.8,
+          "width": 163.68,
+          "height": 31
+        },
+        "time": 9.375,
+        "times": [
+          9.375,
+          9.875,
+          9.875,
+          9.875,
+          9.875,
+          9.875,
+          9.875,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10.125,
+          10.125,
+          10.125,
+          10.125,
+          10.125,
+          10.125,
+          10.125,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.25,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.375,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.5,
+          10.625,
+          10.625,
+          10.625,
+          10.625,
+          10.625,
+          10.625,
+          10.625,
+          10.625,
+          10.625,
+          10.75,
+          10.75,
+          10.75,
+          10.75,
+          10.875
+        ],
+        "fontPx": 24,
+        "floorPx": 28,
+        "seconds": 5.75,
+        "elements": [
+          {
+            "selector": "div.bar > span:nth-of-type(1)",
+            "text": "Frosted.tsx",
+            "fontPx": 24,
+            "time": 9.375,
+            "seconds": 5.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(1)",
+            "text": "{ BackdropBlur, Canvas, Circle, DropShadow, RoundedRect }",
+            "fontPx": 24,
+            "time": 9.875,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#code > span:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "1",
+            "fontPx": 24,
+            "time": 9.875,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#code > span:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "import",
+            "fontPx": 24,
+            "time": 9.875,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#code > span:nth-of-type(1) > span:nth-of-type(3)",
+            "text": "from",
+            "fontPx": 24,
+            "time": 9.875,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#code > span:nth-of-type(1) > span:nth-of-type(4)",
+            "text": "'react-native-tgfx'",
+            "fontPx": 24,
+            "time": 9.875,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#code > span:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "2",
+            "fontPx": 24,
+            "time": 9.875,
+            "seconds": 5.25
+          },
+          {
+            "selector": "#code > span:nth-of-type(3)",
+            "text": "Frosted = () => (",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "3",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(3) > span:nth-of-type(2)",
+            "text": "export",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(3) > span:nth-of-type(3)",
+            "text": "const",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(4)",
+            "text": "style={{ flex: }}>",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(4) > span:nth-of-type(1)",
+            "text": "4",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(4) > span:nth-of-type(2)",
+            "text": "<Canvas",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(4) > span:nth-of-type(3)",
+            "text": "1",
+            "fontPx": 24,
+            "time": 10,
+            "seconds": 5.125
+          },
+          {
+            "selector": "#code > span:nth-of-type(5)",
+            "text": "cx={} cy={} r={} color= />",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(5) > span:nth-of-type(1)",
+            "text": "5",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(5) > span:nth-of-type(2)",
+            "text": "<Circle",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(5) > span:nth-of-type(3)",
+            "text": "118",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(5) > span:nth-of-type(4)",
+            "text": "128",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(5) > span:nth-of-type(5)",
+            "text": "88",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(5) > span:nth-of-type(6)",
+            "text": "\"#f59e0b\"",
+            "fontPx": 24,
+            "time": 10.125,
+            "seconds": 5
+          },
+          {
+            "selector": "#code > span:nth-of-type(6)",
+            "text": "cx={} cy={} r={} color= />",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(6) > span:nth-of-type(1)",
+            "text": "6",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(6) > span:nth-of-type(2)",
+            "text": "<Circle",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(6) > span:nth-of-type(3)",
+            "text": "292",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(6) > span:nth-of-type(4)",
+            "text": "236",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(6) > span:nth-of-type(5)",
+            "text": "100",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(6) > span:nth-of-type(6)",
+            "text": "\"#ec4899\"",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7)",
+            "text": "cx={} cy={} r={} color= />",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7) > span:nth-of-type(1)",
+            "text": "7",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7) > span:nth-of-type(2)",
+            "text": "<Circle",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7) > span:nth-of-type(3)",
+            "text": "96",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7) > span:nth-of-type(4)",
+            "text": "352",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7) > span:nth-of-type(5)",
+            "text": "60",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(7) > span:nth-of-type(6)",
+            "text": "\"#0ea5e9\"",
+            "fontPx": 24,
+            "time": 10.25,
+            "seconds": 4.875
+          },
+          {
+            "selector": "#code > span:nth-of-type(8)",
+            "text": "x={} y={} r={}",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(8) > span:nth-of-type(1)",
+            "text": "8",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(8) > span:nth-of-type(2)",
+            "text": "<BackdropBlur",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(8) > span:nth-of-type(3)",
+            "text": "36",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(8) > span:nth-of-type(4)",
+            "text": "190",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(8) > span:nth-of-type(5)",
+            "text": "28",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(9)",
+            "text": "width={} height={} blur={} />",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(9) > span:nth-of-type(1)",
+            "text": "9",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(9) > span:nth-of-type(2)",
+            "text": "330",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(9) > span:nth-of-type(3)",
+            "text": "170",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#blurVal",
+            "text": "0",
+            "fontPx": 24,
+            "time": 10.375,
+            "seconds": 4.75
+          },
+          {
+            "selector": "#code > span:nth-of-type(10)",
+            "text": "x={} y={} r={}",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(10) > span:nth-of-type(1)",
+            "text": "10",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(10) > span:nth-of-type(2)",
+            "text": "<RoundedRect",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(10) > span:nth-of-type(3)",
+            "text": "36",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(10) > span:nth-of-type(4)",
+            "text": "190",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(10) > span:nth-of-type(5)",
+            "text": "28",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(11)",
+            "text": "width={} height={}",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(11) > span:nth-of-type(1)",
+            "text": "11",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(11) > span:nth-of-type(2)",
+            "text": "330",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(11) > span:nth-of-type(3)",
+            "text": "170",
+            "fontPx": 24,
+            "time": 10.5,
+            "seconds": 4.625
+          },
+          {
+            "selector": "#code > span:nth-of-type(12)",
+            "text": "color=>",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(12) > span:nth-of-type(1)",
+            "text": "12",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(12) > span:nth-of-type(2)",
+            "text": "\"rgba(255,255,255,0.3)\"",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(13)",
+            "text": "dy={} blur={} color= />",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(13) > span:nth-of-type(1)",
+            "text": "13",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(13) > span:nth-of-type(2)",
+            "text": "<DropShadow",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(13) > span:nth-of-type(3)",
+            "text": "16",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(13) > span:nth-of-type(4)",
+            "text": "32",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(13) > span:nth-of-type(5)",
+            "text": "\"#00000040\"",
+            "fontPx": 24,
+            "time": 10.625,
+            "seconds": 4.5
+          },
+          {
+            "selector": "#code > span:nth-of-type(14) > span:nth-of-type(1)",
+            "text": "14",
+            "fontPx": 24,
+            "time": 10.75,
+            "seconds": 4.375
+          },
+          {
+            "selector": "#code > span:nth-of-type(14) > span:nth-of-type(2)",
+            "text": "</RoundedRect",
+            "fontPx": 24,
+            "time": 10.75,
+            "seconds": 4.375
+          },
+          {
+            "selector": "#code > span:nth-of-type(15) > span:nth-of-type(1)",
+            "text": "15",
+            "fontPx": 24,
+            "time": 10.75,
+            "seconds": 4.375
+          },
+          {
+            "selector": "#code > span:nth-of-type(15) > span:nth-of-type(2)",
+            "text": "</Canvas",
+            "fontPx": 24,
+            "time": 10.75,
+            "seconds": 4.375
+          },
+          {
+            "selector": "#code > span:nth-of-type(16) > span:nth-of-type(1)",
+            "text": "16",
+            "fontPx": 24,
+            "time": 10.875,
+            "seconds": 4.25
+          }
+        ]
+      }
+    ],
+    "enabled": true,
+    "step": 0.125,
+    "samples": 480
+  },
+  "audio": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}

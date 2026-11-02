@@ -1,0 +1,3 @@
+react-native-tgfx is a declarative GPU 2D canvas for React Native: chrome text, physics, live camera, and a photo that folds into a scannable QR. tgfx.margelo.com
+
+Music: Aisake & Dosi - Cruising [NCS Release]. Music provided by NoCopyrightSounds. Free Download/Stream: https://ncs.io
