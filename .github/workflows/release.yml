@@ -3,131 +3,162 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      package:
-        description: Which package to publish
+      release-type:
+        description: 'Release type (auto = derive from conventional commits, alpha = pre-release)'
         type: choice
-        default: both
         options:
-          - both
-          - react-native-tgfx
-          - react-native-tgfx-vision-camera
-      prerelease:
-        description: Pre-release channel — the version's tag and its npm dist-tag
-        type: choice
-        default: alpha
-        options:
+          - auto
+          - patch
+          - minor
+          - major
           - alpha
-          - beta
-      increment:
-        description: 'Override the version bump (empty = the one conventional commits recommend)'
-        type: string
-        default: ''
+        default: alpha
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  # macOS and one job, not a gate job feeding a publish job: ios/libs is
-  # gitignored but whitelisted in `files`, so the xcframework has to exist on
-  # this runner at `npm publish` time or the tarball ships a podspec whose
-  # vendored_frameworks points at nothing.
-  release:
-    name: Build tgfx and publish
+  build-tgfx:
+    name: Build tgfx (${{ matrix.platform }})
     runs-on: macos-15
     permissions:
       contents: read
-      id-token: write
-    environment:
-      name: release
-    env:
-      # --preRelease=<id> both tags the version 1.2.0-alpha.0 and publishes it
-      # under the matching npm dist-tag, so `npm i` still resolves to stable.
-      # 'stable' is deliberately not in the dropdown yet; the branch stays so
-      # adding it back to `options` is the whole change.
-      RELEASE_ARGS: >-
-        ${{ inputs.increment }}
-        ${{ inputs.prerelease != 'stable' && format('--preRelease={0}', inputs.prerelease) || '' }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: ios
+            libs: packages/react-native-tgfx/ios/libs
+          - platform: android
+            libs: |
+              packages/react-native-tgfx/android/libs
+              packages/react-native-tgfx/android/libs-vulkan
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
           submodules: recursive
-          # cpp/third_party/tgfx is a private repo: the default GITHUB_TOKEN is
-          # scoped to this one, so the submodule needs a PAT that can read both.
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          persist-credentials: false
 
-      # A failed submodule clone leaves an empty directory, and cmake would then
-      # fail 20 minutes later with something unrelated-looking.
+
       - name: Verify the tgfx submodule is populated
         run: |
           if [ ! -f packages/react-native-tgfx/cpp/third_party/tgfx/CMakeLists.txt ]; then
-            echo "::error::tgfx submodule is empty — PERSONAL_ACCESS_TOKEN needs read access to riteshshukla04/tgfx-private"
+            echo "::error::tgfx submodule is empty"
             exit 1
           fi
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
         with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
+          node-version: 22
+          package-manager-cache: false
 
-      # tgfx-private carries no LFS objects — a fork's LFS storage does not copy
-      # the upstream's — so depsync's `git lfs pull` 404s on every icon and font.
-      # The OIDs are identical upstream, and Tencent/tgfx serves them anonymously.
+      # The tgfx fork has no LFS objects; Tencent/tgfx serves the same OIDs anonymously.
       - name: Point LFS at upstream tgfx
         working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
-        run: |
-          git config lfs.url https://github.com/Tencent/tgfx.git/info/lfs
-          # actions/checkout leaves the PAT in an extraheader on every submodule.
-          # Sent to another org's LFS endpoint it is rejected outright ("Resource
-          # not accessible by personal access token"); unauthenticated is fine,
-          # Tencent/tgfx is public. The parent repo keeps its header, so
-          # release-it can still push.
-          git config --local --unset-all http.https://github.com/.extraheader
+        run: git config lfs.url https://github.com/Tencent/tgfx.git/info/lfs
 
       - name: Fetch tgfx third-party dependencies
         working-directory: packages/react-native-tgfx/cpp/third_party/tgfx
         run: ./install_tools.sh && ./sync_deps.sh
 
-      - name: Build the tgfx static library
-        run: bash packages/react-native-tgfx/scripts/build-tgfx-ios.sh
-
-      - name: Verify both slices are in the xcframework
-        working-directory: packages/react-native-tgfx/ios/libs/libtgfx.xcframework
+      # NDK 29's clang rejects tgfx's vendored highway, so pin RN's NDK.
+      - name: Install Android NDK 27.1.12297006
+        if: matrix.platform == 'android'
         run: |
-          for slice in ios-arm64/libtgfx-ios.a ios-arm64-simulator/libtgfx-ios.a; do
-            if [ ! -f "$slice" ]; then
-              echo "::error::$slice missing from libtgfx.xcframework"
-              exit 1
-            fi
-          done
-          ls -lh ios-arm64/libtgfx-ios.a ios-arm64-simulator/libtgfx-ios.a
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
+          # The NDK's yasm is x86_64-only; without Rosetta the x86 ABIs' libjpeg-turbo build dies on it.
+          NDK_YASM="$ANDROID_HOME/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/yasm"
+          if ! "$NDK_YASM" --version > /dev/null 2>&1; then
+            printf '#!/bin/sh\nexec %s "$@"\n' "$(command -v yasm)" > "$NDK_YASM"
+          fi
 
-      - uses: actions/setup-node@v4
+      - name: Build tgfx
+        run: bash packages/react-native-tgfx/scripts/build-tgfx-${{ matrix.platform }}.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tgfx-${{ matrix.platform }}
+          path: ${{ matrix.libs }}
+          if-no-files-found: error
+          retention-days: 3
+
+  release:
+    name: Publish to npm (OIDC) and create GitHub release
+    needs: build-tgfx
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      # Full history for the changelog; GITHUB_TOKEN stays persisted for release-it's push.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tgfx-ios
+          path: packages/react-native-tgfx/ios/libs
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tgfx-android
+          path: packages/react-native-tgfx/android
+
+      - name: Verify the prebuilt tgfx libraries
+        working-directory: packages/react-native-tgfx
+        run: |
+          missing=0
+          for lib in \
+            ios/libs/libtgfx.xcframework/Info.plist \
+            ios/libs/libtgfx.xcframework/{ios-arm64,ios-arm64_x86_64-simulator}/libtgfx-ios.a \
+            android/libs/{armeabi-v7a,arm64-v8a,x86,x86_64}/libtgfx.a \
+            android/libs-vulkan/{armeabi-v7a,arm64-v8a,x86,x86_64}/libtgfx.a; do
+            if [ -f "$lib" ]; then ls -lh "$lib"; else echo "::error::$lib missing"; missing=1; fi
+          done
+          exit $missing
+
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           package-manager-cache: false
-      # Trusted publishing needs the OIDC support added in npm 11.5.1.
-      - run: npm install -g npm@11.14.1
+
+      - name: Update npm (trusted publishing needs npm >= 11.5.1)
+        run: npm install -g npm@11
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install npm dependencies (bun)
+        run: bun install --frozen-lockfile
 
       - name: Configure Git
         run: |
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-          # sync_deps.sh writes inside the submodule, which makes the parent repo
-          # dirty and trips release-it's clean-working-dir check.
-          git config submodule."packages/react-native-tgfx/cpp/third_party/tgfx".ignore all
 
-      - name: Release react-native-tgfx
-        if: inputs.package == 'both' || inputs.package == 'react-native-tgfx'
-        working-directory: packages/react-native-tgfx
-        run: bunx release-it $RELEASE_ARGS --ci
+      - name: Determine release version
+        id: version
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TYPE: ${{ github.event.inputs.release-type }}
+        run: |
+          ARGS=""
+          if [[ "$RELEASE_TYPE" == "alpha" ]]; then
+            ARGS="--preRelease=alpha"
+          elif [[ "$RELEASE_TYPE" != "auto" ]]; then
+            ARGS="$RELEASE_TYPE"
+          fi
+          # Resolve the version once at the root so every package and the root release-it agree.
+          VERSION=$(./node_modules/.bin/release-it --release-version --ci $ARGS | tail -n1)
+          echo "Releasing $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
 
-      - name: Release react-native-tgfx-vision-camera
-        if: inputs.package == 'both' || inputs.package == 'react-native-tgfx-vision-camera'
-        working-directory: packages/react-native-tgfx-vision-camera
-        run: bunx release-it $RELEASE_ARGS --ci
+      - name: Release ${{ steps.version.outputs.version }}
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run release ${{ steps.version.outputs.version }} ${{ steps.version.outputs.args }} --ci

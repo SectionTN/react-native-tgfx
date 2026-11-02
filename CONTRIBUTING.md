@@ -14,7 +14,7 @@ That writes `packages/react-native-tgfx/{ios,android}/libs` and
 `cpp/third_party/tgfx/include`, which is everything the podspec and
 `android/CMakeLists.txt` need — both link the prebuilt archive and never compile
 tgfx. The object key is the submodule commit the checkout pins, so a bump has no
-cached build until the next release uploads one (`scripts/release.sh`, step 3).
+cached build until someone uploads one (`bash scripts/tgfx-prebuilt.sh upload`).
 
 ## Running the example app
 

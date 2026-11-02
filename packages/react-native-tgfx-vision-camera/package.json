@@ -32,7 +32,8 @@
     "lint:check": "eslint \"**/*.{js,ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
-    "specs": "tsc --noEmit false && nitrogen --logLevel=\"debug\""
+    "specs": "tsc --noEmit false && nitrogen --logLevel=\"debug\"",
+    "release": "release-it"
   },
   "keywords": [
     "react-native",
@@ -42,49 +43,25 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/riteshshukla04/react-native-tgfx.git"
+    "url": "git+https://github.com/margelo/react-native-tgfx.git"
   },
   "author": "Ritesh Shukla <riteshkumarshukla04@gmail.com> (https://github.com/riteshshukla04)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/riteshshukla04/react-native-tgfx/issues"
+    "url": "https://github.com/margelo/react-native-tgfx/issues"
   },
-  "homepage": "https://github.com/riteshshukla04/react-native-tgfx#readme",
+  "homepage": "https://github.com/margelo/react-native-tgfx#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
   "release-it": {
-    "git": {
-      "commitMessage": "chore: release react-native-tgfx-vision-camera ${version}",
-      "tagName": "react-native-tgfx-vision-camera@${version}",
-      "tagMatch": "react-native-tgfx-vision-camera@*",
-      "requireBranch": "main"
-    },
     "npm": {
       "publish": true,
       "skipChecks": true
     },
+    "git": false,
     "github": {
-      "release": true,
-      "releaseName": "react-native-tgfx-vision-camera ${version}"
-    },
-    "plugins": {
-      "@release-it/conventional-changelog": {
-        "preset": {
-          "name": "conventionalcommits"
-        },
-        "infile": "CHANGELOG.md",
-        "tagOpts": {
-          "prefix": "react-native-tgfx-vision-camera@"
-        },
-        "commitsOpts": {
-          "path": "."
-        },
-        "gitRawCommitsOpts": {
-          "path": "."
-        },
-        "ignoreRecommendedBump": true
-      }
+      "release": false
     }
   },
   "devDependencies": {

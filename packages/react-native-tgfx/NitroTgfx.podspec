@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.authors      = package["author"]
 
   s.platforms    = { :ios => min_ios_version_supported }
-  s.source       = { :git => "https://github.com/riteshshukla04/react-native-tgfx.git", :tag => "#{s.version}" }
+  s.source       = { :git => "https://github.com/margelo/react-native-tgfx.git", :tag => "#{s.version}" }
   s.preserve_paths = ["LICENSE", "NOTICE"]
 
   # IMPORTANT: only our own sources — NOT cpp/third_party/tgfx (built separately
