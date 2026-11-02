@@ -400,6 +400,8 @@ struct DrawCmd {
   /// Behind a pointer so a DrawCmd that does not clip costs no Path allocation.
   std::shared_ptr<tgfx::Path> clipPath;
   Kind kind = Group;
+  /// Declared position among its siblings, which hit paths report: clustering reorders `children`.
+  int32_t index = 0;
 
   /// Kind-word bit 64: skip draw and hit-test when it resolves below 0.5.
   AnimF visible{1, -1};

@@ -280,6 +280,47 @@ describe('tgfx canvas handle', () => {
     expect(outside.some(hit => hit.node === disc)).toBe(false);
   });
 
+  test('reports the declared path of an unnamed node regrouped for batching', async () => {
+    let canvas: React.RefObject<CanvasHandle | null> | null = null;
+
+    function Scene() {
+      const ref = useRef<CanvasHandle>(null);
+      canvas = ref;
+      // Unnamed disjoint rects and circles, interleaved: enough siblings that
+      // the renderer regroups them by kind and draws the circles after every
+      // rect. A `ref` would slot their geometry and pin them in place.
+      return (
+        <Stage canvasRef={ref}>
+          <Fill color="white" />
+          {Array.from({ length: 8 }, (_, i) => {
+            const x = 10 + (i % 4) * 48;
+            const y = 10 + Math.floor(i / 4) * 48;
+            return i % 2 === 0 ? (
+              <Rect
+                key={i}
+                x={x}
+                y={y}
+                width={32}
+                height={32}
+                color="#0A84FF"
+              />
+            ) : (
+              <Circle key={i} cx={x + 16} cy={y + 16} r={16} color="#FF375F" />
+            );
+          })}
+        </Stage>
+      );
+    }
+
+    await render(<Scene />);
+    await sleep(300);
+
+    // The first circle, declared at index 2: the <Fill> is 0, the first rect 1.
+    const hits = canvas!.current!.hitTest(74, 26);
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0]!.path).toEqual([2]);
+  });
+
   test('reads the canvas back as encoded png bytes', async () => {
     let canvas: React.RefObject<CanvasHandle | null> | null = null;
 

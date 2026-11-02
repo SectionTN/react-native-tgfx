@@ -1315,7 +1315,8 @@ bool clusterable(const DrawCmd& cmd, uint64_t* key, tgfx::Rect* bounds) {
 /// Reorders `children` so same-class disjoint draws sit together. A node may
 /// only hop over clusters whose united bounds it provably does not touch, so
 /// every move is between draws that commute; hit-test results cannot change
-/// either, since a point can hit at most one of any pair this separates.
+/// either, since a point can hit at most one of any pair this separates and
+/// a hit reports each node's declared `index`, not where it lands here.
 void clusterBatchableChildren(std::vector<DrawCmd>& children) {
   // Too few nodes to fragment into batches worth saving.
   if (children.size() < 8) {
@@ -1560,6 +1561,7 @@ bool SceneRenderer::readNodeFields(SceneReader& r, DrawCmd& cmd, int depth) {
         if (!readNode(r, child, depth + 1)) {
           return false;
         }
+        child.index = i;
         cmd.children.push_back(std::move(child));
       }
       if (cmd.cachePicture && r.dynamic != dynamicBefore) {
@@ -1593,6 +1595,7 @@ bool SceneRenderer::readNodeFields(SceneReader& r, DrawCmd& cmd, int depth) {
         if (!readNode(r, child, depth + 1)) {
           return false;
         }
+        child.index = i;
         cmd.children.push_back(std::move(child));
       }
       if (cmd.cachePicture && r.dynamic != dynamicBefore) {
@@ -1625,6 +1628,7 @@ bool SceneRenderer::readNodeFields(SceneReader& r, DrawCmd& cmd, int depth) {
         if (!readNode(r, child, depth + 1)) {
           return false;
         }
+        child.index = i;
         cmd.children.push_back(std::move(child));
       }
       if (cmd.cachePicture && r.dynamic != dynamicBefore) {
@@ -2038,6 +2042,7 @@ void SceneRenderer::setScene(std::span<const double> words,
     if (!readNode(reader, cmd, 0)) {
       break;
     }
+    cmd.index = i;
     program->push_back(std::move(cmd));
   }
   if (!reader.ok) {
@@ -2183,7 +2188,7 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
       continue;
     }
     if (opensContext(cmd)) {
-      path.push_back(static_cast<int32_t>(i));
+      path.push_back(cmd.index);
       hitContext(cmd, parent, point, precise, v, strings, pushed, path, out);
       path.pop_back();
       continue;
@@ -2207,7 +2212,7 @@ void hitWalk(const std::vector<DrawCmd>& nodes, const tgfx::Matrix& parent,
         continue;
       }
     }
-    path.push_back(static_cast<int32_t>(i));
+    path.push_back(cmd.index);
     if (!cmd.children.empty()) {
       hitWalk(cmd.children, matrix, point, precise, v, strings, pushed, path, out);
     }
@@ -2239,7 +2244,7 @@ void collectHitPlanes(const DrawCmd& cmd, const tgfx::Matrix3D& parent,
     if (child.kind != DrawCmd::Group || hidden(child, v)) {
       continue;
     }
-    path.push_back(static_cast<int32_t>(i));
+    path.push_back(child.index);
     collectHitPlanes(child, placed, v, path, out);
     path.pop_back();
   }
