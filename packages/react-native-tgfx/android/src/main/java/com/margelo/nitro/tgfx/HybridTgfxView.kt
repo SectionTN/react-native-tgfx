@@ -119,6 +119,14 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     target.setValues(values)
   }
 
+  override fun bindValues(values: ArrayBuffer) {
+    target.bindValues(values)
+  }
+
+  override fun pushValues() {
+    target.pushValues()
+  }
+
   override fun setStringValues(indices: DoubleArray, values: Array<String>) {
     target.setStringValues(indices, values)
   }

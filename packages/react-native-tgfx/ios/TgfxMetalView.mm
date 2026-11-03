@@ -266,6 +266,18 @@ void TgfxSnapshotRelease(void* token) {
   [self wakeUp];
 }
 
+- (void)bindValues:(const double*)values count:(int32_t)count {
+  if (_renderer != nullptr) {
+    _renderer->bindValues(values, count > 0 ? static_cast<size_t>(count) : 0);
+  }
+}
+
+- (void)pushValues {
+  if (_renderer != nullptr && _renderer->pushValues()) {
+    [self wakeUp];
+  }
+}
+
 - (void)setStringValues:(const double*)indices
                   count:(int32_t)count
                  values:(NSArray<NSString*>*)values {

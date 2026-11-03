@@ -92,6 +92,20 @@ export interface TgfxViewMethods extends HybridViewMethods {
   setValues(values: number[]): void
 
   /**
+   * Point {@link pushValues} at a block of `Float64` value slots: the buffer
+   * behind a `TgfxSlots` `values` view, whose memory every runtime shares. The
+   * view holds the buffer until the next bind, so the caller can drop it.
+   */
+  bindValues(values: ArrayBuffer): void
+
+  /**
+   * {@link setValues} with the bound block's current contents, copied
+   * natively. The animation driver writes the block and calls this every
+   * frame, so no array is marshalled. Does nothing until a block is bound.
+   */
+  pushValues(): void
+
+  /**
    * Update the scene's string slots - live `text` and `path` content. Sparse:
    * `indices[i]` names the slot `values[i]` replaces, and only changed slots are
    * sent, so an idle frame costs nothing here. The engine re-shapes text or

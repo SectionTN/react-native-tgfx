@@ -312,6 +312,27 @@ Java_com_margelo_nitro_tgfx_TgfxNative_setValues(JNIEnv* env, jobject, jlong ptr
 }
 
 JNIEXPORT void JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_bindValues(JNIEnv* env, jobject, jlong ptr,
+                                                  jobject valuesBuffer) {
+  auto* view = asView(ptr);
+  if (view == nullptr) {
+    return;
+  }
+  // Read on every push, not copied here: TgfxRenderTarget holds the ArrayBuffer behind it.
+  auto* values = valuesBuffer != nullptr
+                     ? static_cast<const double*>(env->GetDirectBufferAddress(valuesBuffer))
+                     : nullptr;
+  auto bytes = values != nullptr ? env->GetDirectBufferCapacity(valuesBuffer) : 0;
+  view->renderer.bindValues(values, bytes > 0 ? static_cast<size_t>(bytes) / sizeof(double) : 0);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_margelo_nitro_tgfx_TgfxNative_pushValues(JNIEnv*, jobject, jlong ptr) {
+  auto* view = asView(ptr);
+  return view != nullptr && view->renderer.pushValues() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
 Java_com_margelo_nitro_tgfx_TgfxNative_setStringValues(JNIEnv* env, jobject, jlong ptr,
                                                        jdoubleArray indexArr,
                                                        jobjectArray valueArr) {

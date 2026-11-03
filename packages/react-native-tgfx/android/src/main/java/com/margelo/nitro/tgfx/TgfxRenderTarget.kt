@@ -7,6 +7,7 @@ import android.os.Process
 import android.view.Surface
 import android.view.View
 import android.view.ViewTreeObserver
+import com.margelo.nitro.core.ArrayBuffer
 import java.nio.ByteBuffer
 import java.util.concurrent.CountDownLatch
 
@@ -124,6 +125,25 @@ internal class TgfxRenderTarget {
   fun setValues(values: DoubleArray) {
     withPtr { TgfxNative.setValues(it, values) }
     requestRender()
+  }
+
+  // Guarded by [lock]: the renderer reads these bytes on every push, so the old block goes only after the new bind.
+  private var boundValues: ArrayBuffer? = null
+
+  fun bindValues(values: ArrayBuffer) {
+    val bytes = values.getBuffer(false)
+    withPtr {
+      TgfxNative.bindValues(it, bytes)
+      boundValues = values
+    }
+  }
+
+  fun pushValues() {
+    var pushed = false
+    withPtr { pushed = TgfxNative.pushValues(it) }
+    if (pushed) {
+      requestRender()
+    }
   }
 
   fun setStringValues(indices: DoubleArray, values: Array<String>) {

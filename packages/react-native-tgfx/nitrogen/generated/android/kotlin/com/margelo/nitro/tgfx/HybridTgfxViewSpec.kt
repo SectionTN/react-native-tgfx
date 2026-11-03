@@ -55,6 +55,14 @@ abstract class HybridTgfxViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun bindValues(values: ArrayBuffer): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun pushValues(): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun setStringValues(indices: DoubleArray, values: Array<String>): Unit
   
   @DoNotStrip

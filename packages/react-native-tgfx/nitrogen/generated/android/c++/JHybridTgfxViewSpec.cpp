@@ -101,6 +101,14 @@ namespace margelo::nitro::tgfx {
       return __array;
     }());
   }
+  void JHybridTgfxViewSpec::bindValues(const std::shared_ptr<ArrayBuffer>& values) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JArrayBuffer::javaobject> /* values */)>("bindValues");
+    method(_javaPart, JArrayBuffer::wrap(values));
+  }
+  void JHybridTgfxViewSpec::pushValues() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("pushValues");
+    method(_javaPart);
+  }
   void JHybridTgfxViewSpec::setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JArrayDouble> /* indices */, jni::alias_ref<jni::JArrayClass<jni::JString>> /* values */)>("setStringValues");
     method(_javaPart, [&]() {

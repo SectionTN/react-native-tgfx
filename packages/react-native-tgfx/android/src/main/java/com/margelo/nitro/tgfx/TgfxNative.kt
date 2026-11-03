@@ -36,6 +36,12 @@ internal object TgfxNative {
   external fun clearScene(ptr: Long)
   external fun setOpaque(ptr: Long, opaque: Boolean)
   external fun setValues(ptr: Long, values: DoubleArray)
+
+  /** [values] is a direct buffer the renderer reads on every [pushValues]; keep it alive until the next bind. */
+  external fun bindValues(ptr: Long, values: ByteBuffer)
+
+  /** False when nothing is bound, so there is nothing to draw. */
+  external fun pushValues(ptr: Long): Boolean
   external fun setStringValues(ptr: Long, indices: DoubleArray, values: Array<String>)
 
   /** True when the viewport moved; an unchanged write must not wake the render thread. */

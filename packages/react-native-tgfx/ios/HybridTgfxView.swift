@@ -4,6 +4,8 @@ import UIKit
 /** iOS `TgfxView`: a thin Swift shell over the Objective-C++ `TgfxMetalView`. */
 final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   private let metalView = TgfxMetalView()
+  // The renderer reads these bytes on every push, so they are released only by the next bind.
+  private var boundValues: ArrayBuffer?
 
   var view: UIView { metalView }
 
@@ -44,6 +46,16 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
       guard let base = buffer.baseAddress else { return }
       metalView.setValues(base, count: Int32(buffer.count))
     }
+  }
+
+  func bindValues(values: ArrayBuffer) throws {
+    let slots = UnsafeRawPointer(values.data).assumingMemoryBound(to: Double.self)
+    metalView.bindValues(slots, count: Int32(values.size / MemoryLayout<Double>.size))
+    boundValues = values
+  }
+
+  func pushValues() throws {
+    metalView.pushValues()
   }
 
   func setStringValues(indices: [Double], values: [String]) throws {

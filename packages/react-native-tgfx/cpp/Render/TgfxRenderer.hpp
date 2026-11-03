@@ -63,6 +63,12 @@ class TgfxRenderer {
 
   void setValues(std::vector<double> values);
 
+  /// Point pushValues at `count` doubles the caller keeps alive until the next bind or clearScene.
+  void bindValues(const double* values, size_t count);
+
+  /// setValues from the bound block, copied now; false when nothing is bound.
+  bool pushValues();
+
   /// Sparse writes into the string-slot array (live text and path data).
   void setStringValues(const std::vector<double>& indices,
                        const std::vector<std::string>& values);
@@ -151,6 +157,9 @@ class TgfxRenderer {
   /// The FontRegistry epoch this command list was compiled against; a later face forces a recompile.
   uint64_t compiledFontEpoch_ = 0;
   std::vector<double> values_;
+  /// The block pushValues copies into values_, under mutex_; the platform view keeps it alive.
+  const double* boundValues_ = nullptr;
+  size_t boundCount_ = 0;
   std::vector<double> drawValues_;
   std::vector<std::string> stringValues_;
   std::vector<std::string> drawStringValues_;
