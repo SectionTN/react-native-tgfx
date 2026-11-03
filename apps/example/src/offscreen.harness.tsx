@@ -4,7 +4,6 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { describe, expect, render, test } from 'react-native-harness';
 import {
-  Canvas,
   Circle,
   Fill,
   Group,

@@ -26,7 +26,6 @@ import {
   Stage,
   drawnSnapshot,
   sameFrame,
-  snapshot,
   stageBytes,
 } from './testSupport';
 

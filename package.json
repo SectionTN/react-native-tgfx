@@ -10,6 +10,7 @@
     "specs": "bun --cwd packages/react-native-tgfx run specs",
     "typecheck": "bun --cwd packages/react-native-tgfx run typecheck",
     "example": "bun --cwd apps/example",
+    "lint-cpp": "bash scripts/clang-format.sh",
     "release": "bash scripts/release.sh",
     "bootstrap": "bash scripts/tgfx-prebuilt.sh"
   },

@@ -15,7 +15,7 @@ class Context;
 class Data;
 class Device;
 class Image;
-}
+}  // namespace tgfx
 
 namespace tgfxrn {
 
