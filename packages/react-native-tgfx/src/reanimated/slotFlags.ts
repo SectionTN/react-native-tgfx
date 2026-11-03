@@ -84,14 +84,14 @@ export function flagsOf(boxed: BoxedSlots): Uint8Array {
 }
 
 /** This runtime's `Float64` view of the block's value slots, cached like {@link flagsOf}. */
-export function valuesOf(boxed: BoxedSlots): Float64Array {
+export function valuesOf(boxed: BoxedSlots): Float64Array<ArrayBuffer> {
   'worklet'
   const scope = globalThis as {
-    __tgfxValueViews?: WeakMap<BoxedSlots, Float64Array>
+    __tgfxValueViews?: WeakMap<BoxedSlots, Float64Array<ArrayBuffer>>
   }
   let views = scope.__tgfxValueViews
   if (views === undefined) {
-    views = new WeakMap<BoxedSlots, Float64Array>()
+    views = new WeakMap<BoxedSlots, Float64Array<ArrayBuffer>>()
     scope.__tgfxValueViews = views
   }
   let view = views.get(boxed)

@@ -248,6 +248,38 @@ describe('tgfx shared values', () => {
     expect(sameFrame(unwritten, await stageBytes(0))).toBe(false);
     await snapshot('animated-shared-value-written');
   });
+
+  test('a new shared value set keeps redrawing after the driver rebinds', async () => {
+    let grow: (() => void) | null = null;
+    let width: { value: number } | null = null;
+
+    function Scene() {
+      const r = useSharedValue(30);
+      const w = useSharedValue(40);
+      const [both, setBoth] = React.useState(false);
+      grow = () => setBoth(true);
+      width = w;
+      return (
+        <Stage>
+          <Fill color="white" />
+          <Circle cx={60} cy={60} r={r} color="#FF9500" />
+          {both ? (
+            <Rect x={20} y={120} width={w} height={40} color="#34C759" />
+          ) : null}
+        </Stage>
+      );
+    }
+
+    await render(<Scene />);
+    // A second shared value changes the set, so the driver starts on a new mirror.
+    grow!();
+    await sleep(200);
+    const grown = await stageBytes(0);
+    width!.value = 160;
+    await sleep(200);
+    // Only a push from the new block carries the width slot.
+    expect(sameFrame(grown, await stageBytes(0))).toBe(false);
+  });
 });
 
 describe('tgfx canvas handle', () => {

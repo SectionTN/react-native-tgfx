@@ -26,6 +26,8 @@ function Driver({ view, values, strings, gens, mirror }: DriverProps): null {
     const slots = new Array<number>(values.length)
     // Last pushed per string slot: only changes cross, so an idle frame is free.
     const sent = new Array<string | null>(strings.length).fill(null)
+    // Set once this mapper has bound its mirror, from the thread that writes it.
+    const bound = [false]
     // A block slot cannot be a mapper input; the handle's gen stands in for it.
     const listenable = [...values, ...strings].filter((v) => !isBlockSlot(v))
     for (const gen of gens) {
@@ -37,9 +39,13 @@ function Driver({ view, values, strings, gens, mirror }: DriverProps): null {
     const mapperId = start(() => {
       'worklet'
       const mirrored = mirror != null ? valuesOf(mirror) : null
+      // The view copies the mirror natively, so no array is marshalled. Optional: an older binary lacks it.
+      const direct = mirrored != null && view.pushValues != null
       for (let i = 0; i < values.length; i++) {
         const v = readLiveNumber(values[i]!)
-        slots[i] = v
+        if (!direct) {
+          slots[i] = v
+        }
         if (mirrored != null) {
           mirrored[i] = v
         }
@@ -47,7 +53,15 @@ function Driver({ view, values, strings, gens, mirror }: DriverProps): null {
       if (mirror != null) {
         flagsOf(mirror)[0] = 1
       }
-      view.setValues(slots)
+      if (direct) {
+        if (!bound[0]) {
+          view.bindValues(mirrored.buffer)
+          bound[0] = true
+        }
+        view.pushValues()
+      } else {
+        view.setValues(slots)
+      }
       if (strings.length > 0) {
         let indices: number[] | null = null
         let out: string[] | null = null
