@@ -123,8 +123,8 @@ class HybridTgfxView(private val context: ThemedReactContext) :
     target.bindValues(values)
   }
 
-  override fun pushValues() {
-    target.pushValues()
+  override fun pushValues(): Boolean {
+    return target.pushValues()
   }
 
   override fun setStringValues(indices: DoubleArray, values: Array<String>) {

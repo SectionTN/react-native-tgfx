@@ -272,10 +272,12 @@ void TgfxSnapshotRelease(void* token) {
   }
 }
 
-- (void)pushValues {
-  if (_renderer != nullptr && _renderer->pushValues()) {
-    [self wakeUp];
+- (BOOL)pushValues {
+  if (_renderer == nullptr || !_renderer->pushValues()) {
+    return NO;
   }
+  [self wakeUp];
+  return YES;
 }
 
 - (void)setStringValues:(const double*)indices

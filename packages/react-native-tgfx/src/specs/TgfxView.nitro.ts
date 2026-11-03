@@ -101,9 +101,10 @@ export interface TgfxViewMethods extends HybridViewMethods {
   /**
    * {@link setValues} with the bound block's current contents, copied
    * natively. The animation driver writes the block and calls this every
-   * frame, so no array is marshalled. Does nothing until a block is bound.
+   * frame, so no array is marshalled. False, and nothing pushed, while no
+   * block is bound: before the first bind and after a recycle.
    */
-  pushValues(): void
+  pushValues(): boolean
 
   /**
    * Update the scene's string slots - live `text` and `path` content. Sparse:

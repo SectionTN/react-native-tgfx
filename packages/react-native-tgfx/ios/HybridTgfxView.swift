@@ -49,13 +49,17 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   }
 
   func bindValues(values: ArrayBuffer) throws {
+    // A JS-owned buffer dies with its runtime while the renderer keeps reading it.
+    guard values.isOwner else {
+      throw RuntimeError.error(withMessage: "[tgfx] bindValues needs a native-owned buffer (a TgfxSlots values block)")
+    }
     let slots = UnsafeRawPointer(values.data).assumingMemoryBound(to: Double.self)
     metalView.bindValues(slots, count: Int32(values.size / MemoryLayout<Double>.size))
     boundValues = values
   }
 
-  func pushValues() throws {
-    metalView.pushValues()
+  func pushValues() throws -> Bool {
+    return metalView.pushValues()
   }
 
   func setStringValues(indices: [Double], values: [String]) throws {

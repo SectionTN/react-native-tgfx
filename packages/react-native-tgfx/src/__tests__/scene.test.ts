@@ -177,15 +177,9 @@ test('a scene runs its own mapper so handle writes land without a driver', () =>
   expect(mappers.size).toBe(0) // no targets left, nothing to push to
 })
 
-test('a mirrored mapper binds each pushing target once; the rest get the array', () => {
-  const scene = Scene.create()
-  const box = createHandle()
-  scene.add(rect({ ref: box, x: 1, y: 2, width: 3, height: 4 }))
-  const { t: surface, calls: surfaceCalls } = target()
-  scene.attach(surface)
-  scene.flush()
-  // The test runner has no Nitro, so stand in for the mirror the container would make.
-  const values = new ArrayBuffer(4 * 8)
+/** The test runner has no Nitro, so stand in for the mirror block the container would make. */
+function mirrorScene(scene: Scene, count: number): ArrayBuffer {
+  const values = new ArrayBuffer(count * 8)
   const flags = new ArrayBuffer(1)
   const internals = scene as unknown as {
     container: { mirror: unknown }
@@ -200,27 +194,72 @@ test('a mirrored mapper binds each pushing target once; the rest get the array',
       boxed: { unbox: () => ({ flags, values }) },
     },
   }
-  const pushes: string[] = []
-  const canvas: SceneTarget = {
+  return values
+}
+
+/** A canvas as native behaves: a bind keeps the buffer, a push copies it now, and a recycle unbinds. */
+function canvasTarget() {
+  let bound: ArrayBuffer | null = null
+  const received: number[][] = []
+  const t: SceneTarget = {
     setScene: () => {},
-    setValues: () => pushes.push('setValues'),
-    bindValues: (buffer) =>
-      pushes.push(buffer === values ? 'bind' : 'bind another'),
-    pushValues: () => pushes.push('push'),
+    setValues: () => {},
+    bindValues: (buffer) => {
+      bound = buffer
+    },
+    pushValues: () => {
+      if (bound == null) {
+        return false
+      }
+      received.push(Array.from(new Float64Array(bound)))
+      return true
+    },
   }
+  return { t, received, recycle: () => (bound = null) }
+}
+
+/** A handle scene on a surface (no push) and a canvas, its mapper running on the mirror. */
+function mirroredHandleScene() {
+  const scene = Scene.create()
+  const box = createHandle()
+  scene.add(rect({ ref: box, x: 1, y: 2, width: 3, height: 4 }))
+  const surface = target()
+  scene.attach(surface.t)
+  scene.flush()
+  const values = mirrorScene(scene, 4)
+  const canvas = canvasTarget()
   // Attaching recompiles with the same slots, so the mirror stays and the mapper restarts.
-  scene.attach(canvas)
+  scene.attach(canvas.t)
   expect(mappers.size).toBe(1)
-  const run = [...mappers.values()][0]!
-  const before = surfaceCalls.values.length
+  return { box, surface, canvas, values, run: [...mappers.values()][0]! }
+}
+
+test('a mirrored mapper has a pushing target copy the block; the rest get the array', () => {
+  const { surface, canvas, values, run } = mirroredHandleScene()
+  const before = surface.calls.values.length
   run()
   run()
-  expect(pushes).toEqual(['bind', 'push', 'push'])
-  expect(surfaceCalls.values.slice(before)).toEqual([
+  expect(canvas.received).toEqual([
+    [1, 2, 3, 4],
+    [1, 2, 3, 4],
+  ])
+  expect(surface.calls.values.slice(before)).toEqual([
     [1, 2, 3, 4],
     [1, 2, 3, 4],
   ])
   expect(Array.from(new Float64Array(values))).toEqual([1, 2, 3, 4])
+})
+
+test('a target that lost its binding to a recycle is bound again on the next frame', () => {
+  const { box, canvas, run } = mirroredHandleScene()
+  run()
+  canvas.recycle()
+  box.set({ x: 9 })
+  run()
+  expect(canvas.received).toEqual([
+    [1, 2, 3, 4],
+    [9, 2, 3, 4],
+  ])
 })
 
 test('dispose stops the mapper', () => {

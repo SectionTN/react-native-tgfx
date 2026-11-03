@@ -196,13 +196,14 @@ open class HybridTgfxViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func pushValues() -> bridge.Result_void_ {
+  public final func pushValues() -> bridge.Result_bool_ {
     do {
-      try self.__implementation.pushValues()
-      return bridge.create_Result_void_()
+      let __result = try self.__implementation.pushValues()
+      let __resultCpp = __result
+      return bridge.create_Result_bool_(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
+      return bridge.create_Result_bool_(__exceptionPtr)
     }
   }
   

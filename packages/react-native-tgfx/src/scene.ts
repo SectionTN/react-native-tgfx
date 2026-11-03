@@ -51,8 +51,8 @@ export interface SceneTarget {
   setStringValues?(indices: number[], values: string[]): void
   /** @internal bound once by the mapper, which then has the target push the mirror block. */
   bindValues?(values: ArrayBuffer): void
-  /** @internal */
-  pushValues?(): void
+  /** @internal false while nothing is bound, as after a recycle. */
+  pushValues?(): boolean
 }
 
 interface Attachment {
@@ -434,7 +434,11 @@ export class Scene {
             view.bindValues?.(mirrored.buffer)
             bound[t] = true
           }
-          view.pushValues()
+          // A recycled view comes back unbound, so bind again.
+          if (view.pushValues() === false) {
+            view.bindValues?.(mirrored.buffer)
+            view.pushValues()
+          }
         } else {
           view.setValues(slots)
         }

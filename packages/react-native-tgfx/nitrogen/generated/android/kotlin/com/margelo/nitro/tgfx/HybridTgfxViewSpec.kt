@@ -59,7 +59,7 @@ abstract class HybridTgfxViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun pushValues(): Unit
+  abstract fun pushValues(): Boolean
   
   @DoNotStrip
   @Keep

@@ -58,7 +58,11 @@ function Driver({ view, values, strings, gens, mirror }: DriverProps): null {
           view.bindValues(mirrored.buffer)
           bound[0] = true
         }
-        view.pushValues()
+        // A recycled view comes back unbound (iOS unmounts a hidden one), so bind again.
+        if (view.pushValues() === false) {
+          view.bindValues(mirrored.buffer)
+          view.pushValues()
+        }
       } else {
         view.setValues(slots)
       }

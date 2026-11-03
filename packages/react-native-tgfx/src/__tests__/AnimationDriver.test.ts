@@ -16,16 +16,54 @@ test('Reanimated present but missing an export throws on render', async () => {
   )
 })
 
-/** A driver whose mapper runs when the test calls `frame()`. */
+/** A driver whose live mappers all run when the test calls `frame()`, as Reanimated's would. */
 async function driverWithFrames() {
-  const mappers: (() => void)[] = []
+  const mappers = new Map<number, () => void>()
+  let next = 1
   mock.module('react-native-reanimated', () => ({
-    startMapper: (worklet: () => void) => mappers.push(worklet),
-    stopMapper: () => {},
+    startMapper: (worklet: () => void) => {
+      mappers.set(next, worklet)
+      return next++
+    },
+    stopMapper: (id: number) => mappers.delete(id),
   }))
   const { AnimationDriver } =
     (await import('../reanimated/AnimationDriver?frames')) as typeof import('../reanimated/AnimationDriver')
-  return { Driver: AnimationDriver!, frame: () => mappers.at(-1)!() }
+  return {
+    Driver: AnimationDriver!,
+    frame: () => {
+      for (const run of mappers.values()) {
+        run()
+      }
+    },
+  }
+}
+
+/** The native contract: a bind keeps the buffer, a push copies it now, and a recycle unbinds. */
+function nativeView() {
+  let bound: ArrayBuffer | null = null
+  const received: number[][] = []
+  const arrays: number[][] = []
+  return {
+    received,
+    arrays,
+    recycle: () => {
+      bound = null
+    },
+    setValues: (values: number[]) => {
+      arrays.push(values.slice())
+    },
+    bindValues: (values: ArrayBuffer) => {
+      bound = values
+    },
+    pushValues: () => {
+      if (bound == null) {
+        return false
+      }
+      received.push(Array.from(new Float64Array(bound)))
+      return true
+    },
+  }
 }
 
 const shared = (value: number) => ({
@@ -37,7 +75,7 @@ const shared = (value: number) => ({
 function block(count: number) {
   const values = new ArrayBuffer(count * 8)
   const flags = new ArrayBuffer(1)
-  return { values, boxed: { unbox: () => ({ flags, values }) } }
+  return { values, flags, boxed: { unbox: () => ({ flags, values }) } }
 }
 
 function driverProps(
@@ -54,76 +92,76 @@ function driverProps(
   } as never
 }
 
-test('the driver binds its mirror once and has the view push it each frame', async () => {
+test('each frame the view copies that frame values from the mirror', async () => {
   const { Driver, frame } = await driverWithFrames()
   const mirror = block(2)
-  const calls: string[] = []
-  const view = {
-    setValues: () => calls.push('setValues'),
-    bindValues: (values: ArrayBuffer) =>
-      calls.push(values === mirror.values ? 'bind' : 'bind another'),
-    pushValues: () => calls.push('push'),
-  }
+  const view = nativeView()
   const x = shared(3)
-  const y = shared(4)
   act(() => {
     TestRenderer.create(
-      createElement(Driver, driverProps(view, [x, y], mirror))
+      createElement(Driver, driverProps(view, [x, shared(4)], mirror))
     )
   })
   frame()
   x.value = 5
   frame()
-  expect(calls).toEqual(['bind', 'push', 'push'])
-  expect(Array.from(new Float64Array(mirror.values))).toEqual([5, 4])
+  expect(view.received).toEqual([
+    [3, 4],
+    [5, 4],
+  ])
+  expect(view.arrays).toEqual([])
+  expect(new Uint8Array(mirror.flags)[0]).toBe(1)
 })
 
 test('a new value set binds its own mirror before its first push', async () => {
   const { Driver, frame } = await driverWithFrames()
-  const first = block(1)
-  const second = block(2)
-  const calls: string[] = []
-  const view = {
-    setValues: () => calls.push('setValues'),
-    bindValues: (values: ArrayBuffer) =>
-      calls.push(
-        values === first.values
-          ? 'bind first'
-          : values === second.values
-            ? 'bind second'
-            : 'bind another'
-      ),
-    pushValues: () => calls.push('push'),
-  }
+  const view = nativeView()
   const x = shared(1)
   let tree: TestRenderer.ReactTestRenderer | null = null
   act(() => {
     tree = TestRenderer.create(
-      createElement(Driver, driverProps(view, [x], first))
+      createElement(Driver, driverProps(view, [x], block(1)))
     )
   })
   frame()
   act(() => {
     tree!.update(
-      createElement(Driver, driverProps(view, [x, shared(2)], second))
+      createElement(Driver, driverProps(view, [x, shared(20)], block(2)))
     )
   })
   frame()
+  expect(view.received).toEqual([[1], [1, 20]])
+})
+
+test('a view that lost its binding to a recycle is bound again on the next frame', async () => {
+  const { Driver, frame } = await driverWithFrames()
+  const view = nativeView()
+  const x = shared(1)
+  act(() => {
+    TestRenderer.create(createElement(Driver, driverProps(view, [x], block(1))))
+  })
   frame()
-  expect(calls).toEqual(['bind first', 'push', 'bind second', 'push', 'push'])
+  view.recycle()
+  x.value = 2
+  frame()
+  expect(view.received).toEqual([[1], [2]])
 })
 
 test('a native view without pushValues, or no mirror, still gets the slot array', async () => {
   const { Driver, frame } = await driverWithFrames()
   const pushed: number[][] = []
   const older = { setValues: (values: number[]) => pushed.push(values.slice()) }
+  let first: TestRenderer.ReactTestRenderer | null = null
   act(() => {
-    TestRenderer.create(
+    first = TestRenderer.create(
       createElement(Driver, driverProps(older, [shared(3)], block(1)))
     )
   })
   frame()
-  const unmirrored = { ...older, bindValues: () => {}, pushValues: () => {} }
+  act(() => {
+    first!.unmount()
+  })
+  const unmirrored = { ...nativeView(), setValues: older.setValues }
   act(() => {
     TestRenderer.create(
       createElement(Driver, driverProps(unmirrored, [shared(7)], null))

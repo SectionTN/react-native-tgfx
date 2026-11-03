@@ -18,7 +18,7 @@ public protocol HybridTgfxViewSpec_protocol: HybridObject, HybridView {
   func invalidate() throws -> Void
   func setValues(values: [Double]) throws -> Void
   func bindValues(values: ArrayBuffer) throws -> Void
-  func pushValues() throws -> Void
+  func pushValues() throws -> Bool
   func setStringValues(indices: [Double], values: [String]) throws -> Void
   func setViewport(viewport: [Double]) throws -> Void
   func setColorSpace(colorSpace: String) throws -> Void

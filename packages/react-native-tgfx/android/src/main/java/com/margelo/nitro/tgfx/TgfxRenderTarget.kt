@@ -131,6 +131,8 @@ internal class TgfxRenderTarget {
   private var boundValues: ArrayBuffer? = null
 
   fun bindValues(values: ArrayBuffer) {
+    // A JS-owned buffer dies with its runtime while the renderer keeps reading it.
+    require(values.isOwner) { "[tgfx] bindValues needs a native-owned buffer (a TgfxSlots values block)" }
     val bytes = values.getBuffer(false)
     withPtr {
       TgfxNative.bindValues(it, bytes)
@@ -138,12 +140,13 @@ internal class TgfxRenderTarget {
     }
   }
 
-  fun pushValues() {
+  fun pushValues(): Boolean {
     var pushed = false
     withPtr { pushed = TgfxNative.pushValues(it) }
     if (pushed) {
       requestRender()
     }
+    return pushed
   }
 
   fun setStringValues(indices: DoubleArray, values: Array<String>) {
