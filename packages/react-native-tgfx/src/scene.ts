@@ -49,6 +49,10 @@ export interface SceneTarget {
   setScene(scene: ArrayBuffer, strings: string[]): void
   setValues(values: number[]): void
   setStringValues?(indices: number[], values: string[]): void
+  /** @internal bound once by the mapper, which then has the target push the mirror block. */
+  bindValues?(values: ArrayBuffer): void
+  /** @internal */
+  pushValues?(): void
 }
 
 interface Attachment {
@@ -392,6 +396,10 @@ export class Scene {
     const mirror = this.container.mirror?.block.boxed ?? null
     const slots = new Array<number>(values.length)
     const sent = new Array<string | null>(stringValues.length).fill(null)
+    // Per target: set once it has bound the mirror, from the thread that writes it.
+    const bound = views.map(() => false)
+    // Only a target that cannot push, or a scene without a mirror, still reads the array.
+    const fillSlots = mirror == null || views.some((v) => v.pushValues == null)
     // Block slots have no listeners, so they cannot be mapper inputs; the
     // handles' gen values - bumped once per worklet-side set() - stand in.
     const listenable = [...values, ...stringValues].filter(
@@ -408,7 +416,9 @@ export class Scene {
       const mirrored = mirror != null ? valuesOf(mirror) : null
       for (let i = 0; i < values.length; i++) {
         const v = readLiveNumber(values[i]!)
-        slots[i] = v
+        if (fillSlots) {
+          slots[i] = v
+        }
         if (mirrored != null) {
           mirrored[i] = v
         }
@@ -416,8 +426,18 @@ export class Scene {
       if (mirror != null) {
         flagsOf(mirror)[0] = 1
       }
-      for (const view of views) {
-        view.setValues(slots)
+      for (let t = 0; t < views.length; t++) {
+        const view = views[t]!
+        // An offscreen surface or an older binary has no push, so it takes the array.
+        if (mirrored != null && view.pushValues != null) {
+          if (!bound[t]) {
+            view.bindValues?.(mirrored.buffer)
+            bound[t] = true
+          }
+          view.pushValues()
+        } else {
+          view.setValues(slots)
+        }
       }
       if (stringValues.length > 0) {
         let indices: number[] | null = null

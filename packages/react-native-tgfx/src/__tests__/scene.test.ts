@@ -177,6 +177,52 @@ test('a scene runs its own mapper so handle writes land without a driver', () =>
   expect(mappers.size).toBe(0) // no targets left, nothing to push to
 })
 
+test('a mirrored mapper binds each pushing target once; the rest get the array', () => {
+  const scene = Scene.create()
+  const box = createHandle()
+  scene.add(rect({ ref: box, x: 1, y: 2, width: 3, height: 4 }))
+  const { t: surface, calls: surfaceCalls } = target()
+  scene.attach(surface)
+  scene.flush()
+  // The test runner has no Nitro, so stand in for the mirror the container would make.
+  const values = new ArrayBuffer(4 * 8)
+  const flags = new ArrayBuffer(1)
+  const internals = scene as unknown as {
+    container: { mirror: unknown }
+    lastValues: unknown[]
+  }
+  internals.container.mirror = {
+    values: internals.lastValues.slice(),
+    block: {
+      bytes: new Uint8Array(flags),
+      values: new Float64Array(values),
+      slots: {},
+      boxed: { unbox: () => ({ flags, values }) },
+    },
+  }
+  const pushes: string[] = []
+  const canvas: SceneTarget = {
+    setScene: () => {},
+    setValues: () => pushes.push('setValues'),
+    bindValues: (buffer) =>
+      pushes.push(buffer === values ? 'bind' : 'bind another'),
+    pushValues: () => pushes.push('push'),
+  }
+  // Attaching recompiles with the same slots, so the mirror stays and the mapper restarts.
+  scene.attach(canvas)
+  expect(mappers.size).toBe(1)
+  const run = [...mappers.values()][0]!
+  const before = surfaceCalls.values.length
+  run()
+  run()
+  expect(pushes).toEqual(['bind', 'push', 'push'])
+  expect(surfaceCalls.values.slice(before)).toEqual([
+    [1, 2, 3, 4],
+    [1, 2, 3, 4],
+  ])
+  expect(Array.from(new Float64Array(values))).toEqual([1, 2, 3, 4])
+})
+
 test('dispose stops the mapper', () => {
   const { t } = target()
   const scene = Scene.create()
