@@ -51,7 +51,7 @@ class TgfxRenderer {
   void setWindow(std::shared_ptr<tgfx::Window> window);
 
   /// Stage a draw program. `words` is copied; `packedStrings` is a delta, see SceneStrings.hpp.
-  /// With `awaitValues` the program is not drawn until a setValues lands after it: its slot
+  /// With `awaitValues` the program is not drawn until a value push lands after it: its slot
   /// literals are placeholders that the driver's first push completes.
   void setScene(std::span<const double> words,
                 const std::vector<std::string>& packedStrings,

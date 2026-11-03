@@ -166,8 +166,8 @@ export interface NodeOwner {
  * box.set({ x: 120 })
  * ```
  *
- * A prop the program keeps a value slot for is patched in place: one
- * `setValues`, no re-encode, and it works **inside a worklet**, so a gesture can
+ * A prop the program keeps a value slot for is patched in place: one value
+ * push, no re-encode, and it works **inside a worklet**, so a gesture can
  * drive it without ever waking the JS thread. That covers the geometry props
  * (`x`, `y`, `width`, `height`, `cx`, `cy`, `r`, `rx`, `ry`, `x1`, `y1`, `x2`,
  * `y2`), `strokeWidth`, `strokeMiter`, `opacity`, `fontSize`, `visible`,

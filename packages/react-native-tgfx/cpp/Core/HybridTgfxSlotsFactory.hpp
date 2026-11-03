@@ -23,7 +23,7 @@ class HybridTgfxSlots : public HybridTgfxSlotsSpec {
         strings_(stringCount) {}
 
   std::shared_ptr<ArrayBuffer> getFlags() override {
-    // Borrowed, not owned: this object outlives every view, so a view must not free them.
+    // Borrowed, not owned: only JS typed-array views read the flags, and they hold this object.
     return ArrayBuffer::wrap(bytes_.data(), bytes_.size(), []() {});
   }
 

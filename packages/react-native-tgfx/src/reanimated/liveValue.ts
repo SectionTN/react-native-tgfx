@@ -154,7 +154,7 @@ export function isBlockSlot(v: unknown): boolean {
 
 /**
  * A value the compiled program can patch in place: it is written as a value slot
- * exactly like an animated prop, so writing it again costs one `setValues`
+ * exactly like an animated prop, so writing it again costs one value push
  * instead of a re-encode.
  *
  * A real SharedValue whenever Reanimated is installed, because it has to be
