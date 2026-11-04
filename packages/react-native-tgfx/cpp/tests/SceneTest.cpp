@@ -5673,6 +5673,52 @@ void batchClusteringKeepsOverlapOrderAndPixels() {
   CHECK(a != render(flipped.finish(), {}, {}));
 }
 
+/// Clustering moves the circles after every rect, but a hit still reports the
+/// child index the program declared, which is how an unnamed node is told apart.
+void hitTestNamesARegroupedSiblingByItsDeclaredIndex() {
+  auto pushShapes = [](Writer& w) {
+    for (int i = 0; i < 8; i++) {
+      double x = 10 + (i % 4) * 48;
+      double y = 10 + (i / 4) * 48;
+      if (i % 2 == 0) {
+        w.push(1);  // Rect
+        w.pushAnim(x);
+        w.pushAnim(y);
+        w.pushAnim(32);
+        w.pushAnim(32);
+        w.pushPaint(0xff0a84ff, false);
+      } else {
+        w.push(4);  // Circle
+        w.pushAnim(x + 16);
+        w.pushAnim(y + 16);
+        w.pushAnim(16);
+        w.pushPaint(0xffff375f, false);
+      }
+    }
+  };
+
+  // 74,26 is the first circle, declared at index 1.
+  Writer roots;
+  roots.push(8);
+  pushShapes(roots);
+  tgfxrn::SceneRenderer flat;
+  flat.setScene(roots.finish(), {});
+  auto hit = flat.hitTest(74, 26, false, {});
+  CHECK(hit.size() == 2 && hit[0] == 1 && hit[1] == 1);
+
+  // A group's children are regrouped the same way.
+  Writer nested;
+  nested.push(1);
+  nested.push(0);  // Group
+  nested.push(0);  // no transform ops
+  nested.push(8);
+  pushShapes(nested);
+  tgfxrn::SceneRenderer grouped;
+  grouped.setScene(nested.finish(), {});
+  auto inGroup = grouped.hitTest(74, 26, false, {});
+  CHECK(inGroup.size() == 3 && inGroup[0] == 2 && inGroup[1] == 0 && inGroup[2] == 1);
+}
+
 /// setScene-then-hitTest must answer before the worker's first drain.
 void anOffscreenSurfaceHitTestsBeforeTheFirstDrain() {
   auto surface = std::make_shared<tgfxrn::OffscreenSurface>(8, 8, 1.0f, true, false);
@@ -6017,6 +6063,7 @@ int main() {
   encodingUnpremultipliesAndRejectsLiveFrames();
   anOffscreenSurfaceHitTestsBeforeTheFirstDrain();
   batchClusteringKeepsOverlapOrderAndPixels();
+  hitTestNamesARegroupedSiblingByItsDeclaredIndex();
   preserve3dKeepsTheGroupsOwnClipAndLayer();
   aPlaneOfA3DContextKeepsItsClipAndLayer();
   aFillOnA3DPlaneDraws();
