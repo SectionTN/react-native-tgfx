@@ -91,7 +91,11 @@ export async function loadSource<T>(
   ) {
     return api.fromFile(uri)
   }
-  if (/^(https?|content|asset):/.test(uri)) {
+  // Android's `asset:` and `content:` URIs name no file, so native reads them through the platform.
+  if (/^(asset|content):/.test(uri)) {
+    return api.fromFile(uri)
+  }
+  if (/^https?:/.test(uri)) {
     // Without the signal a hung source holds its socket long after the caller gave up.
     const res = await fetch(uri, { signal })
     if (!res.ok) {

@@ -75,6 +75,21 @@ test('a Metro-served font arrives as raw bytes', async () => {
   expect(registered[0]!.arg).toBe('ttf')
 })
 
+test('an asset: or content: font is opened natively, never fetched', async () => {
+  let fetched = false
+  globalThis.fetch = (async () => {
+    fetched = true
+    throw new Error('should not be reached')
+  }) as unknown as typeof fetch
+  await loadFont('asset:/fonts/PT.ttf', 'Demo Serif')
+  await loadFont('content://com.example.fonts/PT.ttf', 'Demo Serif')
+  expect(fetched).toBe(false)
+  expect(registered.map((r) => [r.via, r.arg])).toEqual([
+    ['fromFile', 'asset:/fonts/PT.ttf'],
+    ['fromFile', 'content://com.example.fonts/PT.ttf'],
+  ])
+})
+
 test('an empty family lets the font name itself', async () => {
   expect(await loadFont('/fonts/PT.ttf')).toBe('Inferred')
   expect(registered[0]!.family).toBe('')

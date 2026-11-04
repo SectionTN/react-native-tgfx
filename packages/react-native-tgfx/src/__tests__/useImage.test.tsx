@@ -123,6 +123,21 @@ test('an absolute path, as save() writes, is opened as a file', async () => {
   expect(made[0]!.arg).toBe('/data/user/0/app/cache/pic.png')
 })
 
+test('an asset: or content: URI is opened natively, never fetched', async () => {
+  let fetched = false
+  globalThis.fetch = (async () => {
+    fetched = true
+    return reply('hi')
+  }) as unknown as typeof fetch
+  await mount('asset:/pics/pic.png')
+  await mount('content://media/external/images/media/7')
+  expect(fetched).toBe(false)
+  expect(made.map((m) => [m.via, m.arg])).toEqual([
+    ['fromFile', 'asset:/pics/pic.png'],
+    ['fromFile', 'content://media/external/images/media/7'],
+  ])
+})
+
 // A JPEG payload starts "/9j/", so a leading slash alone cannot mean "path".
 test('a raw base64 source goes to the base64 path even when it starts with /', async () => {
   await mount('/9j/4AAQSkZJRg==')
