@@ -1,5 +1,6 @@
 // <TgfxImage>, <Atlas>, <Vertices>, <ImageShader>, the decoders, and the native handle ops.
 import React from 'react';
+import { Platform } from 'react-native';
 import {
   afterAll,
   beforeAll,
@@ -178,6 +179,37 @@ describe('tgfx image decoding', () => {
     });
   }
 });
+
+// The example's AssetProvider serves its APK assets, so tile.png backs both URIs.
+(Platform.OS === 'android' ? describe : describe.skip)(
+  'tgfx image sources on Android',
+  () => {
+    test('decodes an asset: URI', async () => {
+      const image = await loadImage('asset:/tile.png');
+      expect(image.width).toBe(24);
+      expect(image.height).toBe(24);
+    });
+
+    test('decodes a content: URI', async () => {
+      const image = await loadImage(
+        'content://com.tgfxexample.assets/tile.png',
+      );
+      expect(image.width).toBe(24);
+      expect(image.height).toBe(24);
+    });
+
+    test('rejects an asset: URI that names nothing', async () => {
+      let message = '';
+      try {
+        await loadImage('asset:/missing.png');
+        throw new Error('loadImage resolved, expected it to reject');
+      } catch (e: unknown) {
+        message = e instanceof Error ? e.message : String(e);
+      }
+      expect(message).toContain('could not read asset:/missing.png');
+    });
+  },
+);
 
 describe('tgfx image rendering', () => {
   test('draws every fit mode', async () => {
