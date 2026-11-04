@@ -13,6 +13,7 @@ on:
       - 'apps/example/**'
       - 'patches/**'
       - 'scripts/tgfx-prebuilt.sh'
+      - 'scripts/harness-retry.sh'
       - 'package.json'
       - 'bun.lock'
   pull_request:
@@ -22,6 +23,7 @@ on:
       - 'apps/example/**'
       - 'patches/**'
       - 'scripts/tgfx-prebuilt.sh'
+      - 'scripts/harness-retry.sh'
       - 'package.json'
       - 'bun.lock'
   workflow_dispatch:
@@ -57,10 +59,13 @@ env:
   HARNESS_SIM_OS: ${{ inputs.ios_version || '26.5' }}
 
 jobs:
-  harness:
-    name: Harness iOS
+  # Its own job so its caches save even when the tests fail: actions/cache only
+  # saves from a job that succeeds.
+  build:
+    name: Build iOS app
     runs-on: macos-26
-    timeout-minutes: 90
+    # A tgfx source build alone has taken ~30 min.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
 
@@ -71,15 +76,32 @@ jobs:
       - name: Install npm dependencies (bun)
         run: bun install --frozen-lockfile
 
+      - name: Resolve the pinned tgfx commit
+        id: tgfx
+        run: echo "sha=$(git ls-tree HEAD -- packages/react-native-tgfx/cpp/third_party/tgfx | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+
+      # R2 only has prebuilts someone uploaded, so keep what the source build
+      # below makes: the first run for a submodule commit builds, later ones
+      # restore. Same paths the prebuilt tarball carries for iOS.
+      - name: Restore tgfx build cache
+        id: tgfx-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            packages/react-native-tgfx/ios/libs
+            packages/react-native-tgfx/cpp/third_party/tgfx/include
+          key: tgfx-ios-${{ steps.tgfx.outputs.sha }}-xcode${{ env.XCODE_VERSION }}-${{ hashFiles('packages/react-native-tgfx/scripts/build-tgfx-ios.sh') }}
+
       # Keyed by the submodule's pinned commit; a PR that bumps tgfx misses and
       # builds the xcframework from source.
       - name: Fetch prebuilt tgfx
         id: prebuilt
+        if: steps.tgfx-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         run: bash scripts/tgfx-prebuilt.sh
 
       - name: Build tgfx from source (no prebuilt for this submodule commit)
-        if: steps.prebuilt.outcome == 'failure'
+        if: steps.tgfx-cache.outputs.cache-hit != 'true' && steps.prebuilt.outcome == 'failure'
         env:
           # The fork has no LFS objects; Tencent/tgfx serves the same OIDs.
           GIT_LFS_SKIP_SMUDGE: 1
@@ -133,20 +155,68 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build | xcbeautify --renderer github-actions
 
+      # A tarball, because upload-artifact drops the executable bit and the
+      # symlinks inside the .app.
+      - name: Package the app
+        run: tar -cf "$RUNNER_TEMP/TgfxExample.app.tar" -C apps/example/ios/build/Build/Products/Debug-iphonesimulator TgfxExample.app
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-ios-app
+          path: ${{ runner.temp }}/TgfxExample.app.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  harness:
+    name: Harness iOS
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      # Metro runs in the harness process and keeps a graph per test file,
+      # past Node's ~2 GB default on this 7 GB runner (Ubuntu's 16 GB gets ~4 GB).
+      NODE_OPTIONS: --max-old-space-size=5120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install npm dependencies (bun)
+        run: bun install --frozen-lockfile
+
       - name: Install Watchman
         run: brew install watchman
 
+      - name: Download the app
+        uses: actions/download-artifact@v4
+        with:
+          name: harness-ios-app
+          path: ${{ runner.temp }}
+
+      - name: Unpack the app
+        run: tar -xf "$RUNNER_TEMP/TgfxExample.app.tar" -C "$RUNNER_TEMP"
+
+      # The Jest report tells the retry step which files failed.
       - name: Run Harness E2E tests
+        id: harness
+        continue-on-error: true
         uses: callstackincubator/react-native-harness@v1.4.0
-        env:
-          # Metro runs in the harness process and keeps a graph per test file,
-          # past Node's ~2 GB default on this 7 GB runner (Ubuntu's 16 GB gets ~4 GB).
-          NODE_OPTIONS: --max-old-space-size=5120
         with:
           runner: ios-sim
           projectRoot: apps/example
-          app: ios/build/Build/Products/Debug-iphonesimulator/TgfxExample.app
+          app: ${{ runner.temp }}/TgfxExample.app
           packageManager: bun
+          harnessArgs: --json --outputFile=${{ runner.temp }}/harness-report.json
+
+      - name: Retry failed Harness tests
+        if: steps.harness.outcome == 'failure'
+        working-directory: apps/example
+        run: |
+          export HARNESS_APP_PATH="$RUNNER_TEMP/TgfxExample.app"
+          bash ../../scripts/harness-retry.sh ios-sim "$RUNNER_TEMP/harness-report.json"
 
       # Written fresh on every run (see the ios-sim runner), so this is the only
       # place to see what the simulator drew.
@@ -159,8 +229,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Also when a retry passed, so a flaky crash still shows up.
       - name: Print native crash reports
-        if: failure()
+        if: ${{ !cancelled() && steps.harness.outcome == 'failure' }}
         working-directory: apps/example
         run: |
           # Harness only extracts crash logs it classifies as native crashes,

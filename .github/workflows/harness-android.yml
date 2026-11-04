@@ -13,6 +13,7 @@ on:
       - 'apps/example/**'
       - 'patches/**'
       - 'scripts/tgfx-prebuilt.sh'
+      - 'scripts/harness-retry.sh'
       - 'package.json'
       - 'bun.lock'
   pull_request:
@@ -22,6 +23,7 @@ on:
       - 'apps/example/**'
       - 'patches/**'
       - 'scripts/tgfx-prebuilt.sh'
+      - 'scripts/harness-retry.sh'
       - 'package.json'
       - 'bun.lock'
   workflow_dispatch:
@@ -46,10 +48,12 @@ env:
   HARNESS_AVD_PROFILE: pixel_7
 
 jobs:
-  harness:
-    name: Harness Android
+  # Its own job so its caches save even when the tests fail: actions/cache only
+  # saves from a job that succeeds.
+  build:
+    name: Build Android app
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
@@ -68,15 +72,32 @@ jobs:
       - name: Install npm dependencies (bun)
         run: bun install --frozen-lockfile
 
+      - name: Resolve the pinned tgfx commit
+        id: tgfx
+        run: echo "sha=$(git ls-tree HEAD -- packages/react-native-tgfx/cpp/third_party/tgfx | awk '{print $3}')" >> "$GITHUB_OUTPUT"
+
+      # R2 only has prebuilts someone uploaded, so keep what the source build
+      # below makes: the first run for a submodule commit builds, later ones
+      # restore. Only the x86_64 Vulkan archive, which is all the source build makes.
+      - name: Restore tgfx build cache
+        id: tgfx-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            packages/react-native-tgfx/android/libs-vulkan
+            packages/react-native-tgfx/cpp/third_party/tgfx/include
+          key: tgfx-android-vulkan-x86_64-${{ steps.tgfx.outputs.sha }}-${{ hashFiles('packages/react-native-tgfx/scripts/build-tgfx-android.sh') }}
+
       # Keyed by the submodule's pinned commit, so a PR that bumps tgfx misses
       # and builds it from source below.
       - name: Fetch prebuilt tgfx
         id: prebuilt
+        if: steps.tgfx-cache.outputs.cache-hit != 'true'
         continue-on-error: true
         run: bash scripts/tgfx-prebuilt.sh
 
       - name: Build tgfx from source (no prebuilt for this submodule commit)
-        if: steps.prebuilt.outcome == 'failure'
+        if: steps.tgfx-cache.outputs.cache-hit != 'true' && steps.prebuilt.outcome == 'failure'
         env:
           # The fork has no LFS objects; Tencent/tgfx serves the same OIDs.
           GIT_LFS_SKIP_SMUDGE: 1
@@ -111,13 +132,69 @@ jobs:
         working-directory: apps/example/android
         run: ./gradlew :app:assembleDebug -x lint --no-daemon --build-cache -PreactNativeArchitectures=x86_64
 
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-android-apk
+          path: apps/example/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  harness:
+    name: Harness Android
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      # The emulator's system image and disk still need the room.
+      - name: Reclaim disk space
+        uses: AdityaGarg8/remove-unwanted-software@v5
+        with:
+          remove-dotnet: true
+          remove-haskell: true
+          remove-codeql: true
+          remove-docker-images: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install npm dependencies (bun)
+        run: bun install --frozen-lockfile
+
+      # Harness creates the AVD with sdkmanager/avdmanager, which need a JDK.
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Download the APK
+        uses: actions/download-artifact@v4
+        with:
+          name: harness-android-apk
+          path: ${{ runner.temp }}
+
+      # The Jest report tells the retry step which files failed.
       - name: Run Harness E2E tests
+        id: harness
+        continue-on-error: true
         uses: callstackincubator/react-native-harness@v1.4.0
         with:
           runner: ci-emu
           projectRoot: apps/example
-          app: android/app/build/outputs/apk/debug/app-debug.apk
+          app: ${{ runner.temp }}/app-debug.apk
           packageManager: bun
+          harnessArgs: --json --outputFile=${{ runner.temp }}/harness-report.json
+
+      - name: Retry failed Harness tests
+        if: steps.harness.outcome == 'failure'
+        working-directory: apps/example
+        run: |
+          export HARNESS_APP_PATH="$RUNNER_TEMP/app-debug.apk"
+          bash ../../scripts/harness-retry.sh ci-emu "$RUNNER_TEMP/harness-report.json"
 
       # Written fresh on every run (see the ci-emu runner), so this is the only
       # place to see what the emulator drew.
@@ -130,8 +207,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Also when a retry passed, so a flaky crash still shows up.
       - name: Print native crash reports
-        if: failure()
+        if: ${{ !cancelled() && steps.harness.outcome == 'failure' }}
         working-directory: apps/example
         run: |
           [ -d .harness/crash-reports ] || exit 0
