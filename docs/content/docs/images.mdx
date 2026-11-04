@@ -59,6 +59,9 @@ scene.add(image({ image: photo, x: 0, y: 0, width: 300, height: 200, fit: 'cover
 In Android release builds, asset names can't differ only by extension
 (`logo.png`, `logo.webp`).
 
+On Android, an `asset:/` URI loads from the APK's `assets` folder and a
+`content://` URI from its content provider, such as a photo picker's result.
+
 ## SVG documents
 
 A whole SVG document draws with [`ImageSVG`](/api/variables/ImageSVG):

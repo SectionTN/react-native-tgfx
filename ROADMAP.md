@@ -157,10 +157,11 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
   the same matrix, in frame-pixel coordinates, with `rotation`/`mirror` folded
   into it. `drawCameraFrame` is gone from the spec, the renderer and both
   platforms. Sampling the frame *inside a runtime shader* still needs #130.
-- 🟠 **Native asset loading on Android.** A `require()`d asset in a release build
-  resolves to a bare drawable-resource name, and `asset://` / `content://` URIs
-  need the JNI `AssetManager`/`ContentResolver`. Both still go through JS
-  `fetch`. iOS release assets and any `file:` URI already load natively.
+- ✅ **Native asset loading on Android.** A release build's `require()`d asset
+  loads by its drawable-resource name, and since #25 `asset:` and `content:`
+  URIs load through `AssetManager` and `ContentResolver` over JNI, so none of
+  them goes through JS `fetch`. iOS release assets and any `file:` URI load
+  natively too.
 - 🟠 **`<ImageShader transform>`.** Skia's `ImageShader` takes a transform on top
   of `fit`/`rect`; here the only way to move one is a `<Group>`, which moves the
   shape too.
