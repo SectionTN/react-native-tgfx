@@ -75,6 +75,13 @@ std::shared_ptr<NamePromise> HybridTgfxFonts::registerFromFile(const std::string
         return registerTypeface(::tgfx::Typeface::MakeFromData(std::move(data), 0), family, file);
       }
     }
+    if (tgfxrn::looksLikePlatformUri(file)) {
+      auto data = tgfxrn::platformUriData(file);
+      if (data == nullptr) {
+        throw std::runtime_error("tgfx: could not read " + file);
+      }
+      return registerTypeface(::tgfx::Typeface::MakeFromData(std::move(data), 0), family, file);
+    }
     return registerTypeface(::tgfx::Typeface::MakeFromPath(file), family, file);
   });
 }

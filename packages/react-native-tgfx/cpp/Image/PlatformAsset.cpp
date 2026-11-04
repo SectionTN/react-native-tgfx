@@ -10,6 +10,11 @@ std::shared_ptr<tgfx::Data> platformAssetData(const std::string&) {
   return nullptr;
 }
 
+// `asset:` and `content:` are Android's; no other platform hands them out.
+std::shared_ptr<tgfx::Data> platformUriData(const std::string&) {
+  return nullptr;
+}
+
 }  // namespace tgfxrn
 
 #endif

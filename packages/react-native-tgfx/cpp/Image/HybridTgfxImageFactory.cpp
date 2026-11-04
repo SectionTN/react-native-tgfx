@@ -117,6 +117,13 @@ std::shared_ptr<ImagePromise> HybridTgfxImageFactory::fromFile(const std::string
         return registerData(std::move(data), file);
       }
     }
+    if (tgfxrn::looksLikePlatformUri(file)) {
+      auto data = tgfxrn::platformUriData(file);
+      if (data == nullptr) {
+        throw std::runtime_error("tgfx: could not read " + file);
+      }
+      return registerData(std::move(data), file);
+    }
     // Codec first: it keeps the bytes on disk and re-reads them after an eviction, which
     // reading the file up front would give up. Only a non-raster falls through to the bytes.
     if (auto codec = ::tgfx::ImageCodec::MakeFrom(file)) {

@@ -2,6 +2,7 @@ package com.margelo.nitro.tgfx
 
 import android.graphics.SurfaceTexture
 import android.hardware.HardwareBuffer
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.Surface
@@ -72,6 +73,27 @@ internal object TgfxNative {
       }
     }
     return null
+  }
+
+  /** Bytes behind an `asset:` or `content:` URI, which no file API can open; null if unreadable. */
+  @Keep
+  @DoNotStrip
+  @JvmStatic
+  fun uriBytes(uri: String): ByteArray? {
+    val context = NitroModules.applicationContext ?: return null
+    val parsed = Uri.parse(uri)
+    return runCatching {
+      val stream =
+        if (parsed.scheme == "asset") {
+          // asset:/a.png, asset:///a.png and asset://a.png all name a.png.
+          context.assets.open((parsed.authority.orEmpty() + parsed.path.orEmpty()).trimStart('/'))
+        } else {
+          context.contentResolver.openInputStream(parsed)
+        }
+      stream?.use { it.readBytes() }
+    }
+      .onFailure { Log.w("tgfx", "could not read $uri: $it") }
+      .getOrNull()
   }
 
   /** Called once per [snapshot] on a native worker, never the render thread. [data] is call-scoped. */
