@@ -17,7 +17,11 @@ import { Fill } from './drawings'
 import { AnimationDriver } from '../reanimated/AnimationDriver'
 import { ViewportDriver } from '../reanimated/ViewportDriver'
 import { isLive } from '../reanimated/liveValue'
-import type { BoxedSlots } from '../reanimated/slotFlags'
+import {
+  pushBlock,
+  type BoxedSlots,
+  type FlagBlock,
+} from '../reanimated/slotFlags'
 import { TgfxRoot } from '../reconciler/Reconciler'
 import { directNodes } from '../reconciler/directNodes'
 import { createNode, NodeType } from '../reconciler/types'
@@ -223,6 +227,8 @@ export function Canvas({
   const [view, setView] = useState<TgfxViewRef | null>(null)
   const rootRef = useRef<TgfxRoot | null>(null)
   const viewRef = useRef<TgfxViewRef | null>(null)
+  // The mirror block a JS-thread push last bound the view to.
+  const boundBlock = useRef<FlagBlock | null>(null)
   const scene = useRef<{
     buffer: ArrayBuffer
     strings: string[]
@@ -239,6 +245,7 @@ export function Canvas({
   if (hybridRef.current == null) {
     hybridRef.current = callback((ref: TgfxViewRef) => {
       viewRef.current = ref
+      boundBlock.current = null
       // Optional: a JS bundle newer than the native binary would otherwise throw here.
       ref.setColorSpace?.(colorSpaceRef.current)
       // Unconditional: a recycled view resets its viewport in clearScene(), but
@@ -345,6 +352,14 @@ export function Canvas({
     rootRef.current.container.deferReads = AnimationDriver != null
     rootRef.current.container.onValues = (vals) =>
       viewRef.current?.setValues(vals)
+    rootRef.current.container.onBlock = (block) => {
+      const view = viewRef.current
+      if (view == null) {
+        return true
+      }
+      boundBlock.current = pushBlock(view, block, boundBlock.current)
+      return boundBlock.current != null
+    }
     rootRef.current.container.onStrings = (indices, vals) =>
       viewRef.current?.setStringValues?.(indices, vals)
   }

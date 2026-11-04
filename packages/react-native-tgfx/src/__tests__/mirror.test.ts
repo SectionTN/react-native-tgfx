@@ -122,3 +122,107 @@ test('with a driver to follow, an unseen mutable is deferred and the program fla
   expect(pushed).toEqual([[7]])
   expect(x.reads()).toBe(0)
 })
+
+/** What a handle holds without Reanimated: a plain slot, read fresh on every push. */
+const plainSlot = (value: number) => ({
+  value,
+  _isReanimatedSharedValue: true as const,
+})
+
+/** A mirror that logs its stores by index, to tell a write-back from an entry left alone. */
+function loggedBlock(values: number[], written: boolean) {
+  const b = block(values, written)
+  const stores: number[] = []
+  b.values = new Proxy(b.values, {
+    set(target, key, value: number) {
+      stores.push(Number(key))
+      target[Number(key)] = value
+      return true
+    },
+  })
+  return { b, stores }
+}
+
+const rectAt = (x: unknown, y: unknown = 0): Node[] =>
+  [
+    { type: NodeType.Rect, props: { x, y, width: 1, height: 1 }, children: [] },
+  ] as Node[]
+
+test('a JS-thread push writes its slots into the mirror and hands over the block', () => {
+  const slot = plainSlot(3)
+  const arrays: number[][] = []
+  const container = new TgfxContainer(() => {})
+  container.onValues = (values) => arrays.push(values.slice())
+  container.setRootDirect(rectAt(slot))
+  const mirror = block([0], false)
+  container.mirror = { values: [slot], block: mirror }
+  const offered: FlagBlock[] = []
+  container.onBlock = (b) => {
+    offered.push(b)
+    return true
+  }
+  slot.value = 8
+  container.pushValues()
+  expect(offered).toHaveLength(1)
+  expect(offered[0]).toBe(mirror)
+  expect(mirror.values[0]).toBe(8)
+  expect(arrays).toEqual([])
+})
+
+test('a JS-thread push leaves a mutable the driver wrote alone', () => {
+  const x = shared(5)
+  const slot = plainSlot(3)
+  const container = new TgfxContainer(() => {})
+  container.setRootDirect(rectAt(x.sv, slot))
+  const { b, stores } = loggedBlock([7, 0], true)
+  container.mirror = { values: [x.sv, slot], block: b }
+  container.onBlock = () => true
+  const before = x.reads()
+  container.pushValues()
+  expect(stores).toEqual([1])
+  expect([b.values[0], b.values[1]]).toEqual([7, 3])
+  expect(x.reads()).toBe(before)
+})
+
+test('before the driver writes the mirror, a JS-thread push stores the literal the program carries', () => {
+  const x = shared(5)
+  const container = new TgfxContainer(() => {})
+  container.setRootDirect(rectAt(x.sv))
+  const mirror = block([0], false)
+  container.mirror = { values: [x.sv], block: mirror }
+  container.onBlock = () => true
+  container.pushValues()
+  expect(mirror.values[0]).toBe(5)
+  expect(x.reads()).toBe(1)
+})
+
+test('a target that cannot take the block gets the array instead', () => {
+  const slot = plainSlot(3)
+  const arrays: number[][] = []
+  const container = new TgfxContainer(() => {})
+  container.onValues = (values) => arrays.push(values.slice())
+  container.setRootDirect(rectAt(slot))
+  container.mirror = { values: [slot], block: block([0], false) }
+  let offered = 0
+  container.onBlock = () => {
+    offered++
+    return false
+  }
+  container.pushValues()
+  expect(offered).toBe(1)
+  expect(arrays).toEqual([[3]])
+})
+
+test('without a mirror block a JS-thread push is an array', () => {
+  const slot = plainSlot(3)
+  const arrays: number[][] = []
+  const container = new TgfxContainer(() => {})
+  container.onValues = (values) => arrays.push(values.slice())
+  container.onBlock = () => {
+    throw new Error('no block to hand over')
+  }
+  container.setRootDirect(rectAt(slot))
+  expect(container.mirror).toBeNull()
+  container.pushValues()
+  expect(arrays).toEqual([[3]])
+})
