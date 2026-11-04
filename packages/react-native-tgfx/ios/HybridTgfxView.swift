@@ -6,6 +6,8 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   private let metalView = TgfxMetalView()
   // The renderer reads these bytes on every push, so they are released only by the next bind.
   private var boundValues: ArrayBuffer?
+  // A JS-thread push and the UI-thread driver both bind, so the pointer and its buffer change together.
+  private let bindLock = NSLock()
 
   var view: UIView { metalView }
 
@@ -54,6 +56,8 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
       throw RuntimeError.error(withMessage: "[tgfx] bindValues needs a native-owned buffer (a TgfxSlots values block)")
     }
     let slots = UnsafeRawPointer(values.data).assumingMemoryBound(to: Double.self)
+    bindLock.lock()
+    defer { bindLock.unlock() }
     metalView.bindValues(slots, count: Int32(values.size / MemoryLayout<Double>.size))
     boundValues = values
   }
