@@ -201,11 +201,13 @@ function mirrorScene(scene: Scene, count: number): ArrayBuffer {
 function canvasTarget() {
   let bound: ArrayBuffer | null = null
   const received: number[][] = []
+  const binds: ArrayBuffer[] = []
   const t: SceneTarget = {
     setScene: () => {},
     setValues: () => {},
     bindValues: (buffer) => {
       bound = buffer
+      binds.push(buffer)
     },
     pushValues: () => {
       if (bound == null) {
@@ -215,7 +217,7 @@ function canvasTarget() {
       return true
     },
   }
-  return { t, received, recycle: () => (bound = null) }
+  return { t, received, binds, recycle: () => (bound = null) }
 }
 
 /** A handle scene on a surface (no push) and a canvas, its mapper running on the mirror. */
@@ -231,7 +233,14 @@ function mirroredHandleScene() {
   // Attaching recompiles with the same slots, so the mirror stays and the mapper restarts.
   scene.attach(canvas.t)
   expect(mappers.size).toBe(1)
-  return { box, surface, canvas, values, run: [...mappers.values()][0]! }
+  return {
+    scene,
+    box,
+    surface,
+    canvas,
+    values,
+    run: [...mappers.values()][0]!,
+  }
 }
 
 test('a mirrored mapper has a pushing target copy the block; the rest get the array', () => {
@@ -251,14 +260,52 @@ test('a mirrored mapper has a pushing target copy the block; the rest get the ar
 })
 
 test('a target that lost its binding to a recycle is bound again on the next frame', () => {
-  const { box, canvas, run } = mirroredHandleScene()
+  const { canvas, run } = mirroredHandleScene()
   run()
   canvas.recycle()
-  box.set({ x: 9 })
   run()
   expect(canvas.received).toEqual([
     [1, 2, 3, 4],
+    [1, 2, 3, 4],
+  ])
+})
+
+test('a JS-thread write has a pushing target copy the block; the rest get the array', () => {
+  const { box, surface, canvas, values } = mirroredHandleScene()
+  const before = surface.calls.values.length
+  box.set({ x: 9 })
+  expect(canvas.received).toEqual([[9, 2, 3, 4]])
+  expect(surface.calls.values.slice(before)).toEqual([[9, 2, 3, 4]])
+  expect(Array.from(new Float64Array(values))).toEqual([9, 2, 3, 4])
+})
+
+test('a JS-thread write binds a target once, and again after a recycle', () => {
+  const { box, canvas, values } = mirroredHandleScene()
+  box.set({ x: 9 })
+  box.set({ x: 10 })
+  canvas.recycle()
+  box.set({ x: 11 })
+  expect(canvas.binds).toHaveLength(2)
+  expect(canvas.binds[0]).toBe(values)
+  expect(canvas.binds[1]).toBe(values)
+  expect(canvas.received).toEqual([
     [9, 2, 3, 4],
+    [10, 2, 3, 4],
+    [11, 2, 3, 4],
+  ])
+})
+
+test('a JS-thread write after the mirror is replaced binds the new block', () => {
+  const { scene, box, canvas, values } = mirroredHandleScene()
+  box.set({ x: 9 })
+  const next = mirrorScene(scene, 4)
+  box.set({ x: 10 })
+  expect(canvas.binds).toHaveLength(2)
+  expect(canvas.binds[0]).toBe(values)
+  expect(canvas.binds[1]).toBe(next)
+  expect(canvas.received).toEqual([
+    [9, 2, 3, 4],
+    [10, 2, 3, 4],
   ])
 })
 

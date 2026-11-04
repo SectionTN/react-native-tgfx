@@ -12,7 +12,12 @@ import {
   readLiveString,
 } from './reanimated/liveValue'
 import { reanimated } from './reanimated/peer'
-import { flagsOf, valuesOf } from './reanimated/slotFlags'
+import {
+  flagsOf,
+  pushBlock,
+  valuesOf,
+  type FlagBlock,
+} from './reanimated/slotFlags'
 import { TgfxContainer } from './reconciler/Container'
 import type { SceneNode } from './elements'
 import type { TgfxImage as TgfxImageHandle } from './specs/TgfxImage.nitro'
@@ -60,6 +65,8 @@ interface Attachment {
   /// The string table this target holds, for delta encoding. Per target: a
   /// mispacked delta misindexes every string after entry 0.
   sent: string[]
+  /// The mirror block a JS-thread push last bound this target to.
+  bound: FlagBlock | null
 }
 
 /**
@@ -87,6 +94,8 @@ export class Scene {
   private quiet = false
   private lastValues: MaybeSharedValue<unknown>[] = []
   private lastStringValues: MaybeSharedValue<string>[] = []
+  /// Reused per JS-thread push, for a target that cannot copy the block.
+  private readonly slots: number[] = []
 
   private readonly container = new TgfxContainer(
     (buffer, strings, values, stringValues) => {
@@ -110,6 +119,17 @@ export class Scene {
       for (const t of this.targets) {
         t.target.setValues(values)
       }
+    }
+    this.container.onBlock = (block) => {
+      let slots: number[] | null = null
+      for (const t of this.targets) {
+        t.bound = pushBlock(t.target, block, t.bound)
+        if (t.bound == null) {
+          slots ??= this.slotsFrom(block)
+          t.target.setValues(slots)
+        }
+      }
+      return true
     }
     this.container.onStrings = (indices, values) => {
       for (const t of this.targets) {
@@ -189,7 +209,7 @@ export class Scene {
     if (this.disposed) {
       throw new Error('[tgfx] Scene.attach: this scene is disposed')
     }
-    const entry: Attachment = { target, sent: [] }
+    const entry: Attachment = { target, sent: [], bound: null }
     this.targets.push(entry)
     if (this.dirty) {
       this.flush()
@@ -462,6 +482,15 @@ export class Scene {
         }
       }
     }, listenable)
+  }
+
+  private slotsFrom(block: FlagBlock): number[] {
+    const out = this.slots
+    out.length = block.values.length
+    for (let i = 0; i < out.length; i++) {
+      out[i] = block.values[i]!
+    }
+    return out
   }
 
   private markDirty(): void {
