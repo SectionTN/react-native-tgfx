@@ -226,3 +226,35 @@ test('without a mirror block a JS-thread push is an array', () => {
   container.pushValues()
   expect(arrays).toEqual([[3]])
 })
+
+/** A handle's block slot: an accessor over shared bytes, plus the boxed block a reader can view itself. */
+function blockSlot(value: number) {
+  const values = new ArrayBuffer(16)
+  const bytes = new Float64Array(values)
+  bytes[1] = value
+  let reads = 0
+  const slot = {
+    _isReanimatedSharedValue: true as const,
+    __tgfxBoxed: { unbox: () => ({ values }) },
+    __tgfxAt: 1,
+    get value(): number {
+      reads++
+      return bytes[1]!
+    },
+  }
+  return { slot, bytes, reads: () => reads }
+}
+
+test('a JS-thread push reads a block slot from its block, not through its accessor', () => {
+  const b = blockSlot(4)
+  const container = new TgfxContainer(() => {})
+  container.setRootDirect(rectAt(b.slot))
+  const mirror = block([0], false)
+  container.mirror = { values: [b.slot], block: mirror }
+  container.onBlock = () => true
+  b.bytes[1] = 9
+  const before = b.reads()
+  container.pushValues()
+  expect(mirror.values[0]).toBe(9)
+  expect(b.reads()).toBe(before)
+})

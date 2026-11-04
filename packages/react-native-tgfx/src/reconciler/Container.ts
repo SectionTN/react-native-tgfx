@@ -5,6 +5,7 @@ import { compileScene } from '../compiler/compile'
 import type { MaybeSharedValue } from '../compiler/values'
 import { SceneWriter } from '../compiler/writer'
 import { nodeInternals, type NodeOwner } from '../imperative'
+import { blockSource } from '../reanimated/liveValue'
 import { makeFlagBlock, type FlagBlock } from '../reanimated/slotFlags'
 import type { Node } from './types'
 
@@ -95,6 +96,12 @@ export class TgfxContainer implements NodeOwner {
   private stringValues: MaybeSharedValue<string>[] = []
   private readonly sentStrings: (string | null)[] = []
   private readonly scratch: number[] = []
+  /// Per slot, the handle block a push loads it from, or null to read `.value`.
+  private views: (Float64Array | null)[] = []
+  /// Per slot, its index in `views[i]`.
+  private viewAt = new Int32Array(0)
+  /// Per slot, 1 for a Reanimated mutable.
+  private mutable = new Uint8Array(0)
 
   constructor(onCommit: CommitListener) {
     this.onCommit = onCommit
@@ -129,6 +136,7 @@ export class TgfxContainer implements NodeOwner {
       }
     }
     this.values = values
+    this.indexSlots()
     this.stringValues = stringValues
     // The program carries current literals, so nothing is pending for the new table.
     this.sentStrings.length = stringValues.length
@@ -178,9 +186,16 @@ export class TgfxContainer implements NodeOwner {
     }
     if (block != null && this.onBlock != null) {
       const into = block.values
+      const views = this.views
+      const at = this.viewAt
       for (let i = 0; i < this.values.length; i++) {
+        const view = views[i]
+        if (view != null) {
+          into[i] = view[at[i]!]!
+          continue
+        }
         // The driver's own entry: a store here could land over a newer write.
-        if (written && isMutable(this.values[i]) && Number.isFinite(into[i]!)) {
+        if (written && this.mutable[i] === 1 && Number.isFinite(into[i]!)) {
           continue
         }
         into[i] = this.slotValue(i, block, written)
@@ -203,8 +218,12 @@ export class TgfxContainer implements NodeOwner {
     block: FlagBlock | null,
     written: boolean
   ): number {
+    const view = this.views[i]
+    if (view != null) {
+      return view[this.viewAt[i]!]!
+    }
     const sv = this.values[i]!
-    if (isMutable(sv)) {
+    if (this.mutable[i] === 1) {
       if (written) {
         const mirrored = block!.values[i]!
         if (Number.isFinite(mirrored)) {
@@ -218,6 +237,21 @@ export class TgfxContainer implements NodeOwner {
       }
     }
     return Number(sv.value)
+  }
+
+  /// Per commit, where each slot is read on a push: a typed load from its handle block beats a getter call per slot.
+  private indexSlots(): void {
+    const n = this.values.length
+    this.views = new Array<Float64Array | null>(n)
+    this.viewAt = new Int32Array(n)
+    this.mutable = new Uint8Array(n)
+    for (let i = 0; i < n; i++) {
+      const sv = this.values[i]!
+      const source = blockSource(sv)
+      this.views[i] = source?.view ?? null
+      this.viewAt[i] = source?.at ?? 0
+      this.mutable[i] = isMutable(sv) ? 1 : 0
+    }
   }
 
   private knownValues(): Map<object, number> | null {
