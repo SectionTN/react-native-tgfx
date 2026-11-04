@@ -160,6 +160,8 @@ void TgfxRenderer::clearScene() {
     viewportZoom_ = 1.0f;
     viewportX_ = 0.0f;
     viewportY_ = 0.0f;
+    boundValues_ = nullptr;
+    boundCount_ = 0;
   }
   version_.fetch_add(1, std::memory_order_release);
 }
@@ -176,6 +178,26 @@ void TgfxRenderer::setValues(std::vector<double> values) {
     valuesGen_++;
   }
   version_.fetch_add(1, std::memory_order_release);
+}
+
+void TgfxRenderer::bindValues(const double* values, size_t count) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  boundValues_ = values;
+  boundCount_ = values != nullptr ? count : 0;
+}
+
+bool TgfxRenderer::pushValues() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (boundValues_ == nullptr) {
+      return false;
+    }
+    // assign reuses values_'s storage, so a steady push allocates nothing.
+    values_.assign(boundValues_, boundValues_ + boundCount_);
+    valuesGen_++;
+  }
+  version_.fetch_add(1, std::memory_order_release);
+  return true;
 }
 
 void TgfxRenderer::setStringValues(const std::vector<double>& indices,

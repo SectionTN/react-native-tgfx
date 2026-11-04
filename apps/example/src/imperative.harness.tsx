@@ -1,5 +1,6 @@
 // Node handles and shared values: the two ways a scene changes without a React commit.
 import React, { useRef } from 'react';
+import { View } from 'react-native';
 import { describe, expect, render, test } from 'react-native-harness';
 import { useSharedValue } from 'react-native-reanimated';
 import {
@@ -247,6 +248,69 @@ describe('tgfx shared values', () => {
     // below is captured from the unwritten frame and passes forever after.
     expect(sameFrame(unwritten, await stageBytes(0))).toBe(false);
     await snapshot('animated-shared-value-written');
+  });
+
+  test('a new shared value set keeps redrawing after the driver rebinds', async () => {
+    let grow: (() => void) | null = null;
+    let width: { value: number } | null = null;
+
+    function Scene() {
+      const r = useSharedValue(30);
+      const w = useSharedValue(40);
+      const [both, setBoth] = React.useState(false);
+      grow = () => setBoth(true);
+      width = w;
+      return (
+        <Stage>
+          <Fill color="white" />
+          <Circle cx={60} cy={60} r={r} color="#FF9500" />
+          {both ? (
+            <Rect x={20} y={120} width={w} height={40} color="#34C759" />
+          ) : null}
+        </Stage>
+      );
+    }
+
+    await render(<Scene />);
+    // A second shared value changes the set, so the driver starts on a new mirror.
+    grow!();
+    await sleep(200);
+    const grown = await stageBytes(0);
+    width!.value = 160;
+    await sleep(200);
+    // Only a push from the new block carries the width slot.
+    expect(sameFrame(grown, await stageBytes(0))).toBe(false);
+  });
+
+  test('a canvas hidden and shown again keeps animating', async () => {
+    let hide: ((hidden: boolean) => void) | null = null;
+    let radius: { value: number } | null = null;
+
+    function Scene() {
+      const r = useSharedValue(30);
+      const [hidden, setHidden] = React.useState(false);
+      radius = r;
+      hide = setHidden;
+      return (
+        <View style={{ display: hidden ? 'none' : 'flex' }}>
+          <Stage>
+            <Fill color="white" />
+            <Circle cx={100} cy={100} r={r} color="#5856D6" />
+          </Stage>
+        </View>
+      );
+    }
+
+    await render(<Scene />);
+    // iOS unmounts a hidden view and recycles it, which drops its value binding.
+    hide!(true);
+    await sleep(200);
+    hide!(false);
+    await sleep(200);
+    const shown = await stageBytes(0);
+    radius!.value = 85;
+    await sleep(200);
+    expect(sameFrame(shown, await stageBytes(0))).toBe(false);
   });
 });
 

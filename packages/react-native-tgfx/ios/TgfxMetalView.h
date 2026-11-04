@@ -25,6 +25,9 @@ FOUNDATION_EXPORT void TgfxSnapshotRelease(void* _Nullable token);
 - (void)setOpaqueSurface:(BOOL)opaque;
 
 - (void)setValues:(const double*)values count:(int32_t)count;
+/// The block `pushValues` copies from; the caller keeps it alive until the next bind.
+- (void)bindValues:(const double* _Nullable)values count:(int32_t)count;
+- (BOOL)pushValues;
 - (void)setStringValues:(const double*)indices
                   count:(int32_t)count
                  values:(NSArray<NSString*>*)values;

@@ -63,6 +63,8 @@ namespace margelo::nitro::tgfx {
       virtual void setScene(const std::shared_ptr<ArrayBuffer>& scene, const std::vector<std::string>& strings, std::optional<bool> awaitValues) = 0;
       virtual void invalidate() = 0;
       virtual void setValues(const std::vector<double>& values) = 0;
+      virtual void bindValues(const std::shared_ptr<ArrayBuffer>& values) = 0;
+      virtual bool pushValues() = 0;
       virtual void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) = 0;
       virtual void setViewport(const std::vector<double>& viewport) = 0;
       virtual void setColorSpace(const std::string& colorSpace) = 0;

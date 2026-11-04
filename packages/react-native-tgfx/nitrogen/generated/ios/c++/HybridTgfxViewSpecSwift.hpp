@@ -107,6 +107,20 @@ namespace margelo::nitro::tgfx {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void bindValues(const std::shared_ptr<ArrayBuffer>& values) override {
+      auto __result = _swiftPart.bindValues(ArrayBufferHolder(values));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline bool pushValues() override {
+      auto __result = _swiftPart.pushValues();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline void setStringValues(const std::vector<double>& indices, const std::vector<std::string>& values) override {
       auto __result = _swiftPart.setStringValues(indices, values);
       if (__result.hasError()) [[unlikely]] {

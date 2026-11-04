@@ -21,6 +21,8 @@ namespace margelo::nitro::tgfx {
       prototype.registerHybridMethod("setScene", &HybridTgfxViewSpec::setScene);
       prototype.registerHybridMethod("invalidate", &HybridTgfxViewSpec::invalidate);
       prototype.registerHybridMethod("setValues", &HybridTgfxViewSpec::setValues);
+      prototype.registerHybridMethod("bindValues", &HybridTgfxViewSpec::bindValues);
+      prototype.registerHybridMethod("pushValues", &HybridTgfxViewSpec::pushValues);
       prototype.registerHybridMethod("setStringValues", &HybridTgfxViewSpec::setStringValues);
       prototype.registerHybridMethod("setViewport", &HybridTgfxViewSpec::setViewport);
       prototype.registerHybridMethod("setColorSpace", &HybridTgfxViewSpec::setColorSpace);

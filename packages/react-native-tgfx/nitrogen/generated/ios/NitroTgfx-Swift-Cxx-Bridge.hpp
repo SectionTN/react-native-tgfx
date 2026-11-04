@@ -274,6 +274,15 @@ namespace margelo::nitro::tgfx::bridge::swift {
   using std__weak_ptr_HybridTgfxViewSpec_ = std::weak_ptr<HybridTgfxViewSpec>;
   inline std__weak_ptr_HybridTgfxViewSpec_ weakify_std__shared_ptr_HybridTgfxViewSpec_(const std::shared_ptr<HybridTgfxViewSpec>& strong) noexcept { return strong; }
   
+  // pragma MARK: Result<bool>
+  using Result_bool_ = Result<bool>;
+  inline Result_bool_ create_Result_bool_(bool value) noexcept {
+    return Result<bool>::withValue(std::move(value));
+  }
+  inline Result_bool_ create_Result_bool_(const std::exception_ptr& error) noexcept {
+    return Result<bool>::withError(error);
+  }
+  
   // pragma MARK: Result<std::vector<double>>
   using Result_std__vector_double__ = Result<std::vector<double>>;
   inline Result_std__vector_double__ create_Result_std__vector_double__(const std::vector<double>& value) noexcept {

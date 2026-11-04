@@ -77,7 +77,7 @@ export interface TgfxViewMethods extends HybridViewMethods {
    * The buffer is only valid for the duration of the call; the engine copies it.
    *
    * `awaitValues`: the program's slot literals are placeholders, so hold it
-   * until the next `setValues` lands and draw the two together. The driver
+   * until the next value push lands and draw the two together. The driver
    * pushes one frame later; the frames in between keep the previous program.
    */
   setScene(scene: ArrayBuffer, strings: string[], awaitValues?: boolean): void
@@ -86,10 +86,17 @@ export interface TgfxViewMethods extends HybridViewMethods {
   invalidate(): void
 
   /**
-   * Update the scene's `{ "__s": index }` value slots. Called every frame from a
-   * Reanimated worklet, so it runs natively on the UI thread.
+   * Replace the scene's value slots, in slot order. The animation driver
+   * copies its shared slot block natively instead; JS-thread handle writes
+   * and an older native binary use this.
    */
   setValues(values: number[]): void
+
+  /** @internal points pushValues at a native-owned Float64 slot block (a TgfxSlots values buffer), held until the next bind. */
+  bindValues(values: ArrayBuffer): void
+
+  /** @internal setValues from the bound block, copied natively; false while nothing is bound, as after a recycle. */
+  pushValues(): boolean
 
   /**
    * Update the scene's string slots - live `text` and `path` content. Sparse:

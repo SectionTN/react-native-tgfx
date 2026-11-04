@@ -51,7 +51,7 @@ class TgfxRenderer {
   void setWindow(std::shared_ptr<tgfx::Window> window);
 
   /// Stage a draw program. `words` is copied; `packedStrings` is a delta, see SceneStrings.hpp.
-  /// With `awaitValues` the program is not drawn until a setValues lands after it: its slot
+  /// With `awaitValues` the program is not drawn until a value push lands after it: its slot
   /// literals are placeholders that the driver's first push completes.
   void setScene(std::span<const double> words,
                 const std::vector<std::string>& packedStrings,
@@ -62,6 +62,12 @@ class TgfxRenderer {
   void setOpaque(bool opaque);
 
   void setValues(std::vector<double> values);
+
+  /// Point pushValues at `count` doubles the caller keeps alive until the next bind or clearScene.
+  void bindValues(const double* values, size_t count);
+
+  /// setValues from the bound block, copied now; false when nothing is bound.
+  bool pushValues();
 
   /// Sparse writes into the string-slot array (live text and path data).
   void setStringValues(const std::vector<double>& indices,
@@ -151,6 +157,9 @@ class TgfxRenderer {
   /// The FontRegistry epoch this command list was compiled against; a later face forces a recompile.
   uint64_t compiledFontEpoch_ = 0;
   std::vector<double> values_;
+  /// The block pushValues copies into values_, under mutex_; the platform view keeps it alive.
+  const double* boundValues_ = nullptr;
+  size_t boundCount_ = 0;
   std::vector<double> drawValues_;
   std::vector<std::string> stringValues_;
   std::vector<std::string> drawStringValues_;
