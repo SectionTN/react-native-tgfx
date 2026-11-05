@@ -5,6 +5,7 @@ import { compileScene } from '../compiler/compile'
 import type { MaybeSharedValue } from '../compiler/values'
 import { SceneWriter } from '../compiler/writer'
 import { nodeInternals, type NodeOwner } from '../imperative'
+import { blockSource } from '../reanimated/liveValue'
 import { makeFlagBlock, type FlagBlock } from '../reanimated/slotFlags'
 import type { Node } from './types'
 
@@ -54,16 +55,18 @@ export class TgfxContainer implements NodeOwner {
   claimRefs = true
   onValues: ((values: number[]) => void) | null = null
   onStrings: ((indices: number[], values: string[]) => void) | null = null
+  /** A JS-thread push already in the mirror block, for targets that copy it natively; false sends the array. */
+  onBlock: ((block: FlagBlock) => boolean) | null = null
   /**
-   * The slots as the UI-thread driver last pushed them, in shared memory.
+   * The slots as last pushed, from either thread, in shared memory.
    *
    * A commit snapshots every SharedValue prop into the program, and on
    * Reanimated 4 a JS-thread read of a value the UI thread has written since
    * is a synchronous hop to that runtime, queued behind whatever frame it is
    * in - N hops per commit, minutes at a few thousand animating slots. The
    * driver mirrors what it pushes here, so the snapshot is a plain load. Flag
-   * byte 0 marks the mirror written. Block slots are never taken from it: a
-   * JS-thread write to one fires no driver, so the mirror can trail it.
+   * byte 0 marks the driver's first write. Block slots are never taken from
+   * it: their own block is always current, and the mirror can trail it.
    */
   mirror: { values: MaybeSharedValue<unknown>[]; block: FlagBlock } | null =
     null
@@ -93,6 +96,12 @@ export class TgfxContainer implements NodeOwner {
   private stringValues: MaybeSharedValue<string>[] = []
   private readonly sentStrings: (string | null)[] = []
   private readonly scratch: number[] = []
+  /// Per slot, the handle block a push loads it from, or null to read `.value`.
+  private views: (Float64Array | null)[] = []
+  /// Per slot, its index in `views[i]`.
+  private viewAt = new Int32Array(0)
+  /// Per slot, 1 for a Reanimated mutable.
+  private mutable = new Uint8Array(0)
 
   constructor(onCommit: CommitListener) {
     this.onCommit = onCommit
@@ -127,6 +136,7 @@ export class TgfxContainer implements NodeOwner {
       }
     }
     this.values = values
+    this.indexSlots()
     this.stringValues = stringValues
     // The program carries current literals, so nothing is pending for the new table.
     this.sentStrings.length = stringValues.length
@@ -168,19 +178,80 @@ export class TgfxContainer implements NodeOwner {
       // Nothing to patch, and an empty push still costs the render thread a redraw on Android.
       return
     }
-    if (this.unresolved && this.mirror?.block.bytes[0] !== 1) {
+    const block = this.mirror?.block ?? null
+    const written = block?.bytes[0] === 1
+    if (this.unresolved && !written) {
       // The driver's first push carries every slot, block slots included.
       return
     }
+    if (block != null && this.onBlock != null) {
+      const into = block.values
+      const views = this.views
+      const at = this.viewAt
+      for (let i = 0; i < this.values.length; i++) {
+        const view = views[i]
+        if (view != null) {
+          into[i] = view[at[i]!]!
+          continue
+        }
+        // The driver's own entry: a store here could land over a newer write.
+        if (written && this.mutable[i] === 1 && Number.isFinite(into[i]!)) {
+          continue
+        }
+        into[i] = this.slotValue(i, block, written)
+      }
+      if (this.onBlock(block)) {
+        return
+      }
+    }
     const out = this.scratch
-    const known = this.knownValues()
     out.length = this.values.length
     for (let i = 0; i < this.values.length; i++) {
-      const sv = this.values[i]!
-      const k = known?.get(sv as object)
-      out[i] = k !== undefined ? k : Number(sv.value)
+      out[i] = this.slotValue(i, block, written)
     }
     this.onValues?.(out)
+  }
+
+  /// Slot `i` as a push sends it: a mutable as the driver mirrored it or the program carries it, else read now.
+  private slotValue(
+    i: number,
+    block: FlagBlock | null,
+    written: boolean
+  ): number {
+    const view = this.views[i]
+    if (view != null) {
+      return view[this.viewAt[i]!]!
+    }
+    const sv = this.values[i]!
+    if (this.mutable[i] === 1) {
+      if (written) {
+        const mirrored = block!.values[i]!
+        if (Number.isFinite(mirrored)) {
+          return mirrored
+        }
+      } else {
+        const literal = this.lastLiterals?.get(sv as object)
+        if (literal !== undefined) {
+          return literal
+        }
+      }
+    }
+    return Number(sv.value)
+  }
+
+  /// Per commit, where each slot is read on a push: a typed load from its handle block beats a getter call per slot.
+  private indexSlots(): void {
+    const n = this.values.length
+    this.views = new Array<Float64Array | null>(n)
+    this.viewAt = new Int32Array(n)
+    this.mutable = new Uint8Array(n)
+    for (let i = 0; i < n; i++) {
+      const sv = this.values[i]!
+      const source = blockSource(sv)
+      this.views[i] = source?.view ?? null
+      this.viewAt[i] = source?.at ?? 0
+      this.mutable[i] = isMutable(sv) ? 1 : 0
+    }
   }
 
   private knownValues(): Map<object, number> | null {

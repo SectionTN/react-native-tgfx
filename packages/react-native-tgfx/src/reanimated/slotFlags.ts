@@ -64,6 +64,32 @@ export function makeFlagBlock(
   }
 }
 
+/** A view or surface that can copy a value block natively instead of taking an array. */
+export interface BlockTarget {
+  bindValues?(values: ArrayBuffer): void
+  pushValues?(): boolean
+}
+
+/** Has `target` copy `block`, binding it when it holds another or a recycle dropped it; null if it cannot. */
+export function pushBlock(
+  target: BlockTarget,
+  block: FlagBlock,
+  bound: FlagBlock | null
+): FlagBlock | null {
+  if (target.pushValues == null || target.bindValues == null) {
+    return null
+  }
+  const buffer = block.values.buffer as ArrayBuffer
+  if (bound !== block) {
+    target.bindValues(buffer)
+  }
+  if (target.pushValues() === false) {
+    target.bindValues(buffer)
+    target.pushValues()
+  }
+  return block
+}
+
 /** This runtime's view of the block, cached on its global: unboxing costs a JSI call. */
 export function flagsOf(boxed: BoxedSlots): Uint8Array {
   'worklet'

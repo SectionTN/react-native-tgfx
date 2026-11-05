@@ -109,6 +109,19 @@ export function readLiveNumber(v: MaybeSharedValue<unknown>): number {
   return Number(v.value)
 }
 
+/** A block slot's shared bytes and its index in them, for a reader that walks many slots; null for anything else. */
+export function blockSource(
+  v: MaybeSharedValue<unknown>
+): { view: Float64Array<ArrayBuffer>; at: number } | null {
+  'worklet'
+  const at = (v as Partial<BlockSlot>).__tgfxAt
+  const boxed = (v as Partial<BlockSlot>).__tgfxBoxed
+  if (at === undefined || boxed === undefined) {
+    return null
+  }
+  return { view: valuesOf(boxed), at }
+}
+
 /** Write a live number wherever it is; worklet-side block writes land in the shared bytes. */
 export function writeLiveNumber(v: MaybeSharedValue<unknown>, x: number): void {
   'worklet'

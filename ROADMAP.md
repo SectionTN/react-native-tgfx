@@ -184,10 +184,11 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 
 - 🟠 Re-subscribe the `useAnimatedReaction` mapper only when the value *set*
   changes (currently re-subscribes on every commit due to new array identity).
-- ✅ Values travel through a shared ArrayBuffer (#20): the `<Canvas>` driver and a
-  `Scene`'s mapper bind their mirror block once and copy it natively each frame,
-  so no `number[]` crosses JSI per frame. Still open: JS-thread `handle.set()`
-  writes and offscreen surfaces send `setValues(number[])`.
+- ✅ Values travel through a shared ArrayBuffer (#20, #24): the `<Canvas>` driver
+  and a `Scene`'s mapper bind their mirror block once and copy it natively each
+  frame, and a JS-thread `handle.set()` writes the same block before it pushes,
+  so no `number[]` crosses JSI. Still open: offscreen surfaces send
+  `setValues(number[])`.
 - 🟡 Examples + tests for gesture-driven (gesture-handler is installed but
   unused), `withDecay`, `useDerivedValue`, `useClock`.
 - 🟡 Document that animated `rotate`/`skew` expect radians (`'45deg'` strings are
