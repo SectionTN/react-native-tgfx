@@ -8,7 +8,9 @@ icon: Gauge
 
 20,000 shapes, 3,600 images, a 40-octave shader, an image pattern, 900 paths
 and 6,000 texts against react-native-skia 3.8.1 on a Samsung SM-E146B (90 Hz),
-release builds, mean of two runs. Present FPS is frames that reached the screen.
+release builds, mean of two runs (paths: median of three). Rows marked (120 Hz
+device) are a moto g35 5G, median of three runs. Present FPS is frames that
+reached the screen.
 
 | engine · scene | Present FPS | UI FPS | JS FPS |
 |---|---|---|---|
@@ -21,7 +23,9 @@ release builds, mean of two runs. Present FPS is frames that reached the screen.
 | tgfx · pattern | **90.3** | 90 | 90 |
 | skia · pattern | 84.8 | 90 | 90 |
 | tgfx · paths | **90.3** | 90 | 90 |
-| skia · paths | 17.6 | 90 | 90 |
+| skia · paths | 17.9 | 90 | 90 |
+| tgfx · paths (120 Hz device) | **111.5** | 120 | 119 |
+| skia · paths (120 Hz device) | 78.8 | 120 | 119 |
 | tgfx · text | **68.3** | 90 | 90 |
 | skia · text | 34.4 | 90 | 90 |
 
