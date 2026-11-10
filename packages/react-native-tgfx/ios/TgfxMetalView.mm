@@ -102,7 +102,10 @@ void TgfxSnapshotRelease(void* token) {
   _layerConfigPending = false;
   _pendingRecycleClear = false;
   layer.contentsScale = self.contentScaleFactor;
+  [self startDisplayLink];
+}
 
+- (void)startDisplayLink {
   _displayLink = [CADisplayLink displayLinkWithTarget:self
                                              selector:@selector(render)];
   [_displayLink addToRunLoop:NSRunLoop.mainRunLoop
@@ -257,6 +260,12 @@ void TgfxSnapshotRelease(void* token) {
   if (self.window == nil && _pendingRecycleClear) {
     [self clearSceneNow];
   }
+  // Nitro drops a view before pooling it, so a reused one restarts its display link.
+  if (self.window != nil && _released) {
+    _released = false;
+    [self startDisplayLink];
+    [self wakeUp];
+  }
 }
 
 - (void)setValues:(const double*)values count:(int32_t)count {
@@ -376,6 +385,8 @@ void TgfxSnapshotRelease(void* token) {
   }
   dispatch_sync(_renderQueue, ^{
     self->_renderer->releaseWindow();
+    // A draw queued before the drop can bind a window again, and a reused view must rebind.
+    self->_windowBound = false;
   });
 }
 
