@@ -129,7 +129,7 @@ Reducing per-op cost in tgfx's GL backend is where the remaining gap to
 - 🟡 **Optional reanimated, for real.** Metro statically bundles the lazily
   required driver, so consumers without reanimated fail to bundle. Use the
   Skia-style `Proxy`/optional-require or a separate entry point.
-- 🟡 RN-version compatibility matrix (currently pinned to RN 0.85 / Nitro 0.35.9).
+- 🟡 RN-version compatibility matrix (currently pinned to RN 0.85 / Nitro 0.37.2).
 
 ## Rendering engine (features + perf)
 
