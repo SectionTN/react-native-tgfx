@@ -8,6 +8,8 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   private var boundValues: ArrayBuffer?
   // A JS-thread push and the UI-thread driver both bind, so the pointer and its buffer change together.
   private let bindLock = NSLock()
+  // Nitro drops a view right before prepareForRecycle when it pools it, so only a drop without one releases.
+  private var dropPending = false
 
   var view: UIView { metalView }
 
@@ -26,6 +28,7 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   }
 
   func prepareForRecycle() {
+    dropPending = false
     metalView.clearScene()
   }
 
@@ -131,6 +134,13 @@ final class HybridTgfxView: HybridTgfxViewSpec, RecyclableView {
   }
 
   func onDropView() {
-    metalView.releaseRenderer()
+    dropPending = true
+    let metalView = metalView
+    DispatchQueue.main.async { [weak self] in
+      // A freed view was never pooled, so it releases too.
+      if self?.dropPending ?? true {
+        metalView.releaseRenderer()
+      }
+    }
   }
 }

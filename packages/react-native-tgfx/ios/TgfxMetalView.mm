@@ -260,7 +260,7 @@ void TgfxSnapshotRelease(void* token) {
   if (self.window == nil && _pendingRecycleClear) {
     [self clearSceneNow];
   }
-  // Nitro drops a view before pooling it, so a reused one restarts its display link.
+  // A released view that gets a window again restarts its display link.
   if (self.window != nil && _released) {
     _released = false;
     [self startDisplayLink];
